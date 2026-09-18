@@ -18,6 +18,6 @@ variable "project_name" {
 
 variable "github_repo" {
   type        = string
-  default     = "https://github.com/kaliadhairya/HMS-Hospital-Management-System.git"
+  default     = "https://github.com/kaliadhairya/HMS_1.git"
   description = "Git repository URL to clone and deploy onto the EC2 instance"
 }
