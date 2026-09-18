@@ -50,6 +50,7 @@ services:
       RATE_LIMIT_WINDOW_MS: 900000
       RATE_LIMIT_MAX_AUTH: 20
       INTERNAL_SERVICE_SECRET: d2140f944925f320dc70f1b6671b4cf1bb30ea3a9a73871dd972e8010bfe129c
+      TRUST_PROXY: "1"
     ports:
       - "5001:5001"
     volumes:
