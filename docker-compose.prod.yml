@@ -1,0 +1,100 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: hms-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hms
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: hms_secure_production_password_2026
+    volumes:
+      - hms_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hms"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  backend:
+    build:
+      context: ./backend
+    container_name: hms-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 5001
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: hms
+      DB_USER: postgres
+      DB_PASSWORD: hms_secure_production_password_2026
+      JWT_SECRET: hms_super_secret_production_jwt_key_2026
+      JWT_EXPIRES_IN: 8h
+      CORS_ORIGIN: "*"
+      FRONTEND_URL: http://localhost:4999
+      AADHAAR_ENCRYPTION_KEY: cd9da93cb9ff3ccd87b4b2da30920bd5ac549e7470423996345cbde3ff5b986a0
+      UPLOAD_DIR: ./uploads
+      MAX_FILE_SIZE_MB: 5
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX_AUTH: 20
+      INTERNAL_SERVICE_SECRET: d2140f944925f320dc70f1b6671b4cf1bb30ea3a9a73871dd972e8010bfe129c
+    ports:
+      - "5001:5001"
+    volumes:
+      - hms_uploads:/app/uploads
+    command: ["sh", "startup.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:5001/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 768M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: hms-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "4999:4999"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4999/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 128M
+        reservations:
+          cpus: '0.10'
+          memory: 32M
+
+volumes:
+  hms_pgdata:
+  hms_uploads:

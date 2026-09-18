@@ -1,0 +1,23 @@
+[
+  { "code": "A01.0", "description": "Typhoid fever" },
+  { "code": "A09", "description": "Infectious gastroenteritis and colitis, unspecified" },
+  { "code": "A15.9", "description": "Respiratory tuberculosis unspecified" },
+  { "code": "B54", "description": "Unspecified malaria" },
+  { "code": "E11.9", "description": "Type 2 diabetes mellitus without complications" },
+  { "code": "E66.9", "description": "Obesity, unspecified" },
+  { "code": "I10", "description": "Essential (primary) hypertension" },
+  { "code": "J00", "description": "Acute nasopharyngitis [common cold]" },
+  { "code": "J02.9", "description": "Acute pharyngitis, unspecified" },
+  { "code": "J03.9", "description": "Acute tonsillitis, unspecified" },
+  { "code": "J18.9", "description": "Pneumonia, unspecified organism" },
+  { "code": "J45.9", "description": "Asthma, unspecified" },
+  { "code": "K21.9", "description": "Gastro-oesophageal reflux disease without oesophagitis" },
+  { "code": "K29.7", "description": "Gastritis, unspecified" },
+  { "code": "K35.8", "description": "Acute appendicitis, other and unspecified" },
+  { "code": "L03.9", "description": "Cellulitis, unspecified" },
+  { "code": "M54.5", "description": "Low back pain" },
+  { "code": "N39.0", "description": "Urinary tract infection, site not specified" },
+  { "code": "R50.9", "description": "Fever, unspecified" },
+  { "code": "R51", "description": "Headache" },
+  { "code": "T14.0", "description": "Superficial injury of unspecified body region" }
+]

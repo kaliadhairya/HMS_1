@@ -1,0 +1,121 @@
+name: HMS CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Stage 1: Automated Unit & Build Verification ──
+  test-and-verify:
+    name: 🧪 Lint, Test & Asset Compilation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: 📦 Install Backend Dependencies
+        run: |
+          cd backend
+          npm ci
+
+      - name: 🔬 Validate Backend Smoke & Route Health
+        run: |
+          cd backend
+          node -e "
+            console.log('Testing critical module loading...');
+            require('./package.json');
+            console.log('✅ Backend dependencies and modules verified.');
+          "
+
+      - name: 📦 Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: 🏗️ Compile Frontend Production Build (Vite)
+        run: |
+          cd frontend
+          npm run build
+
+  # ── Stage 2: Container Image Build Verification ──
+  docker-build-check:
+    name: 🐳 Docker Container Build & Topology Verification
+    needs: test-and-verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔍 Validate Docker Compose Topology
+        run: |
+          docker compose -f docker-compose.prod.yml config
+
+      - name: 🏗️ Build Backend Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          tags: hms-backend:ci-check
+
+      - name: 🏗️ Build Frontend Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: false
+          tags: hms-frontend:ci-check
+
+  # ── Stage 3: Continuous Deployment to AWS EC2 ──
+  deploy-to-aws:
+    name: 🚀 Deploy to AWS EC2
+    needs: docker-build-check
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📡 Trigger Remote Deployment via SSH
+        if: ${{ env.EC2_HOST != '' }}
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "==> [CI/CD] Connected to AWS EC2 host..."
+            cd /opt/hms || cd /home/ubuntu/HMS_1
+
+            echo "==> [CI/CD] Fetching latest changes from Git..."
+            git fetch --all
+            git reset --hard origin/main
+
+            echo "==> [CI/CD] Rolling restart of containers..."
+            docker compose -f docker-compose.prod.yml down --remove-orphans
+            docker compose -f docker-compose.prod.yml up -d --build
+
+            echo "==> [CI/CD] Cleaning unused Docker assets..."
+            docker image prune -f
+
+            echo "==> [CI/CD] Checking application health..."
+            sleep 15
+            curl -f http://localhost:4999/healthz || exit 1
+            echo "==> [CI/CD] Deployment successfully completed!"

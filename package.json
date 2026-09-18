@@ -1,0 +1,21 @@
+{
+  "name": "hospital-management-system",
+  "version": "1.0.0",
+  "description": "Hospital Management System — Clinical & Laboratory Management System",
+  "scripts": {
+    "setup": "cd backend && npm install && cd ../frontend && npm install",
+    "seed": "cd backend && npm run seed",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "start:backend": "cd backend && npm start",
+    "frontend": "cd frontend && npm run dev",
+    "backend": "cd backend && npm run dev",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "services:start": "node --env-file=backend/.env scripts/start-services.js",
+    "services:test": "npm --prefix services/api-gateway test && npm --prefix services/identity-service test && npm --prefix services/patient-service test && npm --prefix services/opd-service test",
+    "services:migrate": "node --env-file=backend/.env services/identity-service/src/migrate.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

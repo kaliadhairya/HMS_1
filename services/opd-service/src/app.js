@@ -1,0 +1,9 @@
+const express = require('express');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const pinoHttp = require('pino-http');
+const crypto = require('crypto');
+const { requireContext } = require('./middleware');
+const { createRoutes } = require('./routes');
+function createApp(config, logger, models, sequelize) { const app = express(); app.disable('x-powered-by'); app.set('trust proxy', 1); app.use(express.json({ limit: '2mb' })); app.use(helmet()); app.use((req,res,next)=>{ req.id = /^[A-Za-z0-9._:-]{1,128}$/.test(req.headers['x-request-id'] || '') ? req.headers['x-request-id'] : crypto.randomUUID(); res.setHeader('x-request-id', req.id); next(); }); app.use(pinoHttp({ logger, genReqId: (req)=>req.id, customProps: (req)=>({ requestId:req.id }) })); app.get('/health',(req,res)=>res.json({ status:'ok', service:config.serviceName, requestId:req.id })); app.get('/ready',async(req,res)=>{ try { await sequelize.authenticate(); await Promise.all([fetch(`${config.patientUrl}/ready`,{signal:AbortSignal.timeout(config.requestTimeoutMs)}),fetch(`${config.identityUrl}/ready`,{signal:AbortSignal.timeout(config.requestTimeoutMs)})]); return res.json({ status:'ready', service:config.serviceName, database:'ready', dependencies:{patient:'ready',identity:'ready'}, requestId:req.id }); } catch { return res.status(503).json({ status:'not_ready', service:config.serviceName, requestId:req.id }); } }); app.use(requireContext(config)); app.use(rateLimit({ windowMs:60000, limit:500, standardHeaders:'draft-7', legacyHeaders:false })); app.use(createRoutes(models,sequelize,config)); app.use((error,req,res,next)=>{ if(res.headersSent)return next(error); req.log?.error({err:error},'opd request failed'); const status=Number(error.status)||500; return res.status(status).json({ success:false, message:status===500?'OPD service request failed.':error.message, requestId:req.id }); }); return app; }
+module.exports = { createApp };

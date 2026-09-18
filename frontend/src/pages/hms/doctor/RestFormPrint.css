@@ -1,0 +1,82 @@
+.rest-form-print-body {
+  background: #e0e0e0;
+  min-height: 100vh;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.print-a4-container.rest-document {
+  background: white;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 20mm;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  font-family: serif;
+  color: #333;
+  margin-top: 20px;
+}
+
+.rest-header {
+  text-align: center;
+  line-height: 1.4;
+  margin-bottom: 30px;
+}
+
+.rest-header h2 {
+  font-size: 1.8rem;
+  margin: 0;
+  color: #444;
+}
+
+.rest-header h3 {
+  font-size: 1.2rem;
+  margin: 10px 0 0 0;
+  font-weight: normal;
+  color: #555;
+}
+
+.rest-line {
+  font-size: 1.05rem;
+  margin-bottom: 18px;
+  line-height: 2;
+  word-spacing: 2px;
+}
+
+.rest-fill {
+  display: inline-block;
+  border-bottom: 1px dotted #888;
+  min-height: 1.2em;
+  padding: 0 5px;
+  vertical-align: bottom;
+  font-family: "Caveat", "Indie Flower", cursive, sans-serif;
+  color: #4a148c; /* Mimic blue/purple ink */
+  font-size: 1.3rem; 
+  line-height: 1;
+}
+
+.handwritten {
+  font-family: "Caveat", "Indie Flower", cursive, sans-serif;
+  font-size: 1.8rem;
+}
+
+@media print {
+  body {
+    background: white;
+  }
+  .rest-form-print-body {
+    background: white;
+    padding: 0;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-a4-container.rest-document {
+    box-shadow: none;
+    margin-top: 0;
+    padding: 0;
+    width: 100%;
+    height: auto;
+  }
+}
