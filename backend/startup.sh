@@ -1,6 +1,6 @@
 #!/bin/sh
 # Wait for PostgreSQL DB to be reachable, then start app
-echo "⏳ Connecting to PostgreSQL DB at ${DB_HOST}:${DB_PORT}/${DB_NAME}..."
+echo "[INFO] Connecting to PostgreSQL DB at ${DB_HOST}:${DB_PORT}/${DB_NAME}..."
 
 MAX_RETRIES=20
 RETRY=0
@@ -27,19 +27,19 @@ until node -e "
 " 2>/dev/null; do
   RETRY=$((RETRY + 1))
   if [ $RETRY -ge $MAX_RETRIES ]; then
-    echo "❌ Cannot reach PostgreSQL DB after $MAX_RETRIES attempts. Check DB_HOST and network."
+    echo "[ERROR] Cannot reach PostgreSQL DB after $MAX_RETRIES attempts. Check DB_HOST and network."
     exit 1
   fi
   echo "  Attempt $RETRY/$MAX_RETRIES — retrying in 3s..."
   sleep 3
 done
 
-echo "✅ PostgreSQL DB is reachable!"
+echo "[OK] PostgreSQL DB is reachable."
 
 # Run database setup & seeding automatically if needed
-echo "⚙️ Running database initialization..."
+echo "[INFO] Running database initialization..."
 node init_database.js || true
 
 # Start the application
-echo "🚀 Starting HMS Backend..."
+echo "[INFO] Starting HMS Backend..."
 exec node server.js

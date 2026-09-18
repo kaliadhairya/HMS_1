@@ -1,6 +1,6 @@
-# Hospital Management System (HMS) — Enterprise Healthcare Platform
+# Hospital Management System (HMS)
 
-[![HMS CI/CD Pipeline](https://github.com/kaliadhairya/HMS-Hospital-Management-System/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/kaliadhairya/HMS-Hospital-Management-System/actions/workflows/ci-cd.yml)
+[![HMS CI/CD Pipeline](https://github.com/kaliadhairya/HMS_1/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/kaliadhairya/HMS_1/actions/workflows/ci-cd.yml)
 [![Node.js](https://img.shields.io/badge/Node.js-20.x-green.svg)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
@@ -8,88 +8,105 @@
 [![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC.svg)](https://www.terraform.io/)
 [![AWS](https://img.shields.io/badge/Cloud-AWS%20EC2-FF9900.svg)](https://aws.amazon.com/)
 
-A modular, enterprise-grade Hospital Management System supporting the full clinical lifecycle across 10 hospital domains with fine-grained 7-tier Role-Based Access Control (RBAC), atomic transactional integrity, and automated cloud infrastructure provisioning.
+A clinical and administrative hospital platform covering the end-to-end patient care lifecycle: registration, outpatient consultations, electronic prescriptions, pharmacy inventory, inpatient bed management, laboratory reporting, and itemized billing.
+
+Built with Node.js, Express, React, PostgreSQL, Docker, and Terraform.
 
 ---
 
-## 🏗️ Architecture & Core Modules
+## System Architecture & Functional Modules
 
-- **Authentication & RBAC**: JWT-based session security and role-specific permissions (Doctor, Nurse, Pharmacist, Lab Tech, Receptionist, Cashier, Admin).
-- **Patient Management & OPD**: Demographics, UHID generation, token queuing, appointments, and vitals.
-- **Doctor Consultation**: Clinical notes, ICD-10 diagnoses, medical history, and electronic prescriptions.
-- **Pharmacy & Inventory**: Batch tracking, MRP/expiry management, stock ledger, GRN purchase orders, dispensing, and OTC sales.
-- **IPD & Bed Management**: Ward allocation, bed transfers, admission charts, MAR (Medication Administration Records), and nursing progress notes.
-- **Laboratory**: Test ordering, sample collection, specimen workflows, and report generation.
-- **Billing & Cashier**: Consolidated invoicing, tariff schedules, itemized service billing, and patient advance receipts.
+The system provides 7 role-specific dashboards with server-enforced permissions (`super_admin`, `admin`, `doctor`, `nurse`, `receptionist`, `lab_technician`, `pharmacist`):
+
+- **Front Office & Registration:** Demographic intake, unique health identification (UHID) issuance, token scheduling, appointment management, and departmental routing.
+- **Clinical Consultations (OPD):** Doctor encounter logs, ICD-10 diagnosis recording, medical history review, and electronic prescription generation.
+- **Pharmacy & Inventory:** Drug master registry, batch/expiry monitoring, stock ledger tracking, Good Receipt Notes (GRN), dispensing, and over-the-counter (OTC) sales.
+- **Inpatient Department (IPD):** Admission orders, ward/bed occupancy, medication administration records (MAR), vital sign tracking, and nursing progress charts.
+- **Diagnostics & Laboratory:** Order processing, specimen status tracking, clinical value entry, and diagnostic report release.
+- **Billing & Revenue:** Tariff schedules, itemized service invoicing, tax accounting, advance deposits, and settlement tracking.
 
 ---
 
-## 🚀 One-Script AWS Cloud Deployment (Terraform IaC)
+## Technology Stack
 
-The repository includes complete **Infrastructure as Code (IaC)** using HashiCorp Terraform to provision, bootstrap, and tear down an AWS cloud environment with zero manual configuration.
+| Layer | Component | Description |
+| :--- | :--- | :--- |
+| **Backend Runtime** | Node.js 20 LTS | Express 4.18 REST API layer |
+| **Data Layer** | PostgreSQL 16 | Relational schema with Sequelize ORM |
+| **Frontend** | React 18 & Vite 5 | SPA with React Router, Tailwind CSS, and TanStack Query |
+| **Reverse Proxy** | Nginx Alpine | Serves production build and proxies `/api` endpoints |
+| **Containerization** | Docker & Docker Compose | Multi-tier container topology with health checks |
+| **Infrastructure as Code** | HashiCorp Terraform | Automated AWS EC2, Security Group, and Cloud-Init provisioning |
+| **CI/CD** | GitHub Actions | Automated lint, build, Docker verification, and SSH deployment |
 
-### 1. Prerequisites
-- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) installed and authenticated (`aws configure`).
-- [Terraform CLI](https://developer.hashicorp.com/terraform/install) (v1.0+) installed.
+---
 
-### 2. Launch to AWS (1-Click)
-Run the automated deployment script from your terminal:
+## Deployment
+
+### 1. Cloud Deployment on AWS (Terraform)
+
+The `infra/` directory defines the complete cloud infrastructure using Terraform.
+
+**Prerequisites:**
+- AWS CLI configured with active credentials (`aws configure`)
+- Terraform CLI installed (v1.0+)
+
+**Deploy:**
 ```bash
 ./infra/deploy.sh
 ```
-**What happens automatically:**
-1. Terraform provisions an AWS EC2 instance (`t2.micro`, Free-Tier eligible) with configured security group boundaries (Ports 22, 4999, 5001, 80, 443).
-2. EC2 bootstraps itself via cloud-init (`user_data`): configures 2GB swap space, installs Docker & Docker Compose.
-3. Automatically clones the project and spins up the multi-tier container network (`docker-compose.prod.yml`).
-4. Prints the live public web application URL (`http://<ec2-ip>:4999`) and backend health check endpoint.
+This provisions:
+1. An AWS EC2 instance (`t3.small` / `t2.micro`) within a configured Security Group (ports 22, 80, 443, 4999, 5001).
+2. Cloud-init bootstrap configuring swap memory, Docker Engine, and Docker Compose.
+3. Automated clone and startup of the multi-container stack.
+4. Outputs the public IP address for web access (`http://<ec2-ip>:4999`).
 
-### 3. Terminate & Zero-Cost Cloud Teardown
-When you finish testing or demoing the application, tear down all AWS resources immediately to guarantee **$0.00 ongoing charges**:
+**Teardown:**
+To terminate all AWS resources and stop ongoing charges:
 ```bash
 ./infra/destroy.sh
 ```
 
 ---
 
-## 🐳 Docker Deployment Options
+### 2. Local Docker Deployment
 
-### Local Development (Host PostgreSQL)
-Uses the local PostgreSQL socket with Docker containers for frontend and backend:
+#### Development Environment (Host PostgreSQL)
+Runs the application containers connected to a local PostgreSQL instance:
 ```bash
 docker compose up -d --build
 ```
-- Frontend: `http://localhost:4999`
-- Backend API: `http://localhost:5001/api`
+- Web Application: `http://localhost:4999`
+- REST API: `http://localhost:5001/api`
 
-### Cloud / Standalone Deployment (Containerized PostgreSQL)
-Runs the self-contained 3-tier architecture with a dedicated `postgres:16-alpine` database container:
+#### Standalone Production Stack (Self-Contained)
+Runs the complete 3-tier architecture including a dedicated PostgreSQL container:
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 ---
 
-## 🔄 CI/CD Automation (GitHub Actions)
+## Continuous Integration & Delivery
 
-Continuous Integration and Delivery is defined in [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml):
+The automated pipeline is defined in `.github/workflows/ci-cd.yml`:
 
-1. **Stage 1: Test & Lint**: Installs dependencies, runs backend smoke checks, and compiles the React SPA via Vite.
-2. **Stage 2: Docker Verification**: Validates Docker Compose topologies and builds production container images without cache failures.
-3. **Stage 3: Automated Continuous Deployment**: Upon push to `main`, initiates remote deployment over SSH to the production AWS EC2 host with zero-downtime rolling reload.
+1. **Lint & Test:** Runs dependency audits, route verification, and compiles the React production bundle.
+2. **Container Verification:** Validates Docker Compose topology and runs Buildx image checks.
+3. **Continuous Deployment:** On commits to `main`, executes an automated rolling update on the target AWS host via SSH.
 
 ---
 
-## 🧪 Smoke Testing & Verification
+## Verification & Testing
 
-Run the end-to-end critical path smoke tests:
+Run the end-to-end integration test suite:
 ```bash
 cd backend
 node smoke_critical_flows.js
 ```
-The verification suite confirms:
-- Multi-tier authentication & role gatekeeping
-- Patient registration & UHID assignment
-- OPD token and encounter workflows
-- Electronic prescription generation & item persistence
-- Pharmacy GRN intake & stock deduction consistency
-- Receptionist visitor tracking & cash flow integration
+The test suite validates:
+- Role-based authentication and session token verification
+- Patient registration and sequential UHID assignment
+- OPD consultation workflows and prescription item persistence
+- Pharmacy inventory deductions and stock ledger consistency
+- Cashier advance transactions and billing settlement
