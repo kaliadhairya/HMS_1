@@ -342,26 +342,26 @@ export default function IPDRequestsPage() {
                         </td>
                       )}
                       <td>
-                        <div style={{ fontWeight: 600 }}>{new Date(req.REQUEST_DATE || req.requestDate).toLocaleDateString()}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(req.REQUEST_DATE || req.requestDate).toLocaleTimeString()}</div>
+                        <div style={{ fontWeight: 600 }}>{(req.REQUEST_DATE || req.request_date || req.requestDate) ? new Date(req.REQUEST_DATE || req.request_date || req.requestDate).toLocaleDateString() : '—'}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{(req.REQUEST_DATE || req.request_date || req.requestDate) ? new Date(req.REQUEST_DATE || req.request_date || req.requestDate).toLocaleTimeString() : '—'}</div>
                       </td>
                       <td>
-                        <div style={{ fontWeight: 'bold' }}>{req.PATIENT_NAME || req.patientName}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--blue)' }}>{req.UHID || req.uhid}</div>
+                        <div style={{ fontWeight: 'bold' }}>{req.PATIENT_NAME || req.patient_name || req.patientName || 'Unknown Patient'}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--blue)' }}>{req.UHID || req.uhid || '—'}</div>
                       </td>
-                      <td>{req.DOCTOR_NAME || req.doctorName}</td>
+                      <td>{req.DOCTOR_NAME || req.doctor_name || req.doctorName || 'Doctor'}</td>
                       <td style={{ maxWidth: 250 }}>
-                        <div style={{ fontWeight: 600 }}>{req.PRIMARY_DIAGNOSIS || req.primaryDiagnosis}</div>
+                        <div style={{ fontWeight: 600 }}>{req.PRIMARY_DIAGNOSIS || req.primary_diagnosis || req.primaryDiagnosis || '—'}</div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {req.REASON_FOR_ADMISSION || req.reasonForAdmission}
+                          {req.REASON_FOR_ADMISSION || req.reason_for_admission || req.reasonForAdmission || '—'}
                         </div>
                       </td>
                       <td>
-                        <div>{req.WARD_PREFERENCE || req.wardPreference}</div>
-                        <span className={`badge ${req.URGENCY_LEVEL === 'Emergency' ? 'badge-danger' : 'badge-secondary'}`}>{req.URGENCY_LEVEL || req.urgencyLevel}</span>
+                        <div>{req.WARD_PREFERENCE || req.ward_preference || req.wardPreference || 'General'}</div>
+                        <span className={`badge ${(req.URGENCY_LEVEL || req.urgency_level || req.urgencyLevel) === 'Emergency' ? 'badge-danger' : 'badge-secondary'}`}>{req.URGENCY_LEVEL || req.urgency_level || req.urgencyLevel || 'Routine'}</span>
                       </td>
                       <td>
-                        <span className={`badge ${req.STATUS === 'Pending' ? 'badge-warning' : req.STATUS === 'Admitted' ? 'badge-success' : 'badge-secondary'}`}>
+                        <span className={`badge ${(req.STATUS || req.status) === 'Pending' ? 'badge-warning' : (req.STATUS || req.status) === 'Admitted' ? 'badge-success' : 'badge-secondary'}`}>
                           {req.STATUS || req.status}
                         </span>
                       </td>
@@ -405,8 +405,8 @@ export default function IPDRequestsPage() {
                                   onClick={() => navigate('/hms/vitals/entry', {
                                     state: {
                                       patient: {
-                                        id: req.PATIENT_ID || req.patientId,
-                                        name: req.PATIENT_NAME || req.patientName,
+                                        id: req.PATIENT_ID || req.patient_id || req.patientId,
+                                        name: req.PATIENT_NAME || req.patient_name || req.patientName,
                                         uhid: req.UHID || req.uhid,
                                         age: req.AGE || req.age || '',
                                       }

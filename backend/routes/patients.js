@@ -13,7 +13,7 @@ const { encrypt, decrypt, maskAadhaar } = require('../utils/encryption');
 const { Allergy, ChronicCondition, PatientDocument } = require('../models');
 const { body, validationResult } = require('express-validator');
 
-const VALID_PATIENT_TYPES = new Set(['corporate_employee', 'cisf_employee', 'other']);
+const VALID_PATIENT_TYPES = new Set(['corporate_employee', 'other']);
 const PHONE_REQUIRED_PATIENT_TYPES = new Set(['other']);
 
 function splitPatientName(rawName) {
@@ -82,7 +82,6 @@ router.post('/', [
       patientData.relationship = relationship || 'Self';
     } else {
       patientData.phoneNumber = cleanPhoneNumber;
-      if (patientType === 'cisf_employee') patientData.empNumber = empNumber || null;
     }
 
     const result = await sequelize.transaction(async (t) => {
@@ -119,7 +118,7 @@ router.post('/', [
           ward: ward || 'N/A',
           testDate: testDate, // format YYYY-MM-DD from frontend
           provDiagnosis: provDiagnosis || null,
-          empNumber: patientType === 'corporate_employee' || patientType === 'cisf_employee' ? (empNumber || null) : null,
+          empNumber: patientType === 'corporate_employee' ? (empNumber || null) : null,
           relationship: patientType === 'corporate_employee' ? (relationship || 'Self') : null,
           phoneNumber: cleanPhoneNumber,
           registeredBy: Number(req.user.id)
@@ -310,7 +309,6 @@ router.post('/hms', [
       patientData.relationship = normalizeOptional(relationship) || 'Self';
     } else {
       patientData.phoneNumber = cleanPhoneNumber;
-      if (patientType === 'cisf_employee') patientData.empNumber = normalizeOptional(empNumber);
     }
 
     // ✅ Generate ID and UHID manually to ensure they are returned
@@ -870,10 +868,6 @@ router.put('/:id', protect, async (req, res) => {
       patient.empNumber = empNumber || patient.empNumber;
       patient.relationship = relationship || patient.relationship;
       patient.phoneNumber = null;
-    } else if (patient.patientType === 'cisf_employee') {
-      patient.empNumber = empNumber !== undefined ? (empNumber || null) : patient.empNumber;
-      patient.phoneNumber = phoneNumber !== undefined ? cleanPhoneNumber : patient.phoneNumber;
-      patient.relationship = null;
     } else {
       patient.phoneNumber = phoneNumber !== undefined ? cleanPhoneNumber : patient.phoneNumber;
       patient.empNumber = null;

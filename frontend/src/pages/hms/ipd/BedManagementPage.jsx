@@ -37,7 +37,7 @@ export default function BedManagementPage() {
   const roomsMap = useMemo(() => {
     const map = {};
     beds.forEach(b => {
-      const r = b.ROOM_NUMBER || 'Unknown';
+      const r = b.ROOM_NUMBER || b.room_number || 'Unknown';
       if (!map[r]) map[r] = [];
       map[r].push(b);
     });
@@ -47,8 +47,8 @@ export default function BedManagementPage() {
 
   const activeWardObj = wards.find(w => (w.id || w.ID) === activeWard);
   const totalBeds = beds.length;
-  const avail = beds.filter(b => b.STATUS === 'Available').length;
-  const occ = beds.filter(b => b.STATUS === 'Occupied').length;
+  const avail = beds.filter(b => (b.STATUS || b.status) === 'Available').length;
+  const occ = beds.filter(b => (b.STATUS || b.status) === 'Occupied').length;
   const occPct = totalBeds > 0 ? Math.round((occ / totalBeds) * 100) : 0;
 
   const wardColors = {
@@ -87,8 +87,11 @@ export default function BedManagementPage() {
           }}>
             {wards.map((w, i) => {
               const wId = w.id || w.ID;
+              const wType = w.TYPE || w.type || 'General';
+              const wName = w.NAME || w.name || 'Ward';
+              const wFloor = w.FLOOR || w.floor || 'Floor';
               const isActive = wId === activeWard;
-              const ws = getWardStyle(w.TYPE);
+              const ws = getWardStyle(wType);
               return (
                 <button key={wId} onClick={() => setActiveWard(wId)} style={{
                   flex: 1, padding: '18px 24px',
@@ -105,15 +108,15 @@ export default function BedManagementPage() {
                     fontSize: '1.2rem', color: isActive ? '#fff' : 'var(--text-muted)',
                     transition: 'all 0.3s', flexShrink: 0,
                   }}>
-                    {w.TYPE?.includes('Critical') ? '🚨' : w.TYPE?.includes('Semi') ? '🏨' : '🏥'}
+                    {wType.includes('Critical') ? '🚨' : wType.includes('Semi') ? '🏨' : '🏥'}
                   </div>
                   <div style={{ textAlign: 'left' }}>
                     <div style={{
                       fontWeight: isActive ? 800 : 600, fontSize: '0.95rem',
                       color: isActive ? ws.accent : 'var(--text-primary)',
-                    }}>{w.NAME}</div>
+                    }}>{wName}</div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                      {w.FLOOR} • {w.TYPE}
+                      {wFloor} • {wType}
                     </div>
                   </div>
                 </button>
@@ -226,13 +229,17 @@ export default function BedManagementPage() {
                     gap: 10,
                   }}>
                     {roomBeds.map(bed => {
-                      const isOcc = bed.STATUS === 'Occupied';
-                      const isHovered = hoveredBed === bed.ID;
+                      const bedId = bed.ID || bed.id;
+                      const isOcc = (bed.STATUS || bed.status) === 'Occupied';
+                      const isHovered = hoveredBed === bedId;
+                      const bedNum = bed.BED_NUMBER || bed.bed_number;
+                      const patientName = bed.PATIENT_NAME || bed.patient_name || 'Patient';
+                      const admissionDate = bed.ADMISSION_DATE || bed.admission_date;
 
                       return (
                         <div
-                          key={bed.ID}
-                          onMouseEnter={() => setHoveredBed(bed.ID)}
+                          key={bedId}
+                          onMouseEnter={() => setHoveredBed(bedId)}
                           onMouseLeave={() => setHoveredBed(null)}
                           onClick={() => !isOcc && setAdmittingBed(bed)}
                           style={{
@@ -263,7 +270,7 @@ export default function BedManagementPage() {
                             fontWeight: 700, fontSize: '0.72rem',
                             color: isOcc ? '#ef4444' : '#10b981',
                             letterSpacing: '0.02em',
-                          }}>{bed.BED_NUMBER}</div>
+                          }}>{bedNum}</div>
 
                           {/* Patient Name or "Available" */}
                           {isOcc ? (
@@ -272,7 +279,7 @@ export default function BedManagementPage() {
                               color: 'var(--text-primary)',
                               overflow: 'hidden', textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap', maxWidth: '100%',
-                            }}>{bed.PATIENT_NAME}</div>
+                            }}>{patientName}</div>
                           ) : (
                             <div style={{
                               fontSize: '0.62rem', fontWeight: 500,
@@ -281,9 +288,9 @@ export default function BedManagementPage() {
                           )}
 
                           {/* Admission date for occupied */}
-                          {isOcc && bed.ADMISSION_DATE && (
+                          {isOcc && admissionDate && (
                             <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)' }}>
-                              {new Date(bed.ADMISSION_DATE).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                              {new Date(admissionDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
                             </div>
                           )}
 
@@ -329,9 +336,9 @@ export default function BedManagementPage() {
 
       {admittingBed && (
         <AdmissionModal
-          bedId={admittingBed.ID}
-          wardId={admittingBed.WARD_ID}
-          bedNumber={admittingBed.BED_NUMBER}
+          bedId={admittingBed.ID || admittingBed.id}
+          wardId={admittingBed.WARD_ID || admittingBed.ward_id}
+          bedNumber={admittingBed.BED_NUMBER || admittingBed.bed_number}
           onClose={() => setAdmittingBed(null)}
           onSuccess={() => { setAdmittingBed(null); fetchBeds(activeWard); }}
         />

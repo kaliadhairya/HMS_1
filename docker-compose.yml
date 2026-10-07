@@ -1,19 +1,45 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: hms-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-hms}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "${DB_HOST_PORT:-5434}:5432"
+    volumes:
+      - hms-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-hms}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
     container_name: hms-backend
-    user: "1000:1000"
-    env_file:
-      - ./backend/.env
+    environment:
+      - DB_HOST=${DB_HOST:-db}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-hms}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - PORT=5001
+      - CORS_ORIGIN=*
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:4999}
+      - JWT_SECRET=${JWT_SECRET:-your_super_secret_jwt_key}
+      - AADHAAR_ENCRYPTION_KEY=${AADHAAR_ENCRYPTION_KEY:-cd9da93cb9ff3ccd87b4b2da30920bd5ac549e7470423996345cbde3ff5b986a0}
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-d2140f944925f320dc70f1b6671b4cf1bb30ea3a9a73871dd972e8010bfe129c}
     ports:
       - "5001:5001"
     volumes:
       - ./backend/uploads:/app/uploads
-      # Talk to PostgreSQL over Unix socket or host gateway
-      - /var/run/postgresql:/var/run/postgresql
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
     command: ["sh", "startup.sh"]
     healthcheck:
@@ -55,3 +81,48 @@ services:
         reservations:
           cpus: '0.10'
           memory: 32M
+
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: hms-prometheus
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - hms-prom-data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: hms-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/etc/grafana/dashboards:ro
+      - hms-grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - db
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+
+volumes:
+  hms-db-data:
+  hms-prom-data:
+  hms-grafana-data:

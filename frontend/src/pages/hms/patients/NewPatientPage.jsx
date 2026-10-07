@@ -14,15 +14,6 @@ const PATIENT_CATEGORY_CONFIG = {
     accentBg: 'var(--green-light)',
     accentBorder: 'var(--green-border)',
   },
-  cisf_employee: {
-    icon: '🛡️',
-    logo: '/cisf-logo.svg',
-    formTitle: 'CISF Employee Registration',
-    title: 'CISF Employee',
-    accent: 'var(--red)',
-    accentBg: 'var(--red-light)',
-    accentBorder: 'var(--red-border)',
-  },
   other: {
     icon: '👨‍⚕️',
     formTitle: 'General Patient Registration',
@@ -215,16 +206,17 @@ export default function NewPatientPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px', marginTop: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', maxWidth: 840, margin: '20px auto 0', gap: '24px' }}>
             {/* Corporate Employee Card */}
             <div className="hms-stat-card hms-anim-1" style={{
-              padding: 40,
+              padding: 'clamp(24px, 4vw, 40px)',
               borderTop: '6px solid var(--green)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               textAlign: 'center',
-              minHeight: 380
+              minHeight: 360,
+              cursor: 'pointer',
             }}
             onClick={() => {
               setFormData(p => ({ ...p, patientType: 'corporate_employee' }));
@@ -233,18 +225,19 @@ export default function NewPatientPage() {
             >
               <div style={{
                 marginBottom: 24,
-                background: '#fff',
-                width: 100, height: 100,
+                background: '#010b14',
+                width: 96, height: 96,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: '50%',
-                border: '3px solid rgba(16,185,129,0.35)',
+                borderRadius: '24px',
+                border: '2px solid rgba(16,185,129,0.4)',
                 boxShadow: '0 8px 24px rgba(16,185,129,0.25)',
                 overflow: 'hidden',
+                padding: '2px',
               }}>
-                <img src="/logo.png" alt="HMS Logo" style={{ width: 72, height: 72, objectFit: 'contain' }} />
+                <img src="/logo.png" alt="HMS Logo" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '22px' }} />
               </div>
-              <h3 style={{ fontSize: '1.6rem', marginBottom: 12, fontWeight: 800 }}>Corporate Employee / Dependent</h3>
-              <p style={{ color: 'var(--text-secondary)', flex: 1, marginBottom: 30, fontSize: '1rem', lineHeight: 1.6 }}>
+              <h3 style={{ fontSize: '1.4rem', marginBottom: 12, fontWeight: 800 }}>Corporate Employee / Dependent</h3>
+              <p style={{ color: 'var(--text-secondary)', flex: 1, marginBottom: 24, fontSize: '0.95rem', lineHeight: 1.5 }}>
                 Full medical coverage benefits for corporate partnered employees and their registered family members.
               </p>
               <button className="btn btn-primary btn-full">
@@ -252,50 +245,16 @@ export default function NewPatientPage() {
               </button>
             </div>
 
-            {/* CISF Employee Card */}
-            <div className="hms-stat-card hms-anim-2" style={{
-              padding: 40,
-              borderTop: '6px solid var(--red)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              textAlign: 'center',
-              minHeight: 380
-            }}
-            onClick={() => {
-              setFormData(p => ({ ...p, patientType: 'cisf_employee', empNumber: '', relationship: 'Self', registration_fee_paid: false }));
-              setStep('form');
-            }}
-            >
-              <div style={{
-                marginBottom: 24,
-                background: '#fff',
-                width: 100, height: 100,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: '50%',
-                border: '1px solid var(--red-border)',
-                overflow: 'hidden'
-              }}>
-                <img src="/cisf-logo.svg" alt="CISF Logo" style={{ width: 78, height: 78, objectFit: 'contain' }} />
-              </div>
-              <h3 style={{ fontSize: '1.6rem', marginBottom: 12, fontWeight: 800 }}>CISF Employee</h3>
-              <p style={{ color: 'var(--text-secondary)', flex: 1, marginBottom: 30, fontSize: '1rem', lineHeight: 1.6 }}>
-                Dedicated registration for CISF employees using the same manual intake workflow and contact details.
-              </p>
-              <button className="btn btn-full" style={{ background: 'var(--red)', color: 'var(--text-inverse)', borderColor: 'var(--red)' }}>
-                Begin CISF Registration →
-              </button>
-            </div>
-
             {/* Other Patient Card */}
-            <div className="hms-stat-card hms-anim-3" style={{
-              padding: 40,
+            <div className="hms-stat-card hms-anim-2" style={{
+              padding: 'clamp(24px, 4vw, 40px)',
               borderTop: '6px solid var(--blue)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               textAlign: 'center',
-              minHeight: 380
+              minHeight: 360,
+              cursor: 'pointer',
             }}
             onClick={() => {
               setFormData(p => ({ ...p, patientType: 'other', empNumber: '', relationship: 'Self' }));
@@ -306,10 +265,11 @@ export default function NewPatientPage() {
                 fontSize: '3rem',
                 marginBottom: 24,
                 background: 'var(--blue-light)',
-                width: 100, height: 100,
+                width: 96, height: 96,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: '50%',
-                border: '1px solid var(--blue-border)'
+                borderRadius: '24px',
+                border: '1px solid var(--blue-border)',
+                boxShadow: '0 8px 24px rgba(59,130,246,0.15)',
               }}>👨‍👩‍👧‍👦</div>
               <h3 style={{ fontSize: '1.6rem', marginBottom: 12, fontWeight: 800 }}>General Patient (External)</h3>
               <p style={{ color: 'var(--text-secondary)', flex: 1, marginBottom: 30, fontSize: '1rem', lineHeight: 1.6 }}>
@@ -326,7 +286,6 @@ export default function NewPatientPage() {
   }
 
   const isCorporate = formData.patientType === 'corporate_employee';
-  const isCISF = formData.patientType === 'cisf_employee';
   const isGeneral = formData.patientType === 'other';
   const categoryConfig = PATIENT_CATEGORY_CONFIG[formData.patientType] || PATIENT_CATEGORY_CONFIG.other;
 
@@ -480,24 +439,10 @@ export default function NewPatientPage() {
                     <label className="form-label">Alternate Mobile</label>
                     <input type="tel" className="form-input" name="alt_phone" value={formData.alt_phone} onChange={handleChange} />
                   </div>
-                  {isCISF ? (
-                    <div className="form-group">
-                      <label className="form-label">Employee Number</label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        name="empNumber"
-                        value={formData.empNumber}
-                        onChange={handleChange}
-                        placeholder="CISF employee number"
-                      />
-                    </div>
-                  ) : (
-                    <div className="form-group">
-                      <label className="form-label">Email Address</label>
-                      <input type="email" className="form-input" name="email" value={formData.email} onChange={handleChange} />
-                    </div>
-                  )}
+                  <div className="form-group">
+                    <label className="form-label">Email Address</label>
+                    <input type="email" className="form-input" name="email" value={formData.email} onChange={handleChange} />
+                  </div>
                 </div>
               </div>
             </div>

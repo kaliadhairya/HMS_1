@@ -38,6 +38,10 @@ export default function DoctorQuickActionsDock() {
     timeoutRef.current = setTimeout(() => setIsOpen(false), 300);
   };
 
+  if (location.pathname.startsWith('/doctor/referrals')) {
+    return null;
+  }
+
   return (
     <>
       {/* CSS Keyframes injected once */}

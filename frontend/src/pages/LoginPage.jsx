@@ -5,36 +5,38 @@ import toast from 'react-hot-toast';
 
 /* ────── Animated floating particles (medical icons) ────── */
 const PARTICLES = [
-  { icon: '💉', size: 28, x: 8, y: 12, dur: 18, delay: 0 },
-  { icon: '🩺', size: 32, x: 82, y: 8, dur: 22, delay: 2 },
-  { icon: '💊', size: 24, x: 15, y: 72, dur: 20, delay: 4 },
-  { icon: '🏥', size: 30, x: 75, y: 78, dur: 19, delay: 1 },
-  { icon: '❤️', size: 22, x: 50, y: 20, dur: 24, delay: 3 },
-  { icon: '🧬', size: 26, x: 30, y: 88, dur: 21, delay: 5 },
-  { icon: '🔬', size: 24, x: 65, y: 45, dur: 23, delay: 2.5 },
-  { icon: '🩸', size: 20, x: 90, y: 60, dur: 17, delay: 1.5 },
+  { icon: '💉', size: 24, x: 8, y: 12, dur: 18, delay: 0 },
+  { icon: '🩺', size: 28, x: 88, y: 10, dur: 22, delay: 2 },
+  { icon: '💊', size: 20, x: 6, y: 82, dur: 20, delay: 4 },
+  { icon: '🏥', size: 26, x: 90, y: 82, dur: 19, delay: 1 },
+  { icon: '❤️', size: 20, x: 82, y: 26, dur: 24, delay: 3 },
+  { icon: '🧬', size: 22, x: 90, y: 52, dur: 21, delay: 5 },
+  { icon: '🔬', size: 22, x: 6, y: 50, dur: 23, delay: 2.5 },
+  { icon: '🩸', size: 18, x: 84, y: 66, dur: 17, delay: 1.5 },
 ];
 
 /* ────── Heartbeat line SVG path ────── */
 function HeartbeatLine() {
   return (
     <svg
-      viewBox="0 0 600 60"
+      viewBox="0 0 600 26"
+      preserveAspectRatio="none"
       style={{
         position: 'absolute',
-        bottom: 80,
+        bottom: 0,
         left: 0,
         width: '100%',
-        height: 60,
-        opacity: 0.15,
+        height: 26,
+        opacity: 0.1,
         pointerEvents: 'none',
+        zIndex: 0,
       }}
     >
       <path
-        d="M0,30 L120,30 L140,10 L160,50 L180,5 L200,55 L220,30 L600,30"
+        d="M0,13 L260,13 L270,4 L280,22 L290,2 L300,24 L310,13 L600,13"
         fill="none"
         stroke="#34d399"
-        strokeWidth="2"
+        strokeWidth="1.5"
         strokeLinecap="round"
         style={{
           strokeDasharray: 800,
@@ -56,23 +58,25 @@ function FeatureCard({ icon, title, desc, delay }) {
         alignItems: 'flex-start',
         gap: 14,
         padding: '14px 18px',
-        background: 'rgba(255,255,255,0.06)',
-        backdropFilter: 'blur(8px)',
+        background: 'rgba(6, 32, 26, 0.72)',
+        backdropFilter: 'blur(16px)',
         borderRadius: 14,
-        border: '1px solid rgba(255,255,255,0.1)',
+        border: '1px solid rgba(255,255,255,0.12)',
         cursor: 'default',
         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         animation: `loginSlideUp 0.6s ${delay}s cubic-bezier(0.16, 1, 0.3, 1) both`,
+        position: 'relative',
+        zIndex: 2,
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.12)';
-        e.currentTarget.style.borderColor = 'rgba(52,211,153,0.4)';
+        e.currentTarget.style.background = 'rgba(6, 46, 36, 0.88)';
+        e.currentTarget.style.borderColor = 'rgba(52,211,153,0.45)';
         e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)';
-        e.currentTarget.style.boxShadow = '0 8px 32px rgba(16,185,129,0.15)';
+        e.currentTarget.style.boxShadow = '0 8px 32px rgba(16,185,129,0.2)';
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
-        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+        e.currentTarget.style.background = 'rgba(6, 32, 26, 0.72)';
+        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)';
         e.currentTarget.style.transform = 'translateY(0) scale(1)';
         e.currentTarget.style.boxShadow = 'none';
       }}
@@ -89,7 +93,7 @@ function FeatureCard({ icon, title, desc, delay }) {
         <div style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem', marginBottom: 2 }}>
           {title}
         </div>
-        <div style={{ color: 'rgba(200,216,232,0.6)', fontSize: '0.75rem', lineHeight: 1.4 }}>
+        <div style={{ color: 'rgba(200,216,232,0.7)', fontSize: '0.75rem', lineHeight: 1.4 }}>
           {desc}
         </div>
       </div>
@@ -302,17 +306,24 @@ export default function LoginPage() {
               <div style={{
                 position: 'relative',
                 animation: 'loginPulseGlow 3s ease-in-out infinite',
-                borderRadius: 18,
+                borderRadius: 20,
+                padding: '2px',
+                background: 'linear-gradient(135deg, rgba(52,211,153,0.4) 0%, rgba(16,185,129,0.1) 100%)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
               }}>
                 <img
                   src="/logo.png"
                   alt="HMS Hospital Logo"
                   style={{
-                    width: 78, height: 78,
-                    objectFit: 'contain',
-                    background: '#fff',
+                    width: 76,
+                    height: 76,
+                    objectFit: 'cover',
                     borderRadius: 18,
-                    padding: 6,
+                    display: 'block',
                   }}
                 />
               </div>

@@ -41,7 +41,9 @@ const Patient = sequelize.define('Patient', {
     type: DataTypes.STRING(20),                           // ✅ ENUM → STRING
     allowNull: false,
     validate: {
-      isIn: [['corporate_employee', 'cisf_employee', 'other']]}, field: 'PATIENTTYPE',
+      isIn: [['corporate_employee', 'other']]
+    },
+    field: 'PATIENTTYPE',
   },
   // ── Common fields ─────────────────────────────
   name: {

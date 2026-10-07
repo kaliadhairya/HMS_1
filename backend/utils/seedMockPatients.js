@@ -70,21 +70,17 @@ async function seedMockPatients(count = 100) {
     const fullName = `${firstName} ${lastName}`;
     const age = getRandomInt(4, 82);
 
-    // Patient type distribution: 40% Corporate, 20% CISF, 40% Other
+    // Patient type distribution: 50% Corporate, 50% Other
     const rType = Math.random();
     let patientType = 'other';
     let empNumber = null;
     let relationship = null;
     let phoneNumber = getRandomPhone();
 
-    if (rType < 0.40) {
+    if (rType < 0.50) {
       patientType = 'corporate_employee';
       empNumber = `EMP-${getRandomInt(1000, 3999)}`;
       relationship = getRandomItem(RELATIONSHIPS);
-    } else if (rType < 0.60) {
-      patientType = 'cisf_employee';
-      empNumber = `CISF-${getRandomInt(5000, 7999)}`;
-      relationship = 'Self';
     }
 
     const opdIndoor = Math.random() > 0.85 ? 'Indoor' : 'OPD';

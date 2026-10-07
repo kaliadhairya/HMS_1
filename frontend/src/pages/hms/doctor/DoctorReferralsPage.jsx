@@ -51,6 +51,8 @@ export default function DoctorReferralsPage() {
   const [inboundOpen, setInboundOpen] = useState(false);
   const [outboundOpen, setOutboundOpen] = useState(false);
   const [outboundLocalOpen, setOutboundLocalOpen] = useState(false);
+  const [hubFilter, setHubFilter] = useState('all'); // 'all' | 'inbound' | 'outbound_local' | 'outbound_outside'
+  const [hubSearch, setHubSearch] = useState('');
   const printRef = useRef(null);
   const previewDraftRef = useRef(null);
 
@@ -495,301 +497,259 @@ export default function DoctorReferralsPage() {
     );
   };
 
+  const outboundLocalList = referrals.outbound.filter(r => r.referral_type === 'Local');
+  const outboundOutsideList = referrals.outbound.filter(r => r.referral_type !== 'Local');
+  const totalCount = referrals.inbound.length + referrals.outbound.length;
+
+  const getFilteredRegistryList = () => {
+    let list = [];
+    if (hubFilter === 'inbound') {
+      list = referrals.inbound.map(r => ({ ...r, _category: 'INBOUND' }));
+    } else if (hubFilter === 'outbound_local') {
+      list = outboundLocalList.map(r => ({ ...r, _category: 'LOCAL' }));
+    } else if (hubFilter === 'outbound_outside') {
+      list = outboundOutsideList.map(r => ({ ...r, _category: 'OUTSIDE' }));
+    } else {
+      list = [
+        ...referrals.inbound.map(r => ({ ...r, _category: 'INBOUND' })),
+        ...outboundLocalList.map(r => ({ ...r, _category: 'LOCAL' })),
+        ...outboundOutsideList.map(r => ({ ...r, _category: 'OUTSIDE' })),
+      ];
+    }
+
+    if (!hubSearch.trim()) return list;
+    const q = hubSearch.trim().toLowerCase();
+    return list.filter(r => 
+      (r.patient && String(r.patient).toLowerCase().includes(q)) ||
+      (r.uhid && String(r.uhid).toLowerCase().includes(q)) ||
+      (r.to_specialty && String(r.to_specialty).toLowerCase().includes(q)) ||
+      (r.from_doctor && String(r.from_doctor).toLowerCase().includes(q)) ||
+      (r.reason && String(r.reason).toLowerCase().includes(q)) ||
+      (r.hospital && String(r.hospital).toLowerCase().includes(q))
+    );
+  };
+
   return (
     <>
       <Navbar />
-      <div className="container py-4" style={{ maxWidth: 1200 }}>
-        {/* Header */}
-        <div className="hms-page-header">
-          <div>
+      <div className="referral-hub-shell">
+        {/* Header & Navigation */}
+        <div className="referral-header-wrap">
+          <div className="referral-title-group">
             <h1>
-              <span className="header-icon">🔄</span>
+              <span className="referral-title-icon">🔄</span>
               Referrals Hub
             </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Send patients to specialists or manage inward referrals.
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', margin: '4px 0 0 56px' }}>
+              Streamlined intra-hospital department transfers and specialist outward referrals.
             </p>
+          </div>
+
+          <div className="referral-nav-pill-container">
+            <button
+              type="button"
+              className={`referral-nav-pill ${activeTab === 'hub' ? 'active' : ''}`}
+              onClick={() => setActiveTab('hub')}
+            >
+              📋 Registry ({totalCount})
+            </button>
+            <button
+              type="button"
+              className={`referral-nav-pill ${activeTab === 'create' && referralType === 'Local' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('create');
+                setReferralType('Local');
+                setEditReferralId(null);
+                setFormData(buildEmptyReferralForm('Local'));
+                clearSelectedPatient();
+              }}
+            >
+              {editReferralId && referralType === 'Local' ? '✏️ Edit Local Referral' : '🏥 + New Local Referral'}
+            </button>
+            <button
+              type="button"
+              className={`referral-nav-pill ${activeTab === 'create' && referralType === 'Outside' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveTab('create');
+                setReferralType('Outside');
+                setEditReferralId(null);
+                setFormData(buildEmptyReferralForm('Outside'));
+                clearSelectedPatient();
+              }}
+            >
+              {editReferralId && referralType === 'Outside' ? '✏️ Edit Outside Referral' : '🌐 + New Outside Referral'}
+            </button>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="hms-anim-2" style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '2px solid var(--border, #e2e8f0)' }}>
-          <button
-            className={`hms-tab-btn ${activeTab === 'hub' ? 'active' : ''}`}
-            onClick={() => setActiveTab('hub')}
-            style={{ borderRadius: 0, borderRight: '1px solid var(--border)' }}
-          >
-            📋 Referral List
-          </button>
-          <button
-            className={`hms-tab-btn ${activeTab === 'create' && referralType === 'Outside' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('create');
-              setReferralType('Outside');
-              setEditReferralId(null);
-              setFormData(buildEmptyReferralForm('Outside'));
-              clearSelectedPatient();
-            }}
-            style={{ borderRadius: 0, borderRight: '1px solid var(--border)' }}
-          >
-            {editReferralId && referralType === 'Outside' ? '✏️ Edit Outside Referral' : '＋ Create Outside Referral'}
-          </button>
-          <button
-            className={`hms-tab-btn ${activeTab === 'create' && referralType === 'Local' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('create');
-              setReferralType('Local');
-              setEditReferralId(null);
-              setFormData(buildEmptyReferralForm('Local'));
-              clearSelectedPatient();
-            }}
-            style={{ borderRadius: 0 }}
-          >
-            {editReferralId && referralType === 'Local' ? '✏️ Edit Local Referral' : '＋ Create Local Referral'}
-          </button>
-        </div>
-
-        {/* Tab: Referral List */}
+        {/* Tab: Referral Registry */}
         {activeTab === 'hub' && (
-          <div className="hms-anim-3" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {/* Inbound */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <button
-                type="button"
-                onClick={() => setInboundOpen(!inboundOpen)}
-                style={{
-                  width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '18px 24px', background: 'var(--surface-2)', border: 'none',
-                  borderBottom: inboundOpen ? '1px solid var(--border)' : 'none',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-3, rgba(0,0,0,0.04))'}
-                onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-2)'}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>📥 Inbound Referrals <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(To You)</span></h3>
-                  <span className="badge" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', fontSize: '0.72rem', padding: '2px 8px' }}>{referrals.inbound.length}</span>
+          <div className="hms-anim-3">
+            <div className="card" style={{ padding: '24px' }}>
+              {/* Registry Toolbar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14, marginBottom: 20 }}>
+                <div className="referral-subnav-pills" style={{ margin: 0, padding: 0 }}>
+                  <button
+                    type="button"
+                    className={`referral-subnav-btn ${hubFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setHubFilter('all')}
+                  >
+                    All Referrals ({totalCount})
+                  </button>
+                  <button
+                    type="button"
+                    className={`referral-subnav-btn ${hubFilter === 'inbound' ? 'active' : ''}`}
+                    onClick={() => setHubFilter('inbound')}
+                  >
+                    📥 Inbound ({referrals.inbound.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`referral-subnav-btn ${hubFilter === 'outbound_local' ? 'active' : ''}`}
+                    onClick={() => setHubFilter('outbound_local')}
+                  >
+                    🏥 Outbound Local ({outboundLocalList.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`referral-subnav-btn ${hubFilter === 'outbound_outside' ? 'active' : ''}`}
+                    onClick={() => setHubFilter('outbound_outside')}
+                  >
+                    🌐 Outbound Outside ({outboundOutsideList.length})
+                  </button>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span
-                    onClick={(e) => { e.stopPropagation(); fetchReferrals(); }}
-                    style={{ fontSize: '0.8rem', color: 'var(--text-muted)', cursor: 'pointer' }}
-                    title="Refresh"
-                  >↻ Refresh</span>
-                  <span style={{ fontSize: '1.1rem', transition: 'transform 0.25s', transform: inboundOpen ? 'rotate(180deg)' : 'rotate(0deg)', color: 'var(--text-muted)' }}>▼</span>
-                </div>
-              </button>
-              {inboundOpen && (
-                <div style={{ padding: 24 }}>
-                  {loading ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><div className="spinner" /></div>
-                  ) : referrals.inbound.length === 0 ? (
-                    <div style={{
-                      padding: '32px 24px', textAlign: 'center', borderRadius: 8,
-                      background: 'rgba(0,0,0,0.03)', color: 'var(--text-secondary)',
-                    }}>
-                      <span style={{ fontSize: '1.6rem' }}>📭</span>
-                      <p style={{ margin: '8px 0 0', fontSize: '0.875rem' }}>No inbound referrals at this time.</p>
-                    </div>
-                  ) : (
-                    <div className="table-wrapper">
-                      <table>
-                        <thead>
-                          <tr><th>Date</th><th>Patient</th><th>From Doctor</th><th>Reason</th><th>Action</th></tr>
-                        </thead>
-                        <tbody>
-                          {referrals.inbound.map((ref, idx) => (
-                            <tr key={idx}>
-                              <td>{formatDate(ref.date)}</td>
-                              <td><strong>{ref.patient}</strong></td>
-                              <td>{ref.from_doctor}</td>
-                              <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {ref.reason || '-'}
-                              </td>
-                              <td><button className="btn btn-sm btn-outline">Review</button></td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
 
-            {/* Outbound - Outside */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <button
-                type="button"
-                onClick={() => setOutboundOpen(!outboundOpen)}
-                style={{
-                  width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '18px 24px', background: 'var(--surface-2)', border: 'none',
-                  borderBottom: outboundOpen ? '1px solid var(--border)' : 'none',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-3, rgba(0,0,0,0.04))'}
-                onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-2)'}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>📤 Outbound Referrals (Outside) <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(By You)</span></h3>
-                  <span className="badge" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontSize: '0.72rem', padding: '2px 8px' }}>
-                    {referrals.outbound.filter(r => r.referral_type !== 'Local').length}
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ position: 'relative', width: 240 }}>
+                    <input
+                      type="search"
+                      className="form-input"
+                      placeholder="Search patient, UHID, specialty..."
+                      value={hubSearch}
+                      onChange={e => setHubSearch(e.target.value)}
+                      style={{ height: 38, fontSize: '0.82rem', paddingLeft: 32 }}
+                    />
+                    <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>🔍</span>
+                  </div>
+                  <button className="btn btn-outline btn-sm" onClick={fetchReferrals} title="Refresh referrals list">
+                    ↻ Refresh
+                  </button>
                 </div>
-                <span style={{ fontSize: '1.1rem', transition: 'transform 0.25s', transform: outboundOpen ? 'rotate(180deg)' : 'rotate(0deg)', color: 'var(--text-muted)' }}>▼</span>
-              </button>
-              {outboundOpen && (
-                <div style={{ padding: 24 }}>
-                  {loading ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><div className="spinner" /></div>
-                  ) : referrals.outbound.filter(r => r.referral_type !== 'Local').length === 0 ? (
-                    <div style={{
-                      padding: '32px 24px', textAlign: 'center', borderRadius: 8,
-                      background: 'rgba(0,0,0,0.03)', color: 'var(--text-secondary)',
-                    }}>
-                      <span style={{ fontSize: '1.6rem' }}>📬</span>
-                      <p style={{ margin: '8px 0 0', fontSize: '0.875rem' }}>No outside outbound referrals yet.</p>
-                    </div>
-                  ) : (
-                    <div className="table-wrapper">
-                      <table>
-                        <thead>
-                          <tr><th>Date</th><th>Patient</th><th>Specialty Target</th><th>Reason</th><th>Status</th><th>Action</th></tr>
-                        </thead>
-                        <tbody>
-                          {referrals.outbound.filter(r => r.referral_type !== 'Local').map((ref, idx) => (
-                            <tr key={idx}>
-                              <td>{formatDate(ref.date)}</td>
-                              <td>
-                                {ref.referral_type && (
-                                  <span style={{ 
-                                    display: 'inline-block', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, 
-                                    background: 'rgba(245,158,11,0.1)',
-                                    color: '#f59e0b',
-                                    border: '1px solid rgba(245,158,11,0.2)',
-                                    marginRight: '6px', verticalAlign: 'middle'
-                                  }}>
-                                    OUTSIDE
-                                  </span>
-                                )}
-                                <strong>{ref.patient}</strong>
-                              </td>
-                              <td>{ref.to_specialty}</td>
-                              <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {ref.reason || '-'}
-                              </td>
-                              <td>{statusBadge(ref.status)}</td>
-                              <td>
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                  <button className="btn btn-sm btn-outline" onClick={() => handlePreview(ref)} style={{ color: '#2563eb', borderColor: 'rgba(37,99,235,0.2)' }}>Preview</button>
-                                  <button className="btn btn-sm btn-outline" onClick={() => handleEditReferral(ref)}>Edit</button>
-                                  <button className="btn btn-sm btn-outline" style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)' }} onClick={() => handleDeleteReferral(ref.id)}>Delete</button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+              </div>
 
-            {/* Outbound - Local */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <button
-                type="button"
-                onClick={() => setOutboundLocalOpen(!outboundLocalOpen)}
-                style={{
-                  width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '18px 24px', background: 'var(--surface-2)', border: 'none',
-                  borderBottom: outboundLocalOpen ? '1px solid var(--border)' : 'none',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-3, rgba(0,0,0,0.04))'}
-                onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-2)'}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>📤 Outbound Referrals (Local) <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(By You)</span></h3>
-                  <span className="badge" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', fontSize: '0.72rem', padding: '2px 8px' }}>
-                    {referrals.outbound.filter(r => r.referral_type === 'Local').length}
-                  </span>
+              {/* Table Content */}
+              {loading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '60px 0', flexDirection: 'column', gap: 12 }}>
+                  <div className="spinner" />
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Loading referral records...</span>
                 </div>
-                <span style={{ fontSize: '1.1rem', transition: 'transform 0.25s', transform: outboundLocalOpen ? 'rotate(180deg)' : 'rotate(0deg)', color: 'var(--text-muted)' }}>▼</span>
-              </button>
-              {outboundLocalOpen && (
-                <div style={{ padding: 24 }}>
-                  {loading ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><div className="spinner" /></div>
-                  ) : referrals.outbound.filter(r => r.referral_type === 'Local').length === 0 ? (
-                    <div style={{
-                      padding: '32px 24px', textAlign: 'center', borderRadius: 8,
-                      background: 'rgba(0,0,0,0.03)', color: 'var(--text-secondary)',
-                    }}>
-                      <span style={{ fontSize: '1.6rem' }}>📬</span>
-                      <p style={{ margin: '8px 0 0', fontSize: '0.875rem' }}>No local outbound referrals yet.</p>
-                    </div>
-                  ) : (
-                    <div className="table-wrapper">
-                      <table>
-                        <thead>
-                          <tr><th>Date</th><th>Patient</th><th>Specialty Target</th><th>Reason</th><th>Status</th><th>Action</th></tr>
-                        </thead>
-                        <tbody>
-                          {referrals.outbound.filter(r => r.referral_type === 'Local').map((ref, idx) => (
-                            <tr key={idx}>
-                              <td>{formatDate(ref.date)}</td>
-                              <td>
-                                {ref.referral_type && (
-                                  <span style={{ 
-                                    display: 'inline-block', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, 
-                                    background: 'rgba(59,130,246,0.1)',
-                                    color: '#3b82f6',
-                                    border: '1px solid rgba(59,130,246,0.2)',
-                                    marginRight: '6px', verticalAlign: 'middle'
-                                  }}>
-                                    LOCAL
-                                  </span>
-                                )}
-                                <strong>{ref.patient}</strong>
-                              </td>
-                              <td>{ref.to_specialty}</td>
-                              <td style={{ maxWidth: 260 }}>
-                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ref.reason || '-'}</div>
-                                {ref.clinical_notes && (
-                                  <div
-                                    style={{
-                                      marginTop: 4,
-                                      color: 'var(--text-muted)',
-                                      fontSize: '0.75rem',
-                                      lineHeight: 1.35,
-                                      display: '-webkit-box',
-                                      WebkitLineClamp: 2,
-                                      WebkitBoxOrient: 'vertical',
-                                      overflow: 'hidden',
-                                    }}
-                                    title={ref.clinical_notes}
-                                  >
-                                    <strong>Clinical:</strong> {ref.clinical_notes}
-                                  </div>
-                                )}
-                              </td>
-                              <td>{statusBadge(ref.status)}</td>
-                              <td>
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                  <button className="btn btn-sm btn-outline" onClick={() => handlePreview(ref)} style={{ color: '#2563eb', borderColor: 'rgba(37,99,235,0.2)' }}>Preview</button>
-                                  <button className="btn btn-sm btn-outline" onClick={() => handleEditReferral(ref)}>Edit</button>
-                                  <button className="btn btn-sm btn-outline" style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)' }} onClick={() => handleDeleteReferral(ref.id)}>Delete</button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+              ) : getFilteredRegistryList().length === 0 ? (
+                <div style={{
+                  padding: '48px 24px', textAlign: 'center', borderRadius: 12,
+                  background: 'var(--surface-2)', border: '1px dashed var(--border)',
+                  color: 'var(--text-secondary)'
+                }}>
+                  <span style={{ fontSize: '2.2rem', display: 'block', marginBottom: 12 }}>📭</span>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', marginBottom: 4 }}>No referrals found</div>
+                  <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                    {hubSearch ? 'No referral matched your search criteria.' : 'No referrals currently match this filter category.'}
+                  </p>
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => {
+                        setActiveTab('create');
+                        setReferralType('Local');
+                        setFormData(buildEmptyReferralForm('Local'));
+                        clearSelectedPatient();
+                      }}
+                    >
+                      🏥 New Local Referral
+                    </button>
+                    <button
+                      className="btn btn-outline btn-sm"
+                      onClick={() => {
+                        setActiveTab('create');
+                        setReferralType('Outside');
+                        setFormData(buildEmptyReferralForm('Outside'));
+                        clearSelectedPatient();
+                      }}
+                    >
+                      🌐 New Outside Referral
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="table-wrapper">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th style={{ width: 40 }}>#</th>
+                        <th style={{ width: 110 }}>Date</th>
+                        <th style={{ width: 110 }}>Category</th>
+                        <th>Patient</th>
+                        <th>Specialty / Consultant</th>
+                        <th>Reason / Indication</th>
+                        <th style={{ width: 110 }}>Status</th>
+                        <th style={{ width: 190, textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getFilteredRegistryList().map((ref, idx) => (
+                        <tr key={ref.id || idx}>
+                          <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{idx + 1}</td>
+                          <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{formatDate(ref.date)}</td>
+                          <td>
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 800,
+                              background: ref._category === 'INBOUND' ? 'rgba(59,130,246,0.1)' : ref._category === 'LOCAL' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                              color: ref._category === 'INBOUND' ? '#2563eb' : ref._category === 'LOCAL' ? '#059669' : '#d97706',
+                              border: `1px solid ${ref._category === 'INBOUND' ? 'rgba(59,130,246,0.2)' : ref._category === 'LOCAL' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`,
+                            }}>
+                              {ref._category}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{ref.patient}</div>
+                            {ref.uhid && (
+                              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 2 }}>UHID: {ref.uhid}</div>
+                            )}
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                              {ref._category === 'INBOUND' ? (ref.from_doctor || 'Unknown Doctor') : (ref.to_specialty || 'General')}
+                            </div>
+                            {ref.hospital && ref._category === 'OUTSIDE' && (
+                              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 2 }}>{ref.hospital}</div>
+                            )}
+                          </td>
+                          <td style={{ maxWidth: 220 }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.84rem' }}>
+                              {ref.reason || '—'}
+                            </div>
+                          </td>
+                          <td>{statusBadge(ref.status)}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+                              <button className="btn btn-sm btn-outline" onClick={() => handlePreview(ref)} style={{ color: 'var(--blue)', borderColor: 'rgba(37,99,235,0.25)', padding: '4px 10px' }}>
+                                Preview
+                              </button>
+                              {ref._category !== 'INBOUND' && (
+                                <>
+                                  <button className="btn btn-sm btn-outline" onClick={() => handleEditReferral(ref)} style={{ padding: '4px 10px' }}>
+                                    Edit
+                                  </button>
+                                  <button className="btn btn-sm btn-outline" style={{ color: 'var(--red)', borderColor: 'rgba(239,68,68,0.25)', padding: '4px 10px' }} onClick={() => handleDeleteReferral(ref.id)}>
+                                    Delete
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -798,307 +758,510 @@ export default function DoctorReferralsPage() {
 
         {/* Tab: Create Referral */}
         {activeTab === 'create' && (
-          <div className="hms-anim-3" style={{
-            display: 'flex', gap: 24, maxWidth: selectedPatient ? 1140 : 760, margin: '0 auto',
-            alignItems: 'flex-start', transition: 'max-width 0.3s ease'
-          }}>
-            <div className="card" style={{ flex: 1, padding: 0, overflow: 'hidden', minWidth: 0 }}>
-              <div style={{ padding: '18px 28px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>
-                  {editReferralId ? '✏️' : '📝'}
-                </span>
+          <div className="hms-anim-3 referral-workbench-grid">
+            {/* Left: Main Form Card */}
+            <div className="referral-form-card">
+              <div className="referral-form-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div className="referral-title-icon" style={{
+                    background: referralType === 'Local' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                    borderColor: referralType === 'Local' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(245, 158, 11, 0.25)'
+                  }}>
+                    {referralType === 'Local' ? '🏢' : '🏥'}
+                  </div>
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: '1.18rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {editReferralId
+                        ? `Modify Referral Order #${editReferralId}`
+                        : (referralType === 'Local' ? 'Internal Departmental Consultation' : 'External Facility Referral Order')}
+                    </h2>
+                    <p style={{ margin: '3px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                      {referralType === 'Local'
+                        ? 'Direct clinical consultation order within Central Medical Center departments'
+                        : 'Transfer patient to empaneled specialist hospital or tertiary medical center'}
+                    </p>
+                  </div>
+                </div>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: '1.15rem' }}>
-                    {editReferralId ? `Edit ${referralType} Referral` : `New ${referralType} Referral`}
-                  </h2>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: 0 }}>
-                    {editReferralId ? `Update the details for this ${referralType.toLowerCase()} referral.` : `Fill in the details to refer a patient to ${referralType === 'Local' ? 'another department' : 'an outside specialist'}.`}
-                  </p>
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '4px 10px',
+                    borderRadius: 20,
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    background: referralType === 'Local' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                    color: referralType === 'Local' ? '#2563eb' : '#d97706',
+                    border: `1px solid ${referralType === 'Local' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`
+                  }}>
+                    {referralType === 'Local' ? '● Intra-Hospital' : '● External Network'}
+                  </span>
                 </div>
               </div>
-              <div style={{ padding: '28px 28px 24px' }}>
 
-              <form onSubmit={handleCreateReferral}>
-                {/* Patient Search */}
-                <div style={{ marginBottom: 20 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(59,130,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>👤</span>
-                    Patient <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="Search by name, UHID, or phone..."
-                      value={patientQuery}
-                      onChange={(e) => {
-                        setPatientQuery(e.target.value);
-                        if (selectedPatient) clearSelectedPatient();
-                      }}
-                      onFocus={() => { if (patientResults.length) setShowPatientDropdown(true); }}
-                      style={{ paddingRight: selectedPatient ? 36 : 12 }}
-                    />
-                    {searchingPatient && (
-                      <div className="spinner" style={{
-                        position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                        width: 18, height: 18,
-                      }} />
-                    )}
+              <div className="referral-form-body">
+                {/* 1. Patient Identification / Identity Card */}
+                <div>
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>
+                      Patient Identification <span style={{ color: '#ef4444' }}>*</span>
+                    </span>
                     {selectedPatient && (
                       <button
                         type="button"
                         onClick={clearSelectedPatient}
                         style={{
-                          position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
-                          background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem',
-                          color: 'var(--text-muted)', lineHeight: 1,
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--blue, #3b82f6)',
+                          fontSize: '0.78rem',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4
                         }}
-                        title="Clear patient"
-                      >✕</button>
+                      >
+                        Change Patient
+                      </button>
                     )}
+                  </label>
 
-                    {showPatientDropdown && patientResults.length > 0 && !selectedPatient && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                        background: 'var(--surface-1, #fff)', border: '1.5px solid var(--green-border, #10b981)',
-                        borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.15)', maxHeight: 220,
-                        animation: 'hmsScaleIn 0.2s ease both',
-                        overflowY: 'auto',
-                      }}>
-                        {patientResults.map((p) => (
-                          <div
-                            key={p.id}
-                            onMouseDown={() => handleSelectPatient(p)}
-                            style={{
-                              padding: '10px 14px', cursor: 'pointer', fontSize: '0.85rem',
-                              borderBottom: '1px solid var(--border, #eee)',
-                              transition: 'background 0.15s',
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.08)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <div style={{ fontWeight: 600 }}>{p.name}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                              {p.uhid} • {p.age}y • {p.gender}
-                              {p.empNumber && <span> • Emp: {p.empNumber}</span>}
+                  {!selectedPatient ? (
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Search patient by name, UHID, or mobile phone..."
+                        value={patientQuery}
+                        onChange={(e) => {
+                          setPatientQuery(e.target.value);
+                          if (selectedPatient) clearSelectedPatient();
+                        }}
+                        onFocus={() => { if (patientResults.length) setShowPatientDropdown(true); }}
+                        style={{ height: 44, paddingLeft: 40, fontSize: '0.9rem' }}
+                      />
+                      <span style={{
+                        position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
+                        color: 'var(--text-muted)', fontSize: '1rem', pointerEvents: 'none'
+                      }}>🔍</span>
+
+                      {searchingPatient && (
+                        <div className="spinner" style={{
+                          position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)',
+                          width: 18, height: 18,
+                        }} />
+                      )}
+
+                      {showPatientDropdown && patientResults.length > 0 && (
+                        <div style={{
+                          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 60,
+                          background: 'var(--surface, #fff)', border: '1.5px solid var(--border)',
+                          borderRadius: 10, boxShadow: '0 12px 30px rgba(0,0,0,0.12)', maxHeight: 240,
+                          overflowY: 'auto'
+                        }}>
+                          {patientResults.map((p) => (
+                            <div
+                              key={p.id}
+                              onMouseDown={() => handleSelectPatient(p)}
+                              style={{
+                                padding: '10px 16px',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid var(--border-light, #f1f5f9)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                transition: 'background 0.15s'
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.08)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <div>
+                                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{p.name}</div>
+                                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                  UHID: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{p.uhid}</span> • {p.age || '—'}y • {p.gender || '—'}
+                                </div>
+                              </div>
+                              {p.patientType === 'corporate_employee' ? (
+                                <span style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  padding: '2px 8px',
+                                  borderRadius: 4,
+                                  background: 'rgba(5, 150, 105, 0.1)',
+                                  color: '#059669',
+                                  border: '1px solid rgba(5, 150, 105, 0.2)'
+                                }}>
+                                  Corporate #{p.empNumber || ''}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>General</span>
+                              )}
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Selected Patient Card */}
-                  {selectedPatient && (
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
                     <div style={{
-                      marginTop: 10, padding: '10px 14px', borderRadius: 8,
-                      background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '14px 18px',
+                      borderRadius: 10,
+                      background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(59, 130, 246, 0.05))',
+                      border: '1px solid rgba(16, 185, 129, 0.25)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 16
                     }}>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{selectedPatient.name}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                          {selectedPatient.uhid} • {selectedPatient.age}y / {selectedPatient.gender}
-                          {selectedPatient.patientType === 'corporate_employee' && (
-                            <span style={{ color: '#059669', fontWeight: 600 }}> • Corporate</span>
-                          )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: '50%',
+                          background: 'linear-gradient(135deg, #10b981, #059669)',
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '1.1rem',
+                          flexShrink: 0,
+                          boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+                        }}>
+                          {selectedPatient.name ? selectedPatient.name.charAt(0).toUpperCase() : 'P'}
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 700, fontSize: '0.98rem', color: 'var(--text-primary)' }}>
+                              {selectedPatient.name}
+                            </span>
+                            <span style={{
+                              fontFamily: 'monospace',
+                              fontWeight: 700,
+                              fontSize: '0.78rem',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              background: 'var(--surface-3)',
+                              color: 'var(--text-secondary)'
+                            }}>
+                              {selectedPatient.uhid}
+                            </span>
+                            {selectedPatient.patientType === 'corporate_employee' && (
+                              <span style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                padding: '2px 8px',
+                                borderRadius: 4,
+                                background: 'rgba(16, 185, 129, 0.15)',
+                                color: '#047857',
+                                border: '1px solid rgba(16, 185, 129, 0.3)'
+                              }}>
+                                Corporate Member
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 3 }}>
+                            {selectedPatient.age} Years • {selectedPatient.gender} • Mobile: {selectedPatient.phone || selectedPatient.mobile || '—'}
+                          </div>
                         </div>
                       </div>
-                      <span style={{ fontSize: '1.2rem' }}>✅</span>
+
+                      <button
+                        type="button"
+                        onClick={clearSelectedPatient}
+                        className="btn btn-ghost"
+                        style={{ height: 32, padding: '0 10px', fontSize: '0.78rem', gap: 4 }}
+                        title="Remove patient selection"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Corporate Dependent Details Banner */}
+                  {selectedPatient?.patientType === 'corporate_employee' && (
+                    <div style={{
+                      marginTop: 10,
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: 12,
+                      padding: '12px 16px',
+                      background: 'rgba(16, 185, 129, 0.04)',
+                      borderRadius: 8,
+                      border: '1px solid rgba(16, 185, 129, 0.15)'
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Employee ID
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: '0.88rem', marginTop: 2, fontFamily: 'monospace' }}>
+                          {formData.empNumber || selectedPatient.empNumber || '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Primary Employee
+                        </div>
+                        <div style={{ fontWeight: 600, fontSize: '0.88rem', marginTop: 2 }}>
+                          {formData.empName || (formData.relationship === 'Self' ? selectedPatient.name : '—')}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Relationship
+                        </div>
+                        <div style={{ fontWeight: 600, fontSize: '0.88rem', marginTop: 2 }}>
+                          {formData.relationship || 'Self'}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
 
-                {/* Corporate Dependent Info (AUTO-FILLED) */}
-                {selectedPatient?.patientType === 'corporate_employee' && (
-                  <div className="hms-anim-2" style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(3, 1fr)', 
-                    gap: 16, 
-                    marginBottom: 20,
-                    padding: '16px 20px',
-                    background: 'rgba(16, 185, 129, 0.04)',
-                    borderRadius: 12,
-                    border: '1px solid rgba(16, 185, 129, 0.15)'
-                  }}>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        Employee Number
-                      </label>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{formData.empNumber || '—'}</div>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        Employee Name
-                      </label>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{formData.empName || (formData.relationship === 'Self' ? selectedPatient.name : '—')}</div>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        Relation
-                      </label>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{formData.relationship || '—'}</div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Specialty & Priority row */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 20 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0 }}>
-                      <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(139,92,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>🏥</span>
-                      Target Specialty
+                {/* 2. Destination / Clinical Specialty Routing */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, alignItems: 'flex-start' }}>
+                  {/* Specialty Selector */}
+                  <div>
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, marginBottom: 8 }}>
+                      Target Specialty <span style={{ color: '#ef4444' }}>*</span>
                     </label>
                     <select
                       className="form-input"
+                      style={{ height: 42, fontSize: '0.88rem' }}
                       value={SPECIALTY_OPTIONS.includes(formData.toSpecialty) ? formData.toSpecialty : (formData.toSpecialty ? 'Other' : '')}
                       onChange={e => setFormData({ ...formData, toSpecialty: e.target.value })}
                     >
-                      <option value="">Select specialty...</option>
+                      <option value="">Select clinical department...</option>
                       {SPECIALTY_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
+
                     {(formData.toSpecialty === 'Other' || (formData.toSpecialty && !SPECIALTY_OPTIONS.includes(formData.toSpecialty))) && (
                       <input
                         type="text"
                         className="form-input"
-                        placeholder="Please specify specialty..."
+                        placeholder="Specify custom department or sub-specialty..."
                         value={formData.toSpecialty === 'Other' ? '' : formData.toSpecialty}
                         onChange={e => setFormData({ ...formData, toSpecialty: e.target.value || 'Other' })}
                         autoFocus
-                        style={{ animation: 'hmsScaleIn 0.2s ease both' }}
+                        style={{ marginTop: 8, height: 40 }}
                       />
                     )}
                   </div>
+
+                  {/* Priority Toggle Buttons */}
                   <div>
-                    <label className="form-label">
-                      Priority
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 700, marginBottom: 8 }}>
+                      <span>Clinical Priority</span>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)' }}>
+                        {formData.priority === 'Emergency' ? 'Immediate SLA' : formData.priority === 'Urgent' ? '4-6h SLA' : '24-48h SLA'}
+                      </span>
                     </label>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
-                      {PRIORITY_OPTIONS.map(p => (
-                        <button
-                          key={p}
-                          type="button"
-                          onClick={() => setFormData({ ...formData, priority: p })}
-                          style={{
-                            flex: 1, padding: '8px 0', borderRadius: 6, fontWeight: 600, fontSize: '0.8rem',
-                            cursor: 'pointer', transition: 'all 0.2s', border: '1.5px solid',
-                            background: formData.priority === p
-                              ? (p === 'Emergency' ? 'rgba(239,68,68,0.12)' : p === 'Urgent' ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)')
-                              : 'transparent',
-                            borderColor: formData.priority === p
-                              ? (p === 'Emergency' ? '#ef4444' : p === 'Urgent' ? '#f59e0b' : '#10b981')
-                              : 'var(--border, #ddd)',
-                            color: formData.priority === p
-                              ? (p === 'Emergency' ? '#dc2626' : p === 'Urgent' ? '#d97706' : '#059669')
-                              : 'var(--text-secondary)',
-                          }}
-                        >
-                          {p === 'Emergency' ? '🔴' : p === 'Urgent' ? '🟡' : '🟢'} {p}
-                        </button>
-                      ))}
+                    <div className="referral-priority-group">
+                      {PRIORITY_OPTIONS.map(p => {
+                        const isActive = formData.priority === p;
+                        const activeClass = isActive
+                          ? (p === 'Emergency' ? 'active-emergency' : p === 'Urgent' ? 'active-urgent' : 'active-routine')
+                          : '';
+                        return (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, priority: p })}
+                            className={`referral-priority-btn ${activeClass}`}
+                          >
+                            <span>{p === 'Emergency' ? '🔴' : p === 'Urgent' ? '🟡' : '🟢'}</span>
+                            <span>{p}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
 
-                {/* Hospital */}
-                <div style={{ marginBottom: 20 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(245,158,11,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>🏥</span>
-                    Referral Hospital <span style={{ color: '#ef4444' }}>*</span>
-                  </label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={formData.hospital}
-                      onChange={handleHospitalChange}
-                      onFocus={() => {
-                        if (formData.hospital && formData.hospital.length >= 2) setShowHospitalDropdown(true);
-                      }}
-                      onBlur={() => setTimeout(() => setShowHospitalDropdown(false), 200)}
-                      placeholder="e.g. PGI Chandigarh, AIIMS Delhi, DMC Ludhiana..."
-                      required
-                      style={{ paddingLeft: 38 }}
-                      autoComplete="off"
-                    />
-                    <span
-                      style={{
-                        position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-                        fontSize: '1.05rem', cursor: 'pointer', color: 'var(--text-muted)',
-                        transition: 'color 0.2s', userSelect: 'none', zIndex: 2,
-                      }}
-                    >
-                      🔍
-                    </span>
-                    {/* Hospital Dropdown */}
-                    {showHospitalDropdown && (hospitalResults.length > 0 || searchingHospital || formData.hospital.trim().length >= 2) && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, right: 0,
-                        background: '#fff', border: '1px solid var(--border, #ddd)',
-                        borderRadius: 8, marginTop: 4, zIndex: 10,
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)', overflow: 'hidden'
-                      }}>
-                        {searchingHospital ? (
-                          <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)' }}>Searching...</div>
-                        ) : (
-                          <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: 250, overflowY: 'auto' }}>
-                            {hospitalResults.map((hosp, idx) => {
-                              const hospitalLabel = getHospitalOptionLabel(hosp.name);
-                              const isCustomized = isCustomizedHospitalOption(hosp.name);
-                              return (
+                {/* 3. Destination Routing Card: Local (Intra-Hospital) vs Outside Facility */}
+                {referralType === 'Local' ? (
+                  <div style={{
+                    padding: '14px 18px',
+                    borderRadius: 10,
+                    background: 'rgba(59, 130, 246, 0.05)',
+                    border: '1px solid rgba(59, 130, 246, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 14
+                  }}>
+                    <div style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 8,
+                      background: 'rgba(59, 130, 246, 0.12)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '1.2rem',
+                      flexShrink: 0
+                    }}>
+                      🏢
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                        Intra-Hospital Consultation Destination: <span style={{ color: '#2563eb' }}>HMS Central Hospital</span>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                        Consultation request will immediately route to duty doctors in {formData.toSpecialty || 'the selected department'}. Patient history and vitals sync automatically.
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, marginBottom: 8 }}>
+                      External Referral Center / Hospital <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={formData.hospital}
+                        onChange={handleHospitalChange}
+                        onFocus={() => {
+                          if (formData.hospital && formData.hospital.length >= 2) setShowHospitalDropdown(true);
+                        }}
+                        onBlur={() => setTimeout(() => setShowHospitalDropdown(false), 200)}
+                        placeholder="Search empaneled hospitals (e.g. AIIMS Delhi, PGI Chandigarh, DMC Ludhiana)..."
+                        required
+                        style={{ height: 42, paddingLeft: 40, fontSize: '0.88rem' }}
+                        autoComplete="off"
+                      />
+                      <span style={{
+                        position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
+                        color: 'var(--text-muted)', fontSize: '0.95rem', pointerEvents: 'none'
+                      }}>🏥</span>
+
+                      {/* Hospital Autocomplete Dropdown */}
+                      {showHospitalDropdown && (hospitalResults.length > 0 || searchingHospital || formData.hospital.trim().length >= 2) && (
+                        <div style={{
+                          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+                          background: 'var(--surface, #fff)', border: '1.5px solid var(--border)',
+                          borderRadius: 10, zIndex: 60, boxShadow: '0 12px 30px rgba(0,0,0,0.12)',
+                          maxHeight: 250, overflowY: 'auto'
+                        }}>
+                          {searchingHospital ? (
+                            <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                              Searching network hospitals...
+                            </div>
+                          ) : (
+                            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                              {hospitalResults.map((hosp, idx) => {
+                                const hospitalLabel = getHospitalOptionLabel(hosp.name);
+                                const isCustomized = isCustomizedHospitalOption(hosp.name);
+                                return (
+                                  <li
+                                    key={idx}
+                                    onMouseDown={() => {
+                                      setFormData(prev => ({ ...prev, hospital: isCustomized ? prev.hospital : hosp.name }));
+                                      setShowHospitalDropdown(false);
+                                    }}
+                                    style={{
+                                      padding: '10px 16px', borderBottom: '1px solid var(--border-light, #f1f5f9)',
+                                      cursor: 'pointer', transition: 'background 0.15s'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.08)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                  >
+                                    <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{hospitalLabel}</div>
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                      {isCustomized ? 'Type custom hospital name in field' : (hosp.place || 'Empaneled Facility')}
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                              {formData.hospital.trim().length >= 2 && !hospitalResults.some((hosp) => String(hosp.name || '').trim().toLowerCase() === formData.hospital.trim().toLowerCase()) && (
                                 <li
-                                  key={idx}
+                                  key="custom-hospital"
                                   onMouseDown={() => {
-                                    setFormData(prev => ({ ...prev, hospital: isCustomized ? prev.hospital : hosp.name }));
+                                    setFormData(prev => ({ ...prev, hospital: prev.hospital.trim() }));
                                     setShowHospitalDropdown(false);
                                   }}
                                   style={{
-                                    padding: '12px 16px', borderBottom: '1px solid #f1f5f9',
-                                    cursor: 'pointer', transition: 'background 0.2s',
+                                    padding: '10px 16px',
+                                    cursor: 'pointer',
+                                    background: 'rgba(37, 99, 235, 0.05)',
+                                    borderTop: '1px solid rgba(37, 99, 235, 0.15)'
                                   }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(37, 99, 235, 0.1)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(37, 99, 235, 0.05)'}
                                 >
-                                  <div style={{ fontWeight: 600 }}>{hospitalLabel}</div>
-                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                    {isCustomized ? 'Type the desired hospital name in the field above' : hosp.place || 'Unknown location'}
-                                  </div>
+                                  <div style={{ fontWeight: 700, color: '#1d4ed8', fontSize: '0.88rem' }}>Use Custom Facility</div>
+                                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Use "{formData.hospital.trim()}" as outside hospital</div>
                                 </li>
-                              );
-                            })}
-                            {formData.hospital.trim().length >= 2 && !hospitalResults.some((hosp) => String(hosp.name || '').trim().toLowerCase() === formData.hospital.trim().toLowerCase()) && (
-                              <li
-                                key="custom-hospital"
-                                onMouseDown={() => {
-                                  setFormData(prev => ({ ...prev, hospital: prev.hospital.trim() }));
-                                  setShowHospitalDropdown(false);
-                                }}
-                                style={{
-                                  padding: '12px 16px',
-                                  cursor: 'pointer',
-                                  transition: 'background 0.2s',
-                                  background: 'rgba(37, 99, 235, 0.04)',
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(37, 99, 235, 0.08)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(37, 99, 235, 0.04)'}
-                              >
-                                <div style={{ fontWeight: 700, color: '#1d4ed8' }}>Customized</div>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Use "{formData.hospital.trim()}" as referral hospital</div>
-                              </li>
-                            )}
-                          </ul>
-                        )}
-                      </div>
-                    )}
+                              )}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* Reason */}
-                <div style={{ marginBottom: 20 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(239,68,68,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>📋</span>
-                    Reason for Referral
-                  </label>
+                {/* 4. Reason for Referral with Presets */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <label className="form-label" style={{ fontWeight: 700, margin: 0 }}>
+                      Indication / Reason for Referral <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Click chip for quick reason</span>
+                  </div>
+
+                  {/* Preset Reason Chips */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                    {[
+                      'Diagnostic Workup & Advanced Imaging',
+                      'Super-Specialty Consultation',
+                      'Emergency Surgical Intervention',
+                      'ICU / High Dependency Transfer',
+                      'Specialized Chemotherapy / Oncology',
+                      'Coronary Angiography / Cath Lab',
+                      'Pediatric Intensive Care',
+                      'Neurosurgical Evaluation'
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({
+                            ...prev,
+                            reason: prev.reason ? `${prev.reason}; ${preset}` : preset
+                          }));
+                        }}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: 6,
+                          fontSize: '0.76rem',
+                          fontWeight: 600,
+                          background: 'var(--surface-2)',
+                          border: '1px solid var(--border)',
+                          color: 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.background = 'var(--surface-3)';
+                          e.currentTarget.style.borderColor = 'var(--green-border)';
+                          e.currentTarget.style.color = 'var(--text-primary)';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.background = 'var(--surface-2)';
+                          e.currentTarget.style.borderColor = 'var(--border)';
+                          e.currentTarget.style.color = 'var(--text-secondary)';
+                        }}
+                      >
+                        + {preset}
+                      </button>
+                    ))}
+                  </div>
+
                   <div style={{ position: 'relative' }}>
                     <textarea
                       className="form-input"
@@ -1110,198 +1273,217 @@ export default function DoctorReferralsPage() {
                       }}
                       onFocus={() => setShowReasonDropdown(true)}
                       onBlur={() => setTimeout(() => setShowReasonDropdown(false), 200)}
-                      placeholder="e.g. Persistent chest pain not responding to initial management..."
-                      style={{ resize: 'vertical' }}
+                      placeholder="Specify primary diagnostic indication, clinical suspicion, or purpose of transfer..."
+                      style={{ resize: 'vertical', fontSize: '0.88rem' }}
+                      required
                     />
+
                     {showReasonDropdown && formData.reason && formData.reason.length > 0 && (
                       <div style={{
-                        position: 'absolute', top: '100%', left: 0, right: 0,
-                        background: '#fff', border: '1px solid var(--border, #ddd)',
-                        borderRadius: 8, marginTop: 4, zIndex: 10,
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto'
+                        position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+                        background: 'var(--surface, #fff)', border: '1.5px solid var(--border)',
+                        borderRadius: 10, zIndex: 60, boxShadow: '0 12px 30px rgba(0,0,0,0.12)',
+                        maxHeight: 180, overflowY: 'auto'
                       }}>
                         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                           {reasonSuggestions.filter(r => r.toLowerCase().includes((formData.reason || '').toLowerCase())).map((reason, idx) => (
                             <li
                               key={idx}
                               onMouseDown={() => {
-                                setFormData(prev => ({ ...prev, reason: reason }));
+                                setFormData(prev => ({ ...prev, reason }));
                                 setShowReasonDropdown(false);
                               }}
                               style={{
-                                padding: '10px 14px', borderBottom: '1px solid #f1f5f9',
-                                cursor: 'pointer', transition: 'background 0.2s',
-                                fontSize: '0.85rem'
+                                padding: '9px 14px', borderBottom: '1px solid var(--border-light, #f1f5f9)',
+                                cursor: 'pointer', transition: 'background 0.15s', fontSize: '0.84rem'
                               }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.08)'}
                               onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                             >
                               {reason}
                             </li>
                           ))}
-                          {reasonSuggestions.filter(r => r.toLowerCase().includes((formData.reason || '').toLowerCase())).length === 0 && (
-                            <li style={{ padding: '10px 14px', fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                              Press Enter or save to use this new reason.
-                            </li>
-                          )}
                         </ul>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Clinical Notes */}
-                <div style={{ marginBottom: 28 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(59,130,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>📝</span>
-                    Clinical Notes <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.78rem' }}>(optional)</span>
+                {/* 5. Clinical Summary / Case Notes */}
+                <div>
+                  <label className="form-label" style={{ fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Clinical Summary & Relevant Findings</span>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)' }}>Vitals, labs, provisional diagnosis</span>
                   </label>
                   <textarea
                     className="form-input"
-                    rows="2"
+                    rows="3"
                     value={formData.clinicalNotes}
                     onChange={e => setFormData({ ...formData, clinicalNotes: e.target.value })}
-                    placeholder="Relevant history, examination findings, investigation results..."
-                    style={{ resize: 'vertical' }}
+                    placeholder="Brief history of illness, current medications administered, diagnostic test results, and provisional diagnosis..."
+                    style={{ resize: 'vertical', fontSize: '0.88rem' }}
                   />
                 </div>
 
-                {referralType === "Outside" && (
+                {/* 6. Outside Referral Extended Authorizations (Only for Outside) */}
+                {referralType === 'Outside' && (
                   <div style={{
-                    marginBottom: 28,
-                    padding: "18px 20px",
-                    border: "1px solid rgba(245,158,11,0.22)",
+                    padding: '20px',
                     borderRadius: 12,
-                    background: "rgba(245,158,11,0.04)",
+                    background: 'rgba(245, 158, 11, 0.04)',
+                    border: '1px solid rgba(245, 158, 11, 0.22)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 16
                   }}>
-                    <div style={{
-                      fontSize: "0.78rem",
-                      fontWeight: 800,
-                      color: "#b45309",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      marginBottom: 16,
-                    }}>
-                      Outside Referral Details
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: '1.1rem' }}>📋</span>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#b45309' }}>
+                          Outside Referral Authorizations & Transport Logistics
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                          Required for official billing clearance and emergency transport dispatch
+                        </div>
+                      </div>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
                       <div>
-                        <label className="form-label">Treatment already from HMS Hospital</label>
+                        <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600 }}>Treatment Given at HMS Hospital</label>
                         <textarea
                           className="form-input"
                           rows="2"
                           value={formData.treatmentHospital}
                           onChange={e => setFormData({ ...formData, treatmentHospital: e.target.value })}
-                          placeholder="Treatment, medicines, investigations already given at HMS Hospital..."
-                          style={{ resize: "vertical" }}
+                          placeholder="Therapies, injections, oxygen, or monitoring performed here..."
+                          style={{ resize: 'vertical', fontSize: '0.84rem' }}
                         />
                       </div>
                       <div>
-                        <label className="form-label">Treatment already from Local Hospital</label>
+                        <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600 }}>Prior Outside Treatments</label>
                         <textarea
                           className="form-input"
                           rows="2"
                           value={formData.treatmentLocal}
                           onChange={e => setFormData({ ...formData, treatmentLocal: e.target.value })}
-                          placeholder="Treatment already taken from local hospital or specialist..."
-                          style={{ resize: "vertical" }}
+                          placeholder="Treatments already received from outside specialists..."
+                          style={{ resize: 'vertical', fontSize: '0.84rem' }}
                         />
                       </div>
                     </div>
 
-                    <div style={{ marginBottom: 16 }}>
-                      <label className="form-label">Period of Treatment</label>
+                    <div>
+                      <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600 }}>Estimated Period of Treatment</label>
                       <input
                         type="text"
                         className="form-input"
                         value={formData.treatmentPeriod}
                         onChange={e => setFormData({ ...formData, treatmentPeriod: e.target.value })}
-                        placeholder="e.g. 10 May 2026 to 18 May 2026 / 2 weeks"
+                        placeholder="e.g. 1-2 weeks in-patient / Outpatient review in 3 days"
+                        style={{ height: 38, fontSize: '0.86rem' }}
                       />
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
                       <div>
-                        <label className="form-label">Escort allowed</label>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          {["Yes", "No"].map(value => (
+                        <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600 }}>Medical Escort Authorized?</label>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {['Yes', 'No'].map(val => (
                             <button
-                              key={value}
+                              key={val}
                               type="button"
                               onClick={() => setFormData({
                                 ...formData,
-                                escortAllowed: value,
-                                escortCount: value === "Yes" ? formData.escortCount : "",
+                                escortAllowed: val,
+                                escortCount: val === 'Yes' ? (formData.escortCount || '1') : ''
                               })}
-                              className="btn btn-outline"
                               style={{
                                 flex: 1,
-                                borderColor: formData.escortAllowed === value ? "var(--green)" : "var(--border)",
-                                background: formData.escortAllowed === value ? "rgba(16,185,129,0.1)" : "var(--surface)",
-                                color: formData.escortAllowed === value ? "var(--green)" : "var(--text-secondary)",
+                                height: 38,
+                                borderRadius: 8,
+                                border: '1.5px solid',
+                                borderColor: formData.escortAllowed === val ? '#10b981' : 'var(--border)',
+                                background: formData.escortAllowed === val ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface)',
+                                color: formData.escortAllowed === val ? '#059669' : 'var(--text-secondary)',
+                                fontWeight: 700,
+                                fontSize: '0.84rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
                               }}
                             >
-                              {value}
+                              {val === 'Yes' ? '✓ Yes' : '✕ No'}
                             </button>
                           ))}
                         </div>
                       </div>
-                      {formData.escortAllowed === "Yes" && (
+
+                      {formData.escortAllowed === 'Yes' && (
                         <div>
-                          <label className="form-label">Number of escort</label>
+                          <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600 }}>Number of Escorts</label>
                           <input
                             type="number"
                             min="1"
+                            max="4"
                             className="form-input"
                             value={formData.escortCount}
                             onChange={e => setFormData({ ...formData, escortCount: e.target.value })}
                             placeholder="e.g. 1"
+                            style={{ height: 38 }}
                           />
                         </div>
                       )}
-                    </div>
 
-                    <div style={{ marginBottom: 16 }}>
-                      <label className="form-label">Ambulance allowed</label>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        {["Yes", "No"].map(value => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setFormData({ ...formData, ambulanceAllowed: value })}
-                            className="btn btn-outline"
-                            style={{
-                              flex: 1,
-                              borderColor: formData.ambulanceAllowed === value ? "var(--green)" : "var(--border)",
-                              background: formData.ambulanceAllowed === value ? "rgba(16,185,129,0.1)" : "var(--surface)",
-                              color: formData.ambulanceAllowed === value ? "var(--green)" : "var(--text-secondary)",
-                            }}
-                          >
-                            {value}
-                          </button>
-                        ))}
+                      <div>
+                        <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600 }}>Hospital Ambulance Authorized?</label>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          {['Yes', 'No'].map(val => (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => setFormData({ ...formData, ambulanceAllowed: val })}
+                              style={{
+                                flex: 1,
+                                height: 38,
+                                borderRadius: 8,
+                                border: '1.5px solid',
+                                borderColor: formData.ambulanceAllowed === val ? '#10b981' : 'var(--border)',
+                                background: formData.ambulanceAllowed === val ? 'rgba(16, 185, 129, 0.12)' : 'var(--surface)',
+                                color: formData.ambulanceAllowed === val ? '#059669' : 'var(--text-secondary)',
+                                fontWeight: 700,
+                                fontSize: '0.84rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              {val === 'Yes' ? '🚑 Yes' : '✕ No'}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
-                    <div>
-                      <label className="form-label">Justification for allowing Ambulance / Escorts</label>
-                      <textarea
-                        className="form-input"
-                        rows="2"
-                        value={formData.ambulanceEscortJustification}
-                        onChange={e => setFormData({ ...formData, ambulanceEscortJustification: e.target.value })}
-                        placeholder="Medical justification for ambulance or escort permission..."
-                        style={{ resize: "vertical" }}
-                      />
-                    </div>
+                    {(formData.ambulanceAllowed === 'Yes' || formData.escortAllowed === 'Yes') && (
+                      <div>
+                        <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+                          Justification for Ambulance / Escort Authorization <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <textarea
+                          className="form-input"
+                          rows="2"
+                          value={formData.ambulanceEscortJustification}
+                          onChange={e => setFormData({ ...formData, ambulanceEscortJustification: e.target.value })}
+                          placeholder="Clinical reason (e.g., patient hemodynamically unstable, requiring continuous oxygen/cardiac monitoring in transit)..."
+                          style={{ resize: 'vertical', fontSize: '0.84rem' }}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
-
-                {/* Actions */}
-              </form>
               </div>
-              <div style={{ padding: '16px 28px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+
+              {/* Form Footer */}
+              <div className="referral-form-footer">
                 <button
                   type="button"
                   className="btn btn-ghost"
@@ -1311,77 +1493,165 @@ export default function DoctorReferralsPage() {
                     setEditReferralId(null);
                     setActiveTab('hub');
                   }}
+                  style={{ height: 42, padding: '0 20px', fontSize: '0.88rem' }}
                 >
-                  Cancel
+                  Discard & Back to Registry
                 </button>
-                <button className="btn btn-primary" disabled={submitting} style={{ minWidth: 160 }}
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={submitting}
                   onClick={handleCreateReferral}
+                  style={{ minWidth: 200, height: 42, fontSize: '0.9rem', fontWeight: 700, gap: 8 }}
                 >
-                  {submitting ? (editReferralId ? '⏳ Updating...' : '⏳ Saving...') : (editReferralId ? '💾 Update Referral' : '💾 Save Referral')}
+                  {submitting ? (
+                    <>
+                      <div className="spinner" style={{ width: 16, height: 16 }} />
+                      <span>{editReferralId ? 'Updating...' : 'Submitting...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{editReferralId ? '💾' : '🚀'}</span>
+                      <span>{editReferralId ? 'Update Referral Order' : (referralType === 'Local' ? 'Dispatch Internal Referral' : 'Authorize Outside Referral')}</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
 
-            {/* Right Column: Patient History Side Panel */}
-            {selectedPatient && (
-              <div style={{ width: 340, flexShrink: 0, animation: 'hmsFadeIn 0.3s ease' }}>
-                <div className="card" style={{ padding: '20px', position: 'sticky', top: 20 }}>
-                  <h3 style={{ margin: '0 0 16px', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '1.2rem' }}>🕒</span> Patient History
-                  </h3>
-                  
+            {/* Right: Contextual Clinical Sidebar */}
+            <div style={{ position: 'sticky', top: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {selectedPatient ? (
+                /* Patient History Panel */
+                <div className="card" style={{ padding: '20px', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span>🕒</span> Patient Referral History
+                    </h3>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                      {patientHistory.length} total
+                    </span>
+                  </div>
+
                   {loadingHistory ? (
-                    <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
-                      <div className="spinner" style={{ margin: '0 auto 10px' }} />
-                      <div style={{ fontSize: '0.85rem' }}>Loading history...</div>
+                    <div style={{ textAlign: 'center', padding: '36px 0', color: 'var(--text-muted)' }}>
+                      <div className="spinner" style={{ margin: '0 auto 10px', width: 22, height: 22 }} />
+                      <div style={{ fontSize: '0.84rem' }}>Loading patient dossier...</div>
                     </div>
                   ) : patientHistory.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 'calc(100vh - 120px)', overflowY: 'auto', paddingRight: 4 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 'calc(100vh - 160px)', overflowY: 'auto', paddingRight: 4 }}>
                       {patientHistory.map((h) => (
-                        <div key={h.id} style={{
-                          padding: '12px 14px',
-                          background: 'var(--surface-1)',
-                          border: '1px solid var(--border)',
-                          borderRadius: 8,
-                          position: 'relative',
-                          borderLeft: `4px solid ${h.status === 'Completed' ? '#10b981' : h.status === 'Declined' ? '#ef4444' : h.status === 'Accepted' ? '#3b82f6' : '#f59e0b'}`,
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-                          transition: 'transform 0.2s',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.transform = 'translateX(2px)'}
-                        onMouseLeave={e => e.currentTarget.style.transform = 'translateX(0)'}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                        <div
+                          key={h.id}
+                          style={{
+                            padding: '12px 14px',
+                            background: 'var(--surface-1)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 8,
+                            borderLeft: `4px solid ${h.status === 'Completed' ? '#10b981' : h.status === 'Declined' ? '#ef4444' : h.status === 'Accepted' ? '#3b82f6' : '#f59e0b'}`,
+                            transition: 'transform 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                               {formatDate(h.date)}
                             </div>
-                            <div style={{ transform: 'scale(0.85)', transformOrigin: 'right top' }}>
+                            <div style={{ transform: 'scale(0.85)', transformOrigin: 'right center' }}>
                               {statusBadge(h.status)}
                             </div>
                           </div>
-                          <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4, color: 'var(--text-primary)', lineHeight: 1.3 }}>
-                            {h.to_specialty} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>at</span> {h.hospital}
+                          <div style={{ fontWeight: 700, fontSize: '0.86rem', color: 'var(--text-primary)', marginBottom: 4 }}>
+                            {h.to_specialty} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>→</span> {h.hospital}
                           </div>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
-                            "{h.reason}"
-                          </div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <span>👨‍⚕️</span> Dr. {h.doctor_name}
+                          {h.reason && (
+                            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 6 }}>
+                              "{h.reason}"
+                            </div>
+                          )}
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span>👨‍⚕️</span> Dr. {h.doctor_name || 'Staff Physician'}
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', background: 'var(--surface-1)', borderRadius: 8, border: '1px dashed var(--border)' }}>
-                      <span style={{ fontSize: '2rem', display: 'block', marginBottom: 12, opacity: 0.5 }}>📝</span>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>No previous referrals</div>
-                      <div style={{ fontSize: '0.8rem', marginTop: 4 }}>This patient has a clean slate.</div>
+                    <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-muted)', background: 'var(--surface-1)', borderRadius: 8, border: '1px dashed var(--border)' }}>
+                      <span style={{ fontSize: '1.8rem', display: 'block', marginBottom: 8, opacity: 0.6 }}>📋</span>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)' }}>No Prior Referrals</div>
+                      <div style={{ fontSize: '0.78rem', marginTop: 4 }}>This patient has no recorded prior departmental or external referrals.</div>
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+              ) : (
+                /* Protocol & SLA Matrix when no patient selected */
+                <div className="card" style={{ padding: '20px', border: '1px solid var(--border)' }}>
+                  <h3 style={{ margin: '0 0 14px', fontSize: '0.96rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>⚡</span> Clinical Referral Protocol
+                  </h3>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{
+                      padding: '12px 14px',
+                      borderRadius: 8,
+                      background: 'rgba(16, 185, 129, 0.06)',
+                      border: '1px solid rgba(16, 185, 129, 0.2)'
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#047857', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>🟢 Routine Priority (SLA: 24–48h)</span>
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 }}>
+                        Standard inter-departmental consultation. Patient will be seen during scheduled specialty OPD clinic hours.
+                      </div>
+                    </div>
+
+                    <div style={{
+                      padding: '12px 14px',
+                      borderRadius: 8,
+                      background: 'rgba(245, 158, 11, 0.06)',
+                      border: '1px solid rgba(245, 158, 11, 0.2)'
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#b45309', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>🟡 Urgent Priority (SLA: 4–6h)</span>
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 }}>
+                        Prompt evaluation required for deteriorating symptoms or diagnostic clarification prior to procedure.
+                      </div>
+                    </div>
+
+                    <div style={{
+                      padding: '12px 14px',
+                      borderRadius: 8,
+                      background: 'rgba(239, 68, 68, 0.06)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)'
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>🔴 Emergency / STAT (Immediate)</span>
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 }}>
+                        Critical care triage. Direct phone handover to receiving specialist and rapid transit activation required.
+                      </div>
+                    </div>
+
+                    <div style={{
+                      padding: '12px 14px',
+                      borderRadius: 8,
+                      background: 'var(--surface-1)',
+                      border: '1px solid var(--border)'
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>🛡️ Outside Referral Memo Policy</span>
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.4 }}>
+                        Official printable referral memos generate bilingual (English & Hindi) headers with corporate employee authorization seals.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
+
       </div>
 
       {/* ═══════════════ Referral Preview Modal ═══════════════ */}

@@ -134,6 +134,7 @@ export default function ReceptionistDashboard() {
       <div className="hms-anim-1" style={{
         marginBottom: 28,
         display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+        flexWrap: 'wrap', gap: 16,
       }}>
         <div>
           <div style={{
@@ -157,7 +158,7 @@ export default function ReceptionistDashboard() {
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{
             padding: '8px 16px', borderRadius: 10,
             background: 'var(--surface)', border: '1px solid var(--border)',
@@ -179,7 +180,7 @@ export default function ReceptionistDashboard() {
 
       {/* ── Major Stat Cards ── */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))',
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 200px), 1fr))',
         gap: 16, marginBottom: 20,
       }}>
         {majorCards.map((c, i) => (
@@ -189,7 +190,7 @@ export default function ReceptionistDashboard() {
 
       {/* ── Secondary Cards ── */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))',
         gap: 14, marginBottom: 28,
       }}>
         {secondaryCards.map((c, i) => (
@@ -230,7 +231,7 @@ export default function ReceptionistDashboard() {
               <p style={{ color: 'var(--text-muted)', fontSize: '0.83rem' }}>No pending bills for today.</p>
             </div>
           ) : (
-            <div className="table-wrapper hms-table-anim" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
+            <div className="table-wrapper table-card hms-table-anim" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
               <table>
                 <thead>
                   <tr><th>UHID</th><th>Patient</th><th>Doctor</th><th>Action</th></tr>

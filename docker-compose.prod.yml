@@ -96,6 +96,49 @@ services:
           cpus: '0.10'
           memory: 32M
 
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: hms-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - hms_promdata:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: hms-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/etc/grafana/dashboards:ro
+      - hms_grafanadata:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - db
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+
 volumes:
   hms_pgdata:
   hms_uploads:
+  hms_promdata:
+  hms_grafanadata:

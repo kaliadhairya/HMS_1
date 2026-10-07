@@ -99,7 +99,7 @@ router.get('/super-admin', restrictTo('super_admin', 'admin'), async (req, res) 
         trendBuckets.push({ date: key, count: 0 });
       }
 
-      const byType = { corporate_employee: 0, cisf_employee: 0, other: 0 };
+      const byType = { corporate_employee: 0, other: 0 };
       const byGender = { Male: 0, Female: 0, Other: 0 };
       const opdVsIndoor = { OPD: 0, Indoor: 0 };
 

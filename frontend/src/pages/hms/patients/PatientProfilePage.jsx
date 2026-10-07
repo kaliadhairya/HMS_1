@@ -6,7 +6,6 @@ import { openAuthenticatedBlob } from '../../../utils/authenticatedDownload';
 
 const PATIENT_TYPE_META = {
   corporate_employee: { label: 'Corporate Patient', fullLabel: 'Corporate Employee', bg: 'rgba(16,185,129,0.1)', color: '#059669', border: 'rgba(16,185,129,0.24)' },
-  cisf_employee: { label: 'CISF Patient', fullLabel: 'CISF Employee', bg: 'rgba(99,102,241,0.1)', color: '#4f46e5', border: 'rgba(99,102,241,0.24)' },
   other: { label: 'General Patient', fullLabel: 'General', bg: 'rgba(59,130,246,0.1)', color: '#2563eb', border: 'rgba(59,130,246,0.24)' },
 };
 

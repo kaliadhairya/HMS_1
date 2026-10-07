@@ -6,12 +6,38 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { sequelize } = require('./models');
 const { validateToken } = require('./utils/identityClient');
+const {
+  client,
+  httpRequestDurationSeconds,
+  httpRequestsTotal,
+  activeSocketConnections,
+} = require('./utils/metrics');
 const app = express();
-const trustProxy = process.env.TRUST_PROXY;
-if (trustProxy) {
-  const numericTrustProxy = Number(trustProxy);
-  app.set('trust proxy', Number.isInteger(numericTrustProxy) && numericTrustProxy >= 0 ? numericTrustProxy : trustProxy);
-}
+const trustProxy = process.env.TRUST_PROXY || '1';
+const numericTrustProxy = Number(trustProxy);
+app.set('trust proxy', Number.isInteger(numericTrustProxy) && numericTrustProxy >= 0 ? numericTrustProxy : (trustProxy === 'true' ? true : trustProxy));
+
+// ── Metrics & Telemetry ─────────────────────────────────────────
+app.use((req, res, next) => {
+  if (req.path === '/metrics' || req.path === '/api/health') return next();
+  const end = httpRequestDurationSeconds.startTimer();
+  res.on('finish', () => {
+    const route = req.baseUrl + (req.route ? req.route.path : req.path);
+    const labels = { method: req.method, route, code: res.statusCode };
+    end(labels);
+    httpRequestsTotal.inc(labels);
+  });
+  next();
+});
+
+app.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', client.register.contentType);
+    res.end(await client.register.metrics());
+  } catch (err) {
+    res.status(500).end(err.message);
+  }
+});
 
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
@@ -50,19 +76,24 @@ app.use(express.urlencoded({ extended: true }));
 
 // ── Rate Limiting ───────────────────────────────────────────────
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
+  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_MAX_AUTH) || 20,
   message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
 });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
-  skip: (req) => req.path.startsWith('/api/pdf'),
+  max: Number(process.env.RATE_LIMIT_MAX_API) || 600,
+  message: { success: false, message: 'Too many requests. Please slow down and try again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+  skip: (req) => req.path.startsWith('/api/pdf') || req.path === '/api/health',
 });
 app.use('/api', apiLimiter);
 
@@ -176,12 +207,17 @@ io.use(async (socket, next) => {
 });
 
 io.on('connection', (socket) => {
-  socket.join(socket.user.role);
-  console.log(`🔌 Authenticated client ${socket.id} joined ${socket.user.role}`);
+  const role = socket.user?.role || 'anonymous';
+  socket.join(role);
+  activeSocketConnections.inc({ role });
+  console.log(`🔌 Authenticated client ${socket.id} joined ${role}`);
   socket.on('join_role', () => {
     // Compatibility no-op: room membership is derived from authenticated identity.
   });
-  socket.on('disconnect', () => console.log('🔌 Client disconnected:', socket.id));
+  socket.on('disconnect', () => {
+    activeSocketConnections.dec({ role });
+    console.log('🔌 Client disconnected:', socket.id);
+  });
 });
 
 sequelize

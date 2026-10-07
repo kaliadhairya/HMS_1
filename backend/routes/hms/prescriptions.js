@@ -335,7 +335,7 @@ router.get('/patient/:patient_id', protect, async (req, res) => {
       const pat = currentPatient[0];
       let relatedRows = [];
 
-      if ((pat.PATIENTTYPE === 'corporate_employee' || pat.PATIENTTYPE === 'cisf_employee') && pat.EMPNUMBER && pat.NAME) {
+      if (pat.PATIENTTYPE === 'corporate_employee' && pat.EMPNUMBER && pat.NAME) {
         // Corporate: match by employee number + name (same dependent)
         [relatedRows] = await sequelize.query(
           `SELECT ID FROM HMS_PATIENTS WHERE EMPNUMBER = :empNum AND UPPER(NAME) = UPPER(:name) AND ID != :currentId`,

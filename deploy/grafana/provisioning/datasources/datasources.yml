@@ -1,0 +1,25 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+
+  - name: PostgreSQL (HMS)
+    type: postgres
+    access: proxy
+    url: db:5432
+    database: ${DB_NAME:-hms}
+    user: ${DB_USER:-postgres}
+    secureJsonData:
+      password: ${DB_PASSWORD:-postgres}
+    jsonData:
+      sslmode: 'disable'
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1600
+    editable: true

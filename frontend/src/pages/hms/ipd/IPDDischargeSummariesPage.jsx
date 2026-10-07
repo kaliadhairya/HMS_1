@@ -36,7 +36,8 @@ export default function IPDDischargeSummariesPage() {
   const handleViewSummary = async (summary) => {
     try {
       toast('Loading summary...', { icon: '⏳', duration: 1000 });
-      const res = await api.get(`/ipd/admissions/${summary.ADMISSION_ID}`);
+      const admId = summary.ADMISSION_ID || summary.admission_id;
+      const res = await api.get(`/ipd/admissions/${admId}`);
       if (res.data.success) {
         setSelectedAdmission(res.data.data);
         setShowModal(true);
@@ -50,7 +51,11 @@ export default function IPDDischargeSummariesPage() {
 
   const filtered = summaries.filter(s => {
     const q = search.toLowerCase();
-    return (s.PATIENT_NAME?.toLowerCase().includes(q) || s.UHID?.toLowerCase().includes(q) || String(s.ADMISSION_ID).includes(q) || s.FINAL_DIAGNOSIS?.toLowerCase().includes(q));
+    const patientName = s.PATIENT_NAME || s.patient_name || '';
+    const uhid = s.UHID || s.uhid || '';
+    const admId = String(s.ADMISSION_ID || s.admission_id || '');
+    const diag = s.FINAL_DIAGNOSIS || s.final_diagnosis || '';
+    return (patientName.toLowerCase().includes(q) || uhid.toLowerCase().includes(q) || admId.includes(q) || diag.toLowerCase().includes(q));
   });
 
   return (
@@ -149,31 +154,39 @@ export default function IPDDischargeSummariesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(s => (
-                    <tr key={s.ID}>
+                  {filtered.map((s, idx) => {
+                    const rowId = s.ID || s.id || idx;
+                    const dischDate = s.DISCHARGE_DATE || s.discharge_date;
+                    const patientName = s.PATIENT_NAME || s.patient_name || 'Unknown Patient';
+                    const uhid = s.UHID || s.uhid || 'Legacy';
+                    const admId = s.ADMISSION_ID || s.admission_id;
+                    const diag = s.FINAL_DIAGNOSIS || s.final_diagnosis || '—';
+                    const doctorName = s.DOCTOR_NAME || s.doctor_name || '—';
+                    return (
+                    <tr key={rowId}>
                       <td>
                         <strong style={{ display: 'block' }}>
-                          {new Date(s.DISCHARGE_DATE).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          {dischDate ? new Date(dischDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                         </strong>
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {new Date(s.DISCHARGE_DATE).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                          {dischDate ? new Date(dischDate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''}
                         </span>
                       </td>
                       <td>
-                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{s.PATIENT_NAME}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{s.UHID || 'Legacy'}</div>
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{patientName}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{uhid}</div>
                       </td>
                       <td>
                         <strong style={{ color: 'var(--blue)' }}>
-                          IPD-{s.ADMISSION_ID}
+                          IPD-{admId}
                         </strong>
                       </td>
                       <td>
-                        <div style={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500 }} title={s.FINAL_DIAGNOSIS}>
-                          {s.FINAL_DIAGNOSIS || '—'}
+                        <div style={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500 }} title={diag}>
+                          {diag}
                         </div>
                       </td>
-                      <td>{s.DOCTOR_NAME || '—'}</td>
+                      <td>{doctorName}</td>
                       <td>
                         <button 
                           className="btn btn-outline btn-sm"
@@ -184,7 +197,7 @@ export default function IPDDischargeSummariesPage() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>

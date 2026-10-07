@@ -326,7 +326,7 @@ router.get('/referrals/patient/:patientId', protect, async (req, res) => {
               AND UPPER(TRIM(candidate.NAME)) = UPPER(TRIM(target.NAME))
               AND (
                 (
-                  target.PATIENTTYPE IN ('corporate_employee', 'cisf_employee')
+                  target.PATIENTTYPE = 'corporate_employee'
                   AND target.EMPNUMBER IS NOT NULL
                   AND UPPER(TRIM(candidate.EMPNUMBER)) = UPPER(TRIM(target.EMPNUMBER))
                   AND COALESCE(UPPER(TRIM(candidate.RELATIONSHIP)), 'SELF') =

@@ -6,6 +6,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import HMSProtectedRoute from './components/HMSProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
@@ -111,7 +112,8 @@ function DashboardRedirect() {
   if (!user) return <Navigate to="/login" replace />;
   const role = user.role;
   if (role === 'doctor') return <Navigate to="/doctor/dashboard" replace />;
-  if (role === 'admin' || role === 'super_admin') return <Navigate to="/admin/dashboard" replace />;
+  if (role === 'super_admin') return <Navigate to="/super_admin/dashboard" replace />;
+  if (role === 'admin') return <Navigate to="/admin/dashboard" replace />;
   if (role === 'receptionist') return <Navigate to="/receptionist/dashboard" replace />;
   if (role === 'pharmacist') return <Navigate to="/pharmacist/dashboard" replace />;
   if (role === 'nurse') return <Navigate to="/nurse/dashboard" replace />;
@@ -140,9 +142,10 @@ export default function App() {
               error: { iconTheme: { primary: 'var(--red)', secondary: '#fff' } },
             }}
           />
-          <Routes>
-            {/* Existing routes — fully preserved */}
-            <Route path="/login" element={<LoginPage />} />
+          <ErrorBoundary>
+            <Routes>
+              {/* Existing routes — fully preserved */}
+              <Route path="/login" element={<LoginPage />} />
             <Route path="/maintenance" element={<MaintenancePage />} />
             <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
             <Route path="/register/:type" element={<ProtectedRoute><RegisterPatientPage /></ProtectedRoute>} />
@@ -176,6 +179,7 @@ export default function App() {
               </HMSProtectedRoute>
             } />
             <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="/super_admin" element={<Navigate to="/super_admin/dashboard" replace />} />
             <Route path="/hms/change-password" element={
               <ProtectedRoute><ChangePasswordPage /></ProtectedRoute>
             } />
@@ -478,6 +482,7 @@ export default function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+          </ErrorBoundary>
         </BrowserRouter>
         </SocketProvider>
       </AuthProvider>

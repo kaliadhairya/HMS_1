@@ -33,8 +33,9 @@ The system provides 7 role-specific dashboards with server-enforced permissions 
 | :--- | :--- | :--- |
 | **Backend Runtime** | Node.js 20 LTS | Express 4.18 REST API layer |
 | **Data Layer** | PostgreSQL 16 | Relational schema with Sequelize ORM |
-| **Frontend** | React 18 & Vite 5 | SPA with React Router, Tailwind CSS, and TanStack Query |
+| **Frontend** | React 18 & Vite 5 | SPA with React Router, custom CSS design system |
 | **Reverse Proxy** | Nginx Alpine | Serves production build and proxies `/api` endpoints |
+| **Observability** | Prometheus & Grafana | Telemetry collection with `prom-client` & pre-provisioned dashboards |
 | **Containerization** | Docker & Docker Compose | Multi-tier container topology with health checks |
 | **Infrastructure as Code** | HashiCorp Terraform | Automated AWS EC2, Security Group, and Cloud-Init provisioning |
 | **CI/CD** | GitHub Actions | Automated lint, build, Docker verification, and SSH deployment |
@@ -56,7 +57,7 @@ The `infra/` directory defines the complete cloud infrastructure using Terraform
 ./infra/deploy.sh
 ```
 This provisions:
-1. An AWS EC2 instance (`t3.small` / `t2.micro`) within a configured Security Group (ports 22, 80, 443, 4999, 5001).
+1. An AWS EC2 instance (`t3.small` / `t2.micro`) within a configured Security Group (ports 22, 80, 443, 3000, 4999, 5001, 9090).
 2. Cloud-init bootstrap configuring swap memory, Docker Engine, and Docker Compose.
 3. Automated clone and startup of the multi-container stack.
 4. Outputs the public IP address for web access (`http://<ec2-ip>:4999`).
@@ -78,11 +79,19 @@ docker compose up -d --build
 ```
 - Web Application: `http://localhost:4999`
 - REST API: `http://localhost:5001/api`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000` (User: `admin`, Password: `admin`)
 
 #### Standalone Production Stack (Self-Contained)
 Runs the complete 3-tier architecture including a dedicated PostgreSQL container:
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
+```
+- Web Application: `http://localhost:4999`
+- REST API: `http://localhost:5001/api`
+- Metrics: `http://localhost:5001/metrics`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000`
 ```
 
 ---

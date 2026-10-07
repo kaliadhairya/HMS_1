@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -8,21 +8,38 @@ export default function NurseDashboard() {
   const [admissions, setAdmissions] = useState([]);
   const [pendingRequests, setPendingRequests] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const isRefreshingRef = useRef(false);
 
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
-    fetchNurseData();
+    fetchNurseData(true);
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
-  const fetchNurseData = () => {
-    setLoading(true);
+  const fetchNurseData = (isInitial = false) => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
+    setIsRefreshing(true);
+    if (isInitial) setLoading(true);
+
     Promise.all([
       api.get('/ipd/admissions?status=Active').then(res => setAdmissions(res.data.data || [])).catch(() => {}),
       api.get('/ipd/requests?status=Pending').then(res => setPendingRequests((res.data.data || []).length)).catch(() => {}),
-    ]).finally(() => setLoading(false));
+    ])
+      .then(() => {
+        if (!isInitial) toast.success('Station refreshed');
+      })
+      .catch(() => {
+        if (!isInitial) toast.error('Failed to refresh data');
+      })
+      .finally(() => {
+        setLoading(false);
+        setIsRefreshing(false);
+        isRefreshingRef.current = false;
+      });
   };
 
   if (loading) {
@@ -46,19 +63,10 @@ export default function NurseDashboard() {
   ];
 
   return (
-    <div style={{ 
-      display: 'flex', flexDirection: 'column',
-      height: 'calc(100vh - 60px)',
-      overflow: 'hidden',
-    }}>
+    <div className="nurse-dashboard-shell">
       
       {/* ── MAIN GRID ── */}
-      <div style={{ 
-        display: 'grid', gridTemplateColumns: '280px 1fr 300px', gap: '16px', 
-        alignItems: 'start', padding: '12px 16px 12px 16px',
-        flex: 1, minHeight: 0, overflow: 'hidden',
-        width: '100%',
-      }}>
+      <div className="nurse-dashboard-grid">
         
         {/* ── LEFT COLUMN: Profile & Stats ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minHeight: 0 }}>
@@ -87,7 +95,9 @@ export default function NurseDashboard() {
                 <button className="btn btn-primary" onClick={() => navigate('/ipd/beds')} style={{ flex: 1, padding: '9px 12px', fontSize: '0.82rem', fontWeight: 700, borderRadius: 10, background: 'linear-gradient(135deg, #ec4899, #db2777)', border: 'none' }}>
                   Bed Management
                 </button>
-                <button className="btn btn-outline" onClick={fetchNurseData} style={{ padding: '9px 14px', borderRadius: 10 }}>↻</button>
+                <button className="btn btn-outline" disabled={isRefreshing} onClick={() => fetchNurseData(false)} style={{ padding: '9px 14px', borderRadius: 10, cursor: isRefreshing ? 'not-allowed' : 'pointer' }}>
+                  {isRefreshing ? '...' : '↻'}
+                </button>
               </div>
             </div>
           </div>
@@ -136,8 +146,8 @@ export default function NurseDashboard() {
               <button onClick={() => navigate('/ipd/patients')} className="btn btn-ghost" style={{ fontSize: '0.85rem', fontWeight: 600 }}>View Patient Directory →</button>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+              <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-2)' }}>
                   <tr>
                     <th style={thS}>PATIENT</th>
@@ -155,41 +165,55 @@ export default function NurseDashboard() {
                       <p style={{ fontSize: '0.85rem', marginTop: 8 }}>Use the IPD Requests to admit new patients.</p>
                     </td></tr>
                   ) : (
-                    admissions.map((adm, i) => (
-                      <tr key={adm.ID || adm.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'var(--surface)' : 'rgba(248,250,252,0.5)' }}>
-                        <td style={tdS}>
-                          <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{adm.PATIENT_NAME}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>{adm.UHID} • {adm.GENDER?.[0]} / {adm.AGE}Y</div>
-                        </td>
-                        <td style={tdS}>
-                          <div style={{ padding: '4px 10px', borderRadius: 8, background: 'rgba(59,130,246,0.06)', color: '#3b82f6', fontWeight: 700, fontSize: '0.82rem', display: 'inline-block' }}>
-                            {adm.WARD_NAME} / {adm.BED_NUMBER}
-                          </div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>Room: {adm.ROOM_NUMBER || '—'}</div>
-                        </td>
-                        <td style={tdS}>
-                          <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Dr. {adm.DOCTOR_NAME}</div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>Primary Consultant</div>
-                        </td>
-                        <td style={tdS}>
-                          <span style={{ 
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            padding: '4px 10px', borderRadius: 20, 
-                            background: (adm.DAYS_ADMITTED || 0) > 5 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
-                            color: (adm.DAYS_ADMITTED || 0) > 5 ? '#ef4444' : '#10b981',
-                            fontWeight: 700, fontSize: '0.8rem'
-                          }}>
-                            {adm.DAYS_ADMITTED || 0} Days
-                          </span>
-                        </td>
-                        <td style={{ ...tdS, textAlign: 'right', paddingRight: 24 }}>
-                          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                            <button onClick={() => navigate(`/ipd/patient/${adm.ID || adm.id}`)} className="btn btn-sm btn-outline" style={{ borderRadius: 8, padding: '6px 12px', fontSize: '0.75rem', fontWeight: 700 }}>Chart</button>
-                            <button onClick={() => navigate('/hms/vitals/entry', { state: { patient: { id: adm.PATIENT_ID, name: adm.PATIENT_NAME, uhid: adm.UHID, age: adm.AGE, gender: adm.GENDER } } })} className="btn btn-sm" style={{ borderRadius: 8, padding: '6px 12px', fontSize: '0.75rem', fontWeight: 700, background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none' }}>+ Vitals</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                    admissions.map((adm, i) => {
+                      const patientName = adm.PATIENT_NAME || adm.patient_name || adm.name || 'Unknown Patient';
+                      const uhid = adm.UHID || adm.uhid || '—';
+                      const gender = adm.GENDER || adm.gender || '';
+                      const age = adm.AGE || adm.age || '';
+                      const wardName = adm.WARD_NAME || adm.ward_name || 'Ward';
+                      const bedNumber = adm.BED_NUMBER || adm.bed_number || 'Bed';
+                      const roomNumber = adm.ROOM_NUMBER || adm.room_number || '—';
+                      const doctorName = adm.DOCTOR_NAME || adm.doctor_name || 'Assigned Doctor';
+                      const daysAdmitted = adm.DAYS_ADMITTED ?? adm.days_admitted ?? 0;
+                      const admId = adm.ID || adm.id;
+                      const patientId = adm.PATIENT_ID || adm.patient_id;
+
+                      return (
+                        <tr key={admId} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'var(--surface)' : 'rgba(248,250,252,0.5)' }}>
+                          <td style={tdS}>
+                            <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{patientName}</div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>{uhid} • {gender?.[0] ? `${gender[0]} / ` : ''}{age ? `${age}Y` : ''}</div>
+                          </td>
+                          <td style={tdS}>
+                            <div style={{ padding: '4px 10px', borderRadius: 8, background: 'rgba(59,130,246,0.06)', color: '#3b82f6', fontWeight: 700, fontSize: '0.82rem', display: 'inline-block' }}>
+                              {wardName} / {bedNumber}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>Room: {roomNumber}</div>
+                          </td>
+                          <td style={tdS}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Dr. {doctorName}</div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>Primary Consultant</div>
+                          </td>
+                          <td style={tdS}>
+                            <span style={{ 
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              padding: '4px 10px', borderRadius: 20, 
+                              background: daysAdmitted > 5 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+                              color: daysAdmitted > 5 ? '#ef4444' : '#10b981',
+                              fontWeight: 700, fontSize: '0.8rem'
+                            }}>
+                              {daysAdmitted} Days
+                            </span>
+                          </td>
+                          <td style={{ ...tdS, textAlign: 'right', paddingRight: 24 }}>
+                            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                              <button onClick={() => navigate(`/ipd/patient/${admId}`)} className="btn btn-sm btn-outline" style={{ borderRadius: 8, padding: '6px 12px', fontSize: '0.75rem', fontWeight: 700 }}>Chart</button>
+                              <button onClick={() => navigate('/hms/vitals/entry', { state: { patient: { id: patientId, name: patientName, uhid, age, gender } } })} className="btn btn-sm" style={{ borderRadius: 8, padding: '6px 12px', fontSize: '0.75rem', fontWeight: 700, background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none' }}>+ Vitals</button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -198,7 +222,7 @@ export default function NurseDashboard() {
         </div>
 
         {/* ── RIGHT COLUMN: Quick Actions & Vitals ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minHeight: 0 }}>
+        <div className="nurse-dashboard-right" style={{ display: 'flex', flexDirection: 'column', gap: '14px', minHeight: 0 }}>
           
           {/* Quick Actions Panel */}
           <div className="card hms-anim-4" style={{ padding: 0, overflow: 'hidden', borderRadius: 16, border: '1px solid var(--border)' }}>
@@ -243,22 +267,33 @@ export default function NurseDashboard() {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {admissions.slice(0, 8).map(adm => (
-                    <div key={adm.ID || adm.id} style={{
-                      padding: '12px', background: 'var(--surface-2)', border: '1px solid var(--border)',
-                      borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    }}>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{adm.PATIENT_NAME}</div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{adm.WARD_NAME} / {adm.BED_NUMBER}</div>
+                  {admissions.slice(0, 8).map(adm => {
+                    const patientName = adm.PATIENT_NAME || adm.patient_name || adm.name || 'Unknown Patient';
+                    const uhid = adm.UHID || adm.uhid || '—';
+                    const gender = adm.GENDER || adm.gender || '';
+                    const age = adm.AGE || adm.age || '';
+                    const wardName = adm.WARD_NAME || adm.ward_name || 'Ward';
+                    const bedNumber = adm.BED_NUMBER || adm.bed_number || 'Bed';
+                    const admId = adm.ID || adm.id;
+                    const patientId = adm.PATIENT_ID || adm.patient_id;
+
+                    return (
+                      <div key={admId} style={{
+                        padding: '12px', background: 'var(--surface-2)', border: '1px solid var(--border)',
+                        borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{patientName}</div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{wardName} / {bedNumber}</div>
+                        </div>
+                        <button className="btn btn-sm"
+                          style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', borderRadius: 8, padding: '5px 12px', fontWeight: 700, fontSize: '0.72rem' }}
+                          onClick={() => navigate('/hms/vitals/entry', { state: { patient: { id: patientId, name: patientName, uhid, age, gender } } })}>
+                          Enter
+                        </button>
                       </div>
-                      <button className="btn btn-sm"
-                        style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', borderRadius: 8, padding: '5px 12px', fontWeight: 700, fontSize: '0.72rem' }}
-                        onClick={() => navigate('/hms/vitals/entry', { state: { patient: { id: adm.PATIENT_ID, name: adm.PATIENT_NAME, uhid: adm.UHID, age: adm.AGE, gender: adm.GENDER } } })}>
-                        Enter
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {admissions.length > 8 && <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', padding: 5 }}>+ {admissions.length - 8} more patients</div>}
                 </div>
               )}

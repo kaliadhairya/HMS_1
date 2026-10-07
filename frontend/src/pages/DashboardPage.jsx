@@ -14,7 +14,8 @@ export default function DashboardPage() {
   useEffect(() => {
     if (user && user.role !== 'lab_technician') {
       if (user.role === 'doctor') navigate('/doctor/dashboard', { replace: true });
-      else if (user.role === 'admin' || user.role === 'super_admin') navigate('/admin/dashboard', { replace: true });
+      else if (user.role === 'super_admin') navigate('/super_admin/dashboard', { replace: true });
+      else if (user.role === 'admin') navigate('/admin/dashboard', { replace: true });
       else navigate(`/${user.role}/dashboard`, { replace: true });
       return;
     }

@@ -5,6 +5,16 @@ const { protect, checkPermission } = require('../middleware/auth');
 const logAction = require('../utils/auditLogger');
 const { clobToString } = require('../utils/clobToString');
 
+function normalizeRowKeys(row) {
+  if (!row || typeof row !== 'object') return row;
+  const out = { ...row };
+  for (const [k, v] of Object.entries(row)) {
+    out[k.toUpperCase()] = v;
+    out[k.toLowerCase()] = v;
+  }
+  return out;
+}
+
 // ── GET /api/ipd/wards ─────────────────────────────────────
 router.get('/wards', protect, checkPermission('ipd', 'read'), async (req, res) => {
   try {
@@ -258,7 +268,7 @@ router.get('/admissions', protect, checkPermission('ipd', 'read'), async (req, r
     query += ` ORDER BY a.ADMISSION_DATE DESC`;
 
     const [adms] = await sequelize.query(query, { replacements });
-    res.json({ success: true, data: adms || [] });
+    res.json({ success: true, data: (adms || []).map(normalizeRowKeys) });
   } catch (err) {
     console.error('DB admissions fetch failed:', err.message);
     res.status(500).json({ success: false, message: 'Failed to fetch admissions' });
@@ -284,7 +294,7 @@ router.get('/requests', protect, checkPermission('ipd', 'read'), async (req, res
     query += ` ORDER BY r.REQUEST_DATE DESC`;
 
     const [reqs] = await sequelize.query(query, { replacements });
-    res.json({ success: true, data: reqs || [] });
+    res.json({ success: true, data: (reqs || []).map(normalizeRowKeys) });
   } catch (err) {
     console.error('DB request fetch failed:', err.message);
     res.status(500).json({ success: false, message: 'Failed to fetch IPD requests' });
@@ -452,7 +462,7 @@ router.get('/admissions/:id', protect, checkPermission('ipd', 'read'), async (re
       return res.status(404).json({ success: false, message: 'Admission record not found' });
     }
 
-    res.json({ success: true, data: adms[0] });
+    res.json({ success: true, data: normalizeRowKeys(adms[0]) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Failed to fetch admission' });
@@ -558,7 +568,7 @@ router.get('/discharge-summaries', protect, checkPermission('ipd', 'read'), asyn
       LEFT JOIN HMS_USERS u ON u.ID = s.CREATED_BY
       ORDER BY s.CREATED_AT DESC
     `);
-    res.json({ success: true, data: summaries });
+    res.json({ success: true, data: (summaries || []).map(normalizeRowKeys) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Failed to fetch discharge summaries' });
@@ -589,7 +599,7 @@ router.get('/admissions/:id/discharge-summary', protect, checkPermission('ipd', 
       if (summary[field]) summary[field] = await clobToString(summary[field]);
     }
 
-    res.json({ success: true, data: summary });
+    res.json({ success: true, data: normalizeRowKeys(summary) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Failed to fetch discharge summary' });
@@ -623,7 +633,7 @@ router.get('/progress-notes/:admissionId', protect, checkPermission('ipd', 'read
         note.NOTE_TEXT = await clobToString(note.NOTE_TEXT);
       }
     }
-    res.json({ success: true, data: notes });
+    res.json({ success: true, data: (notes || []).map(normalizeRowKeys) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Failed to fetch progress notes' });
@@ -678,7 +688,7 @@ router.get('/nursing-notes/:admissionId', protect, checkPermission('ipd', 'read'
       }
       note.NOTE_TEXT = note.CONDITION_NOTES || '';
     }
-    res.json({ success: true, data: notes });
+    res.json({ success: true, data: (notes || []).map(normalizeRowKeys) });
   } catch (err) {
     console.error('Failed to fetch nursing notes:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch notes' });
@@ -748,7 +758,7 @@ router.get('/mar/:admissionId', protect, checkPermission('ipd', 'read'), async (
       ORDER BY SCHEDULED_TIME ASC
     `, { replacements: { admissionId: req.params.admissionId } });
     
-    res.json({ success: true, data: mar });
+    res.json({ success: true, data: (mar || []).map(normalizeRowKeys) });
   } catch (err) {
     console.error('Failed to fetch MAR:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch MAR' });
@@ -1074,7 +1084,7 @@ router.get('/billing/saved-drafts', protect, checkPermission('ipd', 'read'), asy
       WHERE a.ID IN (:ids)
     `, { replacements: { ids: draftAdmissionIds } });
 
-    const results = admissions.map(adm => {
+    const results = admissions.map(normalizeRowKeys).map(adm => {
       const draftCharges = activeDraftCharges[String(adm.ID)] || [];
       const draftTotal = draftCharges.reduce((sum, c) => sum + (c.TOTAL_PRICE || 0), 0);
       return { ...adm, draftTotal, itemCount: draftCharges.length };

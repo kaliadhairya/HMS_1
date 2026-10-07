@@ -7,7 +7,6 @@ import toast from 'react-hot-toast';
 
 const PATIENT_TYPE_META = {
   corporate_employee: { label: 'Corporate Employee', shortLabel: 'Corp Emp', bg: 'rgba(59, 130, 246, 0.1)', color: '#2563eb', border: 'rgba(59, 130, 246, 0.2)' },
-  cisf_employee: { label: 'CISF Employee', shortLabel: 'CISF', bg: 'rgba(99, 102, 241, 0.1)', color: '#4f46e5', border: 'rgba(99, 102, 241, 0.2)' },
   other: { label: 'General / External', shortLabel: 'General', bg: 'rgba(16, 185, 129, 0.1)', color: '#059669', border: 'rgba(16, 185, 129, 0.2)' },
 };
 
@@ -469,7 +468,6 @@ export default function PatientSearchPage() {
                   >
                     <option value="">All Types</option>
                     <option value="corporate_employee">Corporate Employee</option>
-                    <option value="cisf_employee">CISF Employee</option>
                     <option value="other">General / External</option>
                   </select>
                 </div>

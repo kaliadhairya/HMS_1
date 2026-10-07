@@ -28,9 +28,13 @@ export function AuthProvider({ children }) {
             throw new Error('Invalid session');
           }
         } catch (err) {
-          localStorage.removeItem('lab_token');
-          localStorage.removeItem('lab_user');
-          setUser(null);
+          if (err.response?.status === 401 || err.response?.status === 403) {
+            localStorage.removeItem('lab_token');
+            localStorage.removeItem('lab_user');
+            setUser(null);
+          } else {
+            console.warn('Session verification encountered a temporary error:', err.message);
+          }
         }
       }
       setIsInitialized(true);
@@ -53,9 +57,16 @@ export function AuthProvider({ children }) {
       return { success: true, user: userData, first_login: data.first_login };
     } catch (err) {
       const resp = err.response;
+      let errorMessage = resp?.data?.message;
+      if (!errorMessage && typeof resp?.data === 'string' && resp.data.trim()) {
+        errorMessage = resp.data.trim();
+      }
+      if (resp?.status === 429) {
+        errorMessage = errorMessage || 'Too many requests. Please wait a few seconds before trying again.';
+      }
       return {
         success: false,
-        message: resp?.data?.message || 'Login failed.',
+        message: errorMessage || 'Login failed. Please check your credentials.',
         status: resp?.status,
         lockedUntil: resp?.data?.lockedUntil,
       };

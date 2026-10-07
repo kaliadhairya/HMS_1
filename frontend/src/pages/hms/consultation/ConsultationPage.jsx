@@ -4,6 +4,36 @@ import api from '../../../api/axios';
 import { toast } from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 
+function parseVitalsAlerts(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+      return [String(parsed)];
+    } catch {
+      return [val];
+    }
+  }
+  return [];
+}
+
+function formatBrandNames(val) {
+  if (!val) return '';
+  if (Array.isArray(val)) return `(${val.join(', ')})`;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return `(${parsed.join(', ')})`;
+      if (typeof parsed === 'string') return `(${parsed})`;
+    } catch {
+      return `(${val})`;
+    }
+  }
+  return '';
+}
+
 export default function ConsultationPage() {
   const { id } = useParams(); // Encounter ID
   const navigate = useNavigate();
@@ -235,9 +265,9 @@ export default function ConsultationPage() {
   return (
     <>
     <Navbar />
-    <div style={{ display: 'flex', height: 'calc(100vh - 61px)' }}>
+    <div className="consult-container">
       {/* LEFT PANEL: Patient Context */}
-      <div style={{ width: '28%', background: 'var(--surface-2)', borderRight: '1px solid var(--border)', padding: 20, overflowY: 'auto' }}>
+      <div className="consult-sidebar">
         <h2 style={{ fontSize: '1.2rem', marginBottom: 10 }}>{patient?.name}</h2>
         <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 20 }}>
           <p><strong>UHID:</strong> {patient?.uhid}</p>
@@ -248,7 +278,7 @@ export default function ConsultationPage() {
         {vitals ? (
           <div className="card-section">
             <div className="card-section-title">Today's Vitals</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: '0.85rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 10, fontSize: '0.85rem' }}>
               <div><strong>BP:</strong> {vitals.bp_systolic}/{vitals.bp_diastolic}</div>
               <div><strong>Pulse:</strong> {vitals.pulse} bpm</div>
               <div><strong>Temp:</strong> {vitals.temperature}°F</div>
@@ -256,7 +286,7 @@ export default function ConsultationPage() {
               <div><strong>Weight:</strong> {vitals.weight} kg</div>
               <div><strong>BMI:</strong> {vitals.bmi}</div>
             </div>
-            {vitals.alerts && JSON.parse(vitals.alerts).map((alert, i) => (
+            {parseVitalsAlerts(vitals.alerts).map((alert, i) => (
               <div key={i} className="alert alert-error" style={{ marginTop: 10, padding: 6, fontSize: '0.75rem' }}>
                 ⚠️ {alert}
               </div>
@@ -268,21 +298,15 @@ export default function ConsultationPage() {
       </div>
 
       {/* RIGHT PANEL: Docs */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+      <div className="consult-main">
         
         {/* Tabs */}
-        <div style={{ display: 'flex', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+        <div className="consult-tabs">
           {['history', 'examination', 'diagnosis', 'prescription', 'investigations'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              style={{
-                flex: 1, padding: '14px', background: 'none', border: 'none', cursor: 'pointer',
-                fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: '0.85rem',
-                borderBottom: activeTab === tab ? '3px solid var(--green)' : '3px solid transparent',
-                color: activeTab === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
-                textTransform: 'capitalize'
-              }}
+              className={`consult-tab-btn ${activeTab === tab ? 'active' : ''}`}
             >
               {tab}
             </button>
@@ -374,7 +398,7 @@ export default function ConsultationPage() {
                   <div style={{ position: 'absolute', top: 40, left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', zIndex: 10, boxShadow: 'var(--shadow-md)', borderRadius: 5, maxHeight: 300, overflowY: 'auto' }}>
                     {medResults.map(m => (
                       <div key={m.id} onClick={() => addPrescriptionItem(m)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--bg)' }}>
-                        <strong>{m.generic_name}</strong> {m.brand_names ? `(${JSON.parse(m.brand_names).join(', ')})` : ''} - <small>{m.formulation} {m.strength} {m.strength_unit}</small>
+                        <strong>{m.generic_name}</strong> {formatBrandNames(m.brand_names)} - <small>{m.formulation} {m.strength} {m.strength_unit}</small>
                       </div>
                     ))}
                   </div>

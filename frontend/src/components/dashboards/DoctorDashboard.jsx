@@ -23,7 +23,6 @@ function isSameLocalDate(value, date = new Date()) {
 
 function getPatientTypeBadge(type) {
   if (type === 'corporate_employee') return { label: 'Corporate', bg: 'rgba(16,185,129,0.1)', color: 'var(--green)', border: 'rgba(16,185,129,0.2)' };
-  if (type === 'cisf_employee') return { label: 'CISF', bg: 'rgba(99,102,241,0.1)', color: '#4f46e5', border: 'rgba(99,102,241,0.2)' };
   return { label: 'General', bg: 'rgba(59,130,246,0.1)', color: 'var(--blue)', border: 'rgba(59,130,246,0.2)' };
 }
 
@@ -81,6 +80,8 @@ export default function DoctorDashboard() {
   const socket = useSocket();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const isRefreshingRef = useRef(false);
   const [todayStatusFilter, setTodayStatusFilter] = useState('all');
   const [todaySearch, setTodaySearch] = useState('');
   const [pendingSearch, setPendingSearch] = useState('');
@@ -135,7 +136,10 @@ export default function DoctorDashboard() {
     };
   }, [socket]);
 
-  const fetchDoctorData = async () => {
+  const fetchDoctorData = async (showToast = false) => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
+    setIsRefreshing(true);
     try {
       const [todayRes, patientsRes, pendingRes, prescriptionsRes, labsRes] = await Promise.allSettled([
         api.get('/patients/hms/today-patients'),
@@ -151,22 +155,44 @@ export default function DoctorDashboard() {
         console.error('Failed to fetch some doctor dashboard data:', failedRequests.map((result) => result.reason));
       }
 
-      setTodayPatients(todayRes.status === 'fulfilled' ? todayRes.value.data?.data || [] : []);
-      setMyPatients(patientsRes.status === 'fulfilled' ? patientsRes.value.data?.data || [] : []);
-      setPendingPatients(pendingRes.status === 'fulfilled' ? pendingRes.value.data?.data || [] : []);
-      setDoctorPrescriptions(prescriptionsRes.status === 'fulfilled' ? prescriptionsRes.value.data?.data || [] : []);
-      setDoctorLabs(labsRes.status === 'fulfilled' ? labsRes.value.data?.data || [] : []);
-      setLastRefreshedAt(new Date());
+      // Preserve existing state if a request fails/rate-limits instead of clearing the board
+      if (todayRes.status === 'fulfilled') {
+        setTodayPatients(todayRes.value.data?.data || []);
+      }
+      if (patientsRes.status === 'fulfilled') {
+        setMyPatients(patientsRes.value.data?.data || []);
+      }
+      if (pendingRes.status === 'fulfilled') {
+        setPendingPatients(pendingRes.value.data?.data || []);
+      }
+      if (prescriptionsRes.status === 'fulfilled') {
+        setDoctorPrescriptions(prescriptionsRes.value.data?.data || []);
+      }
+      if (labsRes.status === 'fulfilled') {
+        setDoctorLabs(labsRes.value.data?.data || []);
+      }
+
+      if (failedRequests.length === 0) {
+        setLastRefreshedAt(new Date());
+        if (showToast) toast.success('Dashboard refreshed');
+      } else if (failedRequests.length < 5) {
+        setLastRefreshedAt(new Date());
+        if (showToast) toast('Dashboard partially updated', { icon: '⚠️' });
+      } else {
+        const is429 = failedRequests.some((r) => r.reason?.response?.status === 429);
+        if (is429) {
+          toast.error('Too many requests. Please wait a moment before refreshing.');
+        } else if (showToast) {
+          toast.error('Could not refresh dashboard data. Please try again.');
+        }
+      }
     } catch (err) {
       console.error('Failed to fetch doctor data:', err);
-      setTodayPatients([]);
-      setMyPatients([]);
-      setPendingPatients([]);
-      setDoctorPrescriptions([]);
-      setDoctorLabs([]);
-      setLastRefreshedAt(null);
+      if (showToast) toast.error('Failed to refresh dashboard');
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
+      isRefreshingRef.current = false;
     }
   };
 
@@ -331,16 +357,16 @@ export default function DoctorDashboard() {
               + Book Follow-up
             </button>
             <button className="btn btn-outline" 
-              onClick={() => {
-                fetchDoctorData();
-                toast.success('Dashboard refreshed');
-              }}
+              disabled={isRefreshing}
+              onClick={() => fetchDoctorData(true)}
               style={{
                 flex: '1 1 auto', whiteSpace: 'nowrap', padding: '10px 12px', fontSize: '0.85rem', fontWeight: 600,
-                borderRadius: 10, color: 'var(--green)',
-                border: '1px solid var(--green)', background: 'transparent',
+                borderRadius: 10, color: isRefreshing ? 'var(--text-muted)' : 'var(--green)',
+                border: `1px solid ${isRefreshing ? 'var(--border)' : 'var(--green)'}`, background: 'transparent',
+                cursor: isRefreshing ? 'not-allowed' : 'pointer',
+                opacity: isRefreshing ? 0.7 : 1,
               }}>
-              ↻ Refresh
+              {isRefreshing ? '↻ Refreshing...' : '↻ Refresh'}
             </button>
           </div>
         </div>
@@ -383,7 +409,7 @@ export default function DoctorDashboard() {
       </div>
 
       {/* ── RIGHT CONTENT (Side-by-side tables) ── */}
-      <div className="doctor-dashboard-content" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '20px', minHeight: 0, overflow: 'visible', padding: '16px 20px' }}>
+      <div className="doctor-dashboard-content">
 
           {/* ── Today's Registered Patients ── */}
           <div className="card hms-anim-5 doctor-dashboard-table-card doctor-dashboard-today-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0, height: 'auto' }}>
@@ -419,7 +445,9 @@ export default function DoctorDashboard() {
                     />
                   </label>
                 )}
-                <button className="btn btn-sm btn-ghost" onClick={fetchDoctorData}>↻ Refresh</button>
+                <button className="btn btn-sm btn-ghost" disabled={isRefreshing} onClick={() => fetchDoctorData(true)}>
+                  {isRefreshing ? '↻ Refreshing...' : '↻ Refresh'}
+                </button>
               </div>
             </div>
 
@@ -454,7 +482,13 @@ export default function DoctorDashboard() {
               <div className="table-wrapper hms-table-anim doctor-dashboard-table-wrap doctor-dashboard-list-scroll" style={{ border: 'none', borderRadius: 0, boxShadow: 'none', flex: 1, overflow: 'auto' }}>
                 <table>
                   <thead>
-                    <tr><th style={{width:30}}>#</th><th>Patient</th><th style={{textAlign:'center'}}>Type</th><th>Status</th><th>Actions</th></tr>
+                    <tr>
+                      <th style={{ width: 32, textAlign: 'center', padding: '10px 4px' }}>#</th>
+                      <th style={{ minWidth: 130, padding: '10px 8px' }}>Patient</th>
+                      <th style={{ width: 76, textAlign: 'center', padding: '10px 4px' }}>Type</th>
+                      <th style={{ width: 95, padding: '10px 6px' }}>Status</th>
+                      <th style={{ width: 115, textAlign: 'right', padding: '10px 8px' }}>Actions</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {visibleTodayPatients.map((p, idx) => {
@@ -466,8 +500,8 @@ export default function DoctorDashboard() {
 
                       return (
                         <tr key={p.id} style={{ background: rowBg }}>
-                          <td><strong>{idx + 1}</strong></td>
-                          <td>
+                          <td style={{ textAlign: 'center', padding: '10px 4px' }}><strong>{idx + 1}</strong></td>
+                          <td style={{ padding: '10px 8px' }}>
                             <div style={{ fontWeight: 600 }}>{p.name}</div>
                             <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
                               {p.uhid} • {p.age}y • {p.gender}
@@ -479,9 +513,9 @@ export default function DoctorDashboard() {
                               </div>
                             )}
                           </td>
-                          <td style={{ textAlign: 'center' }}>
+                          <td style={{ textAlign: 'center', padding: '10px 4px' }}>
                             <span style={{
-                              padding: '3px 10px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700,
+                              padding: '3px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700,
                               textTransform: 'uppercase', letterSpacing: '0.04em',
                               background: typeBadge.bg,
                               color: typeBadge.color,
@@ -490,7 +524,7 @@ export default function DoctorDashboard() {
                               {typeBadge.label}
                             </span>
                           </td>
-                          <td>
+                          <td style={{ padding: '10px 6px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
                               {isDone ? (
                                 <span className="badge badge-green">✓ Done</span>
@@ -501,7 +535,7 @@ export default function DoctorDashboard() {
                               )}
                               {isBeingConsulted && !isMyConsultation && (
                                 <span style={{
-                                  fontSize: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic',
+                                  fontSize: '0.72rem', color: 'var(--text-secondary)', fontStyle: 'italic',
                                   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', marginTop: 2,
                                   background: 'var(--surface-2)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)'
                                 }}>
@@ -511,20 +545,20 @@ export default function DoctorDashboard() {
                               )}
                             </div>
                           </td>
-                          <td>
+                          <td style={{ textAlign: 'right', padding: '10px 8px' }}>
                             {(() => {
                               const isExpanded = expandedRow === p.id;
                               return (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                                   {!isBeingConsulted ? (
                                     <button ref={el => { actionBtnRefs.current[p.id] = el; }} className="btn btn-sm btn-primary" onClick={(e) => startConsultation(p, e)}
-                                      style={{ whiteSpace: 'nowrap', fontSize: '0.76rem', padding: '6px 14px', borderRadius: 8 }}>Start Consulting</button>
+                                      style={{ whiteSpace: 'nowrap', fontSize: '0.74rem', padding: '5px 10px', borderRadius: 8 }}>Start Consulting</button>
                                   ) : isMyConsultation ? (
                                     <button
                                       className={`btn btn-sm ${isExpanded ? '' : 'btn-primary'}`}
                                       onClick={(e) => { if (isExpanded) { closeActions(); } else { openActions(p, e); } }}
                                       style={{
-                                        whiteSpace: 'nowrap', fontSize: '0.76rem', padding: '6px 14px', borderRadius: 8,
+                                        whiteSpace: 'nowrap', fontSize: '0.74rem', padding: '5px 10px', borderRadius: 8,
                                         display: 'inline-flex', alignItems: 'center', gap: 6,
                                         ...(isExpanded ? { background: 'var(--red-light)', color: 'var(--red)', border: '1px solid var(--red-border)' } : {}),
                                       }}>{isExpanded ? '\u2715 Close' : '\u25b8 Actions'}</button>
@@ -584,7 +618,9 @@ export default function DoctorDashboard() {
                     />
                   </label>
                 )}
-                <button className="btn btn-sm btn-ghost" onClick={fetchDoctorData}>↻ Refresh</button>
+                <button className="btn btn-sm btn-ghost" disabled={isRefreshing} onClick={() => fetchDoctorData(true)}>
+                  {isRefreshing ? '↻ Refreshing...' : '↻ Refresh'}
+                </button>
               </div>
             </div>
 
@@ -600,7 +636,13 @@ export default function DoctorDashboard() {
               <div className="table-wrapper hms-table-anim doctor-dashboard-table-wrap doctor-dashboard-list-scroll" style={{ border: 'none', borderRadius: 0, boxShadow: 'none', flex: 1, overflow: 'auto' }}>
                 <table>
                   <thead>
-                    <tr><th style={{width:30}}>#</th><th>Patient</th><th style={{textAlign:'center'}}>Type</th><th>Registered</th><th>Actions</th></tr>
+                    <tr>
+                      <th style={{ width: 32, textAlign: 'center', padding: '10px 4px' }}>#</th>
+                      <th style={{ minWidth: 130, padding: '10px 8px' }}>Patient</th>
+                      <th style={{ width: 76, textAlign: 'center', padding: '10px 4px' }}>Type</th>
+                      <th style={{ width: 95, padding: '10px 6px' }}>Registered</th>
+                      <th style={{ width: 115, textAlign: 'right', padding: '10px 8px' }}>Actions</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {visiblePendingPatients.map((p, idx) => {
@@ -616,17 +658,17 @@ export default function DoctorDashboard() {
                           background: isExpired ? 'rgba(148,163,184,0.07)' : 'transparent',
                           pointerEvents: isExpired ? 'none' : 'auto',
                         }}>
-                          <td><strong>{idx + 1}</strong></td>
-                          <td>
+                          <td style={{ textAlign: 'center', padding: '10px 4px' }}><strong>{idx + 1}</strong></td>
+                          <td style={{ padding: '10px 8px' }}>
                             <div style={{ fontWeight: 600 }}>{p.name}</div>
                             <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
                               {p.uhid} • {p.age}y • {p.gender}
                               {p.empNumber && <span> • Emp: {p.empNumber}</span>}
                             </div>
                           </td>
-                          <td style={{ textAlign: 'center' }}>
+                          <td style={{ textAlign: 'center', padding: '10px 4px' }}>
                             <span style={{
-                              padding: '3px 10px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700,
+                              padding: '3px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700,
                               textTransform: 'uppercase', letterSpacing: '0.04em',
                               background: typeBadge.bg,
                               color: typeBadge.color,
@@ -635,7 +677,7 @@ export default function DoctorDashboard() {
                               {typeBadge.label}
                             </span>
                           </td>
-                          <td>
+                          <td style={{ padding: '10px 6px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                               <span style={{
                                 fontSize: '0.73rem', fontWeight: 700,
@@ -651,12 +693,12 @@ export default function DoctorDashboard() {
                               )}
                             </div>
                           </td>
-                          <td>
+                          <td style={{ textAlign: 'right', padding: '10px 8px' }}>
                             {isExpired ? (
                               <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Expired</span>
                             ) : (
                               <button className="btn btn-sm btn-primary" onClick={() => startConsultation(p)}
-                                style={{ whiteSpace: 'nowrap', fontSize: '0.76rem', padding: '6px 14px', borderRadius: 8 }}>
+                                style={{ whiteSpace: 'nowrap', fontSize: '0.74rem', padding: '5px 10px', borderRadius: 8 }}>
                                 Start Consulting
                               </button>
                             )}

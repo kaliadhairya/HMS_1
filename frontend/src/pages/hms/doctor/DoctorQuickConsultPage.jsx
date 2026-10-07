@@ -4,6 +4,21 @@ import api from '../../../api/axios';
 import { toast } from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 
+function formatBrandNames(val) {
+  if (!val) return '';
+  if (Array.isArray(val)) return `(${val.join(', ')})`;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return `(${parsed.join(', ')})`;
+      if (typeof parsed === 'string') return `(${parsed})`;
+    } catch {
+      return `(${val})`;
+    }
+  }
+  return '';
+}
+
 export default function DoctorQuickConsultPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
@@ -356,7 +371,7 @@ export default function DoctorQuickConsultPage() {
                     <div style={{ position: 'absolute', top: 40, left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', zIndex: 10, boxShadow: 'var(--shadow-md)', borderRadius: 5, maxHeight: 300, overflowY: 'auto' }}>
                       {medResults.map(m => (
                         <div key={m.id} onClick={() => addPrescriptionItem(m)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--bg)' }}>
-                          <strong>{m.generic_name}</strong> {m.brand_names ? `(${JSON.parse(m.brand_names).join(', ')})` : ''} - <small>{m.formulation} {m.strength} {m.strength_unit}</small>
+                          <strong>{m.generic_name}</strong> {formatBrandNames(m.brand_names)} - <small>{m.formulation} {m.strength} {m.strength_unit}</small>
                         </div>
                       ))}
                     </div>

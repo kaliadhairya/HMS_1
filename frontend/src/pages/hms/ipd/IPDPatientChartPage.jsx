@@ -32,9 +32,10 @@ export default function IPDPatientChartPage() {
     try {
       const ad = await api.get(`/ipd/admissions/${id}`);
       setAdmission(ad.data.data);
+      const patientId = ad.data.data?.PATIENT_ID || ad.data.data?.patient_id;
       if (activeTab === 'progress') fetchProgressNotes();
       else if (activeTab === 'nursing') fetchNursingNotes();
-      else if (activeTab === 'vitals') fetchVitals(ad.data.data.PATIENT_ID);
+      else if (activeTab === 'vitals') fetchVitals(patientId);
       else if (activeTab === 'mar') fetchMar();
     } catch (err) {
       toast.error('Failed to load admission details');
@@ -56,7 +57,7 @@ export default function IPDPatientChartPage() {
       const res = await api.get(`/ipd/vitals/${id}`);
       let ipdVitals = res.data.data || [];
       
-      const pId = patientId || admission?.PATIENT_ID;
+      const pId = patientId || admission?.PATIENT_ID || admission?.patient_id;
       if (pId) {
         const genRes = await api.get(`/hms/vitals/history/${pId}`);
         const genVitals = genRes.data.data || [];
@@ -140,23 +141,23 @@ export default function IPDPatientChartPage() {
     <Navbar />
     <div className="page-wrapper fade-up">
       {/* HEADER CARD */}
-      <div className="card" style={{ padding: 24, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: admission.STATUS === 'Active' ? '4px solid #48bb78' : '4px solid #cbd5e0' }}>
+      <div className="card" style={{ padding: 24, marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: (admission.STATUS || admission.status) === 'Active' ? '4px solid #48bb78' : '4px solid #cbd5e0' }}>
         <div>
-          <h2 style={{ margin: 0 }}>{admission.PATIENT_NAME} ({admission.UHID})</h2>
+          <h2 style={{ margin: 0 }}>{admission.PATIENT_NAME || admission.patient_name || 'Patient'} ({admission.UHID || admission.uhid || '—'})</h2>
           <div style={{ color: 'var(--text-secondary)', marginTop: 8, display: 'flex', gap: 16 }}>
-             <span><strong>Bed:</strong> {admission.WARD_NAME} / {admission.BED_NUMBER} ({admission.ROOM_NUMBER})</span>
-             <span><strong>Doctor:</strong> {admission.DOCTOR_NAME}</span>
-             <span><strong>Admitted:</strong> {new Date(admission.ADMISSION_DATE).toLocaleDateString()} ({admission.DAYS_ADMITTED} Days)</span>
+             <span><strong>Bed:</strong> {admission.WARD_NAME || admission.ward_name || '—'} / {admission.BED_NUMBER || admission.bed_number || '—'} ({admission.ROOM_NUMBER || admission.room_number || '—'})</span>
+             <span><strong>Doctor:</strong> {admission.DOCTOR_NAME || admission.doctor_name || '—'}</span>
+             <span><strong>Admitted:</strong> {(admission.ADMISSION_DATE || admission.admission_date) ? new Date(admission.ADMISSION_DATE || admission.admission_date).toLocaleDateString() : '—'} ({admission.DAYS_ADMITTED ?? admission.days_admitted ?? 0} Days)</span>
           </div>
         </div>
         <div>
-           <span className="badge" style={{ background: admission.STATUS === 'Active' ? '#48bb7820' : '#cbd5e0', color: admission.STATUS === 'Active' ? '#48bb78' : '#4a5568', marginRight: 16 }}>
-             {admission.STATUS}
+           <span className="badge" style={{ background: (admission.STATUS || admission.status) === 'Active' ? '#48bb7820' : '#cbd5e0', color: (admission.STATUS || admission.status) === 'Active' ? '#48bb78' : '#4a5568', marginRight: 16 }}>
+             {admission.STATUS || admission.status}
            </span>
-           {(user.role === 'admin' || user.role === 'doctor') && admission.STATUS === 'Active' && (
+           {(user.role === 'admin' || user.role === 'doctor') && (admission.STATUS || admission.status) === 'Active' && (
              <button className="btn btn-outline" onClick={handleDischarge}>Discharge</button>
            )}
-           {admission.STATUS === 'Discharged' && (
+           {(admission.STATUS || admission.status) === 'Discharged' && (
              <button className="btn btn-primary" onClick={handleViewSummary}>View Discharge Summary</button>
            )}
         </div>
@@ -221,28 +222,28 @@ export default function IPDPatientChartPage() {
               </div>
             ) : (
               progressNotes.map(pn => (
-                <div key={pn.ID} className="card hms-anim-1" style={{ padding: 0, overflow: 'hidden' }}>
+                <div key={pn.ID || pn.id} className="card hms-anim-1" style={{ padding: 0, overflow: 'hidden' }}>
                   <div style={{ padding: '14px 20px', background: 'rgba(99,102,241,0.03)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontWeight: 800, color: '#6366f1', fontSize: '0.9rem' }}>{pn.DOCTOR_NAME}</div>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{new Date(pn.NOTE_DATE).toLocaleString()}</div>
+                    <div style={{ fontWeight: 800, color: '#6366f1', fontSize: '0.9rem' }}>{pn.DOCTOR_NAME || pn.doctor_name || 'Doctor'}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{(pn.NOTE_DATE || pn.note_date) ? new Date(pn.NOTE_DATE || pn.note_date).toLocaleString() : '—'}</div>
                   </div>
                   <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
                     <div>
                       <label style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Subjective</label>
-                      <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6 }}>{pn.SUBJECTIVE}</p>
+                      <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6 }}>{pn.SUBJECTIVE || pn.subjective || '—'}</p>
                     </div>
                     <div>
                       <label style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Objective</label>
-                      <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6 }}>{pn.OBJECTIVE}</p>
+                      <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6 }}>{pn.OBJECTIVE || pn.objective || '—'}</p>
                     </div>
                     <div style={{ gridColumn: 'span 2', height: '1px', background: 'var(--border)', margin: '4px 0' }} />
                     <div>
                       <label style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Assessment</label>
-                      <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6, fontWeight: 600 }}>{pn.ASSESSMENT}</p>
+                      <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6, fontWeight: 600 }}>{pn.ASSESSMENT || pn.assessment || '—'}</p>
                     </div>
                     <div>
                       <label style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.06em', display: 'block', marginBottom: 6 }}>Plan</label>
-                      <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6, color: 'var(--text-primary)' }}>{pn.PLAN}</p>
+                      <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6, color: 'var(--text-primary)' }}>{pn.PLAN || pn.plan || '—'}</p>
                     </div>
                   </div>
                 </div>
@@ -250,7 +251,7 @@ export default function IPDPatientChartPage() {
             )}
           </div>
           {/* Add form */}
-          {user.role === 'doctor' && admission.STATUS === 'Active' && (
+          {user.role === 'doctor' && (admission.STATUS === 'Active' || admission.status === 'Active') && (
             <div className="card hms-anim-2" style={{ flex: 1, padding: 0, height: 'fit-content', position: 'sticky', top: 20 }}>
               <div style={{ padding: '16px 20px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>Add SOAP Note</h3>
@@ -290,25 +291,25 @@ export default function IPDPatientChartPage() {
               </div>
             ) : (
               nursingNotes.map(nn => (
-                <div key={nn.ID} className="card hms-anim-1" style={{ padding: 0, overflow: 'hidden' }}>
+                <div key={nn.ID || nn.id} className="card hms-anim-1" style={{ padding: 0, overflow: 'hidden' }}>
                   <div style={{ padding: '14px 20px', background: 'rgba(16,185,129,0.03)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontWeight: 800, color: '#10b981', fontSize: '0.9rem' }}>{nn.NURSE_NAME}</div>
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{new Date(nn.NOTE_DATE).toLocaleString()}</div>
+                    <div style={{ fontWeight: 800, color: '#10b981', fontSize: '0.9rem' }}>{nn.NURSE_NAME || nn.nurse_name || 'Nurse'}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{(nn.NOTE_DATE || nn.note_date) ? new Date(nn.NOTE_DATE || nn.note_date).toLocaleString() : '—'}</div>
                   </div>
                   <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
                     <div>
                       <label className="form-label">Condition Notes</label>
-                      <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6 }}>{nn.CONDITION_NOTES}</p>
+                      <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6 }}>{nn.CONDITION_NOTES || nn.condition_notes || nn.NOTE_TEXT || nn.note_text || '—'}</p>
                     </div>
-                    {nn.COMPLAINTS && (
+                    {(nn.COMPLAINTS || nn.complaints) && (
                       <div>
                         <label className="form-label" style={{ color: '#ef4444' }}>Patient Complaints</label>
-                        <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6, color: '#ef4444', fontWeight: 600 }}>{nn.COMPLAINTS}</p>
+                        <p style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.6, color: '#ef4444', fontWeight: 600 }}>{nn.COMPLAINTS || nn.complaints}</p>
                       </div>
                     )}
                     <div style={{ padding: '12px 16px', background: 'var(--surface-2)', borderRadius: 12, border: '1px solid var(--border)' }}>
                       <label className="form-label">Actions Taken</label>
-                      <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--text-secondary)' }}>{nn.ACTIONS_TAKEN}</p>
+                      <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--text-secondary)' }}>{nn.ACTIONS_TAKEN || nn.actions_taken || 'None recorded'}</p>
                     </div>
                   </div>
                 </div>
@@ -316,7 +317,7 @@ export default function IPDPatientChartPage() {
             )}
           </div>
           {/* Add form */}
-          {['nurse','admin'].includes(user.role) && admission.STATUS === 'Active' && (
+          {['nurse','admin'].includes(user.role) && (admission.STATUS === 'Active' || admission.status === 'Active') && (
             <div className="card hms-anim-2" style={{ flex: 1, padding: 0, height: 'fit-content', position: 'sticky', top: 20 }}>
               <div style={{ padding: '16px 20px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>Record Observation</h3>
