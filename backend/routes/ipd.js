@@ -610,10 +610,15 @@ router.get('/admissions/:id/discharge-summary', protect, checkPermission('ipd', 
 
 router.post('/progress-notes', protect, checkPermission('ipd', 'write'), async (req, res) => {
   try {
-    const note = await ProgressNote.create({ ...req.body, doctorId: req.user.id });
+    const payload = { ...req.body, doctorId: req.user.id };
+    if (!payload.id) {
+      const [[seqRow]] = await sequelize.query(`SELECT nextval('hms_progress_seq') AS "ID"`);
+      payload.id = seqRow.ID || seqRow.id;
+    }
+    const note = await ProgressNote.create(payload);
     res.json({ success: true, data: note });
   } catch (err) {
-    console.error(err);
+    console.error('Failed to save progress note:', err);
     res.status(500).json({ success: false, message: 'Failed to save progress note' });
   }
 });
@@ -741,10 +746,15 @@ router.get('/vitals/patient/:patientId', protect, checkPermission('ipd', 'read')
 
 router.post('/mar', protect, checkPermission('ipd', 'write'), async (req, res) => {
   try {
-    const m = await MarRecord.create(req.body); // For creating schedules
+    const payload = { ...req.body };
+    if (!payload.id) {
+      const [[seqRow]] = await sequelize.query(`SELECT nextval('hms_mar_seq') AS "ID"`);
+      payload.id = seqRow.ID || seqRow.id;
+    }
+    const m = await MarRecord.create(payload); // For creating schedules
     res.json({ success: true, data: m });
   } catch (err) {
-    console.error(err);
+    console.error('Failed to save MAR:', err);
     res.status(500).json({ success: false, message: 'Failed to save MAR' });
   }
 });

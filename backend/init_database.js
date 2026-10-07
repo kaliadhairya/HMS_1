@@ -98,6 +98,7 @@ async function initDB() {
       ['hms_tariff_seq', 1],
       ['hms_rcpt_num_seq', 1],
       ['hms_rest_forms_seq', 1],
+      ['hms_discharge_seq', 1],
     ];
 
     for (const [s, start] of sequences) {
@@ -613,7 +614,7 @@ async function initDB() {
       RECORDED_AT TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       BP_SYSTOLIC INTEGER,
       BP_DIASTOLIC INTEGER,
-      TEMPERATURE INTEGER,
+      TEMPERATURE NUMERIC(5,2),
       SPO2 INTEGER,
       PULSE INTEGER,
       RESPIRATORY_RATE INTEGER,
@@ -637,6 +638,25 @@ async function initDB() {
       ADMINISTERED_AT TIMESTAMP,
       HOLD_REASON VARCHAR(500),
       NOTES VARCHAR(500))`, 'HMS_MAR_RECORDS');
+
+    await execSafe(`CREATE TABLE IF NOT EXISTS HMS_DISCHARGE_SUMMARIES (
+      ID INTEGER DEFAULT nextval('hms_discharge_seq') PRIMARY KEY,
+      ADMISSION_ID INTEGER NOT NULL,
+      FINAL_DIAGNOSIS VARCHAR(255),
+      COURSE_IN_HOSPITAL TEXT,
+      DISCHARGE_CONDITION VARCHAR(100),
+      ADVICE_ON_DISCHARGE TEXT,
+      CHIEF_COMPLAINT TEXT,
+      COMORBIDITIES TEXT,
+      ALLERGIES TEXT,
+      HISTORY_OF_ILLNESS TEXT,
+      INVESTIGATIONS TEXT,
+      DISCHARGE_MEDICATIONS TEXT,
+      DIET_LIFESTYLE TEXT,
+      WARNING_SIGNS TEXT,
+      FOLLOW_UP_APPOINTMENTS TEXT,
+      CREATED_BY INTEGER,
+      CREATED_AT TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`, 'HMS_DISCHARGE_SUMMARIES');
 
     await execSafe(`CREATE TABLE IF NOT EXISTS HMS_BILLS (
       ID INTEGER DEFAULT nextval('hms_bills_seq') PRIMARY KEY,

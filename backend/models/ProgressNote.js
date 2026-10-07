@@ -5,22 +5,23 @@ class ProgressNote extends Model {}
 
 ProgressNote.init({
   id: {
-    type: DataTypes.NUMBER,
+    type: DataTypes.INTEGER,
     primaryKey: true,
-        field: 'ID'
+    autoIncrement: true,
+    field: 'ID'
   },
   admissionId: {
-    type: DataTypes.NUMBER,
+    type: DataTypes.INTEGER,
     allowNull: false,
     field: 'ADMISSION_ID',
   },
   patientId: {
-    type: DataTypes.NUMBER,
+    type: DataTypes.INTEGER,
     allowNull: false,
     field: 'PATIENT_ID',
   },
   doctorId: {
-    type: DataTypes.NUMBER,
+    type: DataTypes.INTEGER,
     field: 'DOCTOR_ID',
   },
   noteDate: {
