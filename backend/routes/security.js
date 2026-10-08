@@ -4,6 +4,7 @@ const os = require('os');
 const { QueryTypes, Op } = require('sequelize');
 const { protect, restrictTo } = require('../middleware/auth');
 const AuditLog = require('../models/AuditLog');
+const User = require('../models/User');
 const { sequelize } = require('../models/db');
 const { logAction } = require('../utils/auditLogger');
 
@@ -107,8 +108,9 @@ router.get('/sessions', protect, restrictTo('super_admin'), async (req, res) => 
   try {
     // Get recently active users (logged in within last 24 hours)
     const activeSessions = await sequelize.query(
-      `SELECT ID, USERNAME, NAME, ROLE, LAST_LOGIN, FAILED_ATTEMPTS, LOCKED_UNTIL, IS_ACTIVE
-       FROM HMS_USERS 
+      `SELECT ID as "ID", USERNAME as "USERNAME", NAME as "NAME", ROLE as "ROLE", LAST_LOGIN as "LAST_LOGIN",
+              FAILED_ATTEMPTS as "FAILED_ATTEMPTS", LOCKED_UNTIL as "LOCKED_UNTIL", IS_ACTIVE as "IS_ACTIVE"
+       FROM HMS_USERS
        WHERE LAST_LOGIN IS NOT NULL 
        ORDER BY LAST_LOGIN DESC`,
       { type: sequelize.QueryTypes.SELECT }
@@ -124,6 +126,22 @@ router.get('/sessions', protect, restrictTo('super_admin'), async (req, res) => 
   } catch (err) {
     console.error('Session manager error:', err.message);
     res.status(500).json({ success: false, message: 'Failed to load sessions.' });
+  }
+});
+
+// Force logout a user (temporary lock)
+router.post('/sessions/:userId/force-logout', protect, restrictTo('super_admin'), async (req, res) => {
+  try {
+    const { userId } = req.params;
+    await User.update(
+      { locked_until: new Date(Date.now() + 60000) }, // Lock for 1 minute
+      { where: { id: userId } }
+    );
+    const ip = req.ip || req.connection?.remoteAddress || null;
+    await logAction(req.user.id, 'FORCE_LOGOUT', 'security', userId, null, { target_user: userId }, ip);
+    res.json({ success: true, message: 'User session terminated.' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to force logout.' });
   }
 });
 
@@ -668,6 +686,23 @@ router.put('/role-templates/:id', protect, restrictTo('super_admin'), async (req
   const ip = req.ip || req.connection?.remoteAddress || null;
   await logAction(req.user.id, 'UPDATE', 'role_templates', tmpl.id, null, { role: tmpl.role, permissions: tmpl.permissions }, ip);
   res.json({ success: true, data: tmpl });
+});
+
+// ═══════════════════════════════════════════════════════
+// UNLOCK USER — /api/security/users/:id/unlock
+// ═══════════════════════════════════════════════════════
+router.post('/users/:id/unlock', protect, restrictTo('super_admin'), async (req, res) => {
+  try {
+    await User.update(
+      { locked_until: null, failed_attempts: 0 },
+      { where: { id: req.params.id } }
+    );
+    const ip = req.ip || req.connection?.remoteAddress || null;
+    await logAction(req.user.id, 'UPDATE', 'security', req.params.id, null, { action: 'account_unlocked' }, ip);
+    res.json({ success: true, message: 'Account unlocked.' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to unlock.' });
+  }
 });
 
 function formatUptime(ms) {

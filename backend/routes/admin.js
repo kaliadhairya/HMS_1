@@ -199,6 +199,44 @@ router.patch('/tariff/:id/toggle', protect, checkPermission('admin', 'write'), a
 // ═══════════════════════════════════════════════════════════════
 //  STAFF MANAGEMENT (Admin can view/edit operational staff only)
 // ═══════════════════════════════════════════════════════════════
+router.get('/staff', protect, checkPermission('admin', 'read'), async (req, res) => {
+  try {
+    const [rows] = await sequelize.query(`
+      SELECT u.ID as "ID", u.NAME as "NAME", u.USERNAME as "USERNAME", u.ROLE as "ROLE", u.PHONE as "PHONE",
+             u.IS_ACTIVE as "IS_ACTIVE", u.LAST_LOGIN as "LAST_LOGIN", u.FAILED_ATTEMPTS as "FAILED_ATTEMPTS",
+             u.LOCKED_UNTIL as "LOCKED_UNTIL", u.CREATED_AT as "CREATED_AT"
+      FROM HMS_USERS u
+      WHERE u.ROLE NOT IN ('super_admin', 'admin')
+      ORDER BY u.NAME
+    `);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Failed to fetch staff' });
+  }
+});
+
+router.put('/staff/:id', protect, checkPermission('admin', 'write'), async (req, res) => {
+  try {
+    const { name, phone, role, isActive } = req.body;
+    // Ensure admin cannot promote to admin/super_admin
+    if (role === 'super_admin' || role === 'admin') {
+      return res.status(403).json({ success: false, message: 'Cannot assign admin/super_admin roles' });
+    }
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (user.role === 'super_admin' || user.role === 'admin') {
+      return res.status(403).json({ success: false, message: 'Cannot modify admin/super_admin users' });
+    }
+    await user.update({ name, phone, role, isActive: isActive ? 1 : 0 });
+    await logAction(req.user.id, 'UPDATE', 'staff', user.id, null, { action: 'update_staff', name }, req.ip);
+    const { id, username, name: updatedName, phone: updatedPhone, role: updatedRole, isActive: updatedActive } = user;
+    res.json({ success: true, data: { id, username, name: updatedName, phone: updatedPhone, role: updatedRole, isActive: updatedActive } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Failed to update staff' });
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════
 //  ATTENDANCE & LEAVE (In-memory store for now)
