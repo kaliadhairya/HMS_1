@@ -3,6 +3,23 @@ import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 
+function parseBrandNames(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+      if (typeof parsed === 'string') return [parsed];
+    } catch {
+      return trimmed.split(',').map(s => s.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
 export default function MedicineMasterPage() {
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +92,7 @@ export default function MedicineMasterPage() {
     setEditingId(med.id);
     setFormData({
       genericName: med.genericName,
-      brandNames: typeof med.brandNames === 'string' ? JSON.parse(med.brandNames) : (med.brandNames || []),
+      brandNames: parseBrandNames(med.brandNames),
       category: med.category || 'Other',
       formulation: med.formulation || 'Tablet',
       strength: med.strength || '',
@@ -271,11 +288,11 @@ export default function MedicineMasterPage() {
                       </td>
                       <td style={tdS}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: 220 }}>
-                          {(typeof med.brandNames === 'string' ? JSON.parse(med.brandNames) : (med.brandNames || [])).slice(0, 3).map((b, idx) => (
+                          {parseBrandNames(med.brandNames).slice(0, 3).map((b, idx) => (
                             <span key={idx} className="badge" style={{ background: 'rgba(13,148,136,0.06)', color: '#0d9488', fontSize: '0.72rem', border: '1px solid rgba(13,148,136,0.1)' }}>{b}</span>
                           ))}
-                          {(typeof med.brandNames === 'string' ? JSON.parse(med.brandNames) : (med.brandNames || [])).length > 3 && 
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>+{(typeof med.brandNames === 'string' ? JSON.parse(med.brandNames) : (med.brandNames || [])).length - 3} more</span>
+                          {parseBrandNames(med.brandNames).length > 3 && 
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>+{parseBrandNames(med.brandNames).length - 3} more</span>
                           }
                         </div>
                       </td>

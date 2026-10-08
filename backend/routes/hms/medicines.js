@@ -5,6 +5,23 @@ const { sequelize } = require('../../models/db');
 const { protect, checkPermission } = require('../../middleware/auth');
 const { body, validationResult } = require('express-validator');
 
+function parseBrandNames(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+      if (typeof parsed === 'string') return [parsed];
+    } catch {
+      return trimmed.split(',').map(s => s.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
 router.get('/rxnav/search', protect, checkPermission('pharmacy', 'read'), async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
@@ -71,7 +88,7 @@ router.get('/search', protect, async (req, res) => {
     const mapped = rows.map(r => ({
       id: r.ID ?? r.id,
       genericName: r.GENERIC_NAME ?? r.generic_name,
-      brandNames: r.BRAND_NAMES ?? r.brand_names,
+      brandNames: parseBrandNames(r.BRAND_NAMES ?? r.brand_names),
       formulation: r.FORMULATION ?? r.formulation,
       strength: r.STRENGTH ?? r.strength,
       strengthUnit: r.STRENGTH_UNIT ?? r.strength_unit,
@@ -117,7 +134,7 @@ router.get('/', protect, checkPermission('pharmacy', 'read'), async (req, res) =
     const mapped = rows.map(r => ({
       id: r.ID ?? r.id,
       genericName: r.GENERIC_NAME ?? r.generic_name,
-      brandNames: r.BRAND_NAMES ?? r.brand_names,
+      brandNames: parseBrandNames(r.BRAND_NAMES ?? r.brand_names),
       category: r.CATEGORY ?? r.category,
       formulation: r.FORMULATION ?? r.formulation,
       strength: r.STRENGTH ?? r.strength,
