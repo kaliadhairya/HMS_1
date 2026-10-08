@@ -304,10 +304,10 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
               {/* HOSPITAL HEADER */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2.5px solid #c6943e', paddingBottom: '16px', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <img src="/logo.png" alt="HMS Logo" style={{ height: '65px' }} />
+                  <img src="/logo.png" alt="Hospital Logo" style={{ height: '65px' }} />
                   <div>
-                    <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 900, color: '#1a202c' }}>HOSPITAL MANAGEMENT SYSTEM</h1>
-                    <h2 style={{ margin: '2px 0 0', fontSize: '0.95rem', color: '#4a5568', fontWeight: 600 }}>Main Hospital & Healthcare Center</h2>
+                    <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 900, color: '#1a202c' }}>HMS HOSPITAL</h1>
+                    <h2 style={{ margin: '2px 0 0', fontSize: '0.95rem', color: '#4a5568', fontWeight: 600 }}>Healthcare & Inpatient Services</h2>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>

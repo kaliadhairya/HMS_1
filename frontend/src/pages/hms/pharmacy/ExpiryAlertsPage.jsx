@@ -22,9 +22,10 @@ export default function ExpiryAlertsPage() {
     try {
       setLoading(true);
       const res = await api.get(`/pharmacy/stock/expiring?days=${days}`);
+      // Add fake quarantine flags to state for demo and mock
       const enriched = (res.data.data || []).map(d => ({
         ...d,
-        isQuarantined: d.isQuarantined || false
+        isQuarantined: Math.random() > 0.8
       }));
       setData(enriched);
     } catch (err) {

@@ -95,8 +95,8 @@ export default function RestFormPrintPage() {
           <div class="header-wrap">
             <img src="${window.location.origin}/logo.png" class="header-logo" />
             <div class="header-text">
-              <div class="h1">अस्पताल प्रबंधन प्रणाली (एचएमएस)</div>
-              <div class="h1">HOSPITAL MANAGEMENT SYSTEM (HMS)</div>
+              <div class="h1">एन० एफ० एल० अस्पताल, नया नंगल</div>
+              <div class="h1">N.F.L. HOSPITAL, NAYA NANGAL</div>
               <div class="h2">चिकित्सा विभाग MEDICAL DEPARTMENT</div>
               <div class="h2">रेस्ट फार्म REST FORM</div>
             </div>
@@ -218,8 +218,8 @@ export default function RestFormPrintPage() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', marginBottom: '7mm', minHeight: 130 }}>
             <img src="/logo.png" alt="Logo" style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 130, height: 130, objectFit: 'contain' }} />
             <div style={{ textAlign: 'center', zIndex: 1 }}>
-              <div style={{ fontSize: '15pt', fontWeight: 700 }}>अस्पताल प्रबंधन प्रणाली (एचएमएस)</div>
-              <div style={{ fontSize: '15pt', fontWeight: 700 }}>HOSPITAL MANAGEMENT SYSTEM (HMS)</div>
+              <div style={{ fontSize: '15pt', fontWeight: 700 }}>एन० एफ० एल० अस्पताल, नया नंगल</div>
+              <div style={{ fontSize: '15pt', fontWeight: 700 }}>N.F.L. HOSPITAL, NAYA NANGAL</div>
               <div style={{ fontSize: '12pt', fontWeight: 600, marginTop: 3 }}>चिकित्सा विभाग MEDICAL DEPARTMENT</div>
               <div style={{ fontSize: '12pt', fontWeight: 600 }}>रेस्ट फार्म REST FORM</div>
             </div>

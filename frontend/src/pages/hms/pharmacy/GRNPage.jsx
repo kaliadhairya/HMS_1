@@ -371,7 +371,7 @@ export default function GRNPage() {
                         <input type="checkbox" checked={item.returnToVendor} onChange={e => handleItemChange(index, 'returnToVendor', e.target.checked)} style={{ transform: 'scale(1.5)' }} />
                       </td>
                       <td style={{ fontWeight: 600, color: item.returnToVendor ? 'var(--amber)' : 'inherit' }}>
-                        {item.returnToVendor ? 'RETURN' : Number(r.total || 0).toFixed(2)}
+                        {item.returnToVendor ? 'RETURN' : r.total.toFixed(2)}
                       </td>
                       <td>
                         <button type="button" className="btn btn-outline" style={{ padding: '4px 8px', color: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => removeItem(index)}>×</button>
@@ -389,9 +389,9 @@ export default function GRNPage() {
 
           <div style={{ background: 'var(--surface-2)', padding: 20, borderRadius: 8, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 32 }}>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Subtotal: ₹{Number(totals.subtotal || 0).toFixed(2)}</div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>GST Amount: ₹{Number(totals.gst || 0).toFixed(2)}</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, marginTop: 4 }}>Grand Total: ₹{Number(totals.grandTotal || 0).toFixed(2)}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Subtotal: ₹{totals.subtotal.toFixed(2)}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>GST Amount: ₹{totals.gst.toFixed(2)}</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 700, marginTop: 4 }}>Grand Total: ₹{totals.grandTotal.toFixed(2)}</div>
             </div>
             <button type="submit" className="btn btn-primary" style={{ padding: '12px 24px', fontSize: '1.1rem' }} disabled={loading}>
               {loading ? 'Processing...' : '✅ Generate GRN'}

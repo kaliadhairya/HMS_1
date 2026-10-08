@@ -63,7 +63,7 @@ const HMS_NAV_PER_ROLE = {
   receptionist: [
     { to: '/receptionist/dashboard', label: 'Dashboard', icon: '🏠' },
     { to: '/hms/patients/new', label: 'Registration', icon: '📝' },
-    { to: '/hms/opd/token', label: 'OPD Token', icon: '🎫' },
+    { to: '/hms/opd/token', label: 'OPD Token', icon: '🎫', disabled: true },
     { to: '/receptionist/appointments', label: 'Appointments', icon: '📅' },
     { to: '/hms/patients/search', label: 'Patient Search', shortLabel: 'Patients', icon: '🔍' },
     { to: '/receptionist/visitors', label: 'Visitors', icon: '👥' },
@@ -73,8 +73,8 @@ const HMS_NAV_PER_ROLE = {
     { to: '/pharmacist/dashboard', label: 'Dashboard', icon: '🏠' },
     { to: '/pharmacy/medicines', label: 'Medicines', icon: '💊' },
     { to: '/pharmacy/suppliers', label: 'Suppliers', icon: '🏭' },
-    { to: '/pharmacy/pos', label: 'Purchase Orders', shortLabel: 'PO', icon: '📋' },
-    { to: '/pharmacy/grn', label: 'GRN', icon: '📥' },
+    { to: '/pharmacy/pos', label: 'Purchase Orders', shortLabel: 'PO', icon: '📋', disabled: true },
+    { to: '/pharmacy/grn', label: 'GRN', icon: '📥', disabled: true },
     { to: '/pharmacy/stock', label: 'Stock', icon: '📦' },
     { to: '/pharmacy/dispense', label: 'Dispense', icon: '📝' },
     { to: '/pharmacy/otc', label: 'OTC Sale', shortLabel: 'OTC', icon: '🛒' },
@@ -278,10 +278,10 @@ export default function Navbar() {
                       <span style={{
                         background: 'rgba(59,130,246,0.1)', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6
                       }}>⚡</span>
-                      HMS IT Department
+                      HMS IT Department says
                     </h3>
                     <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
-                      Hospital Management System — Designed and developed for streamlined healthcare operations.
+                      We designed and developed this Hospital Management System. Any Queries Contact us but not in Lunch Time 😊
                     </p>
                     <button
                       onClick={() => toast.dismiss(t.id)}

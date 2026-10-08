@@ -22,7 +22,8 @@ function isSameLocalDate(value, date = new Date()) {
 }
 
 function getPatientTypeBadge(type) {
-  if (type === 'corporate_employee') return { label: 'Corporate', bg: 'rgba(16,185,129,0.1)', color: 'var(--green)', border: 'rgba(16,185,129,0.2)' };
+  if (type === 'nfl_employee' || type === 'corporate_employee') return { label: 'Corporate', bg: 'rgba(16,185,129,0.1)', color: 'var(--green)', border: 'rgba(16,185,129,0.2)' };
+  if (type === 'cisf_employee') return { label: 'Sponsored', bg: 'rgba(99,102,241,0.1)', color: '#4f46e5', border: 'rgba(99,102,241,0.2)' };
   return { label: 'General', bg: 'rgba(59,130,246,0.1)', color: 'var(--blue)', border: 'rgba(59,130,246,0.2)' };
 }
 
@@ -66,7 +67,6 @@ function getActionMenuPosition(rect, preferredWidth = 240) {
   };
 }
 
-
 export default function DoctorDashboard() {
   const { user } = useAuth();
   const [todayPatients, setTodayPatients] = useState([]);
@@ -80,8 +80,6 @@ export default function DoctorDashboard() {
   const socket = useSocket();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const isRefreshingRef = useRef(false);
   const [todayStatusFilter, setTodayStatusFilter] = useState('all');
   const [todaySearch, setTodaySearch] = useState('');
   const [pendingSearch, setPendingSearch] = useState('');
@@ -136,10 +134,7 @@ export default function DoctorDashboard() {
     };
   }, [socket]);
 
-  const fetchDoctorData = async (showToast = false) => {
-    if (isRefreshingRef.current) return;
-    isRefreshingRef.current = true;
-    setIsRefreshing(true);
+  const fetchDoctorData = async () => {
     try {
       const [todayRes, patientsRes, pendingRes, prescriptionsRes, labsRes] = await Promise.allSettled([
         api.get('/patients/hms/today-patients'),
@@ -155,44 +150,22 @@ export default function DoctorDashboard() {
         console.error('Failed to fetch some doctor dashboard data:', failedRequests.map((result) => result.reason));
       }
 
-      // Preserve existing state if a request fails/rate-limits instead of clearing the board
-      if (todayRes.status === 'fulfilled') {
-        setTodayPatients(todayRes.value.data?.data || []);
-      }
-      if (patientsRes.status === 'fulfilled') {
-        setMyPatients(patientsRes.value.data?.data || []);
-      }
-      if (pendingRes.status === 'fulfilled') {
-        setPendingPatients(pendingRes.value.data?.data || []);
-      }
-      if (prescriptionsRes.status === 'fulfilled') {
-        setDoctorPrescriptions(prescriptionsRes.value.data?.data || []);
-      }
-      if (labsRes.status === 'fulfilled') {
-        setDoctorLabs(labsRes.value.data?.data || []);
-      }
-
-      if (failedRequests.length === 0) {
-        setLastRefreshedAt(new Date());
-        if (showToast) toast.success('Dashboard refreshed');
-      } else if (failedRequests.length < 5) {
-        setLastRefreshedAt(new Date());
-        if (showToast) toast('Dashboard partially updated', { icon: '⚠️' });
-      } else {
-        const is429 = failedRequests.some((r) => r.reason?.response?.status === 429);
-        if (is429) {
-          toast.error('Too many requests. Please wait a moment before refreshing.');
-        } else if (showToast) {
-          toast.error('Could not refresh dashboard data. Please try again.');
-        }
-      }
+      setTodayPatients(todayRes.status === 'fulfilled' ? todayRes.value.data?.data || [] : []);
+      setMyPatients(patientsRes.status === 'fulfilled' ? patientsRes.value.data?.data || [] : []);
+      setPendingPatients(pendingRes.status === 'fulfilled' ? pendingRes.value.data?.data || [] : []);
+      setDoctorPrescriptions(prescriptionsRes.status === 'fulfilled' ? prescriptionsRes.value.data?.data || [] : []);
+      setDoctorLabs(labsRes.status === 'fulfilled' ? labsRes.value.data?.data || [] : []);
+      setLastRefreshedAt(new Date());
     } catch (err) {
       console.error('Failed to fetch doctor data:', err);
-      if (showToast) toast.error('Failed to refresh dashboard');
+      setTodayPatients([]);
+      setMyPatients([]);
+      setPendingPatients([]);
+      setDoctorPrescriptions([]);
+      setDoctorLabs([]);
+      setLastRefreshedAt(null);
     } finally {
       setLoading(false);
-      setIsRefreshing(false);
-      isRefreshingRef.current = false;
     }
   };
 
@@ -306,23 +279,21 @@ export default function DoctorDashboard() {
 
         {/* ── Doctor Profile Card ── */}
         <div className="doctor-dashboard-profile-card" style={{
-          padding: '20px 22px',
+          padding: '24px',
           borderRadius: 16,
           background: 'var(--surface)',
           boxShadow: 'var(--shadow-md)',
           border: '1px solid var(--border)',
           position: 'relative',
-          overflow: 'visible',
-          minHeight: 'fit-content',
+          overflow: 'hidden',
         }}>
           {/* Gradient top accent */}
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, height: 4,
             background: 'linear-gradient(90deg, #06b6d4, #8b5cf6)',
-            borderTopLeftRadius: 16, borderTopRightRadius: 16,
           }} />
 
-          <div className="doctor-dashboard-profile-top" style={{ marginBottom: 10 }}>
+          <div className="doctor-dashboard-profile-top" style={{ marginBottom: 16 }}>
             <div style={{
               fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase',
               letterSpacing: '0.12em', color: 'var(--text-muted)', fontStyle: 'italic',
@@ -333,15 +304,14 @@ export default function DoctorDashboard() {
 
           <div className="doctor-dashboard-profile-name" style={{
             fontFamily: 'var(--font-body, system-ui, -apple-system, sans-serif)',
-            fontSize: 'clamp(1.15rem, 1.4vw, 1.4rem)', fontWeight: 700, lineHeight: 1.35,
-            color: 'var(--text-primary)', marginBottom: 8, letterSpacing: '-0.01em',
-            wordBreak: 'break-word', overflowWrap: 'break-word',
+            fontSize: '1.65rem', fontWeight: 700, lineHeight: 1.2,
+            color: 'var(--text-primary)', marginBottom: 6, letterSpacing: '-0.01em',
           }}>
-            {user?.name || 'Doctor'}
+            Dr. {user?.name || 'Doctor'}
           </div>
           <div className="doctor-dashboard-profile-date" style={{
-            fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 500,
-            marginBottom: 16, lineHeight: 1.4,
+            fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500,
+            marginBottom: 20,
           }}>
             {dateStr} — Clinical Workspace
           </div>
@@ -357,16 +327,16 @@ export default function DoctorDashboard() {
               + Book Follow-up
             </button>
             <button className="btn btn-outline" 
-              disabled={isRefreshing}
-              onClick={() => fetchDoctorData(true)}
+              onClick={() => {
+                fetchDoctorData();
+                toast.success('Dashboard refreshed');
+              }}
               style={{
                 flex: '1 1 auto', whiteSpace: 'nowrap', padding: '10px 12px', fontSize: '0.85rem', fontWeight: 600,
-                borderRadius: 10, color: isRefreshing ? 'var(--text-muted)' : 'var(--green)',
-                border: `1px solid ${isRefreshing ? 'var(--border)' : 'var(--green)'}`, background: 'transparent',
-                cursor: isRefreshing ? 'not-allowed' : 'pointer',
-                opacity: isRefreshing ? 0.7 : 1,
+                borderRadius: 10, color: 'var(--green)',
+                border: '1px solid var(--green)', background: 'transparent',
               }}>
-              {isRefreshing ? '↻ Refreshing...' : '↻ Refresh'}
+              ↻ Refresh
             </button>
           </div>
         </div>
@@ -409,7 +379,7 @@ export default function DoctorDashboard() {
       </div>
 
       {/* ── RIGHT CONTENT (Side-by-side tables) ── */}
-      <div className="doctor-dashboard-content">
+      <div className="doctor-dashboard-content" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '20px', minHeight: 0, overflow: 'visible', padding: '16px 20px' }}>
 
           {/* ── Today's Registered Patients ── */}
           <div className="card hms-anim-5 doctor-dashboard-table-card doctor-dashboard-today-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0, height: 'auto' }}>
@@ -445,9 +415,7 @@ export default function DoctorDashboard() {
                     />
                   </label>
                 )}
-                <button className="btn btn-sm btn-ghost" disabled={isRefreshing} onClick={() => fetchDoctorData(true)}>
-                  {isRefreshing ? '↻ Refreshing...' : '↻ Refresh'}
-                </button>
+                <button className="btn btn-sm btn-ghost" onClick={fetchDoctorData}>↻ Refresh</button>
               </div>
             </div>
 
@@ -482,13 +450,7 @@ export default function DoctorDashboard() {
               <div className="table-wrapper hms-table-anim doctor-dashboard-table-wrap doctor-dashboard-list-scroll" style={{ border: 'none', borderRadius: 0, boxShadow: 'none', flex: 1, overflow: 'auto' }}>
                 <table>
                   <thead>
-                    <tr>
-                      <th style={{ width: 32, textAlign: 'center', padding: '10px 4px' }}>#</th>
-                      <th style={{ minWidth: 130, padding: '10px 8px' }}>Patient</th>
-                      <th style={{ width: 76, textAlign: 'center', padding: '10px 4px' }}>Type</th>
-                      <th style={{ width: 95, padding: '10px 6px' }}>Status</th>
-                      <th style={{ width: 115, textAlign: 'right', padding: '10px 8px' }}>Actions</th>
-                    </tr>
+                    <tr><th style={{width:30}}>#</th><th>Patient</th><th style={{textAlign:'center'}}>Type</th><th>Status</th><th>Actions</th></tr>
                   </thead>
                   <tbody>
                     {visibleTodayPatients.map((p, idx) => {
@@ -500,8 +462,8 @@ export default function DoctorDashboard() {
 
                       return (
                         <tr key={p.id} style={{ background: rowBg }}>
-                          <td style={{ textAlign: 'center', padding: '10px 4px' }}><strong>{idx + 1}</strong></td>
-                          <td style={{ padding: '10px 8px' }}>
+                          <td><strong>{idx + 1}</strong></td>
+                          <td>
                             <div style={{ fontWeight: 600 }}>{p.name}</div>
                             <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
                               {p.uhid} • {p.age}y • {p.gender}
@@ -513,9 +475,9 @@ export default function DoctorDashboard() {
                               </div>
                             )}
                           </td>
-                          <td style={{ textAlign: 'center', padding: '10px 4px' }}>
+                          <td style={{ textAlign: 'center' }}>
                             <span style={{
-                              padding: '3px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700,
+                              padding: '3px 10px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700,
                               textTransform: 'uppercase', letterSpacing: '0.04em',
                               background: typeBadge.bg,
                               color: typeBadge.color,
@@ -524,7 +486,7 @@ export default function DoctorDashboard() {
                               {typeBadge.label}
                             </span>
                           </td>
-                          <td style={{ padding: '10px 6px' }}>
+                          <td>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
                               {isDone ? (
                                 <span className="badge badge-green">✓ Done</span>
@@ -535,7 +497,7 @@ export default function DoctorDashboard() {
                               )}
                               {isBeingConsulted && !isMyConsultation && (
                                 <span style={{
-                                  fontSize: '0.72rem', color: 'var(--text-secondary)', fontStyle: 'italic',
+                                  fontSize: '0.75rem', color: 'var(--text-secondary)', fontStyle: 'italic',
                                   display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', marginTop: 2,
                                   background: 'var(--surface-2)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)'
                                 }}>
@@ -545,20 +507,20 @@ export default function DoctorDashboard() {
                               )}
                             </div>
                           </td>
-                          <td style={{ textAlign: 'right', padding: '10px 8px' }}>
+                          <td>
                             {(() => {
                               const isExpanded = expandedRow === p.id;
                               return (
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                   {!isBeingConsulted ? (
                                     <button ref={el => { actionBtnRefs.current[p.id] = el; }} className="btn btn-sm btn-primary" onClick={(e) => startConsultation(p, e)}
-                                      style={{ whiteSpace: 'nowrap', fontSize: '0.74rem', padding: '5px 10px', borderRadius: 8 }}>Start Consulting</button>
+                                      style={{ whiteSpace: 'nowrap', fontSize: '0.76rem', padding: '6px 14px', borderRadius: 8 }}>Start Consulting</button>
                                   ) : isMyConsultation ? (
                                     <button
                                       className={`btn btn-sm ${isExpanded ? '' : 'btn-primary'}`}
                                       onClick={(e) => { if (isExpanded) { closeActions(); } else { openActions(p, e); } }}
                                       style={{
-                                        whiteSpace: 'nowrap', fontSize: '0.74rem', padding: '5px 10px', borderRadius: 8,
+                                        whiteSpace: 'nowrap', fontSize: '0.76rem', padding: '6px 14px', borderRadius: 8,
                                         display: 'inline-flex', alignItems: 'center', gap: 6,
                                         ...(isExpanded ? { background: 'var(--red-light)', color: 'var(--red)', border: '1px solid var(--red-border)' } : {}),
                                       }}>{isExpanded ? '\u2715 Close' : '\u25b8 Actions'}</button>
@@ -618,9 +580,7 @@ export default function DoctorDashboard() {
                     />
                   </label>
                 )}
-                <button className="btn btn-sm btn-ghost" disabled={isRefreshing} onClick={() => fetchDoctorData(true)}>
-                  {isRefreshing ? '↻ Refreshing...' : '↻ Refresh'}
-                </button>
+                <button className="btn btn-sm btn-ghost" onClick={fetchDoctorData}>↻ Refresh</button>
               </div>
             </div>
 
@@ -636,13 +596,7 @@ export default function DoctorDashboard() {
               <div className="table-wrapper hms-table-anim doctor-dashboard-table-wrap doctor-dashboard-list-scroll" style={{ border: 'none', borderRadius: 0, boxShadow: 'none', flex: 1, overflow: 'auto' }}>
                 <table>
                   <thead>
-                    <tr>
-                      <th style={{ width: 32, textAlign: 'center', padding: '10px 4px' }}>#</th>
-                      <th style={{ minWidth: 130, padding: '10px 8px' }}>Patient</th>
-                      <th style={{ width: 76, textAlign: 'center', padding: '10px 4px' }}>Type</th>
-                      <th style={{ width: 95, padding: '10px 6px' }}>Registered</th>
-                      <th style={{ width: 115, textAlign: 'right', padding: '10px 8px' }}>Actions</th>
-                    </tr>
+                    <tr><th style={{width:30}}>#</th><th>Patient</th><th style={{textAlign:'center'}}>Type</th><th>Registered</th><th>Actions</th></tr>
                   </thead>
                   <tbody>
                     {visiblePendingPatients.map((p, idx) => {
@@ -658,17 +612,17 @@ export default function DoctorDashboard() {
                           background: isExpired ? 'rgba(148,163,184,0.07)' : 'transparent',
                           pointerEvents: isExpired ? 'none' : 'auto',
                         }}>
-                          <td style={{ textAlign: 'center', padding: '10px 4px' }}><strong>{idx + 1}</strong></td>
-                          <td style={{ padding: '10px 8px' }}>
+                          <td><strong>{idx + 1}</strong></td>
+                          <td>
                             <div style={{ fontWeight: 600 }}>{p.name}</div>
                             <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
                               {p.uhid} • {p.age}y • {p.gender}
                               {p.empNumber && <span> • Emp: {p.empNumber}</span>}
                             </div>
                           </td>
-                          <td style={{ textAlign: 'center', padding: '10px 4px' }}>
+                          <td style={{ textAlign: 'center' }}>
                             <span style={{
-                              padding: '3px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700,
+                              padding: '3px 10px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700,
                               textTransform: 'uppercase', letterSpacing: '0.04em',
                               background: typeBadge.bg,
                               color: typeBadge.color,
@@ -677,7 +631,7 @@ export default function DoctorDashboard() {
                               {typeBadge.label}
                             </span>
                           </td>
-                          <td style={{ padding: '10px 6px' }}>
+                          <td>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                               <span style={{
                                 fontSize: '0.73rem', fontWeight: 700,
@@ -693,12 +647,12 @@ export default function DoctorDashboard() {
                               )}
                             </div>
                           </td>
-                          <td style={{ textAlign: 'right', padding: '10px 8px' }}>
+                          <td>
                             {isExpired ? (
                               <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Expired</span>
                             ) : (
                               <button className="btn btn-sm btn-primary" onClick={() => startConsultation(p)}
-                                style={{ whiteSpace: 'nowrap', fontSize: '0.74rem', padding: '5px 10px', borderRadius: 8 }}>
+                                style={{ whiteSpace: 'nowrap', fontSize: '0.76rem', padding: '6px 14px', borderRadius: 8 }}>
                                 Start Consulting
                               </button>
                             )}
@@ -720,23 +674,24 @@ export default function DoctorDashboard() {
         onClose={() => { setIsReferralModalOpen(false); setSelectedPatientForReferral(null); }} 
         patient={selectedPatientForReferral} 
       />
-{/* ── Patient Actions Dropdown Overlay ── */}
+
+      {/* ── Patient Actions Dropdown Overlay ── */}
       {actionPatient && (() => {
         const p = actionPatient;
         const prescriptionAction = { label: 'Prescription', icon: '\u211B', iconBg: '#0d9488', onClick: () => navigate(`/hms/prescription-slip?patientId=${p.id}&encounterId=${p.encounter_id}`) };
         const ipdAction = { label: 'Move to IPD', icon: '\uD83C\uDFE5', iconBg: '#ec4899', onClick: () => navigate(`/ipd/admission-form?patientId=${p.id}`) };
-        const corporateExtras = [
-          { label: 'Referral', icon: '🔗', iconBg: '#3b82f6', onClick: () => { setSelectedPatientForReferral(p); setIsReferralModalOpen(true); } },
-          { label: 'Rest Form', icon: '🛏️', iconBg: '#d97706', onClick: () => navigate(`/doctor/rest-forms/new?patientId=${p.id}`) },
-          { label: 'Med Certificate', icon: '📋', iconBg: '#7c3aed', onClick: () => navigate(`/doctor/medical-certificate?patientId=${p.id}`) },
+        const nflExtras = [
+          { label: 'Referral', icon: '\uD83D\uDD17', iconBg: '#3b82f6', onClick: () => { setSelectedPatientForReferral(p); setIsReferralModalOpen(true); } },
+          { label: 'Rest Form', icon: '\uD83D\uDECF\uFE0F', iconBg: '#d97706', onClick: () => navigate(`/doctor/rest-forms/new?patientId=${p.id}`) },
+          { label: 'Med Certificate', icon: '\uD83D\uDCCB', iconBg: '#7c3aed', onClick: () => navigate(`/doctor/medical-certificate?patientId=${p.id}`) },
           ipdAction
         ];
         const generalExtras = [
-          { label: 'Med Certificate', icon: '📋', iconBg: '#7c3aed', onClick: () => navigate(`/doctor/medical-certificate?patientId=${p.id}`) },
+          { label: 'Med Certificate', icon: '\uD83D\uDCCB', iconBg: '#7c3aed', onClick: () => navigate(`/doctor/medical-certificate?patientId=${p.id}`) },
           ipdAction
         ];
-        const isCorporate = p.patientType === 'corporate_employee';
-        const actions = [prescriptionAction, ...(isCorporate ? corporateExtras : generalExtras)];
+        const isCorporateOrNFL = p.patientType === 'nfl_employee' || p.patientType === 'corporate_employee' || p.patient_type === 'nfl_employee' || p.patient_type === 'corporate_employee';
+        const actions = [prescriptionAction, ...(isCorporateOrNFL ? nflExtras : generalExtras)];
 
         return (
           <>

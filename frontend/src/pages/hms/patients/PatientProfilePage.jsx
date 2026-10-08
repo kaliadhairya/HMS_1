@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
-import { openAuthenticatedBlob } from '../../../utils/authenticatedDownload';
 
 const PATIENT_TYPE_META = {
+  nfl_employee: { label: 'Corporate Patient', fullLabel: 'Corporate Employee', bg: 'rgba(16,185,129,0.1)', color: '#059669', border: 'rgba(16,185,129,0.24)' },
   corporate_employee: { label: 'Corporate Patient', fullLabel: 'Corporate Employee', bg: 'rgba(16,185,129,0.1)', color: '#059669', border: 'rgba(16,185,129,0.24)' },
+  cisf_employee: { label: 'Sponsored Patient', fullLabel: 'Sponsored Patient', bg: 'rgba(99,102,241,0.1)', color: '#4f46e5', border: 'rgba(99,102,241,0.24)' },
   other: { label: 'General Patient', fullLabel: 'General', bg: 'rgba(59,130,246,0.1)', color: '#2563eb', border: 'rgba(59,130,246,0.24)' },
 };
 
@@ -70,11 +71,11 @@ export default function PatientProfilePage() {
   if (!patient) return <><Navbar /><div className="page-wrapper"><h2>Patient not found</h2></div></>;
 
   const patientType = patient.patientType || patient.patient_type;
-  const isCorporatePatient = patientType === 'corporate_employee';
+  const isNFLPatient = patientType === 'nfl_employee';
   const patientTypeMeta = getPatientTypeMeta(patientType);
   const patientTypeLabel = patientTypeMeta.label;
-  const headerIdLabel = isCorporatePatient ? 'EMP Number' : 'Phone';
-  const headerIdValue = isCorporatePatient
+  const headerIdLabel = isNFLPatient ? 'EMP Number' : 'Phone';
+  const headerIdValue = isNFLPatient
     ? (patient.empNumber || patient.emp_number || '-')
     : (patient.phoneNumber || patient.phone_number || '-');
 
@@ -269,7 +270,7 @@ export default function PatientProfilePage() {
                       <td><span className={`badge ${(b.STATUS || b.status) === 'Paid' ? 'badge-green' : 'badge-amber'}`}>{b.STATUS || b.status}</span></td>
                       <td>
                         {(b.STATUS || b.status) === 'Paid'
-                          ? <button type="button" onClick={() => openAuthenticatedBlob(`/pdf/bill/${b.ID || b.id}`)} className="btn btn-outline btn-sm">View PDF</button>
+                          ? <a href={`/api/pdf/bill/${b.ID || b.id}`} target="_blank" className="btn btn-outline btn-sm" style={{textDecoration:'none'}}>View PDF</a>
                           : <button className="btn btn-primary btn-sm" onClick={() => navigate(`/billing/opd/${b.ENCOUNTER_ID || b.encounter_id}`)}>Pay Now</button>
                         }
                       </td>

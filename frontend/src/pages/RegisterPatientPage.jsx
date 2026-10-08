@@ -18,7 +18,7 @@ export default function RegisterPatientPage() {
   const isEditMode = !!id;
   const navigate = useNavigate();
 
-  const [isCorporate, setIsCorporate] = useState(type === 'corporate');
+  const [isNFL, setIsNFL] = useState(type === 'nfl');
   
   const [form, setForm] = useState({
     name: '',
@@ -51,7 +51,7 @@ export default function RegisterPatientPage() {
     setIsSearchingDependents(true);
     setDependents([]);
     try {
-      const { data } = await api.get(`/patients/hms/emp/${encodeURIComponent(empNum.trim())}`);
+      const { data } = await api.get(`/patients/hms/nfl/${encodeURIComponent(empNum.trim())}`);
       if (data.success && data.data.length > 0) {
         setDependents(data.data);
       }
@@ -80,7 +80,7 @@ export default function RegisterPatientPage() {
         try {
           const { data } = await api.get(`/patients/${id}`);
           const p = data.patient;
-          setIsCorporate(p.patientType === 'corporate_employee');
+          setIsNFL(p.patientType === 'nfl_employee');
           
           let provDiagnosis = p.provDiagnosis || '';
           let provDiagnosisOther = '';
@@ -154,10 +154,10 @@ export default function RegisterPatientPage() {
     if (!form.age || form.age < 1 || form.age > 120) e.age = 'Valid age required';
     if (!form.gender) e.gender = 'Gender is required';
     if (!form.testDate) e.testDate = 'Test date is required';
-    if (isCorporate && !form.empNumber.trim()) e.empNumber = 'Employee number is required';
-    if (isCorporate && form.relationship === 'Other' && !form.relationshipOther.trim()) e.relationshipOther = 'Please specify relationship';
+    if (isNFL && !form.empNumber.trim()) e.empNumber = 'Employee number is required';
+    if (isNFL && form.relationship === 'Other' && !form.relationshipOther.trim()) e.relationshipOther = 'Please specify relationship';
     if (form.provDiagnosis === 'Other' && !form.provDiagnosisOther.trim()) e.provDiagnosisOther = 'Please specify diagnosis';
-    if (!isCorporate) {
+    if (!isNFL) {
       if (!form.phoneNumber.trim()) e.phoneNumber = 'Phone number is required';
       else if (!/^\d{10}$/.test(form.phoneNumber.replace(/\s/g, ''))) e.phoneNumber = 'Phone number must be exactly 10 digits';
     }
@@ -172,7 +172,7 @@ export default function RegisterPatientPage() {
     setLoading(true);
     try {
       const payload = {
-        patientType: isCorporate ? 'corporate_employee' : 'other',
+        patientType: isNFL ? 'nfl_employee' : 'other',
         name: form.name.trim(),
         age: Number(form.age),
         gender: form.gender,
@@ -183,11 +183,11 @@ export default function RegisterPatientPage() {
         doctorId: form.doctorId ? Number(form.doctorId) : null,
         departmentId: form.departmentId ? Number(form.departmentId) : null,
       };
-      if (isCorporate) {
+      if (isNFL) {
         payload.empNumber = form.empNumber.trim();
         payload.relationship = form.relationship === 'Other' ? form.relationshipOther.trim() : form.relationship;
       } else {
-        payload.phoneNumber = form.phoneNumber.replace(/\s/g, '');
+        payload.phoneNumber = form.phoneNumber.replace(/\\s/g, '');
       }
 
       if (isEditMode) {
@@ -206,9 +206,9 @@ export default function RegisterPatientPage() {
     }
   };
 
-  const accentColor = isCorporate ? 'var(--teal)' : 'var(--amber)';
-  const accentBg = isCorporate ? 'rgba(0,180,160,0.1)' : 'rgba(245,158,11,0.08)';
-  const accentBorder = isCorporate ? 'rgba(0,180,160,0.3)' : 'rgba(245,158,11,0.25)';
+  const accentColor = isNFL ? 'var(--teal)' : 'var(--amber)';
+  const accentBg = isNFL ? 'rgba(0,180,160,0.1)' : 'rgba(245,158,11,0.08)';
+  const accentBorder = isNFL ? 'rgba(0,180,160,0.3)' : 'rgba(245,158,11,0.25)';
 
   if (initialLoading) {
     return (
@@ -237,12 +237,12 @@ export default function RegisterPatientPage() {
               width: 46, height: 46, borderRadius: 12,
               background: accentBg, border: `1.5px solid ${accentBorder}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem',
-            }}>{isCorporate ? '🏢' : '🧑‍⚕️'}</div>
+            }}>{isNFL ? '🏢' : '🧑‍⚕️'}</div>
             <div>
               <h1 style={{ fontSize: '1.5rem' }}>
-                {isEditMode ? 'Edit ' : 'Register '} <span style={{ color: accentColor }}>{isCorporate ? 'Corporate Employee' : 'Other Patient'}</span>
+                {isEditMode ? 'Edit ' : 'Register '} <span style={{ color: accentColor }}>{isNFL ? 'NFL Employee' : 'Other Patient'}</span>
               </h1>
-              <p>{isCorporate ? 'Corporate employee & dependent registration with employee number' : 'General patient registration with Phone Number identification'}</p>
+              <p>{isNFL ? 'Employee & dependent registration with employee number' : 'General patient registration with Phone Number identification'}</p>
             </div>
           </div>
         </div>
@@ -275,8 +275,8 @@ export default function RegisterPatientPage() {
                 {errors.gender && <span className="form-error">{errors.gender}</span>}
               </div>
 
-              {/* Corporate ONLY fields */}
-              {isCorporate && (
+              {/* NFL ONLY fields */}
+              {isNFL && (
                 <>
                   <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px' }}>
@@ -284,7 +284,7 @@ export default function RegisterPatientPage() {
                         <label className="form-label">Employee Number *</label>
                         <input 
                           className="form-input" 
-                          placeholder="e.g. EMP-12345" 
+                          placeholder="e.g. NFL-12345" 
                           value={form.empNumber} 
                           onChange={e => set('empNumber', e.target.value)}
                           onBlur={(e) => fetchDependents(e.target.value)} 
@@ -353,7 +353,7 @@ export default function RegisterPatientPage() {
               )}
 
               {/* OTHERS ONLY */}
-              {!isCorporate && (
+              {!isNFL && (
                 <div className="form-group">
                   <label className="form-label">Phone Number *</label>
                   <input

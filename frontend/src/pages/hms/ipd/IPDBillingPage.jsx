@@ -80,16 +80,14 @@ export default function IPDBillingPage() {
   const updateQty = async (charge, newQty) => {
     if (newQty < 1) return;
     try {
-      const chargeId = charge.ID || charge.id;
-      await api.patch(`/ipd/admissions/${admissionId}/charges/${chargeId}`, { quantity: newQty });
+      await api.patch(`/ipd/admissions/${admissionId}/charges/${charge.ID}`, { quantity: newQty });
       fetchCharges();
     } catch { toast.error('Failed to update'); }
   };
 
   const removeCharge = async (charge) => {
     try {
-      const chargeId = charge.ID || charge.id;
-      await api.delete(`/ipd/admissions/${admissionId}/charges/${chargeId}`);
+      await api.delete(`/ipd/admissions/${admissionId}/charges/${charge.ID}`);
       toast.success('Removed');
       fetchCharges();
     } catch { toast.error('Failed to remove'); }
@@ -152,7 +150,7 @@ export default function IPDBillingPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
                 <span>Patient Checkout</span>
                 <span style={{ opacity: 0.5 }}>•</span>
-                <span>Encounter ID: {admission?.ADMISSION_ID_FORMATTED || admission?.admission_id_formatted || `IPD-${admission?.ID || admission?.id}`}</span>
+                <span>Encounter ID: {admission?.ADMISSION_ID_FORMATTED}</span>
               </div>
             </div>
             <div className="header-actions">
@@ -185,18 +183,18 @@ export default function IPDBillingPage() {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '2.4rem', border: '3px solid #fff', boxShadow: '0 4px 10px rgba(0,0,0,0.05)'
             }}>
-              {(admission?.GENDER || admission?.gender) === 'Female' ? '👩' : '👨'}
+              {admission?.GENDER === 'Female' ? '👩' : '👨'}
             </div>
             <span className="badge badge-teal" style={{ fontSize: '0.65rem' }}>ACTIVE IPD</span>
           </div>
 
           {/* Name & Basic Info */}
           <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontSize: '1.6rem', color: 'var(--text-primary)', fontWeight: 800 }}>{admission?.PATIENT_NAME || admission?.patient_name || 'Patient'}</h2>
+            <h2 style={{ margin: 0, fontSize: '1.6rem', color: 'var(--text-primary)', fontWeight: 800 }}>{admission?.PATIENT_NAME}</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 15, marginTop: 8, color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><strong>UHID:</strong> {admission?.UHID || admission?.uhid || '-'}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><strong>UHID:</strong> {admission?.UHID}</span>
               <span style={{ opacity: 0.3 }}>|</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><strong>Age/Sex:</strong> {admission?.AGE ?? admission?.age}Y / {(admission?.GENDER || admission?.gender)?.[0] || '-'}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><strong>Age/Sex:</strong> {admission?.AGE}Y / {admission?.GENDER?.[0]}</span>
             </div>
           </div>
 
@@ -209,20 +207,20 @@ export default function IPDBillingPage() {
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Location</span>
               <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 2 }}>
-                {admission?.WARD_NAME || admission?.ward_name || 'Ward'} <span style={{ color: 'var(--green)', margin: '0 4px' }}>•</span> Bed {admission?.BED_NUMBER || admission?.bed_number || '-'} ({admission?.ROOM_NUMBER || admission?.room_number || '-'})
+                {admission?.WARD_NAME} <span style={{ color: 'var(--green)', margin: '0 4px' }}>•</span> Bed {admission?.BED_NUMBER} ({admission?.ROOM_NUMBER})
               </span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Duration</span>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 2 }}>{wardInfo.daysAdmitted || 0} Days <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.8rem' }}>(since {admission?.ADMISSION_DATE || admission?.admission_date ? new Date(admission?.ADMISSION_DATE || admission?.admission_date).toLocaleDateString() : '-'})</span></span>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 2 }}>{wardInfo.daysAdmitted || 0} Days <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.8rem' }}>(since {new Date(admission?.ADMISSION_DATE).toLocaleDateString()})</span></span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Consulting Doctor</span>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 2 }}>{admission?.DOCTOR_NAME || admission?.doctor_name || 'N/A'}</span>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 2 }}>{admission?.DOCTOR_NAME}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Dept. / Type</span>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 2 }}>{admission?.DEPARTMENT || admission?.department || '-'} <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span> {admission?.ADMISSION_TYPE || admission?.admission_type || '-'}</span>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 2 }}>{admission?.DEPARTMENT} <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span> {admission?.ADMISSION_TYPE}</span>
             </div>
           </div>
         </div>
@@ -329,32 +327,24 @@ export default function IPDBillingPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {charges.map((c, i) => {
-                        const chargeId = c.ID || c.id;
-                        const medName = c.MEDICINE_NAME || c.medicine_name || 'Item';
-                        const form = c.FORMULATION || c.formulation || '';
-                        const strength = c.STRENGTH || c.strength || '';
-                        const qty = Number(c.QUANTITY ?? c.quantity ?? 1);
-                        const unitPrice = Number(c.UNIT_PRICE ?? c.unit_price ?? 0);
-                        const totalPrice = Number(c.TOTAL_PRICE ?? c.total_price ?? 0);
-                        return (
-                        <tr key={chargeId || i} style={{ borderBottom: '1px solid var(--border)' }}>
+                      {charges.map((c, i) => (
+                        <tr key={c.ID} style={{ borderBottom: '1px solid var(--border)' }}>
                           <td style={tdStyle}>{i + 1}</td>
                           <td style={{...tdStyle, textAlign: 'left'}}>
-                            <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{medName}</div>
+                            <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{c.MEDICINE_NAME}</div>
                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                              {form}{strength ? ` • ${strength}` : ''}
+                              {c.FORMULATION}{c.STRENGTH ? ` • ${c.STRENGTH}` : ''}
                             </div>
                           </td>
                           <td style={tdStyle}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                              <button onClick={() => updateQty(c, qty - 1)} style={qtyBtnStyle} disabled={qty <= 1}>−</button>
-                              <span style={{ minWidth: 28, textAlign: 'center', fontWeight: 700 }}>{qty}</span>
-                              <button onClick={() => updateQty(c, qty + 1)} style={qtyBtnStyle}>+</button>
+                              <button onClick={() => updateQty(c, c.QUANTITY - 1)} style={qtyBtnStyle} disabled={c.QUANTITY <= 1}>−</button>
+                              <span style={{ minWidth: 28, textAlign: 'center', fontWeight: 700 }}>{c.QUANTITY}</span>
+                              <button onClick={() => updateQty(c, c.QUANTITY + 1)} style={qtyBtnStyle}>+</button>
                             </div>
                           </td>
-                          <td style={tdStyle}>₹{Number(unitPrice || 0).toFixed(2)}</td>
-                          <td style={{...tdStyle, fontWeight: 700, color: '#0f172a'}}>₹{Number(totalPrice || 0).toFixed(2)}</td>
+                          <td style={tdStyle}>₹{(c.UNIT_PRICE || 0).toFixed(2)}</td>
+                          <td style={{...tdStyle, fontWeight: 700, color: '#0f172a'}}>₹{(c.TOTAL_PRICE || 0).toFixed(2)}</td>
                           <td style={tdStyle}>
                             <button onClick={() => removeCharge(c)} style={{
                               background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
@@ -363,7 +353,7 @@ export default function IPDBillingPage() {
                             }}>Remove</button>
                           </td>
                         </tr>
-                      );})}
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -414,7 +404,7 @@ export default function IPDBillingPage() {
                     border: '1px solid rgba(16,185,129,0.1)',
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>Items</span>
+                       <span style={{ color: 'var(--text-secondary)' }}>Items</span>
                       <span style={{ fontWeight: 600 }}>{charges.length} item(s)</span>
                     </div>
                     <div style={{ borderTop: '1px dashed var(--border)', marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between' }}>
@@ -483,14 +473,13 @@ export default function IPDBillingPage() {
           <div className="print-section bill-preview-paper">
             {/* Header */}
             <div style={{ display: 'flex', position: 'relative', borderBottom: '2px solid #000', paddingBottom: 15, marginBottom: 20 }}>
-              <img src="/logo.png" alt="HMS Logo" style={{ width: 90, height: 90, position: 'absolute', left: 0, top: 0, objectFit: 'contain' }} />
+              <img src="/logo.png" alt="Hospital Logo" style={{ width: 90, height: 90, position: 'absolute', left: 0, top: 0, objectFit: 'contain' }} />
               <div style={{ flex: 1, textAlign: 'center', padding: '0 210px 0 100px' }}>
-                <h2 style={{ margin: '0 0 5px', fontSize: '20px', fontWeight: 'bold' }}>अस्पताल प्रबंधन प्रणाली</h2>
+                <h2 style={{ margin: '0 0 5px', fontSize: '20px', fontWeight: 'bold' }}>HMS HOSPITAL</h2>
                 <h2 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 'bold' }}>HOSPITAL MANAGEMENT SYSTEM</h2>
                 <h3 style={{ margin: '0 0 5px', fontSize: '16px', textDecoration: 'underline', textTransform: 'uppercase' }}>
                   HOSPITAL BILL OF {admission?.WARD_TYPE === 'Maternity' ? 'MATERNITY' : 'IPD'} PATIENT
                 </h3>
-                <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 'normal' }}>अधिकृत / अनाधिकृत रोगियों का बिल</h4>
               </div>
               <div style={{ position: 'absolute', right: 0, top: 0, textAlign: 'right', fontSize: '12px', border: '1px solid #000', padding: '6px', background: '#fff', maxWidth: '200px' }}>
                 <div style={{ marginBottom: 4 }}>Receipt No. : <strong style={{ marginLeft: 4 }}>{generatedBill?.billNumber}</strong></div>
@@ -529,15 +518,15 @@ export default function IPDBillingPage() {
                   <div style={{ width: '60%' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '15px' }}>
                       <span>Stay charges</span>
-                      <span>{Number(wardInfo?.wardTotal || 0).toFixed(2)}</span>
+                      <span>{wardInfo?.wardTotal?.toFixed(2)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '15px' }}>
                       <span>Medicines</span>
-                      <span>{Number(generatedBill?.medicineTotal || 0).toFixed(2)}</span>
+                      <span>{generatedBill?.medicineTotal?.toFixed(2)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000', marginTop: '10px', paddingTop: '10px', fontWeight: 'bold', fontSize: '16px' }}>
                       <span>Total</span>
-                      <span>{Number(generatedBill?.totalAmount || 0).toFixed(2)}</span>
+                      <span>{generatedBill?.totalAmount?.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -554,12 +543,12 @@ export default function IPDBillingPage() {
                       <tr key={i}>
                         <td style={{ padding: '4px 0' }}>{c.MEDICINE_NAME} {c.STRENGTH}</td>
                         <td style={{ padding: '4px 0', textAlign: 'center' }}>- {c.QUANTITY} -</td>
-                        <td style={{ padding: '4px 0', textAlign: 'right' }}>{Number(c.TOTAL_PRICE || 0).toFixed(2)}</td>
+                        <td style={{ padding: '4px 0', textAlign: 'right' }}>{c.TOTAL_PRICE?.toFixed(2)}</td>
                       </tr>
                     ))}
                     <tr>
                       <td colSpan="2" style={{ borderTop: '1px solid #000', textAlign: 'right', padding: '8px 10px 0 0', fontWeight: 'bold' }}>Total</td>
-                      <td style={{ borderTop: '1px solid #000', textAlign: 'right', padding: '8px 0 0 0', fontWeight: 'bold' }}>{Number(generatedBill?.medicineTotal || 0).toFixed(2)}</td>
+                      <td style={{ borderTop: '1px solid #000', textAlign: 'right', padding: '8px 0 0 0', fontWeight: 'bold' }}>{generatedBill?.medicineTotal?.toFixed(2)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -578,7 +567,7 @@ export default function IPDBillingPage() {
             {/* Footer Signatures */}
             <div style={{ marginTop: '60px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
               <div style={{ fontSize: '16px' }}>
-                Approved for Rs. <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px', fontSize: '18px' }}>{Number(generatedBill?.totalAmount || 0).toFixed(2)} /-</strong><br/>
+                Approved for Rs. <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px', fontSize: '18px' }}>{generatedBill?.totalAmount?.toFixed(2)} /-</strong><br/>
                 धन की स्वीकृति
               </div>
               <div style={{ textAlign: 'center', fontSize: '15px' }}>

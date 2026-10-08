@@ -376,7 +376,8 @@ function UnitDropdown({ value, onChange, rowIndex }) {
 }
 
 function getPatientTypeMeta(type) {
-  if (type === 'corporate_employee') return { label: '🏢 Corporate', bg: 'rgba(16, 185, 129, 0.12)', color: '#059669', border: 'rgba(16,185,129,0.2)' };
+  if (type === 'nfl_employee' || type === 'corporate_employee') return { label: '🏢 Corporate', bg: 'rgba(16, 185, 129, 0.12)', color: '#059669', border: 'rgba(16,185,129,0.2)' };
+  if (type === 'cisf_employee') return { label: '🛡️ Sponsored', bg: 'rgba(99, 102, 241, 0.12)', color: '#4f46e5', border: 'rgba(99,102,241,0.2)' };
   return { label: '👤 General', bg: 'rgba(59, 130, 246, 0.12)', color: '#2563eb', border: 'rgba(59,130,246,0.2)' };
 }
 
@@ -1199,19 +1200,19 @@ export default function PrescriptionSlipPage() {
                         <div className="patient-summary-meta">
                           <span>{formatPatientId(patient)}</span>
                           <span>{formatPatientMeta(patient)}</span>
-                          {patient.patientType === 'corporate_employee' && patient.empNumber && (
+                          {patient.patientType === 'nfl_employee' && patient.empNumber && (
                             <span style={{ fontWeight: 600 }}>Emp: {patient.empNumber}</span>
                           )}
-                          {patient.patientType === 'corporate_employee' && patient.relationship && patient.relationship !== 'Self' && (
+                          {patient.patientType === 'nfl_employee' && patient.relationship && patient.relationship !== 'Self' && (
                             <span style={{ fontWeight: 600, color: '#d97706' }}>Relation: {patient.relationship}</span>
                           )}
-                          {patient.patientType === 'corporate_employee' && patient.employee_name && patient.relationship !== 'Self' && (
+                          {patient.patientType === 'nfl_employee' && patient.employee_name && patient.relationship !== 'Self' && (
                             <span style={{ fontWeight: 600, color: '#059669' }}>Emp Name: {patient.employee_name}</span>
                           )}
-                          {patient.patientType === 'corporate_employee' && (!patient.relationship || patient.relationship === 'Self') && (
+                          {patient.patientType === 'nfl_employee' && (!patient.relationship || patient.relationship === 'Self') && (
                             <span style={{ fontWeight: 600, color: '#059669' }}>Self</span>
                           )}
-                          {patient.patientType !== 'corporate_employee' && (
+                          {patient.patientType !== 'nfl_employee' && (
                             <span>{patient.phoneNumber || 'No phone'}</span>
                           )}
                         </div>
@@ -1629,7 +1630,7 @@ export default function PrescriptionSlipPage() {
           <div className="slip-header" style={{ position: 'relative' }}>
             <img 
               src="/logo.png" 
-              alt="HMS Logo" 
+              alt="Hospital Logo" 
               style={{ 
                 position: 'absolute', 
                 left: 0, 
@@ -1640,7 +1641,7 @@ export default function PrescriptionSlipPage() {
               }} 
             />
             <h2>HMS HOSPITAL</h2>
-            <h3>HEALTHCARE EXCELLENCE CENTER</h3>
+            <h3>HEALTHCARE SERVICES</h3>
             <div className="slip-title">ELECTRONIC PRESCRIPTION</div>
           </div>
 
@@ -1657,15 +1658,15 @@ export default function PrescriptionSlipPage() {
               <tr>
                 <td className="label">Patient Name</td>
                 <td className="value">{patient?.name || '________________________________'}</td>
-                <td className="label">{patient?.patientType === 'corporate_employee' ? 'Employee Name' : ''}</td>
-                <td className="value">{patient?.patientType === 'corporate_employee' ? (patient?.employee_name || '________________') : ''}</td>
+                <td className="label">{(patient?.patientType === 'nfl_employee' || patient?.patientType === 'corporate_employee') ? 'Employee Name' : ''}</td>
+                <td className="value">{(patient?.patientType === 'nfl_employee' || patient?.patientType === 'corporate_employee') ? (patient?.employee_name || '________________') : ''}</td>
               </tr>
               <tr>
                 <td className="label">Age / Gender</td>
                 <td className="value">{formatPatientMeta(patient) || '________________'}</td>
-                <td className="label">{patient?.patientType === 'corporate_employee' ? 'Emp No.' : 'Contact'}</td>
+                <td className="label">{(patient?.patientType === 'nfl_employee' || patient?.patientType === 'corporate_employee') ? 'Emp No.' : 'Contact'}</td>
                 <td className="value">
-                  {patient?.patientType === 'corporate_employee'
+                  {(patient?.patientType === 'nfl_employee' || patient?.patientType === 'corporate_employee')
                     ? `${patient.empNumber || '-'}${patient.relationship && patient.relationship !== 'Self' ? ` (${patient.relationship})` : ' (Self)'}`
                     : (patient?.phoneNumber || '________________')}
                 </td>

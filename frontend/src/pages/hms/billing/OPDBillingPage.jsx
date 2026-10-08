@@ -5,7 +5,6 @@ import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 import { useAuth } from '../../../context/AuthContext';
 import { useSocket } from '../../../context/SocketContext';
-import { openAuthenticatedBlob } from '../../../utils/authenticatedDownload';
 
 export default function OPDBillingPage() {
   const { encounterId } = useParams();
@@ -272,7 +271,7 @@ export default function OPDBillingPage() {
                <div style={{ fontSize: '3rem', marginBottom: 16 }}>✅</div>
                <h3>Bill Fully Paid</h3>
                <button className="btn btn-outline" style={{ marginTop: 16, width: '100%' }} onClick={() => window.print()}>Print Invoice</button>
-               <button type="button" onClick={() => openAuthenticatedBlob(`/pdf/bill/${bill.ID || bill.id}`, { download: true, filename: `bill-${bill.ID || bill.id}.pdf` })} className="btn btn-primary" style={{ marginTop: 8, width: '100%' }}>Download PDF</button>
+               <a href={`/api/pdf/bill/${bill.ID || bill.id}`} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ marginTop: 8, width: '100%', display: 'block', textAlign: 'center', textDecoration: 'none' }}>Download PDF</a>
              </div>
            )}
         </div>

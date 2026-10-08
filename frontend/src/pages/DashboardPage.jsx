@@ -12,24 +12,12 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user && user.role !== 'lab_technician') {
-      if (user.role === 'doctor') navigate('/doctor/dashboard', { replace: true });
-      else if (user.role === 'super_admin') navigate('/super_admin/dashboard', { replace: true });
-      else if (user.role === 'admin') navigate('/admin/dashboard', { replace: true });
-      else navigate(`/${user.role}/dashboard`, { replace: true });
-      return;
-    }
-
     // Attempt to load from LIMS API
     api.get('/lab/dashboard')
       .then(res => setStats(res.data.data))
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
-  }, [user, navigate]);
-
-  if (user && user.role !== 'lab_technician') {
-    return null;
-  }
+  }, []);
 
   const greeting = () => {
     const h = new Date().getHours();

@@ -12,9 +12,13 @@ function parseBrandNames(val) {
     try {
       const parsed = JSON.parse(trimmed);
       if (Array.isArray(parsed)) return parsed;
-      if (typeof parsed === 'string') return [parsed];
+      return [String(parsed)];
     } catch {
-      return trimmed.split(',').map(s => s.trim()).filter(Boolean);
+      // Postgres array format e.g. "{Novamox,Amox}" or plain string "Novamox"
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        return trimmed.slice(1, -1).split(',').map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean);
+      }
+      return [trimmed];
     }
   }
   return [];
@@ -309,11 +313,11 @@ export default function MedicineMasterPage() {
                         }}>
                           <div style={{ 
                             padding: '4px 12px', borderRadius: 8, 
-                            background: (med.totalStock || 0) < 50 ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)',
-                            color: (med.totalStock || 0) < 50 ? '#ef4444' : '#10b981',
+                            background: (Number(med.totalStock || 0)) < 50 ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)',
+                            color: (Number(med.totalStock || 0)) < 50 ? '#ef4444' : '#10b981',
                             fontWeight: 900, fontSize: '1rem'
                           }}>
-                            {med.totalStock || 0}
+                            {Number(med.totalStock || 0)}
                           </div>
                           <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4 }}>{med.unitOfSale}s</div>
                         </div>

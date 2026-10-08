@@ -149,7 +149,7 @@ export default function ReceptionistQuickActionsDock() {
               fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)',
               letterSpacing: '0.02em',
             }}>
-              HMS IT Department © 2026
+              NFL Nangal IT Department © 2026
             </div>
           </div>
         )}

@@ -22,15 +22,15 @@ export default function IPDPatientListPage() {
     fetchAdmissions();
   }, [statusFilter]);
 
-  const filteredAdmissions = (admissions || []).filter(adm => {
+  const filteredAdmissions = admissions.filter(adm => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
-      (adm.PATIENT_NAME || adm.patient_name || adm.patientName || '').toLowerCase().includes(q) ||
-      (adm.UHID || adm.uhid || '').toLowerCase().includes(q) ||
-      (adm.ADMISSION_ID_FORMATTED || adm.admission_id_formatted || adm.admissionIdFormatted || '').toLowerCase().includes(q) ||
-      (adm.DOCTOR_NAME || adm.doctor_name || '').toLowerCase().includes(q) ||
-      (adm.DEPARTMENT || adm.department || '').toLowerCase().includes(q)
+      (adm.PATIENT_NAME || adm.patientName || '').toLowerCase().includes(q) ||
+      (adm.UHID || '').toLowerCase().includes(q) ||
+      (adm.ADMISSION_ID_FORMATTED || adm.admissionIdFormatted || '').toLowerCase().includes(q) ||
+      (adm.DOCTOR_NAME || '').toLowerCase().includes(q) ||
+      (adm.DEPARTMENT || '').toLowerCase().includes(q)
     );
   });
 
@@ -177,17 +177,17 @@ export default function IPDPatientListPage() {
                 <tbody>
                   {filteredAdmissions.map(adm => (
                     <tr key={adm.ID || adm.id}>
-                      <td><strong>{adm.ADMISSION_ID_FORMATTED || adm.admission_id_formatted || adm.admissionIdFormatted || `#${adm.ID || adm.id}`}</strong></td>
-                      <td>{adm.PATIENT_NAME || adm.patient_name || adm.patientName || '—'}</td>
-                      <td>{adm.UHID || adm.uhid || '—'}</td>
-                      <td>{adm.DEPARTMENT || adm.department || '-'}</td>
-                      <td>{(adm.WARD_NAME || adm.ward_name) ? `${adm.WARD_NAME || adm.ward_name} / ${adm.BED_NUMBER || adm.bed_number}` : '-'}</td>
-                      <td>{adm.DOCTOR_NAME || adm.doctor_name || '-'}</td>
-                      <td>{(adm.ADMISSION_DATE || adm.admission_date) ? new Date(adm.ADMISSION_DATE || adm.admission_date).toLocaleDateString() : '-'}</td>
-                      <td>{adm.DAYS_ADMITTED ?? adm.days_admitted ?? 0} Days</td>
+                      <td><strong>{adm.ADMISSION_ID_FORMATTED || adm.admissionIdFormatted || '-'}</strong></td>
+                      <td>{adm.PATIENT_NAME || adm.patientName}</td>
+                      <td>{adm.UHID}</td>
+                      <td>{adm.DEPARTMENT || '-'}</td>
+                      <td>{adm.WARD_NAME ? `${adm.WARD_NAME} / ${adm.BED_NUMBER}` : '-'}</td>
+                      <td>{adm.DOCTOR_NAME}</td>
+                      <td>{new Date(adm.ADMISSION_DATE).toLocaleDateString()}</td>
+                      <td>{adm.DAYS_ADMITTED} Days</td>
                       <td>
-                        <span className={`badge ${(adm.STATUS || adm.status) === 'Active' ? 'badge-primary' : 'badge-secondary'}`}>
-                          {adm.STATUS || adm.status}
+                        <span className={`badge ${adm.STATUS === 'Active' ? 'badge-primary' : 'badge-secondary'}`}>
+                          {adm.STATUS}
                         </span>
                       </td>
                       <td>

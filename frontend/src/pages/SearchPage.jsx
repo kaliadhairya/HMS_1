@@ -84,7 +84,7 @@ export default function SearchPage() {
               <label className="form-label">Employee Number</label>
               <input
                 className="form-input"
-                placeholder="e.g. EMP-12345"
+                placeholder="e.g. NFL-12345"
                 value={filters.empNumber}
                 onChange={e => setFilter('empNumber', e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSearch(1)}
@@ -120,7 +120,7 @@ export default function SearchPage() {
               <label className="form-label">Patient Type</label>
               <select className="form-select" value={filters.patientType} onChange={e => setFilter('patientType', e.target.value)}>
                 <option value="">All Types</option>
-                <option value="corporate_employee">Corporate Employee</option>
+                <option value="nfl_employee">NFL Employee</option>
                 <option value="other">Other Patient</option>
               </select>
             </div>
@@ -183,19 +183,19 @@ export default function SearchPage() {
                         </td>
                         <td>
                           <div style={{ fontWeight: 600 }}>{p.name}</div>
-                          {p.patientType === 'corporate_employee' && p.relationship && (
+                          {p.patientType === 'nfl_employee' && p.relationship && (
                             <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                               {p.relationship}
                             </div>
                           )}
                         </td>
                         <td>
-                          <span className={`badge ${p.patientType === 'corporate_employee' ? 'badge-teal' : 'badge-amber'}`}>
-                            {p.patientType === 'corporate_employee' ? 'Corporate' : 'Other'}
+                          <span className={`badge ${p.patientType === 'nfl_employee' ? 'badge-teal' : 'badge-amber'}`}>
+                            {p.patientType === 'nfl_employee' ? 'NFL' : 'Other'}
                           </span>
                         </td>
                         <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--teal)' }}>
-                          {p.patientType === 'corporate_employee' ? p.empNumber : p.phoneNumber}
+                          {p.patientType === 'nfl_employee' ? p.empNumber : p.phoneNumber}
                         </td>
                         <td>{p.age} yrs / {p.gender}</td>
                         <td>{p.ward}</td>

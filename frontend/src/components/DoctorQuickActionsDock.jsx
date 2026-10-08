@@ -38,10 +38,6 @@ export default function DoctorQuickActionsDock() {
     timeoutRef.current = setTimeout(() => setIsOpen(false), 300);
   };
 
-  if (location.pathname.startsWith('/doctor/referrals')) {
-    return null;
-  }
-
   return (
     <>
       {/* CSS Keyframes injected once */}
@@ -153,7 +149,7 @@ export default function DoctorQuickActionsDock() {
               fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)',
               letterSpacing: '0.02em',
             }}>
-              HMS IT Department © 2026
+              NFL Nangal IT Department © 2026
             </div>
           </div>
         )}

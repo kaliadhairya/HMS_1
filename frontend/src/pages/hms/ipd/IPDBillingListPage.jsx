@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 
 export default function IPDBillingListPage() {
-  const navigate = useNavigate();
   const [admissions, setAdmissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,27 +47,16 @@ export default function IPDBillingListPage() {
             display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 20,
           }}>
             {admissions.map(adm => {
-              const admissionDate = adm.ADMISSION_DATE || adm.admission_date;
-              const days = adm.DAYS_ADMITTED ?? adm.days_admitted ?? (admissionDate ? Math.max(1, Math.ceil((Date.now() - new Date(admissionDate).getTime()) / 86400000)) : 1);
-              const admId = adm.ID || adm.id;
-              const patientName = adm.PATIENT_NAME || adm.patient_name || adm.name || 'Unknown Patient';
-              const uhid = adm.UHID || adm.uhid || '-';
-              const formattedId = adm.ADMISSION_ID_FORMATTED || adm.admission_id_formatted || `IPD-${admId}`;
-              const gender = adm.GENDER || adm.gender;
-              const wardName = adm.WARD_NAME || adm.ward_name || 'Ward';
-              const bedNum = adm.BED_NUMBER || adm.bed_number || '-';
-              const roomNum = adm.ROOM_NUMBER || adm.room_number || '-';
-              const doctorName = adm.DOCTOR_NAME || adm.doctor_name || 'N/A';
-
+              const days = adm.DAYS_ADMITTED || Math.max(1, Math.ceil((Date.now() - new Date(adm.ADMISSION_DATE).getTime()) / 86400000));
               return (
-                <div key={admId} className="card hms-anim-1" style={{
+                <div key={adm.ID || adm.id} className="card hms-anim-1" style={{
                   padding: 0, overflow: 'hidden', transition: 'all 0.3s ease',
                   border: '1px solid var(--border)',
                   display: 'flex', flexDirection: 'column',
                   boxShadow: 'var(--shadow-sm)',
                   cursor: 'pointer'
                 }}
-                onClick={() => navigate(`/ipd/billing/${admId}`)}
+                onClick={() => navigate(`/ipd/billing/${adm.ID || adm.id}`)}
                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-5px)'; e.currentTarget.style.boxShadow = 'var(--shadow-lg)'; e.currentTarget.style.borderColor = 'var(--green-light)'; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
                 >
@@ -82,18 +70,18 @@ export default function IPDBillingListPage() {
                         fontSize: '1.8rem', border: '2px solid #fff', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                         flexShrink: 0
                       }}>
-                        {gender === 'Female' ? '👩' : '👨'}
+                        {adm.GENDER === 'Female' ? '👩' : '👨'}
                       </div>
 
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }}>{patientName}</h3>
+                          <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }}>{adm.PATIENT_NAME}</h3>
                           <span className="badge badge-teal" style={{ fontSize: '0.65rem' }}>Day {days}</span>
                         </div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4, display: 'flex', gap: 8 }}>
-                          <span>{uhid}</span>
+                          <span>{adm.UHID}</span>
                           <span style={{ opacity: 0.3 }}>•</span>
-                          <span>{formattedId}</span>
+                          <span>{adm.ADMISSION_ID_FORMATTED}</span>
                         </div>
                       </div>
                     </div>
@@ -106,19 +94,19 @@ export default function IPDBillingListPage() {
                       <div>
                         <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Location</div>
                         <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)', marginTop: 2 }}>
-                          {wardName} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>•</span> Bed {bedNum}
+                          {adm.WARD_NAME || 'Ward'} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>•</span> Bed {adm.BED_NUMBER || '-'}
                         </div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>Room: {roomNum}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>Room: {adm.ROOM_NUMBER || '-'}</div>
                       </div>
                       <div>
                         <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Duration</div>
                         <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)', marginTop: 2 }}>{days} Days</div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>Since {admissionDate ? new Date(admissionDate).toLocaleDateString('en-IN') : '-'}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>Since {adm.ADMISSION_DATE ? new Date(adm.ADMISSION_DATE).toLocaleDateString('en-IN') : '-'}</div>
                       </div>
                       <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
                         <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Primary Physician</div>
                         <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: '0.9rem' }}>👨‍⚕️</span> {doctorName}
+                          <span style={{ fontSize: '0.9rem' }}>👨‍⚕️</span> {adm.DOCTOR_NAME || 'N/A'}
                         </div>
                       </div>
                     </div>

@@ -72,10 +72,8 @@ export default function AdmissionModal({ bedId, wardId, bedNumber, onSuccess, on
     try {
       const payload = { ...formData, bedId };
       const res = await api.post('/ipd/admissions', payload);
-      const admData = res.data.data || {};
-      const formattedId = admData.admissionIdFormatted || admData.ADMISSION_ID_FORMATTED || admData.admission_id_formatted || `IPD-${admData.id || admData.ID || ''}`;
-      toast.success(`Patient admitted! ID: ${formattedId}`);
-      onSuccess(admData);
+      toast.success(`Patient admitted! ID: ${res.data.data.admissionIdFormatted}`);
+      onSuccess(res.data.data);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Admission failed');
     }

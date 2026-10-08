@@ -1,38 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../../../api/axios';
+import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
-
-function parseVitalsAlerts(val) {
-  if (!val) return [];
-  if (Array.isArray(val)) return val;
-  if (typeof val === 'string') {
-    try {
-      const parsed = JSON.parse(val);
-      if (Array.isArray(parsed)) return parsed;
-      return [String(parsed)];
-    } catch {
-      return [val];
-    }
-  }
-  return [];
-}
-
-function formatBrandNames(val) {
-  if (!val) return '';
-  if (Array.isArray(val)) return `(${val.join(', ')})`;
-  if (typeof val === 'string') {
-    try {
-      const parsed = JSON.parse(val);
-      if (Array.isArray(parsed)) return `(${parsed.join(', ')})`;
-      if (typeof parsed === 'string') return `(${parsed})`;
-    } catch {
-      return `(${val})`;
-    }
-  }
-  return '';
-}
 
 export default function ConsultationPage() {
   const { id } = useParams(); // Encounter ID
@@ -73,7 +43,7 @@ export default function ConsultationPage() {
 
   const fetchEncounterData = async () => {
     try {
-      const res = await api.get(`/hms/encounters/${id}`);
+      const res = await axios.get(`http://localhost:5001/api/hms/encounters/${id}`, { withCredentials: true });
       const enc = res.data;
       setEncounter(enc);
       setPatient(enc.patient);
@@ -103,7 +73,7 @@ export default function ConsultationPage() {
 
       // Fetch latest vitals
       if (enc.patient_id) {
-        const vitRes = await api.get(`/hms/vitals/latest/${enc.patient_id}`);
+        const vitRes = await axios.get(`http://localhost:5001/api/hms/vitals/latest/${enc.patient_id}`, { withCredentials: true });
         if (vitRes.data.success) {
           setVitals(vitRes.data.vital);
         }
@@ -132,7 +102,7 @@ export default function ConsultationPage() {
 
   const saveEncounter = async (showToast = true) => {
     try {
-      await api.put(`/hms/encounters/${id}`, formData);
+      await axios.put(`http://localhost:5001/api/hms/encounters/${id}`, formData, { withCredentials: true });
       if (showToast) toast.success('Consultation Auto-saved', { icon: '💾' });
     } catch (err) {
       console.error(err);
@@ -145,7 +115,7 @@ export default function ConsultationPage() {
     setIcdSearch(q);
     if (q.length < 2) return setIcdResults([]);
     try {
-      const res = await api.get(`/hms/icd10/search?q=${q}`);
+      const res = await axios.get(`http://localhost:5001/api/hms/icd10/search?q=${q}`, { withCredentials: true });
       setIcdResults(res.data);
     } catch (err) { console.error(err); }
   };
@@ -159,7 +129,7 @@ export default function ConsultationPage() {
         diagnosis_type: 'Primary',
         status: 'Provisional'
       };
-      const res = await api.post('/hms/diagnoses', payload);
+      const res = await axios.post('http://localhost:5001/api/hms/diagnoses', payload, { withCredentials: true });
       setDiagnoses([...diagnoses, res.data]);
       setIcdSearch('');
       setIcdResults([]);
@@ -171,7 +141,7 @@ export default function ConsultationPage() {
 
   const removeDiagnosis = async (dxId) => {
     try {
-      await api.delete(`/hms/diagnoses/${dxId}`);
+      await axios.delete(`http://localhost:5001/api/hms/diagnoses/${dxId}`, { withCredentials: true });
       setDiagnoses(diagnoses.filter(d => d.id !== dxId));
     } catch (err) { toast.error('Failed to remove diagnosis'); }
   };
@@ -181,7 +151,7 @@ export default function ConsultationPage() {
     setMedSearch(q);
     if (q.length < 2) return setMedResults([]);
     try {
-      const res = await api.get(`/hms/medicines/search?q=${q}`);
+      const res = await axios.get(`http://localhost:5001/api/hms/medicines/search?q=${q}`, { withCredentials: true });
       setMedResults(res.data);
     } catch (err) { console.error(err); }
   };
@@ -208,10 +178,10 @@ export default function ConsultationPage() {
   const savePrescription = async () => {
     try {
       // 1. Ensure Presc shell exists
-      const pRes = await api.post('/hms/prescriptions', { encounter_id: id, patient_id: patient.id });
+      const pRes = await axios.post('http://localhost:5001/api/hms/prescriptions', { encounter_id: id, patient_id: patient.id }, { withCredentials: true });
       const presId = pRes.data.id;
       // 2. Put items
-      await api.put(`/hms/prescriptions/${presId}/items`, { items: prescriptionItems });
+      await axios.put(`http://localhost:5001/api/hms/prescriptions/${presId}/items`, { items: prescriptionItems }, { withCredentials: true });
       toast.success('Prescription Saved');
     } catch (err) { toast.error('Failed to save prescription'); }
   };
@@ -234,7 +204,7 @@ export default function ConsultationPage() {
         urgency: 'Routine',
         items: labOrders.map(lo => ({ name: lo.name, category: lo.category }))
       };
-      await api.post('/hms/investigation-orders', payload);
+      await axios.post('http://localhost:5001/api/hms/investigation-orders', payload, { withCredentials: true });
       toast.success('Lab Order sent to Tech Queue!');
     } catch (err) { toast.error('Failed to submit lab order'); }
   };
@@ -246,7 +216,7 @@ export default function ConsultationPage() {
       await saveEncounter(false);
       await savePrescription();
       
-      await api.patch(`/hms/encounters/${id}/finalize`, {});
+      await axios.patch(`http://localhost:5001/api/hms/encounters/${id}/finalize`, {}, { withCredentials: true });
       toast.success('Encounter Finalized successfully!');
       
       // Prompt for bill generation
@@ -265,9 +235,9 @@ export default function ConsultationPage() {
   return (
     <>
     <Navbar />
-    <div className="consult-container">
+    <div style={{ display: 'flex', height: 'calc(100vh - 61px)' }}>
       {/* LEFT PANEL: Patient Context */}
-      <div className="consult-sidebar">
+      <div style={{ width: '28%', background: 'var(--surface-2)', borderRight: '1px solid var(--border)', padding: 20, overflowY: 'auto' }}>
         <h2 style={{ fontSize: '1.2rem', marginBottom: 10 }}>{patient?.name}</h2>
         <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 20 }}>
           <p><strong>UHID:</strong> {patient?.uhid}</p>
@@ -278,7 +248,7 @@ export default function ConsultationPage() {
         {vitals ? (
           <div className="card-section">
             <div className="card-section-title">Today's Vitals</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: 10, fontSize: '0.85rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, fontSize: '0.85rem' }}>
               <div><strong>BP:</strong> {vitals.bp_systolic}/{vitals.bp_diastolic}</div>
               <div><strong>Pulse:</strong> {vitals.pulse} bpm</div>
               <div><strong>Temp:</strong> {vitals.temperature}°F</div>
@@ -286,7 +256,7 @@ export default function ConsultationPage() {
               <div><strong>Weight:</strong> {vitals.weight} kg</div>
               <div><strong>BMI:</strong> {vitals.bmi}</div>
             </div>
-            {parseVitalsAlerts(vitals.alerts).map((alert, i) => (
+            {vitals.alerts && JSON.parse(vitals.alerts).map((alert, i) => (
               <div key={i} className="alert alert-error" style={{ marginTop: 10, padding: 6, fontSize: '0.75rem' }}>
                 ⚠️ {alert}
               </div>
@@ -298,15 +268,21 @@ export default function ConsultationPage() {
       </div>
 
       {/* RIGHT PANEL: Docs */}
-      <div className="consult-main">
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
         
         {/* Tabs */}
-        <div className="consult-tabs">
+        <div style={{ display: 'flex', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
           {['history', 'examination', 'diagnosis', 'prescription', 'investigations'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`consult-tab-btn ${activeTab === tab ? 'active' : ''}`}
+              style={{
+                flex: 1, padding: '14px', background: 'none', border: 'none', cursor: 'pointer',
+                fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: '0.85rem',
+                borderBottom: activeTab === tab ? '3px solid var(--green)' : '3px solid transparent',
+                color: activeTab === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
+                textTransform: 'capitalize'
+              }}
             >
               {tab}
             </button>
@@ -398,7 +374,7 @@ export default function ConsultationPage() {
                   <div style={{ position: 'absolute', top: 40, left: 0, right: 0, background: 'var(--surface)', border: '1px solid var(--border)', zIndex: 10, boxShadow: 'var(--shadow-md)', borderRadius: 5, maxHeight: 300, overflowY: 'auto' }}>
                     {medResults.map(m => (
                       <div key={m.id} onClick={() => addPrescriptionItem(m)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--bg)' }}>
-                        <strong>{m.generic_name}</strong> {formatBrandNames(m.brand_names)} - <small>{m.formulation} {m.strength} {m.strength_unit}</small>
+                        <strong>{m.generic_name}</strong> {m.brand_names ? `(${JSON.parse(m.brand_names).join(', ')})` : ''} - <small>{m.formulation} {m.strength} {m.strength_unit}</small>
                       </div>
                     ))}
                   </div>

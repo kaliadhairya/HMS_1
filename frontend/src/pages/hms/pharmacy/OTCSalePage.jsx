@@ -288,7 +288,7 @@ export default function OTCSalePage() {
                         <input type="number" readOnly value={item.mrp} style={{ width: 80, padding: '8px', borderRadius: 4, border: 'none', background: 'transparent' }} />
                       </td>
                       <td style={{ fontWeight: 600 }}>
-                        {Number(r.total || 0).toFixed(2)}
+                        {r.total.toFixed(2)}
                       </td>
                       <td>
                         <button type="button" className="btn btn-outline" style={{ padding: '4px 8px', color: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => removeItem(index)}>×</button>
@@ -304,7 +304,7 @@ export default function OTCSalePage() {
 
           <div style={{ background: 'var(--surface-2)', padding: 20, borderRadius: 8, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 32 }}>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, marginTop: 4 }}>Total Record: ₹{Number(totals.grandTotal || 0).toFixed(2)}</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 700, marginTop: 4 }}>Total Record: ₹{totals.grandTotal.toFixed(2)}</div>
             </div>
             <button type="submit" className="btn btn-primary" style={{ padding: '12px 24px', fontSize: '1.1rem' }} disabled={loading}>
               {loading ? 'Processing...' : 'Complete Sale'}

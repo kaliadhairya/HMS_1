@@ -3,7 +3,6 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 import api from '../api/axios';
-import { openAuthenticatedBlob } from '../utils/authenticatedDownload';
 
 // ── Helper: nested path setter ─────────────────────
 function setNestedValue(obj, path, value) {
@@ -290,7 +289,9 @@ export default function ReportPage() {
         suggestions,
         status: 'final',
       });
-      await openAuthenticatedBlob(`/reports/${reportId}/pdf?download=true`, { download: true, filename: `lab-report-${reportId}.pdf` });
+      const token = localStorage.getItem('lab_token');
+      const url = `${api.defaults.baseURL}/reports/${reportId}/pdf?token=${token}&download=true`;
+      window.open(url, '_blank');
       toast.success('PDF downloading!');
     } catch {
       toast.error('PDF generation failed.');
@@ -313,7 +314,9 @@ export default function ReportPage() {
         suggestions,
         status: 'final',
       });
-      await openAuthenticatedBlob(`/reports/${reportId}/pdf?preview=true`);
+      const token = localStorage.getItem('lab_token');
+      const url = `${api.defaults.baseURL}/reports/${reportId}/pdf?token=${token}&preview=true`;
+      window.open(url, '_blank');
       toast.success('PDF Preview opened!');
     } catch {
       toast.error('PDF preview failed.');
@@ -333,7 +336,7 @@ export default function ReportPage() {
     );
   }
 
-  const isCorporate = patient?.patientType === 'corporate_employee';
+  const isNFL = patient?.patientType === 'nfl_employee';
 
   const TABS = [
     { id: 'haematology', label: 'Haematology', icon: '🩸', color: 'var(--teal)' },
@@ -358,8 +361,8 @@ export default function ReportPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <span className={`badge ${isCorporate ? 'badge-teal' : 'badge-amber'}`}>
-                  {isCorporate ? '🏢 Corporate Employee' : '🧑‍⚕️ Other Patient'}
+                <span className={`badge ${isNFL ? 'badge-teal' : 'badge-amber'}`}>
+                  {isNFL ? '🏢 NFL Employee' : '🧑‍⚕️ Other Patient'}
                 </span>
                 <span className="badge badge-green">Report Active</span>
                 <button 
@@ -376,10 +379,10 @@ export default function ReportPage() {
               <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                 <span>Age: <strong style={{ color: 'var(--text-primary)' }}>{patient?.age} yrs</strong></span>
                 <span>Gender: <strong style={{ color: 'var(--text-primary)' }}>{patient?.gender}</strong></span>
-                <span>{isCorporate ? 'Emp No.' : 'Phone No.'}: <strong style={{ color: 'var(--teal)' }}>
-                  {isCorporate ? patient?.empNumber : patient?.phoneNumber}
+                <span>{isNFL ? 'Emp No.' : 'Phone No.'}: <strong style={{ color: 'var(--teal)' }}>
+                  {isNFL ? patient?.empNumber : patient?.phoneNumber}
                 </strong></span>
-                {isCorporate && <span>Relation: <strong style={{ color: 'var(--text-primary)' }}>{patient?.relationship}</strong></span>}
+                {isNFL && <span>Relation: <strong style={{ color: 'var(--text-primary)' }}>{patient?.relationship}</strong></span>}
                 <span>Ward: <strong style={{ color: 'var(--text-primary)' }}>{patient?.ward}</strong></span>
                 <span>Date: <strong style={{ color: 'var(--text-primary)' }}>{new Date(patient?.testDate).toLocaleDateString('en-IN')}</strong></span>
                 {patient?.provDiagnosis && <span>Dx: <strong style={{ color: 'var(--text-primary)' }}>{patient?.provDiagnosis}</strong></span>}

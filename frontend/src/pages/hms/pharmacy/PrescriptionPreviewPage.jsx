@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../../../api/axios';
-import { openAuthenticatedBlob } from '../../../utils/authenticatedDownload';
 
 export default function PrescriptionPreviewPage() {
   const { id } = useParams(); // Prescription ID
@@ -55,13 +54,15 @@ export default function PrescriptionPreviewPage() {
         <div className="no-print" style={{ position: 'absolute', top: -50, right: 0, display: 'flex', gap: 10 }}>
           <button className="btn btn-primary" onClick={handlePrint}>Print Prescription</button>
           {prescription?.id && (
-            <button
-              type="button"
-              onClick={() => openAuthenticatedBlob(`/pdf/prescription/${prescription.id}`, { download: true, filename: `prescription-${prescription.id}.pdf` })}
+            <a
+              href={`http://127.0.0.1:5001/api/pdf/prescription/${prescription.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="btn btn-outline"
+              style={{ textDecoration: 'none' }}
             >
               Download PDF
-            </button>
+            </a>
           )}
           <button className="btn btn-outline" onClick={() => window.close()}>Close</button>
         </div>
@@ -71,13 +72,13 @@ export default function PrescriptionPreviewPage() {
           <div style={{ display: 'flex', gap: 15, alignItems: 'center' }}>
             <img src="/logo.png" alt="Logo" style={{ width: 60 }} />
             <div>
-              <h1 style={{ margin: 0, color: '#000', fontSize: '24px' }}>{hosp.NAME || 'HOSPITAL MANAGEMENT SYSTEM'}</h1>
-              <p style={{ margin: '5px 0 0 0', fontWeight: 'bold', color: '#000' }}>{hosp.TAGLINE || 'HEALTHCARE EXCELLENCE CENTER'}</p>
+              <h1 style={{ margin: 0, color: '#000', fontSize: '24px' }}>{hosp.NAME || 'N.F.L. HOSPITAL'}</h1>
+              <p style={{ margin: '5px 0 0 0', fontWeight: 'bold', color: '#000' }}>{hosp.TAGLINE || 'NAYA NANGAL'}</p>
             </div>
           </div>
           <div style={{ textAlign: 'right', fontSize: '12px', color: '#000' }}>
             <p>Ph: {hosp.PHONE || '01887-220000'}</p>
-            <p>{hosp.EMAIL || 'hospital@hms.com'}</p>
+            <p>{hosp.EMAIL || 'hospital@nfl.co.in'}</p>
           </div>
         </div>
 

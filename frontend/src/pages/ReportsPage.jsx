@@ -3,7 +3,6 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
-import { openAuthenticatedBlob } from '../utils/authenticatedDownload';
 
 const TABS = ['OPD Register', 'Revenue', 'Pharmacy Sales', 'Lab Workload', 'Audit Trail', 'Doctor Performance'];
 
@@ -95,15 +94,11 @@ function OPDRegisterTab() {
     setLoading(false);
   };
 
-  const exportExcel = async () => {
+  const exportExcel = () => {
     let url = `/reports/opd-register?start_date=${startDate}&end_date=${endDate}&export=excel`;
     if (doctorId) url += `&doctor_id=${doctorId}`;
     if (dept) url += `&department=${dept}`;
-    try {
-      await openAuthenticatedBlob(url, { download: true, filename: 'opd-register.xlsx' });
-    } catch {
-      toast.error('Failed to export OPD register');
-    }
+    window.open(api.defaults.baseURL + url, '_blank');
   };
 
   return (

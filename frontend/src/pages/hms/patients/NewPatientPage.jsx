@@ -6,13 +6,21 @@ import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 
 const PATIENT_CATEGORY_CONFIG = {
-  corporate_employee: {
+  nfl_employee: {
     icon: '🏢',
     formTitle: 'Corporate Beneficiary Registration',
     title: 'Corporate Employee / Dependent',
     accent: 'var(--green)',
     accentBg: 'var(--green-light)',
     accentBorder: 'var(--green-border)',
+  },
+  cisf_employee: {
+    icon: '🛡️',
+    formTitle: 'Institutional / Sponsored Registration',
+    title: 'Institutional / Sponsored Patient',
+    accent: 'var(--red)',
+    accentBg: 'var(--red-light)',
+    accentBorder: 'var(--red-border)',
   },
   other: {
     icon: '👨‍⚕️',
@@ -45,7 +53,7 @@ export default function NewPatientPage() {
   const [registeredPatient, setRegisteredPatient] = useState(null);
   const printRef = useRef(null);
 
-  // Corporate Dependents Auto-Fill
+  // NFL Dependents Auto-Fill
   const [dependents, setDependents] = useState([]);
   const [isSearchingDependents, setIsSearchingDependents] = useState(false);
   const lastFetchedEmpRef = useRef('');
@@ -59,7 +67,7 @@ export default function NewPatientPage() {
     setIsSearchingDependents(true);
     setDependents([]);
     try {
-      const { data } = await api.get(`/patients/hms/emp/${encodeURIComponent(trimmed)}`);
+      const { data } = await api.get(`/patients/hms/nfl/${encodeURIComponent(trimmed)}`);
       if (data.success && data.data.length > 0) {
         setDependents(data.data);
         toast.success(`Found ${data.data.length} profiles — please select who to register`);
@@ -206,55 +214,87 @@ export default function NewPatientPage() {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', maxWidth: 840, margin: '20px auto 0', gap: '24px' }}>
-            {/* Corporate Employee Card */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px', marginTop: '10px' }}>
+            {/* NFL Employee Card */}
             <div className="hms-stat-card hms-anim-1" style={{
-              padding: 'clamp(24px, 4vw, 40px)',
+              padding: 40,
               borderTop: '6px solid var(--green)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               textAlign: 'center',
-              minHeight: 360,
-              cursor: 'pointer',
+              minHeight: 380
             }}
             onClick={() => {
-              setFormData(p => ({ ...p, patientType: 'corporate_employee' }));
+              setFormData(p => ({ ...p, patientType: 'nfl_employee' }));
               setStep('form');
             }}
             >
               <div style={{
                 marginBottom: 24,
-                background: '#010b14',
-                width: 96, height: 96,
+                background: '#fff',
+                width: 100, height: 100,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: '24px',
-                border: '2px solid rgba(16,185,129,0.4)',
+                borderRadius: '50%',
+                border: '3px solid rgba(16,185,129,0.35)',
                 boxShadow: '0 8px 24px rgba(16,185,129,0.25)',
                 overflow: 'hidden',
-                padding: '2px',
               }}>
-                <img src="/logo.png" alt="HMS Logo" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '22px' }} />
+                <img src="/logo.png" alt="Hospital Logo" style={{ width: 72, height: 72, objectFit: 'contain' }} />
               </div>
-              <h3 style={{ fontSize: '1.4rem', marginBottom: 12, fontWeight: 800 }}>Corporate Employee / Dependent</h3>
-              <p style={{ color: 'var(--text-secondary)', flex: 1, marginBottom: 24, fontSize: '0.95rem', lineHeight: 1.5 }}>
-                Full medical coverage benefits for corporate partnered employees and their registered family members.
+              <h3 style={{ fontSize: '1.6rem', marginBottom: 12, fontWeight: 800 }}>Corporate Employee / Dependent</h3>
+              <p style={{ color: 'var(--text-secondary)', flex: 1, marginBottom: 30, fontSize: '1rem', lineHeight: 1.6 }}>
+                Full medical coverage benefits for partner corporate employees and their registered family members.
               </p>
               <button className="btn btn-primary btn-full">
                 Begin Corporate Registration →
               </button>
             </div>
 
-            {/* Other Patient Card */}
+            {/* Institutional / Sponsored Patient Card */}
             <div className="hms-stat-card hms-anim-2" style={{
-              padding: 'clamp(24px, 4vw, 40px)',
+              padding: 40,
+              borderTop: '6px solid var(--red)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              textAlign: 'center',
+              minHeight: 380
+            }}
+            onClick={() => {
+              setFormData(p => ({ ...p, patientType: 'cisf_employee', empNumber: '', relationship: 'Self', registration_fee_paid: false }));
+              setStep('form');
+            }}
+            >
+              <div style={{
+                marginBottom: 24,
+                background: 'var(--red-light)',
+                width: 100, height: 100,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: '50%',
+                border: '1px solid var(--red-border)',
+                fontSize: '3rem',
+              }}>
+                🛡️
+              </div>
+              <h3 style={{ fontSize: '1.6rem', marginBottom: 12, fontWeight: 800 }}>Institutional / Sponsored Employee</h3>
+              <p style={{ color: 'var(--text-secondary)', flex: 1, marginBottom: 30, fontSize: '1rem', lineHeight: 1.6 }}>
+                Dedicated registration for sponsored and institutional employees with manual intake workflow.
+              </p>
+              <button className="btn btn-full" style={{ background: 'var(--red)', color: 'var(--text-inverse)', borderColor: 'var(--red)' }}>
+                Begin Registration →
+              </button>
+            </div>
+
+            {/* Other Patient Card */}
+            <div className="hms-stat-card hms-anim-3" style={{
+              padding: 40,
               borderTop: '6px solid var(--blue)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               textAlign: 'center',
-              minHeight: 360,
-              cursor: 'pointer',
+              minHeight: 380
             }}
             onClick={() => {
               setFormData(p => ({ ...p, patientType: 'other', empNumber: '', relationship: 'Self' }));
@@ -265,11 +305,10 @@ export default function NewPatientPage() {
                 fontSize: '3rem',
                 marginBottom: 24,
                 background: 'var(--blue-light)',
-                width: 96, height: 96,
+                width: 100, height: 100,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: '24px',
-                border: '1px solid var(--blue-border)',
-                boxShadow: '0 8px 24px rgba(59,130,246,0.15)',
+                borderRadius: '50%',
+                border: '1px solid var(--blue-border)'
               }}>👨‍👩‍👧‍👦</div>
               <h3 style={{ fontSize: '1.6rem', marginBottom: 12, fontWeight: 800 }}>General Patient (External)</h3>
               <p style={{ color: 'var(--text-secondary)', flex: 1, marginBottom: 30, fontSize: '1rem', lineHeight: 1.6 }}>
@@ -285,7 +324,8 @@ export default function NewPatientPage() {
     );
   }
 
-  const isCorporate = formData.patientType === 'corporate_employee';
+  const isNFL = formData.patientType === 'nfl_employee';
+  const isCISF = formData.patientType === 'cisf_employee';
   const isGeneral = formData.patientType === 'other';
   const categoryConfig = PATIENT_CATEGORY_CONFIG[formData.patientType] || PATIENT_CATEGORY_CONFIG.other;
 
@@ -317,8 +357,8 @@ export default function NewPatientPage() {
         {error && <div className="alert alert-error hms-anim-1" style={{ marginBottom: 24 }}>{error}</div>}
 
         <form onSubmit={handleSubmit} className="hms-anim-2">
-          {/* Corporate Search Section */}
-          {isCorporate && (
+          {/* NFL Search Section */}
+          {isNFL && (
             <div className="card" style={{ marginBottom: 24, borderLeft: '5px solid var(--green)', padding: 30 }}>
               <div className="card-section-title" style={{ color: 'var(--green)', marginBottom: 20 }}>
                 Employment Verification & Auto-Fill
@@ -389,21 +429,21 @@ export default function NewPatientPage() {
                 <div className="form-grid-2" style={{ marginBottom: 20 }}>
                   <div className="form-group">
                     <label className="form-label">First Name *</label>
-                    <input type="text" className="form-input" name="first_name" required value={formData.first_name} onChange={handleChange} readOnly={isCorporate} style={{ backgroundColor: isCorporate ? 'var(--surface-2)' : '' }} />
+                    <input type="text" className="form-input" name="first_name" required value={formData.first_name} onChange={handleChange} readOnly={isNFL} style={{ backgroundColor: isNFL ? 'var(--surface-2)' : '' }} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Last Name</label>
-                    <input type="text" className="form-input" name="last_name" value={formData.last_name} onChange={handleChange} readOnly={isCorporate} style={{ backgroundColor: isCorporate ? 'var(--surface-2)' : '' }} />
+                    <input type="text" className="form-input" name="last_name" value={formData.last_name} onChange={handleChange} readOnly={isNFL} style={{ backgroundColor: isNFL ? 'var(--surface-2)' : '' }} />
                   </div>
                 </div>
                 <div className="form-grid">
                   <div className="form-group">
                     <label className="form-label">Age *</label>
-                    <input type="number" className="form-input" name="age" required value={formData.age} onChange={handleChange} min="0" readOnly={isCorporate} style={{ backgroundColor: isCorporate ? 'var(--surface-2)' : '' }} />
+                    <input type="number" className="form-input" name="age" required value={formData.age} onChange={handleChange} min="0" readOnly={isNFL} style={{ backgroundColor: isNFL ? 'var(--surface-2)' : '' }} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Gender *</label>
-                    <select className="form-input" name="gender" required value={formData.gender} onChange={handleChange} style={{ pointerEvents: isCorporate ? 'none' : 'auto', backgroundColor: isCorporate ? 'var(--surface-2)' : '' }}>
+                    <select className="form-input" name="gender" required value={formData.gender} onChange={handleChange} style={{ pointerEvents: isNFL ? 'none' : 'auto', backgroundColor: isNFL ? 'var(--surface-2)' : '' }}>
                       <option value="Male">Male</option>
                       <option value="Female">Female</option>
                       <option value="Other">Other</option>
@@ -416,10 +456,10 @@ export default function NewPatientPage() {
                       {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => <option key={bg} value={bg}>{bg}</option>)}
                     </select>
                   </div>
-                  {isCorporate && (
+                  {isNFL && (
                     <div className="form-group">
                       <label className="form-label">Relationship *</label>
-                      <select className="form-input" name="relationship" required value={formData.relationship} onChange={handleChange} style={{ pointerEvents: isCorporate ? 'none' : 'auto', backgroundColor: isCorporate ? 'var(--surface-2)' : '' }}>
+                      <select className="form-input" name="relationship" required value={formData.relationship} onChange={handleChange} style={{ pointerEvents: isNFL ? 'none' : 'auto', backgroundColor: isNFL ? 'var(--surface-2)' : '' }}>
                         {['Self', 'Spouse', 'Son', 'Daughter', 'Father', 'Mother', 'Other'].map(r => <option key={r} value={r}>{r}</option>)}
                       </select>
                     </div>
@@ -439,10 +479,24 @@ export default function NewPatientPage() {
                     <label className="form-label">Alternate Mobile</label>
                     <input type="tel" className="form-input" name="alt_phone" value={formData.alt_phone} onChange={handleChange} />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Email Address</label>
-                    <input type="email" className="form-input" name="email" value={formData.email} onChange={handleChange} />
-                  </div>
+                  {isCISF ? (
+                    <div className="form-group">
+                      <label className="form-label">Employee Number</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        name="empNumber"
+                        value={formData.empNumber}
+                        onChange={handleChange}
+                        placeholder="CISF employee number"
+                      />
+                    </div>
+                  ) : (
+                    <div className="form-group">
+                      <label className="form-label">Email Address</label>
+                      <input type="email" className="form-input" name="email" value={formData.email} onChange={handleChange} />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

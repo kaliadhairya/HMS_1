@@ -47,19 +47,6 @@ function SectionTitle({ children }) {
   return <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12, marginTop: 24 }}>{children}</div>;
 }
 
-function safeParseLogDetail(val) {
-  if (!val) return '—';
-  try {
-    const parsed = typeof val === 'string' ? JSON.parse(val) : val;
-    if (parsed && typeof parsed === 'object') {
-      return parsed.reason || (parsed.attempts ? `${parsed.attempts} attempts` : JSON.stringify(parsed));
-    }
-    return String(parsed);
-  } catch {
-    return String(val);
-  }
-}
-
 // ═══════════════════════════════════════════════════════
 // SECURITY CENTER PANEL
 // ═══════════════════════════════════════════════════════
@@ -108,7 +95,7 @@ function SecurityCenterPanel() {
                 <td style={{ fontWeight: 600 }}>{log.USERNAME || log.USER_NAME || `User #${log.USER_ID}`}</td>
                 <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{log.IP_ADDRESS || '—'}</td>
                 <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{log.CREATED_AT ? new Date(log.CREATED_AT).toLocaleString('en-IN') : '—'}</td>
-                <td style={{ fontSize: '0.78rem' }}>{safeParseLogDetail(log.NEW_VALUE)}</td>
+                <td style={{ fontSize: '0.78rem' }}>{log.NEW_VALUE ? JSON.parse(log.NEW_VALUE)?.reason || JSON.parse(log.NEW_VALUE)?.attempts + ' attempts' : '—'}</td>
               </tr>
             ))}
           </tbody></table>

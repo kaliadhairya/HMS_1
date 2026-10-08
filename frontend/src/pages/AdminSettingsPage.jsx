@@ -12,15 +12,13 @@ export default function AdminSettingsPage() {
   // Admin tabs: Hospital Profile, Tariff, Dept Config, Working Hours, Holiday Calendar
   // Super Admin also keeps Security Logs
   const TABS = [
-    { label: 'Hospital Profile', Comp: HospitalProfileTab },
-    { label: 'Tariff / Rate Card', Comp: TariffTab },
-    { label: 'Department Config', Comp: DepartmentConfigTab },
-    { label: 'Working Hours', Comp: WorkingHoursTab },
-    { label: 'Holiday Calendar', Comp: HolidayCalendarTab },
-    ...(isSuperAdmin ? [{ label: 'Security Logs', Comp: SecurityLogsTab }] : []),
+    { label: 'Hospital Profile', comp: <HospitalProfileTab /> },
+    { label: 'Tariff / Rate Card', comp: <TariffTab /> },
+    { label: 'Department Config', comp: <DepartmentConfigTab /> },
+    { label: 'Working Hours', comp: <WorkingHoursTab /> },
+    { label: 'Holiday Calendar', comp: <HolidayCalendarTab /> },
+    ...(isSuperAdmin ? [{ label: 'Security Logs', comp: <SecurityLogsTab /> }] : []),
   ];
-
-  const ActiveComponent = TABS[activeTab]?.Comp;
 
   return (
     <>
@@ -42,7 +40,7 @@ export default function AdminSettingsPage() {
 
           {/* Content */}
           <div style={{ flex: 1 }}>
-            {ActiveComponent && <ActiveComponent />}
+            {TABS[activeTab]?.comp}
           </div>
         </div>
       </div>

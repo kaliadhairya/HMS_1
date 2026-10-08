@@ -146,8 +146,8 @@ export default function App() {
             <Routes>
               {/* Existing routes — fully preserved */}
               <Route path="/login" element={<LoginPage />} />
-            <Route path="/maintenance" element={<MaintenancePage />} />
-            <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
+              <Route path="/maintenance" element={<MaintenancePage />} />
+              <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
             <Route path="/register/:type" element={<ProtectedRoute><RegisterPatientPage /></ProtectedRoute>} />
             <Route path="/edit/:id" element={<ProtectedRoute><RegisterPatientPage /></ProtectedRoute>} />
             <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
@@ -179,7 +179,6 @@ export default function App() {
               </HMSProtectedRoute>
             } />
             <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="/super_admin" element={<Navigate to="/super_admin/dashboard" replace />} />
             <Route path="/hms/change-password" element={
               <ProtectedRoute><ChangePasswordPage /></ProtectedRoute>
             } />
@@ -251,37 +250,37 @@ export default function App() {
 
             {/* Doctor Workflow Routes */}
             <Route path="/doctor/prescriptions" element={
-              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+              <HMSProtectedRoute allowedRoles={['doctor']}>
                 <DoctorPrescriptionsPage />
               </HMSProtectedRoute>
             } />
             <Route path="/doctor/labs" element={
-              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+              <HMSProtectedRoute allowedRoles={['doctor']}>
                 <DoctorLabsPage />
               </HMSProtectedRoute>
             } />
             <Route path="/doctor/schedule" element={
-              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+              <HMSProtectedRoute allowedRoles={['doctor']}>
                 <DoctorSchedulePage />
               </HMSProtectedRoute>
             } />
             <Route path="/doctor/reports" element={
-              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+              <HMSProtectedRoute allowedRoles={['doctor']}>
                 <DoctorReportsPage />
               </HMSProtectedRoute>
             } />
             <Route path="/doctor/referrals" element={
-              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+              <HMSProtectedRoute allowedRoles={['doctor']}>
                 <DoctorReferralsPage />
               </HMSProtectedRoute>
             } />
             <Route path="/doctor/clinical-notes" element={
-              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+              <HMSProtectedRoute allowedRoles={['doctor']}>
                 <DoctorClinicalNotesPage />
               </HMSProtectedRoute>
             } />
             <Route path="/doctor/quick-consult" element={
-              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+              <HMSProtectedRoute allowedRoles={['doctor']}>
                 <DoctorQuickConsultPage />
               </HMSProtectedRoute>
             } />

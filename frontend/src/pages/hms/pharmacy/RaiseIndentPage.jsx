@@ -190,11 +190,11 @@ export default function RaiseIndentPage() {
 
         {/* Formal Document */}
         <div className="print-header">
-          <img src="/logo.png" alt="HMS Logo" className="print-logo" />
+          <img src="/logo.png" alt="Hospital Logo" className="print-logo" />
           <div className="print-title">
-            <h1>Hospital Management System</h1>
-            <h2>Healthcare Excellence Center</h2>
-            <p>Main Hospital & Operations</p>
+            <h1>HMS Hospital</h1>
+            <h2>Hospital Management System</h2>
+            <p>Pharmacy & Store Department</p>
           </div>
           <div style={{ width: '80px' }}></div> {/* Spacer to balance logo */}
         </div>
