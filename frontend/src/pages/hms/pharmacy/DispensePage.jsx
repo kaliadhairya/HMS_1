@@ -253,8 +253,8 @@ export default function DispensePage() {
                       <td style={{ padding: 8, textAlign: 'center', borderBottom: '1px dashed var(--border)' }}>
                         {item.quantity}
                       </td>
-                      <td style={{ padding: 8, textAlign: 'center', borderBottom: '1px dashed var(--border)' }}>₹{item.rate?.toFixed(2)}</td>
-                      <td style={{ padding: 8, textAlign: 'right', borderBottom: '1px dashed var(--border)' }}>₹{item.amount?.toFixed(2)}</td>
+                      <td style={{ padding: 8, textAlign: 'center', borderBottom: '1px dashed var(--border)' }}>₹{Number(item.rate || 0).toFixed(2)}</td>
+                      <td style={{ padding: 8, textAlign: 'right', borderBottom: '1px dashed var(--border)' }}>₹{Number(item.amount || 0).toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -262,7 +262,7 @@ export default function DispensePage() {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.2rem', fontWeight: 700 }}>
                 <span>Total Amount:</span>
-                <span>₹{slipData.totalAmount?.toFixed(2)}</span>
+                <span>₹{Number(slipData.totalAmount || 0).toFixed(2)}</span>
               </div>
             </div>
 

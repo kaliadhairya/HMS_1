@@ -436,7 +436,7 @@ export default function PharmacyStockPage() {
                           ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                         </td>
                         <td style={{ ...tdS, textAlign: 'right' }}>
-                          <span style={{ fontWeight: 800, fontSize: '1rem' }}>₹{(item.MRP || 0).toFixed(2)}</span>
+                          <span style={{ fontWeight: 800, fontSize: '1rem' }}>₹{Number(item.MRP || 0).toFixed(2)}</span>
                         </td>
                         <td style={{ ...tdS, textAlign: 'center', paddingRight: 24 }} onClick={e => e.stopPropagation()}>
                           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -524,7 +524,7 @@ export default function PharmacyStockPage() {
                                           }}>{b.QUANTITY}</span>
                                         </td>
                                         <td style={btdS}><span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{b.SUPPLIER_NAME || '—'}</span></td>
-                                        <td style={{ ...btdS, textAlign: 'right', fontWeight: 700 }}>₹{(b.MRP || 0).toFixed(2)}</td>
+                                        <td style={{ ...btdS, textAlign: 'right', fontWeight: 700 }}>₹{Number(b.MRP || 0).toFixed(2)}</td>
                                         <td style={{ ...btdS, textAlign: 'center' }}>
                                           <button className="btn btn-sm" onClick={(e) => openLedger(e, b.MEDICINE_ID, item.GENERIC_NAME)}
                                             style={{ borderRadius: 8, padding: '4px 10px', fontWeight: 600, background: 'rgba(37,99,235,0.08)', color: '#2563eb', border: '1px solid rgba(37,99,235,0.15)', fontSize: '0.75rem' }}>

@@ -144,8 +144,8 @@ router.get('/', protect, checkPermission('pharmacy', 'read'), async (req, res) =
       gstRate: r.GST_RATE ?? r.gst_rate,
       isControlled: r.IS_CONTROLLED ?? r.is_controlled,
       isActive: r.IS_ACTIVE ?? r.is_active,
-      totalStock: r.TOTAL_STOCK ?? r.total_stock ?? 0,
-      mrp: r.MRP ?? r.mrp ?? 0,
+      totalStock: Number(r.TOTAL_STOCK ?? r.total_stock ?? 0),
+      mrp: Number(r.MRP ?? r.mrp ?? 0),
     }));
     res.json({ success: true, data: mapped });
   } catch (error) {

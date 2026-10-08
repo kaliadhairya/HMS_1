@@ -353,8 +353,8 @@ export default function IPDBillingPage() {
                               <button onClick={() => updateQty(c, qty + 1)} style={qtyBtnStyle}>+</button>
                             </div>
                           </td>
-                          <td style={tdStyle}>₹{unitPrice.toFixed(2)}</td>
-                          <td style={{...tdStyle, fontWeight: 700, color: '#0f172a'}}>₹{totalPrice.toFixed(2)}</td>
+                          <td style={tdStyle}>₹{Number(unitPrice || 0).toFixed(2)}</td>
+                          <td style={{...tdStyle, fontWeight: 700, color: '#0f172a'}}>₹{Number(totalPrice || 0).toFixed(2)}</td>
                           <td style={tdStyle}>
                             <button onClick={() => removeCharge(c)} style={{
                               background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
@@ -401,7 +401,7 @@ export default function IPDBillingPage() {
                     </div>
                     <div style={{ borderTop: '1px dashed var(--border)', marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Ward Total</span>
-                      <span style={{ fontWeight: 800, color: '#3b82f6', fontSize: '1.05rem' }}>₹{(wardInfo.wardTotal || 0).toFixed(2)}</span>
+                      <span style={{ fontWeight: 800, color: '#3b82f6', fontSize: '1.05rem' }}>₹{Number(wardInfo.wardTotal || 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -419,7 +419,7 @@ export default function IPDBillingPage() {
                     </div>
                     <div style={{ borderTop: '1px dashed var(--border)', marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Medicine Total</span>
-                      <span style={{ fontWeight: 800, color: '#10b981', fontSize: '1.05rem' }}>₹{medicineTotal.toFixed(2)}</span>
+                      <span style={{ fontWeight: 800, color: '#10b981', fontSize: '1.05rem' }}>₹{Number(medicineTotal || 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -432,7 +432,7 @@ export default function IPDBillingPage() {
                   marginBottom: 20,
                 }}>
                   <span style={{ fontWeight: 800, color: '#fff', fontSize: '1rem' }}>Grand Total</span>
-                  <span style={{ fontWeight: 900, color: '#34d399', fontSize: '1.35rem' }}>₹{grandTotal.toFixed(2)}</span>
+                  <span style={{ fontWeight: 900, color: '#34d399', fontSize: '1.35rem' }}>₹{Number(grandTotal || 0).toFixed(2)}</span>
                 </div>
 
                 {/* Save Draft Button */}
@@ -494,7 +494,7 @@ export default function IPDBillingPage() {
               </div>
               <div style={{ position: 'absolute', right: 0, top: 0, textAlign: 'right', fontSize: '12px', border: '1px solid #000', padding: '6px', background: '#fff', maxWidth: '200px' }}>
                 <div style={{ marginBottom: 4 }}>Receipt No. : <strong style={{ marginLeft: 4 }}>{generatedBill?.billNumber}</strong></div>
-                <div style={{ marginBottom: 4 }}>Final Bill Amt : <strong style={{ marginLeft: 4 }}>Rs {generatedBill?.totalAmount?.toFixed(2)}/-</strong></div>
+                <div style={{ marginBottom: 4 }}>Final Bill Amt : <strong style={{ marginLeft: 4 }}>Rs {Number(generatedBill?.totalAmount || 0).toFixed(2)}/-</strong></div>
                 <div>Date : <strong style={{ marginLeft: 4 }}>{new Date().toLocaleDateString('en-IN')}</strong></div>
               </div>
             </div>
@@ -529,15 +529,15 @@ export default function IPDBillingPage() {
                   <div style={{ width: '60%' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '15px' }}>
                       <span>Stay charges</span>
-                      <span>{wardInfo?.wardTotal?.toFixed(2)}</span>
+                      <span>{Number(wardInfo?.wardTotal || 0).toFixed(2)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '15px' }}>
                       <span>Medicines</span>
-                      <span>{generatedBill?.medicineTotal?.toFixed(2)}</span>
+                      <span>{Number(generatedBill?.medicineTotal || 0).toFixed(2)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000', marginTop: '10px', paddingTop: '10px', fontWeight: 'bold', fontSize: '16px' }}>
                       <span>Total</span>
-                      <span>{generatedBill?.totalAmount?.toFixed(2)}</span>
+                      <span>{Number(generatedBill?.totalAmount || 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -554,12 +554,12 @@ export default function IPDBillingPage() {
                       <tr key={i}>
                         <td style={{ padding: '4px 0' }}>{c.MEDICINE_NAME} {c.STRENGTH}</td>
                         <td style={{ padding: '4px 0', textAlign: 'center' }}>- {c.QUANTITY} -</td>
-                        <td style={{ padding: '4px 0', textAlign: 'right' }}>{c.TOTAL_PRICE?.toFixed(2)}</td>
+                        <td style={{ padding: '4px 0', textAlign: 'right' }}>{Number(c.TOTAL_PRICE || 0).toFixed(2)}</td>
                       </tr>
                     ))}
                     <tr>
                       <td colSpan="2" style={{ borderTop: '1px solid #000', textAlign: 'right', padding: '8px 10px 0 0', fontWeight: 'bold' }}>Total</td>
-                      <td style={{ borderTop: '1px solid #000', textAlign: 'right', padding: '8px 0 0 0', fontWeight: 'bold' }}>{generatedBill?.medicineTotal?.toFixed(2)}</td>
+                      <td style={{ borderTop: '1px solid #000', textAlign: 'right', padding: '8px 0 0 0', fontWeight: 'bold' }}>{Number(generatedBill?.medicineTotal || 0).toFixed(2)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -578,7 +578,7 @@ export default function IPDBillingPage() {
             {/* Footer Signatures */}
             <div style={{ marginTop: '60px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
               <div style={{ fontSize: '16px' }}>
-                Approved for Rs. <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px', fontSize: '18px' }}>{generatedBill?.totalAmount?.toFixed(2)} /-</strong><br/>
+                Approved for Rs. <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px', fontSize: '18px' }}>{Number(generatedBill?.totalAmount || 0).toFixed(2)} /-</strong><br/>
                 धन की स्वीकृति
               </div>
               <div style={{ textAlign: 'center', fontSize: '15px' }}>

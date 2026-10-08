@@ -101,8 +101,8 @@ export default function MedicineMasterPage() {
       hsnCode: med.hsnCode || '',
       gstRate: med.gstRate || 0,
       isControlled: med.isControlled === 1,
-      initialQuantity: med.totalStock || 0,
-      perUnitPrice: med.mrp || 0,
+      initialQuantity: Number(med.totalStock || 0),
+      perUnitPrice: Number(med.mrp || 0),
     });
     setBrandInput('');
     setIsModalOpen(true);
@@ -319,7 +319,7 @@ export default function MedicineMasterPage() {
                         </div>
                       </td>
                       <td style={{ ...tdS, textAlign: 'right' }}>
-                        <div style={{ fontWeight: 900, color: 'var(--text-primary)', fontSize: '1rem' }}>₹{(med.mrp || 0).toFixed(2)}</div>
+                        <div style={{ fontWeight: 900, color: 'var(--text-primary)', fontSize: '1rem' }}>₹{Number(med.mrp || 0).toFixed(2)}</div>
                         <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>per {med.unitOfSale}</div>
                       </td>
                       <td style={{ ...tdS, textAlign: 'center', paddingRight: 24 }}>
