@@ -229,7 +229,7 @@ export default function DoctorReferralsPage() {
       
       if (patient.relationship !== 'Self' && patient.empNumber) {
         try {
-          const res = await api.get(`/patients/hms/nfl/${encodeURIComponent(patient.empNumber)}`);
+          const res = await api.get(`/patients/hms/emp/${encodeURIComponent(patient.empNumber)}`);
           const principal = res.data.data.find(d => d.relationship === 'Self');
           if (principal) {
             empUpdate.empName = principal.name;
@@ -286,7 +286,7 @@ export default function DoctorReferralsPage() {
     let fetchedEmpName = ref.patient_type === 'nfl_employee' && ref.relationship !== 'Self' ? '' : ref.patient;
     if (ref.patient_type === 'nfl_employee' && ref.relationship !== 'Self' && ref.emp_number) {
       try {
-        const res = await api.get(`/patients/hms/nfl/${encodeURIComponent(ref.emp_number)}`);
+        const res = await api.get(`/patients/hms/emp/${encodeURIComponent(ref.emp_number)}`);
         const principal = res.data.data.find(d => d.relationship === 'Self');
         if (principal) fetchedEmpName = principal.name;
       } catch (err) {
@@ -337,7 +337,7 @@ export default function DoctorReferralsPage() {
     let empName = '';
     if (ref.patient_type === 'nfl_employee' && ref.relationship && ref.relationship !== 'Self' && ref.emp_number) {
       try {
-        const res = await api.get(`/patients/hms/nfl/${encodeURIComponent(ref.emp_number)}`);
+        const res = await api.get(`/patients/hms/emp/${encodeURIComponent(ref.emp_number)}`);
         const principal = res.data.data.find(d => d.relationship === 'Self');
         if (principal) empName = principal.name;
       } catch (err) {
@@ -799,7 +799,7 @@ export default function DoctorReferralsPage() {
         {/* Tab: Create Referral */}
         {activeTab === 'create' && (
           <div className="hms-anim-3" style={{
-            display: 'flex', gap: 24, maxWidth: selectedPatient ? 1140 : 760, margin: '0 auto',
+            display: 'flex', flexWrap: 'wrap', gap: 24, maxWidth: selectedPatient ? 1140 : 760, margin: '0 auto',
             alignItems: 'flex-start', transition: 'max-width 0.3s ease'
           }}>
             <div className="card" style={{ flex: 1, padding: 0, overflow: 'hidden', minWidth: 0 }}>
@@ -900,7 +900,7 @@ export default function DoctorReferralsPage() {
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                           {selectedPatient.uhid} • {selectedPatient.age}y / {selectedPatient.gender}
                           {selectedPatient.patientType === 'nfl_employee' && (
-                            <span style={{ color: '#059669', fontWeight: 600 }}> • NFL</span>
+                            <span style={{ color: '#059669', fontWeight: 600 }}> • Corporate</span>
                           )}
                         </div>
                       </div>
@@ -1324,7 +1324,7 @@ export default function DoctorReferralsPage() {
 
             {/* Right Column: Patient History Side Panel */}
             {selectedPatient && (
-              <div style={{ width: 340, flexShrink: 0, animation: 'hmsFadeIn 0.3s ease' }}>
+              <div style={{ minWidth: 280, flex: '1 1 300px', animation: 'hmsFadeIn 0.3s ease' }}>
                 <div className="card" style={{ padding: '20px', position: 'sticky', top: 20 }}>
                   <h3 style={{ margin: '0 0 16px', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: '1.2rem' }}>🕒</span> Patient History
@@ -1415,10 +1415,10 @@ export default function DoctorReferralsPage() {
                 <div className="memo-paper local-memo" style={{ fontFamily: 'Arial, sans-serif' }}>
                   {/* ─── HEADER ─── */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '2px solid #000', paddingBottom: 10, marginBottom: 20 }}>
-                    <img src="/logo.png" alt="NFL" style={{ width: 80, height: 80, objectFit: 'contain', marginRight: 20 }} />
+                    <img src="/logo.png" alt="Hospital Logo" style={{ width: 80, height: 80, objectFit: 'contain', marginRight: 20 }} />
                     <div style={{ textAlign: 'center' }}>
-                      <h2 style={{ margin: 0, fontSize: 24, fontWeight: 'bold' }}>नेशनल फर्टिलाइजर्स लिमिटेड (नंगल यूनिट) नया नंगल</h2>
-                      <h3 style={{ margin: '5px 0', fontSize: 18 }}>(चिकित्सा विभाग)</h3>
+                      <h2 style={{ margin: 0, fontSize: 24, fontWeight: 'bold' }}>अस्पताल प्रबंधन प्रणाली (चिकित्सा विभाग)</h2>
+                      <h3 style={{ margin: '5px 0', fontSize: 18 }}>(चिकित्सा परामर्श एवं संदर्भ विभाग)</h3>
                       <h3 style={{ margin: 0, fontSize: 18, fontWeight: 'bold' }}>ज्ञापन</h3>
                     </div>
                   </div>
@@ -1505,10 +1505,10 @@ export default function DoctorReferralsPage() {
                 <div className="memo-paper outside-memo">
                   {/* ─── HEADER ─── */}
                 <div className="outside-memo-header" style={{ textAlign: 'center', borderBottom: '2px solid #000', paddingBottom: 12, marginBottom: 14, position: 'relative' }}>
-                  <img src="/logo.png" alt="NFL" style={{ position: 'absolute', left: 0, top: 0, width: 100, height: 100, objectFit: 'contain' }} />
-                  <div style={{ fontSize: 16, fontWeight: 700 }}>नेशनल फर्टिलाइजर्स लिमिटेड, नंगल इकाई</div>
-                  <h1 style={{ margin: '2px 0', fontSize: 20, letterSpacing: 1 }}>NATIONAL FERTILIZERS LIMITED, NANGAL UNIT</h1>
-                  <div style={{ fontSize: 16, fontWeight: 600 }}>चिकित्सा विभाग (Medical Department)</div>
+                  <img src="/logo.png" alt="Hospital Logo" style={{ position: 'absolute', left: 0, top: 0, width: 90, height: 90, objectFit: 'contain' }} />
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>केंद्रीय चिकित्सालय एवं परामर्श केंद्र</div>
+                  <h1 style={{ margin: '2px 0', fontSize: 20, letterSpacing: 1 }}>HOSPITAL MANAGEMENT SYSTEM — CLINICAL REFERRAL</h1>
+                  <div style={{ fontSize: 16, fontWeight: 600 }}>चिकित्सा विभाग (Medical Referral Division)</div>
                 </div>
 
                 {/* ─── REF NO & DATE ─── */}
@@ -1520,7 +1520,7 @@ export default function DoctorReferralsPage() {
 
                 {/* Doctor who created */}
                 <div style={{ textAlign: 'right', fontSize: 11, marginBottom: 10, fontWeight: 600 }}>
-                  Referred by: Dr. {previewReferral.doctor_name || user?.name || 'Doctor'}
+                  Referred by: Dr. {(previewReferral.doctor_name || user?.name || 'Doctor').replace(/^Dr\.?\s*/i, '')}
                 </div>
 
                 {/* ─── EMPLOYEE INFO ─── */}
@@ -1581,7 +1581,7 @@ export default function DoctorReferralsPage() {
                   <span style={{ flex: 1, borderBottom: "1px solid #000", paddingLeft: 4 }}>{previewReferral.reason || ""}</span>
                 </div>
                 <div style={{ display: "flex", gap: 6, padding: "5px 0" }}>
-                  <span style={{ minWidth: 280, fontWeight: 600 }}>एन.एफ.एल. अस्पताल से पहले लिए उपचार का विवरण:</span>
+                  <span style={{ minWidth: 280, fontWeight: 600 }}>मुख्य अस्पताल से पहले लिए उपचार का विवरण:</span>
                   <span style={{ flex: 1, borderBottom: "1px solid #000", paddingLeft: 4 }}>{previewReferral.treatment_nfl || ""}</span>
                 </div>
                 <div style={{ fontSize: 12, color: "#000", marginTop: -2, marginBottom: 2 }}>Treatment already taken from HMS Hospital :</div>

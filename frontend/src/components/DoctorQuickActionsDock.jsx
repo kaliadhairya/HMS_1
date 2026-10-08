@@ -70,8 +70,8 @@ export default function DoctorQuickActionsDock() {
         onMouseLeave={handleMouseLeave}
         style={{
           position: 'fixed',
-          bottom: 28,
-          right: 28,
+          bottom: 20,
+          right: 20,
           zIndex: 9999,
           display: 'flex',
           flexDirection: 'column',
@@ -149,7 +149,7 @@ export default function DoctorQuickActionsDock() {
               fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)',
               letterSpacing: '0.02em',
             }}>
-              NFL Nangal IT Department © 2026
+              HMS IT Department © 2026
             </div>
           </div>
         )}
@@ -160,7 +160,7 @@ export default function DoctorQuickActionsDock() {
           onClick={() => setIsOpen(prev => !prev)}
           onMouseEnter={handleMouseEnter}
           style={{
-            width: 56, height: 56, borderRadius: '50%',
+            width: 48, height: 48, borderRadius: '50%',
             background: isOpen
               ? 'linear-gradient(135deg, #ef4444, #f97316)'
               : 'linear-gradient(135deg, #3b82f6, #8b5cf6)',

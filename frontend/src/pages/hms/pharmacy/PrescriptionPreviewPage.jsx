@@ -72,19 +72,19 @@ export default function PrescriptionPreviewPage() {
           <div style={{ display: 'flex', gap: 15, alignItems: 'center' }}>
             <img src="/logo.png" alt="Logo" style={{ width: 60 }} />
             <div>
-              <h1 style={{ margin: 0, color: '#000', fontSize: '24px' }}>{hosp.NAME || 'N.F.L. HOSPITAL'}</h1>
-              <p style={{ margin: '5px 0 0 0', fontWeight: 'bold', color: '#000' }}>{hosp.TAGLINE || 'NAYA NANGAL'}</p>
+              <h1 style={{ margin: 0, color: '#000', fontSize: '24px' }}>{hosp.NAME || 'HMS HOSPITAL'}</h1>
+              <p style={{ margin: '5px 0 0 0', fontWeight: 'bold', color: '#000' }}>{hosp.TAGLINE || 'CENTRAL CLINICAL CARE'}</p>
             </div>
           </div>
           <div style={{ textAlign: 'right', fontSize: '12px', color: '#000' }}>
             <p>Ph: {hosp.PHONE || '01887-220000'}</p>
-            <p>{hosp.EMAIL || 'hospital@nfl.co.in'}</p>
+            <p>{hosp.EMAIL || 'info@hospital.org'}</p>
           </div>
         </div>
 
         {/* Doctor Details */}
         <div style={{ marginBottom: 20, fontSize: '14px', color: '#000' }}>
-          <strong>Dr. {doctor?.name}</strong> <br />
+          <strong>Dr. {(doctor?.name || 'Doctor').replace(/^Dr\.?\s*/i, '')}</strong> <br />
           <span style={{ color: '#000' }}>{doctor?.role ? doctor.role.replace('_', ' ').toUpperCase() : 'DOCTOR'}</span>
         </div>
 
@@ -168,7 +168,7 @@ export default function PrescriptionPreviewPage() {
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ width: 150, borderBottom: '1px solid #000', marginBottom: 5 }}></div>
-            <div style={{ fontSize: '13px' }}><strong>Dr. {doctor?.name}</strong></div>
+            <div style={{ fontSize: '13px' }}><strong>Dr. {(doctor?.name || 'Doctor').replace(/^Dr\.?\s*/i, '')}</strong></div>
             <div style={{ fontSize: '11px', color: '#000' }}>Signature / Stamp</div>
           </div>
         </div>

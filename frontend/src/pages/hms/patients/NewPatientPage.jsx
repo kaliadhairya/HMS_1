@@ -67,7 +67,7 @@ export default function NewPatientPage() {
     setIsSearchingDependents(true);
     setDependents([]);
     try {
-      const { data } = await api.get(`/patients/hms/nfl/${encodeURIComponent(trimmed)}`);
+      const { data } = await api.get(`/patients/hms/emp/${encodeURIComponent(trimmed)}`);
       if (data.success && data.data.length > 0) {
         setDependents(data.data);
         toast.success(`Found ${data.data.length} profiles — please select who to register`);
@@ -488,7 +488,7 @@ export default function NewPatientPage() {
                         name="empNumber"
                         value={formData.empNumber}
                         onChange={handleChange}
-                        placeholder="CISF employee number"
+                        placeholder="Institutional ID / number"
                       />
                     </div>
                   ) : (

@@ -51,7 +51,7 @@ export default function RegisterPatientPage() {
     setIsSearchingDependents(true);
     setDependents([]);
     try {
-      const { data } = await api.get(`/patients/hms/nfl/${encodeURIComponent(empNum.trim())}`);
+      const { data } = await api.get(`/patients/hms/emp/${encodeURIComponent(empNum.trim())}`);
       if (data.success && data.data.length > 0) {
         setDependents(data.data);
       }
@@ -240,9 +240,9 @@ export default function RegisterPatientPage() {
             }}>{isNFL ? '🏢' : '🧑‍⚕️'}</div>
             <div>
               <h1 style={{ fontSize: '1.5rem' }}>
-                {isEditMode ? 'Edit ' : 'Register '} <span style={{ color: accentColor }}>{isNFL ? 'NFL Employee' : 'Other Patient'}</span>
+                {isEditMode ? 'Edit ' : 'Register '} <span style={{ color: accentColor }}>{isNFL ? 'Corporate Beneficiary' : 'Other Patient'}</span>
               </h1>
-              <p>{isNFL ? 'Employee & dependent registration with employee number' : 'General patient registration with Phone Number identification'}</p>
+              <p>{isNFL ? 'Corporate employee & dependent registration with employee number' : 'General patient registration with Phone Number identification'}</p>
             </div>
           </div>
         </div>
@@ -275,7 +275,7 @@ export default function RegisterPatientPage() {
                 {errors.gender && <span className="form-error">{errors.gender}</span>}
               </div>
 
-              {/* NFL ONLY fields */}
+              {/* Corporate employee fields */}
               {isNFL && (
                 <>
                   <div className="form-group" style={{ gridColumn: '1 / -1' }}>
@@ -284,7 +284,7 @@ export default function RegisterPatientPage() {
                         <label className="form-label">Employee Number *</label>
                         <input 
                           className="form-input" 
-                          placeholder="e.g. NFL-12345" 
+                          placeholder="e.g. EMP-12345" 
                           value={form.empNumber} 
                           onChange={e => set('empNumber', e.target.value)}
                           onBlur={(e) => fetchDependents(e.target.value)} 

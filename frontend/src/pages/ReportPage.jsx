@@ -362,7 +362,7 @@ export default function ReportPage() {
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                 <span className={`badge ${isNFL ? 'badge-teal' : 'badge-amber'}`}>
-                  {isNFL ? '🏢 NFL Employee' : '🧑‍⚕️ Other Patient'}
+                  {isNFL ? '🏢 Corporate Beneficiary' : '🧑‍⚕️ General Patient'}
                 </span>
                 <span className="badge badge-green">Report Active</span>
                 <button 

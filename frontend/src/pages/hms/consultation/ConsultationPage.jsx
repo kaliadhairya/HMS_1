@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../../../api/axios';
 import { toast } from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 
@@ -43,7 +43,7 @@ export default function ConsultationPage() {
 
   const fetchEncounterData = async () => {
     try {
-      const res = await axios.get(`http://localhost:5001/api/hms/encounters/${id}`, { withCredentials: true });
+      const res = await api.get(`/hms/encounters/${id}`);
       const enc = res.data;
       setEncounter(enc);
       setPatient(enc.patient);
@@ -73,7 +73,7 @@ export default function ConsultationPage() {
 
       // Fetch latest vitals
       if (enc.patient_id) {
-        const vitRes = await axios.get(`http://localhost:5001/api/hms/vitals/latest/${enc.patient_id}`, { withCredentials: true });
+        const vitRes = await api.get(`/hms/vitals/latest/${enc.patient_id}`);
         if (vitRes.data.success) {
           setVitals(vitRes.data.vital);
         }
@@ -102,7 +102,7 @@ export default function ConsultationPage() {
 
   const saveEncounter = async (showToast = true) => {
     try {
-      await axios.put(`http://localhost:5001/api/hms/encounters/${id}`, formData, { withCredentials: true });
+      await api.put(`/hms/encounters/${id}`, formData);
       if (showToast) toast.success('Consultation Auto-saved', { icon: '💾' });
     } catch (err) {
       console.error(err);
@@ -115,7 +115,7 @@ export default function ConsultationPage() {
     setIcdSearch(q);
     if (q.length < 2) return setIcdResults([]);
     try {
-      const res = await axios.get(`http://localhost:5001/api/hms/icd10/search?q=${q}`, { withCredentials: true });
+      const res = await api.get(`/hms/icd10/search?q=${q}`);
       setIcdResults(res.data);
     } catch (err) { console.error(err); }
   };
@@ -129,7 +129,7 @@ export default function ConsultationPage() {
         diagnosis_type: 'Primary',
         status: 'Provisional'
       };
-      const res = await axios.post('http://localhost:5001/api/hms/diagnoses', payload, { withCredentials: true });
+      const res = await api.post('/hms/diagnoses', payload);
       setDiagnoses([...diagnoses, res.data]);
       setIcdSearch('');
       setIcdResults([]);
@@ -141,7 +141,7 @@ export default function ConsultationPage() {
 
   const removeDiagnosis = async (dxId) => {
     try {
-      await axios.delete(`http://localhost:5001/api/hms/diagnoses/${dxId}`, { withCredentials: true });
+      await api.delete(`/hms/diagnoses/${dxId}`);
       setDiagnoses(diagnoses.filter(d => d.id !== dxId));
     } catch (err) { toast.error('Failed to remove diagnosis'); }
   };
@@ -151,7 +151,7 @@ export default function ConsultationPage() {
     setMedSearch(q);
     if (q.length < 2) return setMedResults([]);
     try {
-      const res = await axios.get(`http://localhost:5001/api/hms/medicines/search?q=${q}`, { withCredentials: true });
+      const res = await api.get(`/hms/medicines/search?q=${q}`);
       setMedResults(res.data);
     } catch (err) { console.error(err); }
   };
@@ -178,10 +178,10 @@ export default function ConsultationPage() {
   const savePrescription = async () => {
     try {
       // 1. Ensure Presc shell exists
-      const pRes = await axios.post('http://localhost:5001/api/hms/prescriptions', { encounter_id: id, patient_id: patient.id }, { withCredentials: true });
+      const pRes = await api.post('/hms/prescriptions', { encounter_id: id, patient_id: patient.id });
       const presId = pRes.data.id;
       // 2. Put items
-      await axios.put(`http://localhost:5001/api/hms/prescriptions/${presId}/items`, { items: prescriptionItems }, { withCredentials: true });
+      await api.put(`/hms/prescriptions/${presId}/items`, { items: prescriptionItems });
       toast.success('Prescription Saved');
     } catch (err) { toast.error('Failed to save prescription'); }
   };
@@ -204,7 +204,7 @@ export default function ConsultationPage() {
         urgency: 'Routine',
         items: labOrders.map(lo => ({ name: lo.name, category: lo.category }))
       };
-      await axios.post('http://localhost:5001/api/hms/investigation-orders', payload, { withCredentials: true });
+      await api.post('/hms/investigation-orders', payload);
       toast.success('Lab Order sent to Tech Queue!');
     } catch (err) { toast.error('Failed to submit lab order'); }
   };
@@ -216,7 +216,7 @@ export default function ConsultationPage() {
       await saveEncounter(false);
       await savePrescription();
       
-      await axios.patch(`http://localhost:5001/api/hms/encounters/${id}/finalize`, {}, { withCredentials: true });
+      await api.patch(`/hms/encounters/${id}/finalize`, {});
       toast.success('Encounter Finalized successfully!');
       
       // Prompt for bill generation
@@ -235,9 +235,9 @@ export default function ConsultationPage() {
   return (
     <>
     <Navbar />
-    <div style={{ display: 'flex', height: 'calc(100vh - 61px)' }}>
+    <div className="consult-container">
       {/* LEFT PANEL: Patient Context */}
-      <div style={{ width: '28%', background: 'var(--surface-2)', borderRight: '1px solid var(--border)', padding: 20, overflowY: 'auto' }}>
+      <div className="consult-sidebar">
         <h2 style={{ fontSize: '1.2rem', marginBottom: 10 }}>{patient?.name}</h2>
         <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 20 }}>
           <p><strong>UHID:</strong> {patient?.uhid}</p>
@@ -268,21 +268,16 @@ export default function ConsultationPage() {
       </div>
 
       {/* RIGHT PANEL: Docs */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
+      <div className="consult-main">
         
         {/* Tabs */}
-        <div style={{ display: 'flex', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+        <div className="consult-tabs">
           {['history', 'examination', 'diagnosis', 'prescription', 'investigations'].map(tab => (
             <button
               key={tab}
+              className={`consult-tab-btn ${activeTab === tab ? 'active' : ''}`}
               onClick={() => setActiveTab(tab)}
-              style={{
-                flex: 1, padding: '14px', background: 'none', border: 'none', cursor: 'pointer',
-                fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: '0.85rem',
-                borderBottom: activeTab === tab ? '3px solid var(--green)' : '3px solid transparent',
-                color: activeTab === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
-                textTransform: 'capitalize'
-              }}
+              style={{ textTransform: 'capitalize' }}
             >
               {tab}
             </button>

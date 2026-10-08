@@ -39,7 +39,7 @@ export default function DoctorLabsPage() {
         </div>
 
         {/* Summary */}
-        <div className="hms-anim-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+        <div className="hms-anim-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
           <div className="hms-stat-card" style={{ padding: 18, borderLeft: '4px solid #3b82f6', cursor: 'default' }}>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.08em', marginBottom: 4 }}>Total Orders</div>
             <div style={{ fontSize: '1.6rem', fontWeight: 800 }}>{labs.length}</div>

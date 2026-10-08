@@ -72,7 +72,7 @@ export default function DoctorSidebar() {
               color: '#ffffff',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
-              Dr. {user?.name || 'Doctor'}
+              Dr. {(user?.name || 'Doctor').replace(/^Dr\.?\s*/i, '')}
             </div>
           </div>
         </div>
@@ -175,7 +175,7 @@ export default function DoctorSidebar() {
           {timeStr} · Live
         </div>
         <div style={{ fontSize: '0.6rem', fontWeight: 500, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.02em', lineHeight: 1.5 }}>
-          Designed, developed, and maintained by<br/>NFL Nangal IT Department © 2026.
+          Designed, developed, and maintained by<br/>HMS IT Department © 2026.
         </div>
       </div>
     </div>

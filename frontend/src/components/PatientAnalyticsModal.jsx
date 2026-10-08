@@ -12,7 +12,7 @@ const PALETTE = {
   gender: { Male: '#60a5fa', Female: '#a78bfa', Other: '#94a3b8' },
 };
 const USER_COLORS = ['#0d9488', '#6366f1', '#f59e0b', '#ef4444', '#14b8a6', '#8b5cf6', '#94a3b8'];
-const TYPE_LABELS = { nfl_employee: 'NFL Employee', cisf_employee: 'CISF', other: 'Other' };
+const TYPE_LABELS = { nfl_employee: 'Corporate', cisf_employee: 'Sponsored', other: 'Other' };
 
 const SCOPE_TABS = [
   { key: 'today', label: 'Today' },
@@ -297,8 +297,8 @@ export default function PatientAnalyticsModal({ isOpen, onClose, data, metric })
 
     summary = [
       { label: 'Selected total', value: periodTotal },
-      { label: 'NFL', value: byType.nfl_employee || 0 },
-      { label: 'CISF', value: byType.cisf_employee || 0 },
+      { label: 'Corporate', value: byType.nfl_employee || 0 },
+      { label: 'Sponsored', value: byType.cisf_employee || 0 },
       { label: 'Other', value: byType.other || 0 },
     ];
 

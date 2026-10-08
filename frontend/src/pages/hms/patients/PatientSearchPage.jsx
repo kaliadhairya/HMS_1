@@ -386,7 +386,7 @@ export default function PatientSearchPage() {
                   <input
                     type="text"
                     className="form-input"
-                    placeholder="e.g. NFL-12345"
+                    placeholder="e.g. EMP-12345"
                     value={filters.empNumber}
                     onChange={e => handleFilterChange('empNumber', e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleFilterSearch()}
@@ -741,7 +741,7 @@ export default function PatientSearchPage() {
                       <td>
                         {p.consultation_date ? (
                           <>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>Dr. {p.doctor_name?.split(' ')[0]}</div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>Dr. {(p.doctor_name || '').replace(/^Dr\.?\s*/i, '').split(' ')[0]}</div>
                             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{new Date(p.consultation_date).toLocaleDateString()}</div>
                           </>
                         ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontStyle: 'italic' }}>No recent visit</span>}

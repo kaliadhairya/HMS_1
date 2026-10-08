@@ -184,7 +184,7 @@ export default function Navbar() {
       <nav className="navbar-shell">
         <div className="navbar-inner">
           <Link to={homeLink} className="navbar-brand" aria-label="Go to dashboard">
-            <img src="/logo.png" alt="HMS Logo" className="navbar-logo" />
+            <img src="/logo.png?v=3" alt="HMS Logo" className="navbar-logo" />
             <div className="navbar-brand-copy">
               <div className="navbar-brand-name">HMS Hospital</div>
               <div className="navbar-brand-subtitle">{isHMSPath ? 'HMS' : 'Lab System'}</div>
@@ -241,10 +241,14 @@ export default function Navbar() {
 
             <div className="navbar-user-chip">
               <div className="navbar-avatar">
-                {user?.name?.charAt(0).toUpperCase()}
+                {((user?.name || '').replace(/^Dr\.?\s*/i, '') || user?.name || 'U').charAt(0).toUpperCase()}
               </div>
               <div className="navbar-user-meta">
-                <div className="navbar-user-name">{user?.name?.split(' ')[0]}</div>
+                <div className="navbar-user-name">
+                  {role === 'doctor'
+                    ? `Dr. ${(user?.name || '').replace(/^Dr\.?\s*/i, '').split(' ')[0] || 'Doctor'}`
+                    : (user?.name?.split(' ')[0] || 'User')}
+                </div>
                 <div
                   className="navbar-role-badge"
                   style={{

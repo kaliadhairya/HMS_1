@@ -16,8 +16,8 @@ function isConsultedPrescription(rx) {
 }
 
 function getPatientTypeMeta(type) {
-  if (type === 'nfl_employee') return { label: 'NFL', bg: 'rgba(59,130,246,0.1)', color: '#2563eb', border: 'rgba(59,130,246,0.2)' };
-  if (type === 'cisf_employee') return { label: 'CISF', bg: 'rgba(99,102,241,0.1)', color: '#4f46e5', border: 'rgba(99,102,241,0.2)' };
+  if (type === 'nfl_employee' || type === 'corporate_employee') return { label: 'Corporate', bg: 'rgba(59,130,246,0.1)', color: '#2563eb', border: 'rgba(59,130,246,0.2)' };
+  if (type === 'cisf_employee') return { label: 'Sponsored', bg: 'rgba(99,102,241,0.1)', color: '#4f46e5', border: 'rgba(99,102,241,0.2)' };
   return { label: 'General', bg: 'rgba(16,185,129,0.1)', color: '#059669', border: 'rgba(16,185,129,0.2)' };
 }
 
@@ -39,8 +39,8 @@ const DEFAULT_FILTERS = {
 
 const PATIENT_TYPE_FILTERS = [
   { value: '', label: 'All Types' },
-  { value: 'nfl_employee', label: 'NFL Employee / Dependent' },
-  { value: 'cisf_employee', label: 'CISF Employee' },
+  { value: 'nfl_employee', label: 'Corporate Employee / Dependent' },
+  { value: 'cisf_employee', label: 'Sponsored Beneficiary' },
   { value: 'other', label: 'General Patient' },
 ];
 
@@ -223,7 +223,7 @@ export default function DoctorPrescriptionsPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="hms-anim-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+        <div className="hms-anim-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
           <div className="hms-stat-card" style={{ padding: 18, borderLeft: '4px solid #f59e0b', cursor: 'default' }}>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.08em', marginBottom: 4 }}>Pending</div>
             <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f59e0b' }}>{pendingCount}</div>

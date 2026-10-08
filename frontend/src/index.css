@@ -940,6 +940,7 @@ tbody td { padding: 10px 16px; color: var(--text-primary); }
   overflow: auto !important;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  padding-bottom: 60px;
 }
 
 .doctor-dashboard-list-scroll thead th {
@@ -949,7 +950,8 @@ tbody td { padding: 10px 16px; color: var(--text-primary); }
 }
 
 .doctor-dashboard-table-wrap table {
-  min-width: 640px;
+  width: 100%;
+  min-width: 0;
 }
 
 .doctor-dashboard-list-tools {
@@ -1033,8 +1035,8 @@ tbody td { padding: 10px 16px; color: var(--text-primary); }
 }
 
 .doctor-dashboard-header-search {
-  flex-basis: 270px;
-  max-width: 300px;
+  flex-basis: 180px;
+  max-width: 240px;
 }
 
 .doctor-dashboard-list-search input {
@@ -1099,27 +1101,32 @@ tbody td { padding: 10px 16px; color: var(--text-primary); }
 
 @media (max-width: 1380px) {
   .doctor-dashboard-shell {
-    grid-template-columns: minmax(248px, 286px) minmax(0, 1fr) !important;
+    grid-template-columns: minmax(230px, 270px) minmax(0, 1fr) !important;
   }
 
   .doctor-dashboard-sidebar {
-    padding: 18px 14px !important;
+    padding: 16px 12px !important;
     gap: 12px !important;
   }
 
   .doctor-dashboard-profile-card {
-    padding: 18px !important;
+    padding: 16px !important;
     border-radius: 14px !important;
+    overflow: visible !important;
+    height: auto !important;
   }
 
   .doctor-dashboard-profile-name {
-    font-size: 1.4rem !important;
+    font-size: 1.25rem !important;
+    line-height: 1.25 !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
   }
 
   .doctor-dashboard-profile-date {
-    font-size: 0.8rem !important;
+    font-size: 0.78rem !important;
     line-height: 1.4 !important;
-    margin-bottom: 14px !important;
+    margin-bottom: 12px !important;
   }
 
   .doctor-dashboard-profile-actions {
@@ -1154,6 +1161,10 @@ tbody td { padding: 10px 16px; color: var(--text-primary); }
 }
 
 @media (max-width: 1320px) {
+  .nurse-dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+
   .doctor-dashboard-shell {
     grid-template-columns: 1fr !important;
     height: auto !important;
@@ -1789,7 +1800,7 @@ body.theme-transitioning *::after {
 
 /* Suggestion 4: Minimalist Global App Footer (CSS Inject) */
 body:not(.login-page)::after {
-  content: "Designed, developed, and maintained by NFL Nangal IT Department © 2026. All rights reserved.";
+  content: "Designed, developed, and maintained by HMS IT Department © 2026. All rights reserved.";
   position: fixed;
   bottom: 0px;
   right: 15px;
@@ -1814,9 +1825,21 @@ body.doctor-role::after {
 /* 2-Column Consultation Layout specific refinements */
 .consult-container {
   display: grid;
-  grid-template-columns: 28% 1fr;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
   height: calc(100vh - 60px);
   overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .consult-container {
+    grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
+  }
+  .consult-sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
 }
 
 .consult-sidebar {

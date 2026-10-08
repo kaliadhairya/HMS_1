@@ -53,10 +53,10 @@ export default function NurseDashboard() {
     }}>
       
       {/* ── MAIN GRID ── */}
-      <div style={{ 
-        display: 'grid', gridTemplateColumns: '280px 1fr 300px', gap: '16px', 
-        alignItems: 'start', padding: '12px 16px 12px 16px',
-        flex: 1, minHeight: 0, overflow: 'hidden',
+      <div className="nurse-dashboard-grid" style={{ 
+        display: 'grid', gridTemplateColumns: 'minmax(240px, 280px) minmax(0, 1fr) minmax(250px, 300px)', gap: '16px', 
+        alignItems: 'start', padding: '12px 16px',
+        flex: 1, minHeight: 0, overflow: 'auto',
         width: '100%',
       }}>
         
