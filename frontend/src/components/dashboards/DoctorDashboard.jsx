@@ -53,14 +53,14 @@ function isPendingLabReview(lab) {
   return normalizeDashboardSearch(lab?.status) !== 'completed';
 }
 
-function getActionMenuPosition(rect, preferredWidth = 240) {
+function getActionMenuPosition(rect, preferredWidth = 250, preferredHeight = 440) {
   const safeGap = 8;
   if (typeof window === 'undefined') {
     return { top: rect.bottom + 6, left: Math.max(safeGap, rect.right - preferredWidth) };
   }
 
   const maxLeft = Math.max(safeGap, window.innerWidth - preferredWidth - safeGap);
-  const maxTop = Math.max(safeGap, window.innerHeight - 360);
+  const maxTop = Math.max(safeGap, window.innerHeight - preferredHeight);
   return {
     top: Math.min(rect.bottom + 6, maxTop),
     left: Math.min(Math.max(safeGap, rect.right - preferredWidth), maxLeft),
@@ -97,7 +97,7 @@ export default function DoctorDashboard() {
   const openActions = (patient, e) => {
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    setDropdownPos(getActionMenuPosition(rect, 240));
+    setDropdownPos(getActionMenuPosition(rect, 250, 440));
     setActionPatient(patient);
     setExpandedRow(patient.id);
   };
@@ -703,14 +703,66 @@ export default function DoctorDashboard() {
       {/* ── Patient Actions Dropdown Overlay ── */}
       {actionPatient && (() => {
         const p = actionPatient;
-        const prescriptionAction = { label: 'Prescription', icon: '\u211B', iconBg: '#0d9488', onClick: () => navigate(`/hms/prescription-slip?patientId=${p.id}&encounterId=${p.encounter_id}`) };
-        const referralAction = { label: 'Referral', icon: '\uD83D\uDD17', iconBg: '#3b82f6', onClick: () => { setSelectedPatientForReferral(p); setIsReferralModalOpen(true); } };
-        const restFormAction = { label: 'Rest Form', icon: '\uD83D\uDECF\uFE0F', iconBg: '#d97706', onClick: () => navigate(`/doctor/rest-forms/new?patientId=${p.id}`) };
-        const medCertAction = { label: 'Med Certificate', icon: '\uD83D\uDCCB', iconBg: '#7c3aed', onClick: () => navigate(`/doctor/medical-certificate?patientId=${p.id}`) };
-        const ipdAction = { label: 'Move to IPD', icon: '\uD83C\uDFE5', iconBg: '#ec4899', onClick: () => navigate(`/ipd/admission-form?patientId=${p.id}`) };
+        const consultAction = p.encounter_id ? {
+          label: 'Consultation',
+          icon: '🩺',
+          iconBg: '#8b5cf6',
+          onClick: () => navigate(`/hms/consultation/${p.encounter_id}`),
+        } : null;
+        const prescriptionAction = {
+          label: 'Prescription',
+          icon: '℞',
+          iconBg: '#0d9488',
+          onClick: () => navigate(`/hms/prescription-slip?patientId=${p.id}&encounterId=${p.encounter_id || ''}`),
+        };
+        const referralAction = {
+          label: 'Referral',
+          icon: '🔗',
+          iconBg: '#3b82f6',
+          onClick: () => { setSelectedPatientForReferral(p); setIsReferralModalOpen(true); },
+        };
+        const restFormAction = {
+          label: 'Rest Form',
+          icon: '🛌',
+          iconBg: '#d97706',
+          onClick: () => navigate(`/doctor/rest-forms/new?patientId=${p.id}`),
+        };
+        const medCertAction = {
+          label: 'Med Certificate',
+          icon: '📋',
+          iconBg: '#7c3aed',
+          onClick: () => navigate(`/doctor/medical-certificate?patientId=${p.id}`),
+        };
+        const labAction = {
+          label: 'Lab Orders',
+          icon: '🔬',
+          iconBg: '#10b981',
+          onClick: () => navigate(`/doctor/labs?patientId=${p.id}`),
+        };
+        const ipdAction = {
+          label: 'Move to IPD',
+          icon: '🏥',
+          iconBg: '#ec4899',
+          onClick: () => navigate(`/ipd/admission-form?patientId=${p.id}`),
+        };
+        const patientProfileAction = {
+          label: 'Patient Profile',
+          icon: '👤',
+          iconBg: '#0284c7',
+          onClick: () => navigate(`/hms/patients/${p.id}`),
+        };
 
-        // Unified clinical actions accessible for all patient categories
-        const actions = [prescriptionAction, referralAction, restFormAction, medCertAction, ipdAction];
+        // All clinical actions accessible for all patient categories
+        const actions = [
+          ...(consultAction ? [consultAction] : []),
+          prescriptionAction,
+          referralAction,
+          restFormAction,
+          medCertAction,
+          labAction,
+          ipdAction,
+          patientProfileAction,
+        ];
 
         return (
           <>
@@ -727,7 +779,10 @@ export default function DoctorDashboard() {
               position: 'fixed',
               top: dropdownPos.top,
               left: dropdownPos.left,
-              width: 240,
+              width: 250,
+              maxHeight: 'min(85vh, 460px)',
+              display: 'flex',
+              flexDirection: 'column',
               background: 'var(--surface, #fff)',
               borderRadius: 14,
               border: '1px solid var(--border, rgba(0,0,0,0.08))',
@@ -744,13 +799,14 @@ export default function DoctorDashboard() {
                 color: 'var(--text-muted, #94a3b8)',
                 borderBottom: '1px solid var(--border, rgba(0,0,0,0.06))',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                flexShrink: 0,
               }}>
                 <span>Patient Actions</span>
                 <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'none', letterSpacing: 'normal' }}>{p.name}</span>
               </div>
 
               {/* Items */}
-              <div style={{ padding: '6px 0' }}>
+              <div style={{ padding: '6px 0', overflowY: 'auto', flex: 1 }}>
                 {actions.map((a) => (
                   <button
                     key={a.label}

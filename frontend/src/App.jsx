@@ -171,6 +171,7 @@ export default function App() {
             {/* HMS role-based dashboards — must be before /admin/dashboard */}
             <Route path="/doctor/rest-forms" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}><RestFormHubPage /></HMSProtectedRoute>} />
             <Route path="/doctor/rest-forms/new" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}><RestFormEditorPage /></HMSProtectedRoute>} />
+            <Route path="/doctor/medical-certificate" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}><RestFormEditorPage /></HMSProtectedRoute>} />
             <Route path="/doctor/rest-forms/edit/:id" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}><RestFormEditorPage /></HMSProtectedRoute>} />
             <Route path="/doctor/rest-forms/print/:id" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}><RestFormPrintPage /></HMSProtectedRoute>} />
             <Route path="/:role/dashboard" element={
