@@ -1,0 +1,266 @@
+/* ═══════════════════════════════════════════════════════════════
+   CLINICAL THEME
+   Loaded after index.css. Calm, high-contrast, information-dense UI
+   for staff who work in it all day.
+
+   Rules
+   - Blue is the brand/action colour. Green, amber and red are kept for
+     clinical status only (normal / attention / critical), never decoration.
+   - Status is never shown by colour alone: badges carry text.
+   - Text meets WCAG 2.2 AA (4.5:1); borders and icons meet 3:1.
+   - Flat surfaces separated by borders; shadows only for overlays.
+   - One sans-serif typeface, bundled locally so it works offline on
+     hospital networks; tabular figures for numbers.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Brand / action */
+  --primary:        #005eb8;
+  --primary-hover:  #004c95;
+  --primary-press:  #003d78;
+  --primary-light:  #e8f1fb;
+  --primary-border: #a9c8ea;
+  --focus-ring:     #ffb81c;
+
+  /* Neutrals */
+  --bg:           #f0f4f5;
+  --bg-gradient:  #f0f4f5;
+  --bg-alt:       #e8edee;
+  --surface:      #ffffff;
+  --surface-2:    #f7f9fa;
+  --surface-3:    #eef2f3;
+  --text-primary:   #212b32;
+  --text-secondary: #4c6272;
+  --text-muted:     #6b7c87;
+  --text-inverse:   #ffffff;
+  --border:       #d8dde0;
+  --border-dark:  #aeb7bd;
+
+  /* Status (kept on the old variable names so existing pages follow) */
+  --success:        #007f3b;
+  --success-light:  #e6f4ec;
+  --success-border: #9fd1b3;
+  --amber:        #a85d00;
+  --amber-light:  #fff4e0;
+  --amber-border: #f2c27a;
+  --red:          #c4271b;
+  --red-light:    #fdecea;
+  --red-border:   #f1aaa4;
+
+  /* Historic "green" was used as the brand colour across pages: map it to brand blue */
+  --green:        var(--primary);
+  --green-mid:    var(--primary);
+  --green-light:  var(--primary-light);
+  --green-border: var(--primary-border);
+  --teal:         var(--primary);
+  --blue:         var(--primary);
+  --blue-light:   var(--primary-light);
+  --blue-border:  var(--primary-border);
+
+  --shadow-xs:  none;
+  --shadow-sm:  0 1px 2px rgba(33,43,50,0.06);
+  --shadow-md:  0 4px 12px rgba(33,43,50,0.10);
+  --shadow-lg:  0 12px 32px rgba(33,43,50,0.16);
+
+  --nav-bg:     var(--primary);
+  --nav-text:   rgba(255,255,255,0.86);
+  --nav-active: #ffffff;
+  --nav-border: rgba(255,255,255,0.18);
+  --nav-shadow: none;
+
+  --tab-bg-active:     var(--primary-light);
+  --tab-border-active: var(--primary);
+  --tab-shadow:        none;
+  --tab-shadow-active: none;
+
+  --radius:    6px;
+  --radius-sm: 4px;
+  --radius-lg: 8px;
+  --font-body:    'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-display: var(--font-body);
+}
+
+[data-theme="dark"] {
+  --primary:        #6aa8e6;
+  --primary-hover:  #8bbcee;
+  --primary-press:  #a9cdf2;
+  --primary-light:  rgba(106,168,230,0.14);
+  --primary-border: rgba(106,168,230,0.40);
+
+  --bg:          #11181c;
+  --bg-gradient: #11181c;
+  --bg-alt:      #182126;
+  --surface:     #1a2328;
+  --surface-2:   #202b31;
+  --surface-3:   #26333a;
+  --text-primary:   #e6ecef;
+  --text-secondary: #b3c1c9;
+  --text-muted:     #8a9aa3;
+  --border:      #33424a;
+  --border-dark: #4a5c66;
+
+  --success:        #5cc28b;
+  --success-light:  rgba(92,194,139,0.14);
+  --success-border: rgba(92,194,139,0.40);
+  --amber:        #f0b35a;
+  --amber-light:  rgba(240,179,90,0.14);
+  --amber-border: rgba(240,179,90,0.40);
+  --red:          #f08a80;
+  --red-light:    rgba(240,138,128,0.14);
+  --red-border:   rgba(240,138,128,0.40);
+
+  --nav-bg:   #0d2a47;
+  --nav-text: rgba(230,236,239,0.82);
+}
+
+/* ── Base ─────────────────────────────────────────────────────── */
+body {
+  background: var(--bg);
+  font-size: 15px;
+  font-feature-settings: 'cv11', 'ss01';
+  transition: none;
+}
+h1, h2, h3, h4 { font-family: var(--font-body); font-weight: 650; letter-spacing: -0.015em; }
+h1 { font-size: clamp(1.45rem, 2.4vw, 1.75rem); }
+h2 { font-size: 1.25rem; }
+h3 { font-size: 1.05rem; }
+td, .tabular, input[type="number"] { font-variant-numeric: tabular-nums; }
+
+:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-dark); }
+
+/* The fixed credit line overlapped page content; keep it out of the way */
+body::after, body:not(.login-page)::after { display: none !important; }
+
+/* ── Buttons ──────────────────────────────────────────────────── */
+.btn { border-width: 1px; border-radius: var(--radius-sm); font-weight: 600; letter-spacing: 0; transition: background-color .15s, border-color .15s, color .15s; }
+.btn:hover, .btn-primary:hover, .btn-blue:hover { transform: none; }
+.btn-primary, .btn-blue {
+  background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: none;
+}
+.btn-primary:hover, .btn-blue:hover { background: var(--primary-hover); border-color: var(--primary-hover); box-shadow: none; }
+.btn-primary:active, .btn-blue:active { background: var(--primary-press); }
+[data-theme="dark"] .btn-primary, [data-theme="dark"] .btn-blue { color: #0b1a29; }
+.btn-outline, .btn-secondary { background: var(--surface); color: var(--primary); border-color: var(--primary-border); }
+.btn-outline:hover, .btn-secondary:hover { background: var(--primary-light); border-color: var(--primary); }
+.btn-ghost { border-color: var(--border); }
+.btn-danger { background: var(--surface); color: var(--red); border-color: var(--red-border); }
+.btn-danger:hover { background: var(--red-light); opacity: 1; }
+
+/* ── Cards & sections ─────────────────────────────────────────── */
+.card { border-radius: var(--radius-lg); box-shadow: none; }
+.card-section { background: var(--surface); }
+.card-section-title { color: var(--text-secondary); letter-spacing: 0.06em; }
+.card-section-title::after { background: var(--border); opacity: 1; height: 1px; }
+
+/* Stat tiles: drop the coloured top bars and lift effects */
+.hms-stat-card {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-top-width: 1px !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+.hms-stat-card:hover { border-color: var(--primary-border) !important; }
+
+/* ── Forms ────────────────────────────────────────────────────── */
+.form-label { text-transform: none; letter-spacing: 0; font-size: 0.82rem; color: var(--text-primary); }
+.form-input, .form-select, .form-textarea { border-width: 1px; border-color: var(--border-dark); box-shadow: none; border-radius: var(--radius-sm); }
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+/* ── Tables ───────────────────────────────────────────────────── */
+.table-wrapper { border-radius: var(--radius-lg); box-shadow: none; }
+thead th {
+  background: var(--surface-2); color: var(--text-secondary);
+  font-size: 0.72rem; letter-spacing: 0.04em; border-bottom: 1px solid var(--border);
+}
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:hover { background: var(--primary-light); }
+tbody td { padding: 9px 16px; }
+
+/* ── Badges: status meaning only ──────────────────────────────── */
+.badge { border-radius: 4px; letter-spacing: 0.02em; font-weight: 600; }
+.badge-green { background: var(--success-light); color: var(--success); border-color: var(--success-border); }
+.badge-teal, .badge-blue { background: var(--primary-light); color: var(--primary); border-color: var(--primary-border); }
+
+/* ── Layout ───────────────────────────────────────────────────── */
+.page-wrapper { max-width: 1240px; }
+.page-header h1 { display: flex; align-items: center; gap: 10px; }
+.page-header p { color: var(--text-secondary); font-size: 0.9rem; }
+
+/* ── Top navigation ───────────────────────────────────────────── */
+.navbar-shell { background: var(--nav-bg); border-bottom: 1px solid rgba(0,0,0,0.12); box-shadow: none; }
+.navbar-logo { background: #fff; border-radius: 6px; }
+.navbar-brand-name { font-family: var(--font-body); font-weight: 700; letter-spacing: -0.01em; }
+.navbar-link, .navbar-more-button {
+  border-radius: 4px; border: 1px solid transparent; color: var(--nav-text); font-weight: 500;
+}
+.navbar-link:hover, .navbar-more-button:hover { background: rgba(255,255,255,0.12); color: #fff; }
+.navbar-link.is-active, .navbar-more-button.is-active {
+  background: rgba(255,255,255,0.16); color: #fff; border-color: transparent;
+  box-shadow: inset 0 -3px 0 #fff;
+}
+.navbar-more-menu { border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--shadow-lg); }
+
+/* ── Login ────────────────────────────────────────────────────── */
+.login-shell { min-height: 100vh; display: grid; grid-template-columns: minmax(360px, 44%) 1fr; background: var(--surface); }
+.login-brand {
+  background: var(--primary); color: #fff;
+  padding: 48px 56px; display: flex; flex-direction: column; gap: 36px;
+}
+[data-theme="dark"] .login-brand { background: #0d2a47; }
+.login-brand-head { display: flex; align-items: center; gap: 14px; }
+.login-logo { width: 52px; height: 52px; border-radius: 8px; background: #fff; object-fit: contain; padding: 4px; }
+.login-brand-name { font-size: 1.2rem; font-weight: 700; }
+.login-brand-sub { font-size: 0.85rem; opacity: 0.85; }
+.login-brand-title { font-size: clamp(1.6rem, 2.6vw, 2.15rem); font-weight: 650; line-height: 1.25; color: #fff; max-width: 30ch; margin-top: auto; }
+.login-modules { list-style: none; display: grid; gap: 18px; }
+.login-modules li { display: flex; gap: 14px; align-items: flex-start; }
+.login-modules strong { display: block; font-size: 0.95rem; font-weight: 600; }
+.login-modules li > span:last-child > span { display: block; font-size: 0.85rem; opacity: 0.85; margin-top: 2px; }
+.login-module-icon {
+  width: 38px; height: 38px; flex-shrink: 0; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.22);
+}
+.login-brand-foot { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; opacity: 0.9; margin-top: auto; }
+
+.login-main { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 40px 24px; background: var(--bg); }
+.login-card {
+  width: 100%; max-width: 400px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 36px 32px;
+}
+.login-card h2 { font-size: 1.5rem; margin-bottom: 6px; }
+.login-lead { color: var(--text-secondary); font-size: 0.92rem; margin-bottom: 24px; }
+.login-card form { display: grid; gap: 18px; }
+.login-input { height: 44px; font-size: 1rem; }
+.login-password { position: relative; }
+.login-password .login-input { padding-right: 44px; }
+.login-reveal {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 36px; height: 36px; border: 0; background: transparent; border-radius: 4px;
+  color: var(--text-secondary); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.login-reveal:hover { background: var(--surface-3); color: var(--text-primary); }
+.login-error {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px 14px; margin-bottom: 18px; border-radius: var(--radius);
+  background: var(--red-light); border: 1px solid var(--red-border); border-left: 4px solid var(--red);
+  color: var(--red); font-size: 0.9rem; font-weight: 500;
+}
+.login-error svg { flex-shrink: 0; margin-top: 1px; }
+.login-forgot { display: inline-block; margin-top: 18px; font-size: 0.9rem; color: var(--primary); font-weight: 500; }
+.login-credit { margin-top: 28px; font-size: 0.78rem; color: var(--text-muted); text-align: center; }
+@media (max-width: 860px) {
+  .login-shell { grid-template-columns: 1fr; }
+  .login-brand { padding: 24px; gap: 16px; }
+  .login-brand-title, .login-modules, .login-brand-foot { display: none; }
+}
+
+/* ── Icons & role badge ───────────────────────────────────────── */
+.glyph { flex-shrink: 0; vertical-align: -0.2em; }
+.navbar-role-badge { background: rgba(255,255,255,0.18) !important; color: #fff !important; border-color: transparent !important; letter-spacing: 0.04em; }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import PatientAnalyticsModal from '../PatientAnalyticsModal';
+import Glyph from '../ui/Glyph';
 
 export default function SuperAdminDashboard() {
   const navigate = useNavigate();
@@ -44,7 +45,7 @@ export default function SuperAdminDashboard() {
         <div className="hms-page-header hms-anim-1">
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(139,92,246,0.1)', borderColor: 'rgba(139,92,246,0.25)' }}>🛡️</span>
+              <span className="header-icon" style={{ background: 'rgba(139,92,246,0.1)', borderColor: 'rgba(139,92,246,0.25)' }}><Glyph icon="🛡️" /></span>
               Super Admin Dashboard
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -97,13 +98,13 @@ export default function SuperAdminDashboard() {
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '1.5rem', flexShrink: 0,
                   }}>
-                    {k.icon}
+                    <Glyph icon={k.icon} />
                   </div>
                   <span style={{
                     borderRadius: 999,
-                    border: '1px solid rgba(139,92,246,0.22)',
-                    background: 'rgba(139,92,246,0.08)',
-                    color: '#7c3aed',
+                    border: '1px solid var(--primary-border)',
+                    background: 'var(--primary-light)',
+                    color: 'var(--primary)',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 5,
@@ -144,7 +145,7 @@ export default function SuperAdminDashboard() {
           {/* System Alerts */}
           <div className="card hms-anim-3" style={{ padding: 24 }}>
             <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '1.2rem' }}>🚨</span> System Alerts
+              <span style={{ fontSize: '1.2rem' }}><Glyph icon="🚨" /></span> System Alerts
             </h3>
             <div style={{ display: 'grid', gap: 12 }}>
               {alerts.map(a => (
@@ -158,7 +159,7 @@ export default function SuperAdminDashboard() {
                 onMouseLeave={e => e.currentTarget.style.transform = 'none'}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: '1.2rem', background: 'var(--surface-1)', padding: 8, borderRadius: 8 }}>{a.icon}</span>
+                    <span style={{ fontSize: '1.2rem', background: 'var(--surface-1)', padding: 8, borderRadius: 8 }}><Glyph icon={a.icon} /></span>
                     <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{a.label}</span>
                   </div>
                   <span style={{ fontSize: '1.2rem', fontWeight: 800, color: a.color }}>{a.value}</span>
@@ -170,19 +171,19 @@ export default function SuperAdminDashboard() {
           {/* Quick Links */}
           <div className="card hms-anim-4" style={{ padding: 24 }}>
             <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '1.2rem' }}>⚡</span> Admin Controls
+              <span style={{ fontSize: '1.2rem' }}><Glyph icon="⚡" /></span> Admin Controls
             </h3>
             <div style={{ display: 'grid', gap: 12 }}>
               <button className="hms-action-btn" onClick={() => navigate('/hms/admin/users')}>
-                <span>👥 User Management</span>
+                <span><Glyph icon="👥" /> User Management</span>
                 <span className="arrow">→</span>
               </button>
               <button className="hms-action-btn" onClick={() => navigate('/reports')}>
-                <span>📊 Reports & Analytics</span>
+                <span><Glyph icon="📊" /> Reports & Analytics</span>
                 <span className="arrow">→</span>
               </button>
               <button className="hms-action-btn" onClick={() => navigate('/admin/settings')}>
-                <span>⚙️ System Settings</span>
+                <span><Glyph icon="⚙️" /> System Settings</span>
                 <span className="arrow">→</span>
               </button>
             </div>
@@ -192,7 +193,7 @@ export default function SuperAdminDashboard() {
         {/* Recent Audit Log */}
         <div className="card hms-anim-5" style={{ padding: 24 }}>
           <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '1.2rem' }}>📋</span> Recent Audit Log
+            <span style={{ fontSize: '1.2rem' }}><Glyph icon="📋" /></span> Recent Audit Log
           </h3>
           <div className="table-wrapper hms-table-anim" style={{ maxHeight: 320, overflowY: 'auto' }}>
             <table>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import Glyph from '../ui/Glyph';
 
 export default function NurseDashboard() {
   const navigate = useNavigate();
@@ -42,7 +43,7 @@ export default function NurseDashboard() {
     { icon: '🛏️', label: 'Active IPD Patients', value: admissions.length, color: '#3b82f6' },
     { icon: '📋', label: 'Pending Admissions', value: pendingRequests, color: '#f59e0b', onClick: () => navigate('/ipd/requests') },
     { icon: '❤️', label: 'Vitals Due (Shift)', value: admissions.length, color: '#ef4444' },
-    { icon: '💊', label: 'Pending MAR Tasks', value: admissions.length * 2, color: '#8b5cf6' },
+    { icon: '💊', label: 'Pending MAR Tasks', value: admissions.length * 2, color: 'var(--primary)' },
   ];
 
   return (
@@ -69,22 +70,22 @@ export default function NurseDashboard() {
             border: '1px solid var(--border)', overflow: 'hidden',
             boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
           }}>
-            <div style={{ height: 4, background: 'linear-gradient(90deg, #ec4899, #8b5cf6, #3b82f6)', borderRadius: '16px 16px 0 0' }} />
+            <div style={{ height: 4, background: 'var(--primary)', borderRadius: '16px 16px 0 0' }} />
             <div style={{ padding: '18px 24px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
                 <div style={{
                   width: 38, height: 38, borderRadius: 10,
-                  background: 'linear-gradient(135deg, rgba(236,72,153,0.12), rgba(139,92,246,0.12))',
+                  background: 'var(--primary-light)',
                   border: '1px solid rgba(236,72,153,0.15)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem'
-                }}>👩‍⚕️</div>
+                }}><Glyph icon="👩‍⚕️" /></div>
                 <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-muted)' }}>{greeting}</div>
               </div>
               <h1 style={{ margin: '0 0 4px', fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>Nurse Station</h1>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 14px', fontWeight: 500 }}>{dateStr} — Clinical Hub</p>
               
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-primary" onClick={() => navigate('/ipd/beds')} style={{ flex: 1, padding: '9px 12px', fontSize: '0.82rem', fontWeight: 700, borderRadius: 10, background: 'linear-gradient(135deg, #ec4899, #db2777)', border: 'none' }}>
+                <button className="btn btn-primary" onClick={() => navigate('/ipd/beds')} style={{ flex: 1, padding: '9px 12px', fontSize: '0.82rem', fontWeight: 700, borderRadius: 10 }}>
                   Bed Management
                 </button>
                 <button className="btn btn-outline" onClick={fetchNurseData} style={{ padding: '9px 14px', borderRadius: 10 }}>↻</button>
@@ -104,7 +105,7 @@ export default function NurseDashboard() {
               onMouseEnter={e => s.onClick && (e.currentTarget.style.transform = 'translateX(4px)', e.currentTarget.style.background = `${s.color}05`)}
               onMouseLeave={e => s.onClick && (e.currentTarget.style.transform = 'none', e.currentTarget.style.background = 'var(--surface)')}
               >
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: `${s.color}10`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>{s.icon}</div>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: `${s.color}10`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}><Glyph icon={s.icon} /></div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>{s.label}</div>
                   <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: -2 }}>{s.value}</div>
@@ -129,7 +130,7 @@ export default function NurseDashboard() {
               display: 'flex', alignItems: 'center', justifyContent: 'space-between'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: '1.2rem' }}>📋</span>
+                <span style={{ fontSize: '1.2rem' }}><Glyph icon="📋" /></span>
                 <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>My Ward Patients</h3>
                 <span className="badge badge-teal" style={{ padding: '4px 10px' }}>{admissions.length} Active</span>
               </div>
@@ -150,7 +151,7 @@ export default function NurseDashboard() {
                 <tbody>
                   {admissions.length === 0 ? (
                     <tr><td colSpan="5" style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>
-                      <div style={{ fontSize: '3rem', marginBottom: 16 }}>🏥</div>
+                      <div style={{ fontSize: '3rem', marginBottom: 16 }}><Glyph icon="🏥" /></div>
                       <h4 style={{ margin: 0 }}>No active patients in your ward</h4>
                       <p style={{ fontSize: '0.85rem', marginTop: 8 }}>Use the IPD Requests to admit new patients.</p>
                     </td></tr>
@@ -203,13 +204,13 @@ export default function NurseDashboard() {
           {/* Quick Actions Panel */}
           <div className="card hms-anim-4" style={{ padding: 0, overflow: 'hidden', borderRadius: 16, border: '1px solid var(--border)' }}>
             <div style={{ padding: '16px 20px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '1rem' }}>⚡</span>
+              <span style={{ fontSize: '1rem' }}><Glyph icon="⚡" /></span>
               <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800 }}>Quick Navigation</h3>
             </div>
             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
-                { label: 'Pending Admissions', icon: '📋', to: '/ipd/requests', color: '#ec4899' },
-                { label: 'Bed Management', icon: '🛏️', to: '/ipd/beds', color: '#8b5cf6' },
+                { label: 'Pending Admissions', icon: '📋', to: '/ipd/requests', color: 'var(--primary)' },
+                { label: 'Bed Management', icon: '🛏️', to: '/ipd/beds', color: 'var(--primary)' },
                 { label: 'Patient Directory', icon: '🏥', to: '/ipd/patients', color: '#3b82f6' },
                 { label: 'Nursing Roster', icon: '📅', to: '/dashboard', color: '#10b981' },
               ].map(a => (
@@ -221,7 +222,7 @@ export default function NurseDashboard() {
                 onMouseEnter={e => { e.currentTarget.style.transform = 'translateX(4px)'; e.currentTarget.style.borderColor = a.color; e.currentTarget.style.background = `${a.color}05`; }}
                 onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)'; }}
                 >
-                  <span style={{ fontSize: '1.2rem', color: a.color }}>{a.icon}</span>
+                  <span style={{ fontSize: '1.2rem', color: a.color }}><Glyph icon={a.icon} /></span>
                   <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{a.label}</span>
                   <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>→</span>
                 </button>
@@ -232,13 +233,13 @@ export default function NurseDashboard() {
           {/* Vitals Queue */}
           <div className="card hms-anim-5" style={{ flex: 1, padding: 0, overflow: 'hidden', borderRadius: 16, display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '16px 20px', background: 'rgba(239,68,68,0.03)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '1rem' }}>💓</span>
+              <span style={{ fontSize: '1rem' }}><Glyph icon="💓" /></span>
               <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#ef4444' }}>Vitals Due (This Shift)</h3>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
               {admissions.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '30px 10px' }}>
-                  <div style={{ fontSize: '2rem', opacity: 0.2 }}>🧘</div>
+                  <div style={{ fontSize: '2rem', opacity: 0.2 }}><Glyph icon="🧘" /></div>
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 10 }}>All vitals recorded ✓</p>
                 </div>
               ) : (

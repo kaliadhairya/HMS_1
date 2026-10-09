@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
+import Glyph from '../ui/Glyph';
 
 function StatCard({ icon, label, value, color, onClick, disabled, delay }) {
   return (
@@ -119,11 +120,11 @@ export default function ReceptionistDashboard() {
     { icon: '🎫', label: 'Token Queue', value: data?.token_queue || 0, color: '#3b82f6', onClick: null, disabled: true },
     { icon: '📅', label: "Today's Appointments", value: data?.todays_appointments || 0, color: '#10b981', onClick: () => navigate('/receptionist/appointments') },
     { icon: '💳', label: 'Unpaid Bills', value: unpaid.length, color: unpaid.length > 0 ? '#ef4444' : '#f59e0b', onClick: () => navigate('/receptionist/billing') },
-    { icon: '🛏️', label: 'Beds Available', value: data?.bed_availability || 0, color: '#8b5cf6', onClick: () => navigate('/receptionist/ipd') },
+    { icon: '🛏️', label: 'Beds Available', value: data?.bed_availability || 0, color: 'var(--primary)', onClick: () => navigate('/receptionist/ipd') },
   ];
 
   const secondaryCards = [
-    { icon: '🚨', label: 'Pending Discharges', value: data?.pending_discharges || 0, color: '#ec4899', onClick: () => navigate('/receptionist/ipd') },
+    { icon: '🚨', label: 'Pending Discharges', value: data?.pending_discharges || 0, color: 'var(--primary)', onClick: () => navigate('/receptionist/ipd') },
     { icon: '🔔', label: 'Unread Alerts', value: notifications.length, color: '#f59e0b', onClick: () => navigate('/receptionist/notifications') },
     { icon: '🚶', label: 'Walk-in / Booked', value: `${data?.walk_in_count || 0} / ${data?.booked_count || 0}`, color: '#06b6d4' },
   ];
@@ -141,13 +142,13 @@ export default function ReceptionistDashboard() {
           }}>
             <div style={{
               width: 48, height: 48, borderRadius: 14,
-              background: 'linear-gradient(135deg, rgba(168,85,247,0.15), rgba(139,92,246,0.2))',
+              background: 'var(--primary-light)',
               border: '1px solid rgba(168,85,247,0.25)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '1.5rem',
               animation: 'hmsPulseGlow 3s ease-in-out infinite',
             }}>
-              🏥
+              <Glyph icon="🏥" />
             </div>
             <div>
               <h1 style={{ margin: 0, lineHeight: 1.1 }}>Front Desk Command Center</h1>
@@ -172,7 +173,7 @@ export default function ReceptionistDashboard() {
             + Quick Register
           </button>
           <button className="btn btn-outline" onClick={() => navigate('/hms/appointments/book')}>
-            📅 Book Appointment
+            <Glyph icon="📅" /> Book Appointment
           </button>
         </div>
       </div>
@@ -211,7 +212,7 @@ export default function ReceptionistDashboard() {
               width: 30, height: 30, borderRadius: 8,
               background: 'rgba(239,68,68,0.1)', fontSize: '0.9rem',
             }}>
-              ⚠️
+              <Glyph icon="⚠️" />
             </span>
             Unpaid OPD Encounters
           </h3>
@@ -225,7 +226,7 @@ export default function ReceptionistDashboard() {
               padding: 40, textAlign: 'center',
               animation: 'hmsScaleIn 0.5s 0.4s ease both',
             }}>
-              <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: 8 }}>✅</span>
+              <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: 8 }}><Glyph icon="✅" /></span>
               <p style={{ color: 'var(--green)', fontWeight: 600, marginBottom: 4 }}>All Clear!</p>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.83rem' }}>No pending bills for today.</p>
             </div>
