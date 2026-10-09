@@ -120,7 +120,7 @@ export default function SearchPage() {
               <label className="form-label">Patient Type</label>
               <select className="form-select" value={filters.patientType} onChange={e => setFilter('patientType', e.target.value)}>
                 <option value="">All Types</option>
-                <option value="nfl_employee">Corporate Employee</option>
+                <option value="corporate_employee">Corporate Employee</option>
                 <option value="other">Other Patient</option>
               </select>
             </div>
@@ -183,19 +183,19 @@ export default function SearchPage() {
                         </td>
                         <td>
                           <div style={{ fontWeight: 600 }}>{p.name}</div>
-                          {p.patientType === 'nfl_employee' && p.relationship && (
+                          {p.patientType === 'corporate_employee' && p.relationship && (
                             <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
                               {p.relationship}
                             </div>
                           )}
                         </td>
                         <td>
-                          <span className={`badge ${p.patientType === 'nfl_employee' ? 'badge-teal' : 'badge-amber'}`}>
-                            {p.patientType === 'nfl_employee' ? 'Corporate' : 'Other'}
+                          <span className={`badge ${p.patientType === 'corporate_employee' ? 'badge-teal' : 'badge-amber'}`}>
+                            {p.patientType === 'corporate_employee' ? 'Corporate' : 'Other'}
                           </span>
                         </td>
                         <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--teal)' }}>
-                          {p.patientType === 'nfl_employee' ? p.empNumber : p.phoneNumber}
+                          {p.patientType === 'corporate_employee' ? p.empNumber : p.phoneNumber}
                         </td>
                         <td>{p.age} yrs / {p.gender}</td>
                         <td>{p.ward}</td>

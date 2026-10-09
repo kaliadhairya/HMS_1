@@ -22,8 +22,7 @@ function isSameLocalDate(value, date = new Date()) {
 }
 
 function getPatientTypeBadge(type) {
-  if (type === 'nfl_employee' || type === 'corporate_employee') return { label: 'Corporate', bg: 'rgba(16,185,129,0.1)', color: 'var(--green)', border: 'rgba(16,185,129,0.2)' };
-  if (type === 'cisf_employee') return { label: 'Sponsored', bg: 'rgba(99,102,241,0.1)', color: '#4f46e5', border: 'rgba(99,102,241,0.2)' };
+  if (type === 'corporate_employee') return { label: 'Corporate', bg: 'rgba(16,185,129,0.1)', color: 'var(--green)', border: 'rgba(16,185,129,0.2)' };
   return { label: 'General', bg: 'rgba(59,130,246,0.1)', color: 'var(--blue)', border: 'rgba(59,130,246,0.2)' };
 }
 

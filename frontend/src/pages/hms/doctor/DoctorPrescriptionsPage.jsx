@@ -16,8 +16,7 @@ function isConsultedPrescription(rx) {
 }
 
 function getPatientTypeMeta(type) {
-  if (type === 'nfl_employee' || type === 'corporate_employee') return { label: 'Corporate', bg: 'rgba(59,130,246,0.1)', color: '#2563eb', border: 'rgba(59,130,246,0.2)' };
-  if (type === 'cisf_employee') return { label: 'Sponsored', bg: 'rgba(99,102,241,0.1)', color: '#4f46e5', border: 'rgba(99,102,241,0.2)' };
+  if (type === 'corporate_employee') return { label: 'Corporate', bg: 'rgba(59,130,246,0.1)', color: '#2563eb', border: 'rgba(59,130,246,0.2)' };
   return { label: 'General', bg: 'rgba(16,185,129,0.1)', color: '#059669', border: 'rgba(16,185,129,0.2)' };
 }
 
@@ -39,8 +38,7 @@ const DEFAULT_FILTERS = {
 
 const PATIENT_TYPE_FILTERS = [
   { value: '', label: 'All Types' },
-  { value: 'nfl_employee', label: 'Corporate Employee / Dependent' },
-  { value: 'cisf_employee', label: 'Sponsored Beneficiary' },
+  { value: 'corporate_employee', label: 'Corporate Employee / Dependent' },
   { value: 'other', label: 'General Patient' },
 ];
 

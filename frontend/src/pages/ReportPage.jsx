@@ -336,7 +336,7 @@ export default function ReportPage() {
     );
   }
 
-  const isNFL = patient?.patientType === 'nfl_employee';
+  const isCorporate = patient?.patientType === 'corporate_employee';
 
   const TABS = [
     { id: 'haematology', label: 'Haematology', icon: '🩸', color: 'var(--teal)' },
@@ -361,8 +361,8 @@ export default function ReportPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <span className={`badge ${isNFL ? 'badge-teal' : 'badge-amber'}`}>
-                  {isNFL ? '🏢 Corporate Beneficiary' : '🧑‍⚕️ General Patient'}
+                <span className={`badge ${isCorporate ? 'badge-teal' : 'badge-amber'}`}>
+                  {isCorporate ? '🏢 Corporate Beneficiary' : '🧑‍⚕️ General Patient'}
                 </span>
                 <span className="badge badge-green">Report Active</span>
                 <button 
@@ -379,10 +379,10 @@ export default function ReportPage() {
               <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                 <span>Age: <strong style={{ color: 'var(--text-primary)' }}>{patient?.age} yrs</strong></span>
                 <span>Gender: <strong style={{ color: 'var(--text-primary)' }}>{patient?.gender}</strong></span>
-                <span>{isNFL ? 'Emp No.' : 'Phone No.'}: <strong style={{ color: 'var(--teal)' }}>
-                  {isNFL ? patient?.empNumber : patient?.phoneNumber}
+                <span>{isCorporate ? 'Emp No.' : 'Phone No.'}: <strong style={{ color: 'var(--teal)' }}>
+                  {isCorporate ? patient?.empNumber : patient?.phoneNumber}
                 </strong></span>
-                {isNFL && <span>Relation: <strong style={{ color: 'var(--text-primary)' }}>{patient?.relationship}</strong></span>}
+                {isCorporate && <span>Relation: <strong style={{ color: 'var(--text-primary)' }}>{patient?.relationship}</strong></span>}
                 <span>Ward: <strong style={{ color: 'var(--text-primary)' }}>{patient?.ward}</strong></span>
                 <span>Date: <strong style={{ color: 'var(--text-primary)' }}>{new Date(patient?.testDate).toLocaleDateString('en-IN')}</strong></span>
                 {patient?.provDiagnosis && <span>Dx: <strong style={{ color: 'var(--text-primary)' }}>{patient?.provDiagnosis}</strong></span>}

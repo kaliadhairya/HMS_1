@@ -29,7 +29,7 @@ const buildEmptyReferralForm = (type = "Outside") => ({
   patientDepartment: "",
   caseType: "",
   referralType: type,
-  treatmentNFL: "",
+  treatmentHospital: "",
   treatmentLocal: "",
   treatmentPeriod: "",
   escortAllowed: "No",
@@ -223,7 +223,7 @@ export default function DoctorReferralsPage() {
     };
 
     // Auto-fill employee details for dependents
-    if (patient.patientType === 'nfl_employee') {
+    if (patient.patientType === 'corporate_employee') {
       empUpdate.empNumber = patient.empNumber || '';
       empUpdate.relationship = patient.relationship || 'Self';
       
@@ -283,8 +283,8 @@ export default function DoctorReferralsPage() {
   const handleEditReferral = async (ref) => {
     setEditReferralId(ref.id);
     
-    let fetchedEmpName = ref.patient_type === 'nfl_employee' && ref.relationship !== 'Self' ? '' : ref.patient;
-    if (ref.patient_type === 'nfl_employee' && ref.relationship !== 'Self' && ref.emp_number) {
+    let fetchedEmpName = ref.patient_type === 'corporate_employee' && ref.relationship !== 'Self' ? '' : ref.patient;
+    if (ref.patient_type === 'corporate_employee' && ref.relationship !== 'Self' && ref.emp_number) {
       try {
         const res = await api.get(`/patients/hms/emp/${encodeURIComponent(ref.emp_number)}`);
         const principal = res.data.data.find(d => d.relationship === 'Self');
@@ -307,7 +307,7 @@ export default function DoctorReferralsPage() {
       patientDepartment: ref.patient_department || '',
       caseType: ref.case_type || '',
       referralType: ref.referral_type || 'Outside',
-      treatmentNFL: ref.treatment_nfl || '',
+      treatmentHospital: ref.treatment_hospital || '',
       treatmentLocal: ref.treatment_local || '',
       treatmentPeriod: ref.treatment_period || '',
       escortAllowed: ref.escort_allowed || 'No',
@@ -333,9 +333,9 @@ export default function DoctorReferralsPage() {
   };
 
   const handlePreview = async (ref) => {
-    // If it's an NFL employee, try to fetch the employee name for dependents
+    // If it's a corporate employee, try to fetch the employee name for dependents
     let empName = '';
-    if (ref.patient_type === 'nfl_employee' && ref.relationship && ref.relationship !== 'Self' && ref.emp_number) {
+    if (ref.patient_type === 'corporate_employee' && ref.relationship && ref.relationship !== 'Self' && ref.emp_number) {
       try {
         const res = await api.get(`/patients/hms/emp/${encodeURIComponent(ref.emp_number)}`);
         const principal = res.data.data.find(d => d.relationship === 'Self');
@@ -899,7 +899,7 @@ export default function DoctorReferralsPage() {
                         <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{selectedPatient.name}</div>
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                           {selectedPatient.uhid} • {selectedPatient.age}y / {selectedPatient.gender}
-                          {selectedPatient.patientType === 'nfl_employee' && (
+                          {selectedPatient.patientType === 'corporate_employee' && (
                             <span style={{ color: '#059669', fontWeight: 600 }}> • Corporate</span>
                           )}
                         </div>
@@ -909,8 +909,8 @@ export default function DoctorReferralsPage() {
                   )}
                 </div>
 
-                {/* NFL Dependent Info (AUTO-FILLED) */}
-                {selectedPatient?.patientType === 'nfl_employee' && (
+                {/* Dependent Info (AUTO-FILLED) */}
+                {selectedPatient?.patientType === 'corporate_employee' && (
                   <div className="hms-anim-2" style={{ 
                     display: 'grid', 
                     gridTemplateColumns: 'repeat(3, 1fr)', 
@@ -1191,8 +1191,8 @@ export default function DoctorReferralsPage() {
                         <textarea
                           className="form-input"
                           rows="2"
-                          value={formData.treatmentNFL}
-                          onChange={e => setFormData({ ...formData, treatmentNFL: e.target.value })}
+                          value={formData.treatmentHospital}
+                          onChange={e => setFormData({ ...formData, treatmentHospital: e.target.value })}
                           placeholder="Treatment, medicines, investigations already given at HMS Hospital..."
                           style={{ resize: "vertical" }}
                         />
@@ -1433,8 +1433,8 @@ export default function DoctorReferralsPage() {
                   <div style={{ lineHeight: 2.2, fontSize: 16 }}>
                     {(() => {
                       const r = previewReferral;
-                      const isNFL = r.patient_type === 'nfl_employee';
-                      const isDependent = isNFL && r.relationship && r.relationship !== 'Self';
+                      const isCorporate = r.patient_type === 'corporate_employee';
+                      const isDependent = isCorporate && r.relationship && r.relationship !== 'Self';
                       const empNameDisplay = isDependent ? (r.empName || '') : '';
                       return (
                         <>
@@ -1447,13 +1447,13 @@ export default function DoctorReferralsPage() {
 
                           <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 15 }}>
                             <span style={{ marginRight: 10, whiteSpace: 'nowrap' }}>ई० नं०</span>
-                            <EditableSpan value={isNFL ? (r.emp_number || '') : ''} fieldKey="emp_number" style={{ flex: 1, borderBottom: '1px dotted #000', padding: '0 10px', textAlign: 'center', fontWeight: 'bold' }} />
+                            <EditableSpan value={isCorporate ? (r.emp_number || '') : ''} fieldKey="emp_number" style={{ flex: 1, borderBottom: '1px dotted #000', padding: '0 10px', textAlign: 'center', fontWeight: 'bold' }} />
                             <span style={{ margin: '0 10px', whiteSpace: 'nowrap' }}>विभाग</span>
                             <EditableSpan value={r.patient_department || ''} fieldKey="patient_department" style={{ flex: 1, borderBottom: '1px dotted #000', padding: '0 10px', textAlign: 'center' }} />
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 15 }}>
-                            <span style={{ marginRight: 10, whiteSpace: 'nowrap' }}>एन. एफ. एल., नया नंगल के आउटडोर/इनडोर केस के रूप में</span>
+                            <span style={{ marginRight: 10, whiteSpace: 'nowrap' }}>अस्पताल के आउटडोर/इनडोर केस के रूप में</span>
                             <EditableSpan value={r.case_type || ''} fieldKey="case_type" style={{ flex: 1, borderBottom: '1px dotted #000', padding: '0 10px', textAlign: 'center' }} />
                           </div>
 
@@ -1526,14 +1526,14 @@ export default function DoctorReferralsPage() {
                 {/* ─── EMPLOYEE INFO ─── */}
                 {(() => {
                   const r = previewReferral;
-                  const isNFL = r.patient_type === 'nfl_employee';
-                  const isDependent = isNFL && r.relationship && r.relationship !== 'Self';
-                  const empNameDisplay = isDependent ? (r.empName || '_______________') : (isNFL ? r.patient : '_______________');
+                  const isCorporate = r.patient_type === 'corporate_employee';
+                  const isDependent = isCorporate && r.relationship && r.relationship !== 'Self';
+                  const empNameDisplay = isDependent ? (r.empName || '_______________') : (isCorporate ? r.patient : '_______________');
                   return (
                     <>
                       <div style={{ display: 'flex', gap: 6, padding: '5px 0' }}>
                         <span style={{ minWidth: 280, fontWeight: 600 }}>कर्मचारी संख्या / E. No.:</span>
-                        <span style={{ flex: 1, borderBottom: '1px solid #000', paddingLeft: 4 }}>{isNFL ? (r.emp_number || '') : ''}</span>
+                        <span style={{ flex: 1, borderBottom: '1px solid #000', paddingLeft: 4 }}>{isCorporate ? (r.emp_number || '') : ''}</span>
                       </div>
                       <div style={{ display: 'flex', gap: 6, padding: '5px 0' }}>
                         <span style={{ minWidth: 280, fontWeight: 600 }}>कर्मचारी का नाम / Name of the Employee:</span>
@@ -1582,7 +1582,7 @@ export default function DoctorReferralsPage() {
                 </div>
                 <div style={{ display: "flex", gap: 6, padding: "5px 0" }}>
                   <span style={{ minWidth: 280, fontWeight: 600 }}>मुख्य अस्पताल से पहले लिए उपचार का विवरण:</span>
-                  <span style={{ flex: 1, borderBottom: "1px solid #000", paddingLeft: 4 }}>{previewReferral.treatment_nfl || ""}</span>
+                  <span style={{ flex: 1, borderBottom: "1px solid #000", paddingLeft: 4 }}>{previewReferral.treatment_hospital || ""}</span>
                 </div>
                 <div style={{ fontSize: 12, color: "#000", marginTop: -2, marginBottom: 2 }}>Treatment already taken from HMS Hospital :</div>
                 <div style={{ display: "flex", gap: 6, padding: "5px 0" }}>

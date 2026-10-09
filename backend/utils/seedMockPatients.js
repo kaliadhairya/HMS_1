@@ -115,7 +115,7 @@ async function seedMockPatients(count = 100) {
           ) VALUES (
             :id, :uhid, :name, :firstName, :lastName, :age, :gender, :patientType, :opdIndoor, :ward,
             TO_DATE(:testDate, 'YYYY-MM-DD'), :provDiagnosis, :empNumber, :relationship, :phoneNumber,
-            TO_DATE(:dob, 'YYYY-MM-DD'), :bloodGroup, :houseNo, :street, :city, 'Punjab', '140126', 'India',
+            TO_DATE(:dob, 'YYYY-MM-DD'), :bloodGroup, :houseNo, :street, :city, 'Demo State', '000000', 'India',
             :emergencyName, :emergencyRel, :emergencyPhone,
             :registeredBy, 1, CURRENT_TIMESTAMP - (INTERVAL '1 day' * :daysAgo), CURRENT_TIMESTAMP
           )
