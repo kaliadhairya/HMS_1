@@ -6,9 +6,7 @@ import { useAuth } from '../../../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const PATIENT_TYPE_META = {
-  nfl_employee: { label: 'Corporate Employee', shortLabel: 'Corporate', bg: 'rgba(59, 130, 246, 0.1)', color: '#2563eb', border: 'rgba(59, 130, 246, 0.2)' },
   corporate_employee: { label: 'Corporate Employee', shortLabel: 'Corporate', bg: 'rgba(59, 130, 246, 0.1)', color: '#2563eb', border: 'rgba(59, 130, 246, 0.2)' },
-  cisf_employee: { label: 'Sponsored Patient', shortLabel: 'Sponsored', bg: 'rgba(99, 102, 241, 0.1)', color: '#4f46e5', border: 'rgba(99, 102, 241, 0.2)' },
   other: { label: 'General / External', shortLabel: 'General', bg: 'rgba(16, 185, 129, 0.1)', color: '#059669', border: 'rgba(16, 185, 129, 0.2)' },
 };
 
@@ -470,8 +468,6 @@ export default function PatientSearchPage() {
                   >
                     <option value="">All Types</option>
                     <option value="corporate_employee">Corporate Employee</option>
-                    <option value="nfl_employee">Corporate Employee (Legacy)</option>
-                    <option value="cisf_employee">Sponsored Patient</option>
                     <option value="other">General / External</option>
                   </select>
                 </div>
@@ -727,7 +723,7 @@ export default function PatientSearchPage() {
                       </td>
                       <td>{p.relationship || '-'}</td>
                       <td>
-                        {p.patient_type === 'nfl_employee' ? (
+                        {p.patient_type === 'corporate_employee' ? (
                           <>
                             <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>{p.employee_name || '-'}</div>
                             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ID: {p.emp_number || '-'}</div>

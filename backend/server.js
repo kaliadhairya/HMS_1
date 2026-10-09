@@ -239,6 +239,16 @@ sequelize
       console.warn('⚠️ Migration check skipped:', migErr.message);
     }
 
+    // Fold any patient rows with a retired or unknown category into the general category.
+    try {
+      const [, meta] = await sequelize.query(
+        `UPDATE HMS_PATIENTS SET PATIENTTYPE = 'other', EMPNUMBER = NULL, RELATIONSHIP = NULL WHERE PATIENTTYPE NOT IN ('corporate_employee', 'other')`
+      );
+      if (meta?.rowCount) console.log(`🔁 Migrated ${meta.rowCount} legacy patient record(s) to 'other'`);
+    } catch (migErr) {
+      console.warn('⚠️ Patient type migration skipped:', migErr.message);
+    }
+
     server.listen(PORT, process.env.BACKEND_HOST || '0.0.0.0', () => {
       console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
     });

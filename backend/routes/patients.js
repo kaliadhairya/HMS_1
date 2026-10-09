@@ -344,68 +344,27 @@ const getCorporateDependentsHandler = async (req, res) => {
   try {
     const { empNumber } = req.params;
 
-    // Extract numeric part in case they send "EMP-12345"
-    const numericEmpN = empNumber.replace(/\D/g, '');
-
+    // Match on the digits so "EMP-1001", "emp 1001" and "1001" all find the same family
+    const numericEmpN = String(empNumber).replace(/\D/g, '');
     if (!numericEmpN) {
       return res.json({ success: true, data: [] });
     }
 
-    // Query DEPENDENT_MASTER_SAP directly; falls back to HMS_PATIENTS if table is unavailable
-    let records = [];
-    try {
-      records = await sequelize.query(`
-        SELECT 
-          EMPN, DNAME, REL, SEX, EXTRACT(YEAR FROM CURRENT_DATE) - EXTRACT(YEAR FROM DOB) AS CALC_AGE
-        FROM DEPENDENT_MASTER_SAP
-        WHERE EMPN = :empn
-      `, {
-        replacements: { empn: Number(numericEmpN) },
-        type: QueryTypes.SELECT
-      });
-    } catch (localMasterErr) {
-      // Fallback: Local patient records (only shows already registered dependents)
-      const localRows = await sequelize.query(`
-        SELECT NAME AS DNAME, RELATIONSHIP AS REL, GENDER AS SEX, AGE AS CALC_AGE
-        FROM HMS_PATIENTS
-        WHERE EMPNUMBER = :empn AND PATIENTTYPE = 'corporate_employee'
-      `, {
-        replacements: { empn: numericEmpN },
-        type: QueryTypes.SELECT
-      });
-      records = localRows.map(r => ({
-        DNAME: r.DNAME,
-        REL: r.REL === 'Self' ? 'X' : r.REL === 'Spouse' ? 'W' : r.REL === 'Son' ? 'S' : r.REL === 'Daughter' ? 'D' : r.REL === 'Father' ? 'F' : r.REL === 'Mother' ? 'M' : 'O',
-        SEX: r.SEX === 'Male' ? 'M' : r.SEX === 'Female' ? 'F' : 'O',
-        CALC_AGE: r.CALC_AGE
-      }));
-    }
-    // Map the database values to our standardized formats
-    const mapRel = (rel) => {
-      const r = (rel || '').toUpperCase();
-      if (r === 'X') return 'Self';
-      if (r === 'W') return 'Spouse';
-      if (r === 'H') return 'Spouse';
-      if (r === 'S') return 'Son';
-      if (r === 'D') return 'Daughter';
-      if (r === 'F') return 'Father';
-      if (r === 'M') return 'Mother';
-      return 'Other';
-    };
+    const records = await sequelize.query(`
+      SELECT NAME AS "NAME", AGE AS "AGE", GENDER AS "GENDER", RELATIONSHIP AS "RELATIONSHIP"
+      FROM HMS_PATIENTS
+      WHERE PATIENTTYPE = 'corporate_employee'
+        AND REGEXP_REPLACE(COALESCE(EMPNUMBER, ''), '\\D', '', 'g') = :empn
+    `, {
+      replacements: { empn: numericEmpN },
+      type: QueryTypes.SELECT
+    });
 
-    const mapSex = (sex) => {
-      const s = (sex || '').toUpperCase();
-      if (s === 'M') return 'Male';
-      if (s === 'F') return 'Female';
-      return 'Other';
-    };
-
-    // Map keys to camelCase for the frontend
     const formatRecords = records.map(r => ({
-      name: r.DNAME || '',
-      age: r.CALC_AGE || 0,
-      gender: mapSex(r.SEX),
-      relationship: mapRel(r.REL)
+      name: r.NAME || '',
+      age: r.AGE || 0,
+      gender: r.GENDER || 'Other',
+      relationship: r.RELATIONSHIP || 'Other'
     }));
 
     // Remove duplicates based on Name and Relationship

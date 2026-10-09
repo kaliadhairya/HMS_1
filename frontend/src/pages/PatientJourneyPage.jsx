@@ -5,8 +5,7 @@ import Navbar from '../components/Navbar';
 import toast from 'react-hot-toast';
 
 const getPatientTypeLabel = (type) => {
-  if (type === 'nfl_employee' || type === 'corporate_employee') return 'Corporate Beneficiary';
-  if (type === 'cisf_employee') return 'Sponsored Beneficiary';
+  if (type === 'corporate_employee') return 'Corporate Beneficiary';
   return 'General';
 };
 
