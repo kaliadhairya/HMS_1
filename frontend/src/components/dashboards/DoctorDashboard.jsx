@@ -263,7 +263,7 @@ export default function DoctorDashboard() {
 
   return (
     <div className="doctor-dashboard-shell" style={{
-      display: 'grid', gridTemplateColumns: 'minmax(240px, 275px) minmax(0, 1fr)',
+      display: 'grid', gridTemplateColumns: 'minmax(260px, 290px) minmax(0, 1fr)',
       minHeight: 'calc(100vh - 72px)',
       overflow: 'visible',
       background: 'var(--bg)',
@@ -350,28 +350,32 @@ export default function DoctorDashboard() {
         {/* ── Stat Cards ── */}
         {majorCards.map((c) => (
           <div key={c.label} className="doctor-dashboard-stat-card" style={{
-            display: 'flex', alignItems: 'center', gap: 16,
-            padding: '16px 20px', borderRadius: 16,
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '12px 14px', borderRadius: 14,
             background: 'var(--surface)',
             boxShadow: 'var(--shadow-sm)',
             border: '1px solid var(--border)',
-            borderLeft: `6px solid ${c.border || c.color}`,
+            borderLeft: `5px solid ${c.border || c.color}`,
+            boxSizing: 'border-box',
+            overflow: 'hidden',
           }}>
             <span style={{
-              width: 42, height: 42, borderRadius: '50%',
+              width: 36, height: 36, minWidth: 36, borderRadius: '50%',
               background: `${c.color}15`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.2rem', flexShrink: 0,
+              fontSize: '1.1rem', flexShrink: 0,
             }}>{c.icon}</span>
             <span style={{
-              flex: 1, fontSize: '0.85rem', fontWeight: 700,
+              flex: 1, minWidth: 0, fontSize: '0.78rem', fontWeight: 700,
               color: 'var(--text-secondary)', textTransform: 'uppercase',
-              letterSpacing: '0.05em',
+              letterSpacing: '0.02em', lineHeight: 1.25,
+              overflowWrap: 'break-word', wordBreak: 'break-word',
             }}>{c.label}</span>
             <span style={{
-              fontSize: '1.75rem', fontWeight: 800,
+              fontSize: '1.5rem', fontWeight: 800,
               color: c.color, lineHeight: 1,
-              minWidth: 32, textAlign: 'right',
+              flexShrink: 0, textAlign: 'right',
+              marginLeft: 'auto',
             }}>{c.value}</span>
           </div>
         ))}
