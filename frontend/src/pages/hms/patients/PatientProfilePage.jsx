@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
+import { openAuthenticatedBlob } from '../../../utils/authenticatedDownload';
 import Navbar from '../../../components/Navbar';
 
 const PATIENT_TYPE_META = {
@@ -268,7 +269,7 @@ export default function PatientProfilePage() {
                       <td><span className={`badge ${(b.STATUS || b.status) === 'Paid' ? 'badge-green' : 'badge-amber'}`}>{b.STATUS || b.status}</span></td>
                       <td>
                         {(b.STATUS || b.status) === 'Paid'
-                          ? <a href={`/api/pdf/bill/${b.ID || b.id}`} target="_blank" className="btn btn-outline btn-sm" style={{textDecoration:'none'}}>View PDF</a>
+                          ? <button type="button" className="btn btn-outline btn-sm" onClick={() => openAuthenticatedBlob(`/pdf/bill/${b.ID || b.id}`)}>View PDF</button>
                           : <button className="btn btn-primary btn-sm" onClick={() => navigate(`/billing/opd/${b.ENCOUNTER_ID || b.encounter_id}`)}>Pay Now</button>
                         }
                       </td>

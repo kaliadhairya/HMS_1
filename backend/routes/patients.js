@@ -791,7 +791,7 @@ router.post('/hms/:id/chronic-conditions', protect, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 
 // PUT /api/patients/:id — Edit existing patient
-router.put('/:id', protect, async (req, res) => {
+router.put('/:id(\\d+)', protect, async (req, res) => {
   try {
     const {
       patientType, name, age, gender, opdIndoor, ward,
@@ -843,7 +843,29 @@ router.put('/:id', protect, async (req, res) => {
 });
 
 // GET /api/patients/:id — Single patient with their report
-router.get('/:id', protect, async (req, res) => {
+// GET /api/patients/search?q=&page=&limit= — quick search by name, UHID, phone or employee number
+router.get('/search', protect, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const where = q
+      ? { [Op.or]: ['name', 'uhid', 'phoneNumber', 'empNumber'].map((field) => ({ [field]: { [Op.iLike]: `%${q}%` } })) }
+      : {};
+    const { rows, count } = await Patient.findAndCountAll({
+      where,
+      order: [['id', 'DESC']],
+      limit,
+      offset: (page - 1) * limit,
+    });
+    res.json({ success: true, data: rows, total: count, page });
+  } catch (err) {
+    console.error('Patient search error:', err.message);
+    res.status(500).json({ success: false, message: 'Patient search failed.' });
+  }
+});
+
+router.get('/:id(\\d+)', protect, async (req, res) => {
   try {
     const patient = await Patient.findByPk(req.params.id, {
       include: [{
@@ -875,7 +897,7 @@ router.get('/:id', protect, async (req, res) => {
 });
 
 // DELETE /api/patients/:id — Super Admin only
-router.delete('/:id', protect, restrictTo('super_admin'), async (req, res) => {
+router.delete('/:id(\\d+)', protect, restrictTo('super_admin'), async (req, res) => {
   try {
     const patientId = req.params.id;
     const patient = await Patient.findByPk(patientId);

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -23,6 +24,9 @@ api.interceptors.response.use(
       localStorage.removeItem('lab_token');
       localStorage.removeItem('lab_user');
       window.location.href = '/login';
+    } else if (err.response?.status === 403) {
+      // One message per screen instead of silently empty tables
+      toast.error(err.response.data?.message || 'You do not have permission to view some of this information.', { id: 'forbidden' });
     } else if (err.response?.status === 503) {
       // Store the maintenance message in localStorage to display it on the maintenance page
       if (err.response.data?.message) {

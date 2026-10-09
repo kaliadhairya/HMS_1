@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import api from '../../../api/axios';
+import { openAuthenticatedBlob } from '../../../utils/authenticatedDownload';
 
 export default function PrescriptionPreviewPage() {
   const { id } = useParams(); // Prescription ID
@@ -54,15 +55,13 @@ export default function PrescriptionPreviewPage() {
         <div className="no-print" style={{ position: 'absolute', top: -50, right: 0, display: 'flex', gap: 10 }}>
           <button className="btn btn-primary" onClick={handlePrint}>Print Prescription</button>
           {prescription?.id && (
-            <a
-              href={`http://127.0.0.1:5001/api/pdf/prescription/${prescription.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
               className="btn btn-outline"
-              style={{ textDecoration: 'none' }}
+              onClick={() => openAuthenticatedBlob(`/pdf/prescription/${prescription.id}`, { download: true, filename: `prescription-${prescription.id}.pdf` })}
             >
               Download PDF
-            </a>
+            </button>
           )}
           <button className="btn btn-outline" onClick={() => window.close()}>Close</button>
         </div>

@@ -364,16 +364,6 @@ export default function App() {
                 <BedManagementPage />
               </HMSProtectedRoute>
             } />
-            <Route path="/ipd/patients" element={
-              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'nurse', 'doctor', 'receptionist']}>
-                <IPDPatientListPage />
-              </HMSProtectedRoute>
-            } />
-            <Route path="/ipd/patient/:id" element={
-              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'nurse', 'doctor']}>
-                <IPDPatientChartPage />
-              </HMSProtectedRoute>
-            } />
 
             {/* Receptionist Workflow Routes */}
             <Route path="/receptionist/appointments" element={

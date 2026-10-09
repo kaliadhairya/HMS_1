@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
+import { openAuthenticatedBlob } from '../../../utils/authenticatedDownload';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 import { useAuth } from '../../../context/AuthContext';
@@ -15,6 +16,11 @@ export default function OPDBillingPage() {
   const [bill, setBill] = useState(null);
   const [patientId, setPatientId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [advanceData, setAdvanceData] = useState(null);
+  const [paymentForm, setPaymentForm] = useState({ amount: '', paymentMode: 'Cash', referenceNumber: '' });
+  const [discountAmount, setDiscountAmount] = useState('');
+  const [applyAdvance, setApplyAdvance] = useState(false);
+  const [receipt, setReceipt] = useState(null);
   
   useEffect(() => {
     if (!socket) return;
@@ -30,33 +36,28 @@ export default function OPDBillingPage() {
     };
   }, [socket, patientId]);
 
+  const [loadError, setLoadError] = useState('');
+
   const initBill = async () => {
     try {
       setLoading(true);
-      const encRes = await api.get(`/hms/encounters/${encounterId}`);
-      const pId = encRes.data.patient_id;
+      setLoadError('');
+      // Creates the OPD bill, or returns the existing one if this visit was already billed
+      const billRes = await api.post('/billing/opd', { encounterId });
+      const created = billRes.data.data || {};
+      const billId = created.id || created.ID;
+      const pId = created.patientId || created.patient_id || created.PATIENT_ID;
       setPatientId(pId);
-      
-      // Fetch Advance
-      const advRes = await api.get(`/billing/advance/${pId}`);
-      setAdvanceData(advRes.data.data);
 
-      // Generate or fetch OPD bill
-      const billRes = await api.post('/billing/opd', { encounterId, patientId: pId }).catch(err => {
-         // If already generated, fetch it
-         if(err.response?.status === 400) {
-           return api.get(`/billing/patient/${pId}`);
-         }
-         throw err;
-      });
-      
-      if (billRes && billRes.data.data) {
-         const finalBillRes = await api.get(`/billing/${billRes.data.data.id || billRes.data.data.ID}`);
-         setBill(finalBillRes.data.data);
-         setPaymentForm(prev => ({ ...prev, amount: finalBillRes.data.data.NET_PAYABLE || finalBillRes.data.data.netPayable }));
-      }
+      const [finalBillRes, advRes] = await Promise.all([
+        api.get(`/billing/${billId}`),
+        pId ? api.get(`/billing/advance/${pId}`).catch(() => null) : Promise.resolve(null),
+      ]);
+      setAdvanceData(advRes?.data?.data);
+      setBill(finalBillRes.data.data);
+      setPaymentForm(prev => ({ ...prev, amount: finalBillRes.data.data.NET_PAYABLE || finalBillRes.data.data.netPayable }));
     } catch (err) {
-       // Fallback logic...
+      setLoadError(err.response?.data?.message || 'The bill could not be loaded.');
     } finally {
       setLoading(false);
     }
@@ -98,8 +99,29 @@ export default function OPDBillingPage() {
     }
   };
 
-  if (loading) return <div>Loading bill details...</div>;
-  if (!bill) return <div>Error loading bill.</div>;
+  if (loading || !bill) {
+    return (
+      <>
+        <Navbar />
+        <div className="page-wrapper">
+          <div className="card" style={{ maxWidth: 520, margin: '40px auto', textAlign: 'center' }}>
+            {loading ? (
+              <p style={{ color: 'var(--text-secondary)' }}>Loading bill details…</p>
+            ) : (
+              <>
+                <h3 style={{ marginBottom: 8 }}>Bill unavailable</h3>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: 20 }}>{loadError || 'The bill could not be loaded.'}</p>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                  <button className="btn btn-ghost" onClick={() => navigate(-1)}>Go back</button>
+                  <button className="btn btn-primary" onClick={initBill}>Try again</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
 
   if (receipt) {
     return (
@@ -123,7 +145,7 @@ export default function OPDBillingPage() {
              </div>
            </div>
            <div style={{ background: 'var(--surface-color)', padding: 16, borderRadius: 8, textAlign: 'center', marginBottom: 24 }}>
-             <h1 style={{ margin: 0, color: 'var(--primary-color)' }}>₹{receipt.AMOUNT || receipt.amount}</h1>
+             <h1 style={{ margin: 0, color: 'var(--primary, var(--blue))' }}>₹{receipt.AMOUNT || receipt.amount}</h1>
              <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Amount Received successfully</p>
            </div>
            
@@ -220,7 +242,7 @@ export default function OPDBillingPage() {
              <div className="card" style={{ padding: 24 }}>
                <h4 style={{ marginBottom: 16 }}>Apply Discount</h4>
                <div style={{ display: 'flex', gap: 8 }}>
-                 <input type="number" className="form-control" placeholder="Amount (₹)" value={discountAmount} onChange={e=>setDiscountAmount(e.target.value)} />
+                 <input type="number" className="form-input" placeholder="Amount (₹)" value={discountAmount} onChange={e=>setDiscountAmount(e.target.value)} />
                  <button className="btn btn-secondary" onClick={handleApplyDiscount}>Apply</button>
                </div>
              </div>
@@ -230,7 +252,7 @@ export default function OPDBillingPage() {
              <div className="card" style={{ padding: 24, background: 'var(--surface-color)' }}>
                <h3 style={{ marginBottom: 16 }}>Record Payment</h3>
                
-               {advanceData.availableAdvance > 0 && (
+               {advanceData?.availableAdvance > 0 && (
                  <div style={{ padding: 12, background: 'rgba(59,130,246,0.1)', border: '1px solid var(--blue)', borderRadius: 8, marginBottom: 16 }}>
                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, cursor: 'pointer', color: 'var(--blue)' }}>
                      <input type="checkbox" checked={applyAdvance} onChange={e=>setApplyAdvance(e.target.checked)} />
@@ -242,13 +264,13 @@ export default function OPDBillingPage() {
                <form onSubmit={handlePayment} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                  <div className="form-group">
                    <label>Amount Recieved (₹)</label>
-                   <input type="number" className="form-control" value={paymentForm.amount} onChange={e=>setPaymentForm({...paymentForm, amount: e.target.value})} required disabled={applyAdvance} />
+                   <input type="number" className="form-input" value={paymentForm.amount} onChange={e=>setPaymentForm({...paymentForm, amount: e.target.value})} required disabled={applyAdvance} />
                  </div>
                  {!applyAdvance && (
                    <>
                      <div className="form-group">
                        <label>Payment Mode</label>
-                       <select className="form-control" value={paymentForm.paymentMode} onChange={e=>setPaymentForm({...paymentForm, paymentMode: e.target.value})}>
+                       <select className="form-input" value={paymentForm.paymentMode} onChange={e=>setPaymentForm({...paymentForm, paymentMode: e.target.value})}>
                          <option>Cash</option>
                          <option>Card</option>
                          <option>UPI</option>
@@ -257,7 +279,7 @@ export default function OPDBillingPage() {
                      </div>
                      <div className="form-group">
                        <label>Reference No. (Optional)</label>
-                       <input type="text" className="form-control" value={paymentForm.referenceNumber} onChange={e=>setPaymentForm({...paymentForm, referenceNumber: e.target.value})} />
+                       <input type="text" className="form-input" value={paymentForm.referenceNumber} onChange={e=>setPaymentForm({...paymentForm, referenceNumber: e.target.value})} />
                      </div>
                    </>
                  )}
@@ -271,7 +293,7 @@ export default function OPDBillingPage() {
                <div style={{ fontSize: '3rem', marginBottom: 16 }}>✅</div>
                <h3>Bill Fully Paid</h3>
                <button className="btn btn-outline" style={{ marginTop: 16, width: '100%' }} onClick={() => window.print()}>Print Invoice</button>
-               <a href={`/api/pdf/bill/${bill.ID || bill.id}`} target="_blank" rel="noopener noreferrer" className="btn btn-primary" style={{ marginTop: 8, width: '100%', display: 'block', textAlign: 'center', textDecoration: 'none' }}>Download PDF</a>
+               <button type="button" className="btn btn-primary btn-full" style={{ marginTop: 8 }} onClick={() => openAuthenticatedBlob(`/pdf/bill/${bill.ID || bill.id}`, { download: true, filename: `bill-${bill.ID || bill.id}.pdf` })}>Download PDF</button>
              </div>
            )}
         </div>

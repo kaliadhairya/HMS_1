@@ -53,7 +53,7 @@ router.get('/:id', protect, async (req, res) => {
   try {
     const doctor = await Doctor.findByPk(req.params.id, {
       include: [
-        { model: User, as: 'user', attributes: ['name', 'email', 'phone'] },
+        { model: User, as: 'user', attributes: ['name', 'phone'] },
         { model: Department, as: 'department', attributes: ['name'] }
       ]
     });

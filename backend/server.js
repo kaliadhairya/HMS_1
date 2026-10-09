@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { sequelize } = require('./models');
 const { validateToken } = require('./utils/identityClient');
+const { resolveTokenUser } = require('./middleware/auth');
 const {
   client,
   httpRequestDurationSeconds,
@@ -196,7 +197,11 @@ io.use(async (socket, next) => {
     const authorization = socket.handshake.headers.authorization;
     const token = socket.handshake.auth?.token || (authorization?.startsWith('Bearer ') ? authorization.slice(7) : null);
     if (!token) return next(new Error('Authentication required'));
-    const context = await validateToken(token, socket.handshake.headers['x-request-id']);
+    let context = null;
+    if (process.env.INTERNAL_SERVICE_SECRET && process.env.IDENTITY_URL) {
+      context = await validateToken(token, socket.handshake.headers['x-request-id']).catch(() => null);
+    }
+    if (!context) context = await resolveTokenUser(token);
     if (!context) return next(new Error('Invalid or inactive session'));
     socket.user = context;
     return next();
@@ -237,6 +242,13 @@ sequelize
       }
     } catch (migErr) {
       console.warn('⚠️ Migration check skipped:', migErr.message);
+    }
+
+    // Columns the models expect but older databases may lack.
+    try {
+      await sequelize.query(`ALTER TABLE HMS_SUPPLIERS ADD COLUMN IF NOT EXISTS SUPPLIER_NUMBER VARCHAR(20) UNIQUE`);
+    } catch (migErr) {
+      console.warn('⚠️ Supplier column migration skipped:', migErr.message);
     }
 
     // Fold any patient rows with a retired or unknown category into the general category.

@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 
 export default function IPDBillingListPage() {
+  const navigate = useNavigate();
   const [admissions, setAdmissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
