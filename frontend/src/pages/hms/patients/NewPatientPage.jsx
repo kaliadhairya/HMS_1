@@ -27,6 +27,7 @@ const INITIAL_FORM_STATE = {
 
 export default function NewPatientPage() {
   const navigate = useNavigate();
+  const [step, setStep] = useState('selection');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
@@ -123,9 +124,96 @@ export default function NewPatientPage() {
                 onClick={() => {
                   setRegisteredPatient(null);
                   setFormData(INITIAL_FORM_STATE);
+                  setStep('selection');
                 }}
               >
                 + Register Another Patient
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (step === 'selection') {
+    return (
+      <>
+        <Navbar />
+        <div className="container py-4">
+          <div className="hms-page-header">
+            <div>
+              <h1>
+                <span
+                  className="header-icon"
+                  style={{
+                    background: 'var(--blue-light)',
+                    borderColor: 'var(--blue-border)',
+                    color: 'var(--blue)',
+                  }}
+                >
+                  📝
+                </span>
+                New Patient Intake
+              </h1>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
+                Select the patient category to begin the registration process.
+              </p>
+            </div>
+            <div className="header-actions">
+              <button className="btn btn-ghost" onClick={() => navigate(-1)}>
+                ← Back
+              </button>
+            </div>
+          </div>
+
+          <div style={{ maxWidth: 460, margin: '30px auto' }}>
+            {/* General Patient (External) Card */}
+            <div
+              className="hms-stat-card hms-anim-1"
+              style={{
+                padding: '40px 32px',
+                borderTop: '6px solid var(--blue)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                textAlign: 'center',
+                cursor: 'pointer',
+                borderRadius: 16,
+              }}
+              onClick={() => {
+                setFormData(p => ({ ...p, patientType: 'other' }));
+                setStep('form');
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '3rem',
+                  marginBottom: 24,
+                  background: 'var(--blue-light)',
+                  width: 100,
+                  height: 100,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '50%',
+                  border: '1px solid var(--blue-border)',
+                }}
+              >
+                👨‍👩‍👧‍👦
+              </div>
+              <h3 style={{ fontSize: '1.6rem', marginBottom: 12, fontWeight: 800, color: 'var(--text-primary)' }}>
+                General Patient (External)
+              </h3>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: 30, fontSize: '1rem', lineHeight: 1.6 }}>
+                Walk-in patients or external referrals. Requires basic contact information for registration.
+              </p>
+              <button
+                type="button"
+                className="btn btn-blue btn-full"
+                style={{ height: 48, fontSize: '1rem', fontWeight: 700 }}
+              >
+                Begin General Registration →
               </button>
             </div>
           </div>
@@ -149,7 +237,7 @@ export default function NewPatientPage() {
                   color: 'var(--blue)',
                 }}
               >
-                👨‍⚕️
+                👨‍👩‍👧‍👦
               </span>
               New Patient Intake
             </h1>
@@ -158,8 +246,8 @@ export default function NewPatientPage() {
             </p>
           </div>
           <div className="header-actions">
-            <button className="btn btn-ghost" onClick={() => navigate(-1)}>
-              ← Back
+            <button className="btn btn-ghost" onClick={() => setStep('selection')}>
+              ← Change Category
             </button>
           </div>
         </div>
