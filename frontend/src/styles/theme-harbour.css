@@ -60,3 +60,55 @@ html:not([data-theme="dark"]) .login-card {
   border-color: #e1e7ee; border-radius: 14px;
   box-shadow: 0 1px 2px rgba(16, 42, 67, 0.04), 0 16px 40px -16px rgba(16, 42, 67, 0.18);
 }
+
+/* ── Sign-in page motion: slow drifting glow, heartbeat pulse, gentle entrance ──
+   Subtle by design; the global prefers-reduced-motion rule turns all of it off. */
+.login-brand { position: relative; overflow: hidden; isolation: isolate; }
+.login-brand > * { position: relative; z-index: 1; }
+.login-brand::before {
+  content: ''; position: absolute; inset: -25%; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(38% 32% at 72% 22%, rgba(95, 176, 255, 0.20), transparent 70%),
+    radial-gradient(34% 30% at 22% 78%, rgba(45, 190, 200, 0.16), transparent 70%);
+  animation: harbour-drift 22s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes harbour-drift {
+  from { transform: translate3d(-4%, 3%, 0) scale(1); }
+  to   { transform: translate3d(4%, -3%, 0) scale(1.06); }
+}
+
+.login-brand > .login-ecg {
+  position: absolute; z-index: 0; left: 0; right: 0; bottom: 84px;
+  width: 100%; height: 72px; overflow: visible; pointer-events: none;
+}
+.login-ecg path { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.login-ecg-base { stroke: rgba(255, 255, 255, 0.14); stroke-width: 1.5; }
+.login-ecg-pulse {
+  stroke: rgba(150, 205, 255, 0.9); stroke-width: 2;
+  stroke-dasharray: 90 1000; stroke-dashoffset: 90;
+  filter: drop-shadow(0 0 4px rgba(120, 190, 255, 0.7));
+  animation: harbour-pulse 5.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes harbour-pulse {
+  0%   { stroke-dashoffset: 90; opacity: 0; }
+  6%   { opacity: 1; }
+  64%  { opacity: 1; }
+  70%  { stroke-dashoffset: -1000; opacity: 0; }
+  100% { stroke-dashoffset: -1000; opacity: 0; }
+}
+
+@keyframes harbour-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.login-card { animation: harbour-rise 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) 0.05s both; }
+.login-brand-title { animation: harbour-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s both; }
+.login-modules li { animation: harbour-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.login-modules li:nth-child(1) { animation-delay: 0.2s; }
+.login-modules li:nth-child(2) { animation-delay: 0.28s; }
+.login-modules li:nth-child(3) { animation-delay: 0.36s; }
+.login-modules li:nth-child(4) { animation-delay: 0.44s; }
+.login-brand-foot { animation: harbour-rise 0.5s ease 0.55s both; }
+
+@media (max-width: 960px) { .login-brand > .login-ecg { display: none; } }
