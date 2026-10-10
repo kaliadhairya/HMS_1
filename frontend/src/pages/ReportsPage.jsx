@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import {
   BarChart3, ChevronLeft, ChevronRight, ClipboardList, Download, FlaskConical, Pill, ScrollText, Stethoscope, Wallet,
 } from 'lucide-react';
@@ -27,6 +27,28 @@ const localYmd = (d = new Date()) => {
 };
 const daysAgo = (n) => localYmd(new Date(Date.now() - n * 86400000));
 const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
+// Compact Indian notation for chart axes: ₹950, ₹12k, ₹1.2L, ₹3.4Cr.
+const inrCompact = (v) => {
+  const n = Number(v || 0);
+  const abs = Math.abs(n);
+  const trim = (x) => String(Math.round(x * 10) / 10).replace(/\.0$/, '');
+  if (abs >= 1e7) return `₹${trim(n / 1e7)}Cr`;
+  if (abs >= 1e5) return `₹${trim(n / 1e5)}L`;
+  if (abs >= 1e3) return `₹${trim(n / 1e3)}k`;
+  return `₹${Math.round(n)}`;
+};
+const localKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+function CollectionTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload;
+  return (
+    <div className="chart-tip">
+      <div className="muted" style={{ fontSize: '0.78rem' }}>{d.full}</div>
+      <strong className="tabular">{inr(d.amount)}</strong> <span className="muted">collected</span>
+    </div>
+  );
+}
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
 export default function ReportsPage() {
@@ -199,15 +221,37 @@ function RevenueTab() {
     setLoading(true);
     try {
       const res = await api.get(`/reports/revenue?start_date=${startDate}&end_date=${endDate}`);
-      setData(res.data.data);
+      setData({ ...res.data.data, range: [startDate, endDate] });
     } catch { toast.error('Failed to load revenue'); }
     setLoading(false);
   };
 
-  const chartData = data?.dailyCollection?.map((d) => ({
-    date: d.DATE_VAL ? new Date(d.DATE_VAL).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '',
-    amount: Number(d.DAILY_TOTAL) || 0,
-  })) || [];
+  // One bar per calendar day in the selected range, so days with no collection show as gaps, not missing days.
+  const chartData = useMemo(() => {
+    const byDay = {};
+    (data?.dailyCollection || []).forEach((d) => {
+      if (!d.DATE_VAL) return;
+      const key = localKey(new Date(d.DATE_VAL));
+      byDay[key] = (byDay[key] || 0) + (Number(d.DAILY_TOTAL) || 0);
+    });
+    const [from, to] = data?.range || [];
+    if (!from || !to) return [];
+    const out = [];
+    const [sy, sm, sd] = from.split('-').map(Number);
+    const [ey, em, ed] = to.split('-').map(Number);
+    const end = new Date(ey, em - 1, ed);
+    for (let d = new Date(sy, sm - 1, sd); d <= end && out.length < 400; d.setDate(d.getDate() + 1)) {
+      const key = localKey(d);
+      out.push({
+        date: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+        full: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }),
+        amount: byDay[key] || 0,
+      });
+    }
+    return out;
+  }, [data]);
+  const chartTotal = chartData.reduce((s, d) => s + d.amount, 0);
+  const chartAvg = chartData.length ? chartTotal / chartData.length : 0;
 
   return (
     <div className="stack">
@@ -230,18 +274,23 @@ function RevenueTab() {
 
           {chartData.length > 0 && (
             <section className="panel panel-pad">
-              <h3 className="panel-title">Daily collection</h3>
+              <h3 className="panel-title" style={{ marginBottom: 2 }}>Daily collection</h3>
+              <p className="muted" style={{ marginBottom: 12 }}>
+                {inr(chartTotal)} over {chartData.length} {chartData.length === 1 ? 'day' : 'days'} · average {inr(Math.round(chartAvg))} a day
+              </p>
               <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={chartData}>
+                <BarChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                  <XAxis dataKey="date" fontSize={11} tickLine={false} tick={{ fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--border)' }} />
-                  <YAxis fontSize={11} tickLine={false} axisLine={false} tick={{ fill: 'var(--text-muted)' }} />
-                  <Tooltip
-                    formatter={(v) => [inr(v), 'Collected']}
-                    cursor={{ fill: 'var(--surface-3)', opacity: 0.5 }}
-                    contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }}
-                  />
-                  <Bar dataKey="amount" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                  <XAxis dataKey="date" tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--border)' }} minTickGap={16} />
+                  <YAxis tickFormatter={inrCompact} width={56} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} allowDecimals={false} />
+                  <Tooltip content={<CollectionTooltip />} cursor={{ fill: 'var(--surface-3)', opacity: 0.6 }} />
+                  {chartAvg >= 1 && (
+                    <ReferenceLine
+                      y={chartAvg} stroke="var(--text-muted)" strokeDasharray="4 4"
+                      label={{ value: `Avg ${inrCompact(chartAvg)}`, position: 'insideTopRight', fill: 'var(--text-secondary)', fontSize: 11 }}
+                    />
+                  )}
+                  <Bar dataKey="amount" fill="var(--series-1)" radius={[4, 4, 0, 0]} maxBarSize={36} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             </section>

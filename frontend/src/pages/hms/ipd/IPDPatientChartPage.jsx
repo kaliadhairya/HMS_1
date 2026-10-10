@@ -9,8 +9,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import EmptyState from '../../../components/ui/EmptyState';
 import Modal from '../../../components/ui/Modal';
 import { useAuth } from '../../../context/AuthContext';
-// Assuming recharts is installed based on standard dashboard tech stack
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import VitalTrends from '../../../components/patient/VitalTrends';
 
 const TABS = [
   { id: 'progress', label: 'Progress notes', icon: NotebookPen },
@@ -83,6 +82,8 @@ export default function IPDPatientChartPage() {
           bpDiastolic: gv.bp_diastolic || gv.BP_DIASTOLIC,
           pulse: gv.pulse || gv.PULSE,
           temperature: gv.temperature || gv.TEMPERATURE,
+          tempUnit: gv.temp_unit || gv.TEMP_UNIT,
+          respiratoryRate: gv.respiratory_rate || gv.RESPIRATORY_RATE,
           spo2: gv.spo2 || gv.SPO2,
           shift: (gv.encounter_type || gv.ENCOUNTER_TYPE || 'OPD') + ' Triage',
           isGeneral: true
@@ -431,30 +432,11 @@ export default function IPDPatientChartPage() {
             {/* Trend chart */}
             <section className="panel panel-pad" style={{ flex: user.role === 'doctor' ? '1 1 480px' : '2 1 480px', minWidth: 0 }}>
                <h2 className="panel-title"><Activity size={16} aria-hidden="true" /> {user.role === 'doctor' ? 'Clinical trends' : 'Vital trends'}</h2>
-               <div style={{ height: user.role === 'doctor' ? 420 : 320, width: '100%' }}>
-                  {vitals.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={[...vitals].reverse()} margin={{ top: 10, right: 30, left: 0, bottom: 10 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                        <XAxis dataKey="recordedAt" tickFormatter={(v) => new Date(v).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
-                        <Tooltip labelFormatter={(v) => new Date(v).toLocaleString()} contentStyle={{ borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', boxShadow: 'var(--shadow-md)', padding: 10 }} />
-                        <Legend iconType="plainline" wrapperStyle={{ paddingTop: 16, fontSize: '0.78rem', color: 'var(--text-secondary)' }} />
-                        <Line type="monotone" dataKey="pulse" stroke="var(--primary)" strokeWidth={2} dot={{ r: 4, fill: 'var(--primary)', strokeWidth: 2, stroke: 'var(--surface)' }} name="Pulse" activeDot={{ r: 6 }} />
-                        <Line type="monotone" dataKey="bpSystolic" stroke="var(--success)" strokeWidth={2} dot={{ r: 4, fill: 'var(--success)', strokeWidth: 2, stroke: 'var(--surface)' }} name="Systolic BP" activeDot={{ r: 6 }} />
-                        {user.role === 'doctor' && (
-                          <>
-                            <Line type="monotone" dataKey="bpDiastolic" stroke="var(--success)" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} name="Diastolic BP" />
-                            <Line type="monotone" dataKey="temperature" stroke="var(--text-secondary)" strokeWidth={2} strokeDasharray="2 3" dot={{ r: 3 }} name="Temp (°F)" />
-                            <Line type="monotone" dataKey="spo2" stroke="var(--amber)" strokeWidth={2} dot={{ r: 3 }} name="SpO2 (%)" />
-                          </>
-                        )}
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <EmptyState icon={Activity} title="No vital trends yet" description="Trends appear once vitals are recorded for this patient." />
-                  )}
-               </div>
+               {vitals.length > 0 ? (
+                 <VitalTrends vitals={vitals} height={user.role === 'doctor' ? 170 : 150} />
+               ) : (
+                 <EmptyState icon={Activity} title="No vital trends yet" description="Trends appear once vitals are recorded for this patient." />
+               )}
             </section>
           </div>
 
