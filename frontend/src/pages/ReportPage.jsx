@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 import api from '../api/axios';
+import { openAuthenticatedBlob } from '../utils/authenticatedDownload';
 
 // ── Helper: nested path setter ─────────────────────
 function setNestedValue(obj, path, value) {
@@ -289,9 +290,7 @@ export default function ReportPage() {
         suggestions,
         status: 'final',
       });
-      const token = localStorage.getItem('lab_token');
-      const url = `${api.defaults.baseURL}/reports/${reportId}/pdf?token=${token}&download=true`;
-      window.open(url, '_blank');
+      await openAuthenticatedBlob(`/reports/${reportId}/pdf?download=true`, { download: true, filename: `lab-report-${reportId}.pdf` });
       toast.success('PDF downloading!');
     } catch {
       toast.error('PDF generation failed.');
@@ -314,9 +313,7 @@ export default function ReportPage() {
         suggestions,
         status: 'final',
       });
-      const token = localStorage.getItem('lab_token');
-      const url = `${api.defaults.baseURL}/reports/${reportId}/pdf?token=${token}&preview=true`;
-      window.open(url, '_blank');
+      await openAuthenticatedBlob(`/reports/${reportId}/pdf?preview=true`);
       toast.success('PDF Preview opened!');
     } catch {
       toast.error('PDF preview failed.');

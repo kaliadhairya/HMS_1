@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
+import Glyph from '../ui/Glyph';
 
 export default function PharmacistDashboard() {
   const [data, setData] = useState(null);
@@ -57,7 +58,7 @@ export default function PharmacistDashboard() {
             Pharmacy operations & supply chain overview
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => navigate('/pharmacy/reports')}>📊 Advanced Reports</button>
+        <button className="btn btn-primary" onClick={() => navigate('/pharmacy/reports')}><Glyph icon="📊" /> Advanced Reports</button>
       </div>
 
       <div className="fade-up-2" style={{
@@ -74,7 +75,7 @@ export default function PharmacistDashboard() {
           onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
           >
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: c.color }} />
-            <div style={{ fontSize: '1.8rem', marginBottom: 12 }}>{c.icon}</div>
+            <div style={{ fontSize: '1.8rem', marginBottom: 12 }}><Glyph icon={c.icon} /></div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>
               {c.label}
             </div>
@@ -149,7 +150,7 @@ export default function PharmacistDashboard() {
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)'; }}
               onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
             >
-              <div style={{ fontSize: '1.8rem', marginBottom: 8 }}>{link.icon}</div>
+              <div style={{ fontSize: '1.8rem', marginBottom: 8 }}><Glyph icon={link.icon} /></div>
               <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{link.label}</div>
             </div>
           ))}

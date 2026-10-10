@@ -93,19 +93,21 @@ router.post('/advance', protect, checkPermission('billing', 'write'), async (req
 router.post('/opd', protect, checkPermission('billing', 'write'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { encounterId, patientId } = req.body;
+    const { encounterId } = req.body;
     const encounter = await Encounter.findByPk(encounterId, { transaction: t });
     if (!encounter) {
       await t.rollback();
       return res.status(404).json({ success: false, message: 'Encounter not found.' });
     }
+    // Billing staff cannot read clinical encounters, so take the patient from the encounter here
+    const patientId = encounter.patient_id;
 
-    // Check if bill already generated for this encounter
+    // Already billed: return the existing bill so the billing screen can reopen it
     const existingBills = await Bill.findAll({ where: { encounterId, billType: 'OPD' }, transaction: t });
     const existingBill = existingBills.length > 0 ? existingBills[0] : null;
     if (existingBill) {
       await t.rollback();
-      return res.status(400).json({ success: false, message: 'Bill already generated for this encounter.' });
+      return res.json({ success: true, existing: true, data: existingBill });
     }
 
     // 1. Fetch sequence for BILL_NUMBER

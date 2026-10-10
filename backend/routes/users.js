@@ -83,7 +83,7 @@ router.post('/', async (req, res) => {
 });
 
 // ─── PUT /api/users/:id ─────────────────────────────────────────
-router.put('/:id', async (req, res) => {
+router.put('/:id(\\d+)', async (req, res) => {
   try {
     const { name, username, role, isActive, password, first_name, last_name, phone } = req.body;
     const user = await User.findByPk(req.params.id);
@@ -141,7 +141,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // ─── PUT /api/users/:id/password ────────────────────────────────
-router.put('/:id/password', async (req, res) => {
+router.put('/:id(\\d+)/password', async (req, res) => {
   try {
     const { password } = req.body;
     if (!password) {
@@ -195,7 +195,7 @@ router.patch('/:id/toggle-active', async (req, res) => {
 });
 
 // ─── GET /api/users/:id/login-history ───────────────────────────
-router.get('/:id/login-history', async (req, res) => {
+router.get('/:id(\\d+)/login-history', async (req, res) => {
   try {
     const loginLogs = await AuditLog.findAll({
       where: {
@@ -266,7 +266,7 @@ router.put('/permissions', restrictTo('super_admin'), async (req, res) => {
 });
 
 // ─── DELETE /api/users/:id ──────────────────────────────────────
-router.delete('/:id', async (req, res) => {
+router.delete('/:id(\\d+)', async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
     if (!user) {

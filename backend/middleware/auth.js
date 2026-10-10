@@ -105,4 +105,18 @@ const checkPermission = (module, action) => (req, res, next) => {
   return next();
 };
 
-module.exports = { protect, restrictTo, checkPermission };
+// Verify a token without an HTTP request (used by socket.io). Returns the user or null.
+const resolveTokenUser = async (token) => {
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_super_secret_jwt_key');
+    if (!decoded?.id) return null;
+    const user = await User.findByPk(decoded.id);
+    if (!user || user.isActive === 0) return null;
+    if (user.locked_until && new Date(user.locked_until) > new Date()) return null;
+    return { id: user.id, username: user.username, name: user.name, role: user.role };
+  } catch {
+    return null;
+  }
+};
+
+module.exports = { protect, restrictTo, checkPermission, resolveTokenUser };

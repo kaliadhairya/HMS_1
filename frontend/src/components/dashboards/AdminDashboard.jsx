@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import PatientAnalyticsModal from '../PatientAnalyticsModal';
+import Glyph from '../ui/Glyph';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -49,11 +50,11 @@ export default function AdminDashboard() {
   ];
 
   const quickLinks = [
-    { icon: '👥', label: 'Staff Management', path: '/hms/admin/staff', color: '#6366f1' },
+    { icon: '👥', label: 'Staff Management', path: '/hms/admin/staff', color: 'var(--primary)' },
     { icon: '🏥', label: 'Patients', path: '/hms/admin/patients', color: '#10b981' },
     { icon: '📅', label: 'Appointments', path: '/hms/appointments', color: '#f59e0b' },
     { icon: '💳', label: 'Billing & Finance', path: '/hms/admin/billing', color: '#ef4444' },
-    { icon: '💊', label: 'Pharmacy', path: '/hms/admin/pharmacy', color: '#8b5cf6' },
+    { icon: '💊', label: 'Pharmacy', path: '/hms/admin/pharmacy', color: 'var(--primary)' },
     { icon: '📝', label: 'Attendance & Leave', path: '/hms/admin/attendance', color: '#14b8a6' },
     { icon: '🛏️', label: 'Bed Management', path: '/hms/admin/bed-management', color: '#0ea5e9' },
   ];
@@ -65,7 +66,7 @@ export default function AdminDashboard() {
         <div className="hms-page-header hms-anim-1">
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.25)' }}>🏥</span>
+              <span className="header-icon" style={{ background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.25)' }}><Glyph icon="🏥" /></span>
               Hospital Admin Dashboard
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -119,7 +120,7 @@ export default function AdminDashboard() {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '1.5rem', flexShrink: 0,
                     }}>
-                      {k.icon}
+                      <Glyph icon={k.icon} />
                     </div>
                     <span style={{
                       borderRadius: 999,
@@ -180,7 +181,7 @@ export default function AdminDashboard() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '1.5rem',
               }}>
-                {k.icon}
+                <Glyph icon={k.icon} />
               </div>
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
@@ -199,7 +200,7 @@ export default function AdminDashboard() {
           {/* Operational Alerts */}
           <div className="card hms-anim-3" style={{ padding: 24 }}>
             <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '1.2rem' }}>⚠️</span> Operational Alerts
+              <span style={{ fontSize: '1.2rem' }}><Glyph icon="⚠️" /></span> Operational Alerts
             </h3>
             <div style={{ display: 'grid', gap: 12 }}>
               {alerts.map(a => (
@@ -213,7 +214,7 @@ export default function AdminDashboard() {
                 onMouseLeave={e => e.currentTarget.style.transform = 'none'}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: '1.2rem', background: 'var(--surface-1)', padding: 8, borderRadius: 8 }}>{a.icon}</span>
+                    <span style={{ fontSize: '1.2rem', background: 'var(--surface-1)', padding: 8, borderRadius: 8 }}><Glyph icon={a.icon} /></span>
                     <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{a.label}</span>
                   </div>
                   <span style={{ fontSize: '1.2rem', fontWeight: 800, color: a.color }}>{a.value}</span>
@@ -225,7 +226,7 @@ export default function AdminDashboard() {
           {/* Quick Links */}
           <div className="card hms-anim-4" style={{ padding: 24 }}>
             <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '1.2rem' }}>⚡</span> Quick Access
+              <span style={{ fontSize: '1.2rem' }}><Glyph icon="⚡" /></span> Quick Access
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {quickLinks.map(ql => (
@@ -241,7 +242,7 @@ export default function AdminDashboard() {
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.transform = 'none'; }}
                 >
-                  <span style={{ fontSize: '1.4rem' }}>{ql.icon}</span>
+                  <span style={{ fontSize: '1.4rem' }}><Glyph icon={ql.icon} /></span>
                   <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{ql.label}</span>
                 </div>
               ))}
@@ -252,7 +253,7 @@ export default function AdminDashboard() {
         {/* Recent Admissions */}
         <div className="card hms-anim-5" style={{ padding: 24 }}>
           <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '1.2rem' }}>🛏️</span> Recent Admissions
+            <span style={{ fontSize: '1.2rem' }}><Glyph icon="🛏️" /></span> Recent Admissions
           </h3>
           <div className="table-wrapper hms-table-anim" style={{ maxHeight: 320, overflowY: 'auto' }}>
             <table>

@@ -3,6 +3,24 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-hot-toast';
 import ThemeToggle from './ThemeToggle';
+import {
+  LayoutDashboard, Search, ClipboardList, Pill, Users, BedDouble, Inbox, ChartColumn, CalendarDays, Hospital,
+  Settings, Droplet, TestTube, ShoppingCart, Bell, ShieldCheck, Repeat, Package, ClipboardPlus, ChartLine,
+  FileText, CreditCard, Wallet, Factory, Ticket, HeartPulse, Clock, Undo2, Ellipsis, Info, LogOut,
+} from 'lucide-react';
+
+// Navigation entries keep their emoji keys; render them as one consistent line-icon set
+const NAV_ICONS = {
+  '🏠': LayoutDashboard, '🔍': Search, '📝': ClipboardList, '💊': Pill, '👥': Users, '🛏️': BedDouble,
+  '📥': Inbox, '📊': ChartColumn, '📅': CalendarDays, '🏥': Hospital, '⚙️': Settings, '🩸': Droplet,
+  '🧪': TestTube, '🛒': ShoppingCart, '🔔': Bell, '🔐': ShieldCheck, '🔄': Repeat, '📦': Package,
+  '📋': ClipboardPlus, '📈': ChartLine, '📄': FileText, '💳': CreditCard, '💰': Wallet, '🏭': Factory,
+  '🎫': Ticket, '❤️': HeartPulse, '⏰': Clock, '↩️': Undo2,
+};
+function NavIcon({ icon }) {
+  const Icon = NAV_ICONS[icon];
+  return <span className="navbar-link-icon" aria-hidden="true">{Icon ? <Icon size={17} strokeWidth={1.9} /> : icon}</span>;
+}
 import DoctorQuickActionsDock from './DoctorQuickActionsDock';
 import ReceptionistQuickActionsDock from './ReceptionistQuickActionsDock';
 import ReferralTypeModal from './ReferralTypeModal';
@@ -156,7 +174,7 @@ export default function Navbar() {
           title="This feature is currently disabled"
           aria-disabled="true"
         >
-          <span className="navbar-link-icon">{link.icon}</span>
+          <NavIcon icon={link.icon} />
           <span className="navbar-link-label">{getLabel(link)}</span>
         </span>
       );
@@ -171,7 +189,7 @@ export default function Navbar() {
         aria-current={active ? 'page' : undefined}
         onClick={(e) => handleNavClick(e, link)}
       >
-        <span className="navbar-link-icon">{link.icon}</span>
+        <NavIcon icon={link.icon} />
         <span className="navbar-link-label">{getLabel(link)}</span>
       </Link>
     );
@@ -217,7 +235,7 @@ export default function Navbar() {
                   aria-expanded={isMoreOpen}
                   aria-haspopup="menu"
                 >
-                  <span className="navbar-link-icon">⋯</span>
+                  <span className="navbar-link-icon" aria-hidden="true"><Ellipsis size={17} /></span>
                   <span className="navbar-link-label">More</span>
                 </button>
                 {isMoreOpen && (
@@ -301,7 +319,7 @@ export default function Navbar() {
               }}
               className="navbar-action-button navbar-about-button"
             >
-              <span>ℹ️</span>
+              <Info size={16} aria-hidden="true" />
               <span className="navbar-action-label">About</span>
             </button>
 
@@ -310,8 +328,8 @@ export default function Navbar() {
               onClick={handleLogout}
               className="navbar-action-button navbar-logout-button"
             >
-              <span className="navbar-action-label">Sign Out</span>
-              <span className="navbar-logout-icon">↗</span>
+              <LogOut size={16} aria-hidden="true" />
+              <span className="navbar-action-label">Sign out</span>
             </button>
           </div>
         </div>

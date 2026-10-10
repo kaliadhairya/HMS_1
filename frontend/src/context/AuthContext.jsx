@@ -28,9 +28,13 @@ export function AuthProvider({ children }) {
             throw new Error('Invalid session');
           }
         } catch (err) {
-          localStorage.removeItem('lab_token');
-          localStorage.removeItem('lab_user');
-          setUser(null);
+          // Only a real "not authenticated" answer ends the session; keep it through
+          // network errors, rate limits or a server restart.
+          if (err.response?.status === 401 || err.message === 'Invalid session') {
+            localStorage.removeItem('lab_token');
+            localStorage.removeItem('lab_user');
+            setUser(null);
+          }
         }
       }
       setIsInitialized(true);

@@ -1,4 +1,5 @@
 const { writeAudit } = require('../utils/identityClient');
+const AuditLog = require('../models/AuditLog');
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -17,21 +18,30 @@ function sanitizeBody(body) {
 }
 
 module.exports = function auditLogger(req, res, next) {
-  if (!MUTATING_METHODS.has(req.method)) return next();
+  // Auth routes write their own specific entries (LOGIN, password changes)
+  if (!MUTATING_METHODS.has(req.method) || req.originalUrl.startsWith('/api/auth')) return next();
   const originalJson = res.json.bind(res);
   res.json = (body) => {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       const requestId = req.headers['x-request-id'];
       const idempotencyKey = requestId ? `monolith:${requestId}:${req.method}:${req.originalUrl}` : undefined;
-      writeAudit({
+      const entry = {
         userId: req.user?.id || null,
         action: req.method,
         module: extractModule(req.originalUrl),
         recordId: Number(req.params?.id || req.body?.id) || null,
         newValue: sanitizeBody(req.body),
         ipAddress: req.ip || req.connection?.remoteAddress || 'unknown',
-      }, idempotencyKey, requestId).catch((error) => {
-        console.warn('Identity audit write failed:', error.message);
+      };
+      writeAudit(entry, idempotencyKey, requestId).catch(() => AuditLog.create({
+        user_id: entry.userId,
+        action: entry.action,
+        module: entry.module,
+        record_id: entry.recordId,
+        new_value: JSON.stringify(entry.newValue).substring(0, 3000),
+        ip_address: entry.ipAddress,
+      })).catch((error) => {
+        console.warn('Audit write failed:', error.message);
       });
     }
     return originalJson(body);

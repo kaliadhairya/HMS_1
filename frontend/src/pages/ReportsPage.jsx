@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import api from '../api/axios';
+import { openAuthenticatedBlob } from '../utils/authenticatedDownload';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 
@@ -98,7 +99,8 @@ function OPDRegisterTab() {
     let url = `/reports/opd-register?start_date=${startDate}&end_date=${endDate}&export=excel`;
     if (doctorId) url += `&doctor_id=${doctorId}`;
     if (dept) url += `&department=${dept}`;
-    window.open(api.defaults.baseURL + url, '_blank');
+    openAuthenticatedBlob(url, { download: true, filename: 'opd-register.xlsx' })
+      .catch(() => toast.error('Export failed.'));
   };
 
   return (

@@ -664,7 +664,9 @@ router.get('/reports', protect, async (req, res) => {
       }),
       Prescription.findAll({
         where: { doctor_id: req.user.id },
-        attributes: ['id', 'createdAt'],
+        // the model has no createdAt attribute; read the column directly
+        attributes: ['id', [sequelize.col('CREATED_AT'), 'createdAt']],
+        raw: true,
       }),
       InvestigationOrder.findAll({
         where: { doctor_id: req.user.id },
@@ -688,7 +690,7 @@ router.get('/reports', protect, async (req, res) => {
       encounters.filter((encounter) => isThisMonth(encounter.encounter_date)).map((encounter) => encounter.patient_id)
     );
     const monthlyPatients = monthlyPatientIds.size;
-    const prescriptionsWritten = prescriptions.filter((prescription) => isThisMonth(prescription.createdAt)).length;
+    const prescriptionsWritten = prescriptions.filter((prescription) => isThisMonth(prescription.createdAt ?? prescription.createdat)).length;
     const referralsMade = labOrders.filter((order) => isThisMonth(order.order_date)).length;
     const ipdAdmissions = admissions.filter((admission) => isThisMonth(admission.admissionDate)).length;
     const avgConsultationTime = doctorRecord?.slot_duration_mins

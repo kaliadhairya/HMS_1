@@ -15,6 +15,7 @@ export const SocketProvider = ({ children }) => {
     if (user) {
       const newSocket = io(socketUrl, {
         withCredentials: true,
+        auth: { token: localStorage.getItem('lab_token') },
       });
 
       newSocket.on('connect', () => {

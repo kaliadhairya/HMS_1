@@ -8,9 +8,11 @@
     "preview": "node ./node_modules/vite/bin/vite.js preview"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
     "axios": "^1.6.2",
     "error": "^10.4.0",
     "jwt-decode": "^4.0.0",
+    "lucide-react": "^1.54.0",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-barcode": "^1.6.1",

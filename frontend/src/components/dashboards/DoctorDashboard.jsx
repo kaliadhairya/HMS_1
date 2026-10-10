@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../api/axios';
 import { useSocket } from '../../context/SocketContext';
 import { toast } from 'react-hot-toast';
+import Glyph from '../ui/Glyph';
 
 const COMPLETED_PRESCRIPTION_STATUSES = new Set(['Consulted', 'Finalized', 'Dispensed']);
 
@@ -253,7 +254,7 @@ export default function DoctorDashboard() {
   const majorCards = [
     { icon: '👥', label: "Today's Patients", value: todayPatients.length, color: '#3b82f6', border: '#3b82f6' },
     { icon: '⏳', label: 'Waiting', value: waitingPatients.length, color: waitingPatients.length > 0 ? '#f59e0b' : '#10b981', border: '#f59e0b' },
-    { icon: '🩺', label: 'In Consultation', value: consultingPatients.length, color: '#8b5cf6', border: '#8b5cf6' },
+    { icon: '🩺', label: 'In Consultation', value: consultingPatients.length, color: 'var(--primary)', border: 'var(--primary)' },
     { icon: '✅', label: 'Completed', value: completedPatients.length, color: '#10b981', border: '#10b981' },
     { icon: '🔬', label: 'Pending Lab Reviews', value: pendingLabReviews, color: pendingLabReviews > 0 ? '#eab308' : '#10b981', border: '#eab308' },
   ];
@@ -293,7 +294,7 @@ export default function DoctorDashboard() {
           {/* Gradient top accent */}
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, height: 4,
-            background: 'linear-gradient(90deg, #06b6d4, #8b5cf6)',
+            background: 'var(--primary)',
             borderRadius: '16px 16px 0 0',
           }} />
 
@@ -363,7 +364,7 @@ export default function DoctorDashboard() {
               background: `${c.color}15`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '1.1rem', flexShrink: 0,
-            }}>{c.icon}</span>
+            }}><Glyph icon={c.icon} /></span>
             <span style={{
               flex: 1, minWidth: 0, fontSize: '0.78rem', fontWeight: 700,
               color: 'var(--text-secondary)', textTransform: 'uppercase',
@@ -413,7 +414,7 @@ export default function DoctorDashboard() {
                     width: 30, height: 30, borderRadius: 8,
                     background: 'rgba(59,130,246,0.1)', fontSize: '0.9rem',
                   }}>
-                    📋
+                    <Glyph icon="📋" />
                   </span>
                   Today's Patients
                 </h3>
@@ -422,7 +423,7 @@ export default function DoctorDashboard() {
               <div className="doctor-dashboard-card-actions">
                 {todayPatients.length > 0 && (
                   <label className="doctor-dashboard-list-search doctor-dashboard-header-search">
-                    <span aria-hidden="true">🔎</span>
+                    <span aria-hidden="true"><Glyph icon="🔎" /></span>
                     <input
                       type="search"
                       value={todaySearch}
@@ -457,11 +458,11 @@ export default function DoctorDashboard() {
 
             {todayPatients.length === 0 ? (
               <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', flex: 1 }}>
-                ☕ No patients registered for consultation today.
+                <Glyph icon="☕" /> No patients registered for consultation today.
               </div>
             ) : visibleTodayPatients.length === 0 ? (
               <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', flex: 1 }}>
-                🔎 No matching patients in this queue.
+                <Glyph icon="🔎" /> No matching patients in this queue.
               </div>
             ) : (
               <div className="table-wrapper hms-table-anim doctor-dashboard-table-wrap doctor-dashboard-list-scroll" style={{ border: 'none', borderRadius: 0, boxShadow: 'none', flex: 1, overflow: 'auto' }}>
@@ -512,7 +513,7 @@ export default function DoctorDashboard() {
                           <td style={{ padding: '10px 6px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
                               {isDone ? (
-                                <span className="badge badge-green">✓ Done</span>
+                                <span className="badge badge-green"><Glyph icon="✓" /> Done</span>
                               ) : isBeingConsulted ? (
                                 <span className="badge badge-blue">Consulting</span>
                               ) : (
@@ -593,7 +594,7 @@ export default function DoctorDashboard() {
               <div className="doctor-dashboard-card-actions">
                 {pendingPatients.length > 0 && (
                   <label className="doctor-dashboard-list-search doctor-dashboard-header-search">
-                    <span aria-hidden="true">🔎</span>
+                    <span aria-hidden="true"><Glyph icon="🔎" /></span>
                     <input
                       type="search"
                       value={pendingSearch}
@@ -609,11 +610,11 @@ export default function DoctorDashboard() {
 
             {pendingPatients.length === 0 ? (
               <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', flex: 1 }}>
-                ✅ All registered patients have been consulted.
+                <Glyph icon="✅" /> All registered patients have been consulted.
               </div>
             ) : visiblePendingPatients.length === 0 ? (
               <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', flex: 1 }}>
-                🔎 No matching pending consultations.
+                <Glyph icon="🔎" /> No matching pending consultations.
               </div>
             ) : (
               <div className="table-wrapper hms-table-anim doctor-dashboard-table-wrap doctor-dashboard-list-scroll" style={{ border: 'none', borderRadius: 0, boxShadow: 'none', flex: 1, overflow: 'auto' }}>
@@ -709,7 +710,7 @@ export default function DoctorDashboard() {
         const consultAction = p.encounter_id ? {
           label: 'Consultation',
           icon: '🩺',
-          iconBg: '#8b5cf6',
+          iconBg: 'var(--primary)',
           onClick: () => navigate(`/hms/consultation/${p.encounter_id}`),
         } : null;
         const prescriptionAction = {
@@ -733,7 +734,7 @@ export default function DoctorDashboard() {
         const medCertAction = {
           label: 'Med Certificate',
           icon: '📋',
-          iconBg: '#7c3aed',
+          iconBg: 'var(--primary)',
           onClick: () => navigate(`/doctor/medical-certificate?patientId=${p.id}`),
         };
         const labAction = {
@@ -745,7 +746,7 @@ export default function DoctorDashboard() {
         const ipdAction = {
           label: 'Move to IPD',
           icon: '🏥',
-          iconBg: '#ec4899',
+          iconBg: 'var(--primary)',
           onClick: () => navigate(`/ipd/admission-form?patientId=${p.id}`),
         };
         const patientProfileAction = {
@@ -831,7 +832,7 @@ export default function DoctorDashboard() {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '1rem', flexShrink: 0, color: a.iconBg,
                     }}>
-                      {a.icon}
+                      <Glyph icon={a.icon} />
                     </span>
                     <span style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--text-primary, #1e293b)' }}>
                       {a.label}

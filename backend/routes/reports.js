@@ -5,6 +5,7 @@ const TestReport = require('../models/TestReport');
 const Patient = require('../models/Patient');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
+const { sequelize } = require('../models/db');
 const path = require('path');
 const fs = require('fs');
 
@@ -29,7 +30,7 @@ const getResult = (val) => {
 };
 
 // ─── PUT /api/reports/:id — Save test results ────────────────────────────────
-router.put('/:id', protect, async (req, res) => {
+router.put('/:id(\\d+)', protect, async (req, res) => {
   try {
     const report = await TestReport.findByPk(req.params.id);
     if (!report) return res.status(404).json({ success: false, message: 'Report not found.' });
@@ -63,7 +64,7 @@ router.put('/:id', protect, async (req, res) => {
 });
 
 // ─── GET /api/reports/:id — Fetch a single report ───────────────────────────
-router.get('/:id', protect, async (req, res) => {
+router.get('/:id(\\d+)', protect, async (req, res) => {
   try {
     const report = await TestReport.findByPk(req.params.id, {
       include: [
@@ -110,7 +111,7 @@ router.get('/ordered-queue', protect, async (req, res) => {
 });
 
 // ─── GET /api/reports/:id/pdf — Generate PDF ────────────────────────────────
-router.get('/:id/pdf', protect, async (req, res) => {
+router.get('/:id(\\d+)/pdf', protect, async (req, res) => {
   try {
     const report = await TestReport.findByPk(req.params.id, {
       include: [
@@ -520,6 +521,7 @@ router.get('/:id/pdf', protect, async (req, res) => {
 // ── GET /api/reports/opd-register ──────────────────────────────
 const { clobToString } = require('../utils/clobToString');
 
+
 router.get('/opd-register', protect, async (req, res) => {
   try {
     const { start_date, end_date, doctor_id, department } = req.query;
@@ -646,11 +648,12 @@ router.get('/revenue', protect, async (req, res) => {
 
     // Query 4: By department
     const [byDepartment] = await sequelize.query(`
-      SELECT e.DEPARTMENT, SUM(b.NET_PAYABLE) as REVENUE
+      SELECT COALESCE(dep.NAME, 'Unassigned') as DEPARTMENT, SUM(b.NET_PAYABLE) as REVENUE
       FROM HMS_BILLS b
       JOIN HMS_ENCOUNTERS e ON e.ID = b.ENCOUNTER_ID
+      LEFT JOIN HMS_DEPARTMENTS dep ON dep.ID = e.DEPARTMENT_ID
       WHERE trunc(b.CREATED_AT) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
-      GROUP BY e.DEPARTMENT
+      GROUP BY COALESCE(dep.NAME, 'Unassigned')
     `, { replacements });
 
     res.json({

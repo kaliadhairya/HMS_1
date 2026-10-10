@@ -66,7 +66,7 @@ export default function PurchaseOrdersPage() {
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button className="btn btn-sm btn-outline">View</button>
                           {po.status !== 'Delivered' && (
-                            <button className="btn btn-sm" style={{ background: 'var(--green)', color: '#fff' }} onClick={() => navigate('/hms/pharmacy/grn')}>GRN</button>
+                            <button className="btn btn-sm" style={{ background: 'var(--green)', color: '#fff' }} onClick={() => navigate('/pharmacy/grn')}>GRN</button>
                           )}
                         </div>
                       </td>
