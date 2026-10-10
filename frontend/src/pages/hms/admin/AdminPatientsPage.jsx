@@ -1,8 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BedDouble, ClipboardList, Search, Users } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
 import api from '../../../api/axios';
-import Glyph from '../../../components/ui/Glyph';
+
+const ADMISSION_TONE = { Admitted: 'success', 'Discharge Pending': 'warning' };
+const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
 export default function AdminPatientsPage() {
   const navigate = useNavigate();
@@ -23,103 +30,112 @@ export default function AdminPatientsPage() {
     }).finally(() => setLoading(false));
   }, [search, page]);
 
+  const admissions = stats?.recent_admissions || [];
+  const patientRows = Array.isArray(patients) ? patients : [];
+
+  const admissionColumns = useMemo(() => [
+    { id: 'patient', header: 'Patient', accessorFn: (a) => a.PATIENT_NAME || '', cell: ({ getValue }) => <span className="cell-primary">{getValue() || '—'}</span> },
+    { id: 'ward', header: 'Ward', accessorFn: (a) => a.WARD_NAME || '', cell: ({ getValue }) => getValue() || '—' },
+    { id: 'bed', header: 'Bed', accessorFn: (a) => a.BED_NUMBER || '', meta: { width: 100 }, cell: ({ getValue }) => <span className="tabular">{getValue() || '—'}</span> },
+    {
+      id: 'status', header: 'Status', accessorFn: (a) => a.STATUS || '', meta: { width: 170 },
+      cell: ({ getValue }) => <span className={`status status-${ADMISSION_TONE[getValue()] || 'info'}`}>{getValue() || '—'}</span>,
+    },
+    {
+      id: 'date', header: 'Admitted', accessorFn: (a) => (a.ADMISSION_DATE ? new Date(a.ADMISSION_DATE).getTime() : 0), meta: { width: 190 },
+      cell: ({ row }) => <span className="tabular cell-secondary">{fmtDateTime(row.original.ADMISSION_DATE)}</span>,
+    },
+  ], []);
+
+  const patientColumns = useMemo(() => [
+    {
+      id: 'name', header: 'Patient', accessorFn: (p) => p.name || '',
+      cell: ({ row }) => {
+        const p = row.original;
+        return (
+          <span className="cell-person">
+            <span className="cell-avatar" aria-hidden="true">{(p.name || '?').charAt(0).toUpperCase()}</span>
+            <span className="cell-stack">
+              <span className="cell-primary">{p.name || '—'}</span>
+              <span className="cell-secondary mono">{p.uhid || 'No UHID'}</span>
+            </span>
+          </span>
+        );
+      },
+    },
+    { id: 'phone', header: 'Phone', accessorFn: (p) => p.phoneNumber || '', meta: { width: 160 }, cell: ({ getValue }) => <span className="tabular">{getValue() || '—'}</span> },
+    { id: 'gender', header: 'Gender', accessorFn: (p) => p.gender || '', meta: { width: 110 }, cell: ({ getValue }) => getValue() || '—' },
+    { id: 'age', header: 'Age', accessorFn: (p) => Number(p.age) || 0, meta: { width: 80, align: 'right' }, cell: ({ row }) => <span className="tabular">{row.original.age ?? '—'}</span> },
+    {
+      id: 'registered', header: 'Registered', accessorFn: (p) => (p.createdAt ? new Date(p.createdAt).getTime() : 0), meta: { width: 150 },
+      cell: ({ row }) => <span className="tabular cell-secondary">{fmtDate(row.original.createdAt)}</span>,
+    },
+  ], []);
+
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        {/* Premium Header */}
-        <div className="hms-page-header hms-anim-1">
-          <div>
-            <h1>
-              <span className="header-icon" style={{ background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.25)' }}><Glyph icon="🏥" /></span>
-              Patient Overview
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Admissions, discharges, patient flow — operational oversight without clinical access
-            </p>
-          </div>
-        </div>
-
-        {/* KPIs */}
-        <div className="hms-anim-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16, marginBottom: 30 }}>
-          {[
-            { icon: '🏥', label: 'OPD Today', value: stats?.opd_count || 0, color: 'var(--blue)' },
-            { icon: '🛏️', label: 'IPD Admitted', value: stats?.ipd_count || 0, color: 'var(--green)' },
-            { icon: '📋', label: 'Pending Discharges', value: stats?.pending_discharges || 0, color: 'var(--amber)' },
-            { icon: '📊', label: 'Bed Occupancy', value: `${stats?.bed_occupancy || 0}%`, color: 'var(--teal)' },
-          ].map((k, i) => (
-            <div key={k.label} className={`hms-stat-card anim-${i + 1}`} style={{ borderTop: `4px solid ${k.color}`, padding: '20px', display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{
-                width: 48, height: 48, borderRadius: 12,
-                background: `${k.color}15`, color: k.color,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.5rem',
-              }}>
-                <Glyph icon={k.icon} />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>{k.label}</div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4 }}>{k.value}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Search & Actions */}
-        <div className="card hms-anim-3" style={{ padding: 20, marginBottom: 30, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, position: 'relative' }}>
-            <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}><Glyph icon="🔍" /></span>
-            <input 
-              className="form-input" 
-              style={{ width: '100%', paddingLeft: 42, paddingRight: 16, fontSize: '0.95rem' }} 
-              placeholder="Search patients by name, UHID, phone..." 
-              value={search} 
-              onChange={e => { setSearch(e.target.value); setPage(1); }} 
-            />
-          </div>
-          <button className="btn btn-primary btn-lg" onClick={() => navigate('/ipd/beds')} style={{ padding: '0 24px' }}>
-            <Glyph icon="🛏️" /> Bed Management
-          </button>
-        </div>
-
-        {/* Recent Admissions */}
-        <div className="card hms-anim-4" style={{ padding: 24 }}>
-          <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '1.2rem' }}><Glyph icon="📋" /></span> Recent Admissions
-          </h3>
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" /></div>
-          ) : (
-            <div className="table-wrapper hms-table-anim" style={{ maxHeight: 500, overflowY: 'auto' }}>
-              <table>
-                <thead>
-                  <tr><th>Patient</th><th>Ward</th><th>Bed</th><th>Status</th><th>Date</th></tr>
-                </thead>
-                <tbody>
-                  {(stats?.recent_admissions || []).map((a, i) => (
-                    <tr key={i} style={{ animationDelay: `${i * 0.05}s` }}>
-                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{a.PATIENT_NAME || '—'}</td>
-                      <td>{a.WARD_NAME || '—'}</td>
-                      <td>{a.BED_NUMBER || '—'}</td>
-                      <td>
-                        <span className={`badge ${a.STATUS === 'Admitted' ? 'badge-green' : a.STATUS === 'Discharge Pending' ? 'badge-amber' : 'badge-blue'}`} style={{ padding: '4px 10px' }}>
-                          {a.STATUS}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        {a.ADMISSION_DATE ? new Date(a.ADMISSION_DATE).toLocaleString('en-IN') : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                  {(!stats?.recent_admissions || stats.recent_admissions.length === 0) && (
-                    <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 30 }}>No recent admissions found</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+      <main className="app-page">
+        <PageHeader
+          title="Patient overview"
+          description="Admissions, discharges and patient flow, for operational oversight without clinical access."
+          actions={(
+            <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/ipd/beds')}>
+              <BedDouble size={16} aria-hidden="true" /> Bed management
+            </button>
           )}
+        />
+
+        <div className="kpi-strip">
+          <div className="panel kpi"><div className="kpi-label">OPD today</div><div className="kpi-value">{stats?.opd_count || 0}</div></div>
+          <div className="panel kpi"><div className="kpi-label">IPD admitted</div><div className="kpi-value">{stats?.ipd_count || 0}</div></div>
+          <div className="panel kpi">
+            <div className="kpi-label">Pending discharges</div>
+            <div className="kpi-value" style={{ color: Number(stats?.pending_discharges) > 0 ? 'var(--amber)' : undefined }}>{stats?.pending_discharges || 0}</div>
+          </div>
+          <div className="panel kpi"><div className="kpi-label">Bed occupancy</div><div className="kpi-value">{`${stats?.bed_occupancy || 0}%`}</div></div>
         </div>
-      </div>
+
+        <section className="panel" style={{ marginBottom: 16 }}>
+          <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><ClipboardList size={16} aria-hidden="true" /> Recent admissions</h2></div>
+          <DataTable
+            columns={admissionColumns}
+            data={admissions}
+            loading={loading}
+            getRowId={(a, i) => String(a.ID ?? i)}
+            pageSize={10}
+            initialSorting={[{ id: 'date', desc: true }]}
+            empty={<EmptyState icon={BedDouble} title="No recent admissions" description="New IPD admissions appear here." />}
+          />
+        </section>
+
+        <section className="panel">
+          <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><Users size={16} aria-hidden="true" /> Patients</h2></div>
+          <div className="toolbar">
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search patients</span>
+              <input
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder="Search patients by name, UHID or phone"
+              />
+            </label>
+          </div>
+          <DataTable
+            columns={patientColumns}
+            data={patientRows}
+            loading={loading}
+            getRowId={(p, i) => String(p.id ?? i)}
+            pageSize={20}
+            empty={search.trim() ? (
+              <EmptyState icon={Search} title="No patients match" description="Try another name, UHID or phone number." />
+            ) : (
+              <EmptyState icon={Users} title="No patients yet" description="Registered patients appear here." />
+            )}
+          />
+        </section>
+      </main>
     </>
   );
 }

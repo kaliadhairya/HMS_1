@@ -1,14 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import toast from 'react-hot-toast';
+import { IdCard, LogOut, Search, TriangleAlert, Users } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
-import toast from 'react-hot-toast';
-import Glyph from '../../../components/ui/Glyph';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+import Modal from '../../../components/ui/Modal';
+
+const WARDS = ['General-A', 'General-B', 'ICU', 'Maternity', 'Pediatric'];
+const RELATIONS = ['Spouse', 'Father', 'Mother', 'Son', 'Daughter', 'Sibling', 'Friend', 'Other'];
+const EMPTY_FORM = { patient: '', ward: '', bed: '', visitor: '', relation: '' };
+const VIEWS = [
+  { key: '', label: 'All' },
+  { key: 'Active', label: 'Inside' },
+  { key: 'Checked Out', label: 'Checked out' },
+];
 
 export default function VisitorManagementPage() {
   const [visitors, setVisitors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ patient: '', ward: '', bed: '', visitor: '', relation: '' });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [query, setQuery] = useState('');
+  const [view, setView] = useState('');
   const MAX_VISITORS = 5;
 
   useEffect(() => {
@@ -17,8 +32,11 @@ export default function VisitorManagementPage() {
 
   const fetchVisitors = () => {
     api.get('/receptionist/visitor-log')
-      .then(res => setVisitors(res.data.data || []))
-      .catch(console.error)
+      .then((res) => setVisitors(res.data.data || []))
+      .catch((err) => {
+        console.error(err);
+        toast.error('Could not load the visitor log');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -28,7 +46,7 @@ export default function VisitorManagementPage() {
       await api.post('/receptionist/visitor-log', form);
       toast.success('Visitor pass issued.');
       setShowForm(false);
-      setForm({ patient: '', ward: '', bed: '', visitor: '', relation: '' });
+      setForm(EMPTY_FORM);
       fetchVisitors();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to issue visitor pass.');
@@ -45,289 +63,184 @@ export default function VisitorManagementPage() {
     }
   };
 
-  const activeVisitors = visitors.filter(v => v.status === 'Active');
-  const checkedOut = visitors.filter(v => v.status === 'Checked Out');
+  const activeVisitors = visitors.filter((v) => v.status === 'Active');
+  const checkedOut = visitors.filter((v) => v.status === 'Checked Out');
 
   const patientCounts = {};
-  activeVisitors.forEach(v => {
+  activeVisitors.forEach((v) => {
     patientCounts[v.patient] = (patientCounts[v.patient] || 0) + 1;
   });
 
-  const statsCards = [
-    { icon: '🟢', label: 'Currently Inside', value: activeVisitors.length, color: '#10b981' },
-    { icon: '🔵', label: 'Checked Out Today', value: checkedOut.length, color: '#3b82f6' },
-    { icon: '🟣', label: 'Patients With Visitors', value: Object.keys(patientCounts).length, color: 'var(--primary)' },
-  ];
+  const limitReached = Boolean(form.patient) && patientCounts[form.patient] >= MAX_VISITORS;
+  const viewCounts = { '': visitors.length, Active: activeVisitors.length, 'Checked Out': checkedOut.length };
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return visitors.filter((v) => {
+      if (view && v.status !== view) return false;
+      if (!q) return true;
+      return [v.id, v.patient, v.visitor, v.ward, v.bed, v.relation].some((x) => String(x || '').toLowerCase().includes(q));
+    });
+  }, [visitors, query, view]);
+
+  const columns = useMemo(() => [
+    { id: 'pass', header: 'Pass', accessorFn: (v) => v.numericId ?? v.id, meta: { width: 110 }, cell: ({ row }) => <span className="mono">{row.original.id}</span> },
+    {
+      id: 'visitor', header: 'Visitor', accessorFn: (v) => v.visitor || '',
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="cell-primary">{row.original.visitor}</span>
+          {row.original.relation && <span className="cell-secondary">{row.original.relation}</span>}
+        </span>
+      ),
+    },
+    {
+      id: 'patient', header: 'Visiting', accessorFn: (v) => v.patient || '',
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span>{row.original.patient}</span>
+          <span className="cell-secondary">{row.original.ward || '—'} / {row.original.bed || '—'}</span>
+        </span>
+      ),
+    },
+    { id: 'in', header: 'Check-in', accessorFn: (v) => v.check_in || '', meta: { width: 110 }, cell: ({ getValue }) => <span className="tabular">{getValue() || '—'}</span> },
+    { id: 'out', header: 'Check-out', accessorFn: (v) => v.check_out || '', meta: { width: 110 }, cell: ({ getValue }) => <span className="tabular cell-secondary">{getValue() || '—'}</span> },
+    {
+      id: 'status', header: 'Status', accessorFn: (v) => v.status || '', meta: { width: 130 },
+      cell: ({ getValue }) => (getValue() === 'Active'
+        ? <span className="status status-success">Inside</span>
+        : <span className="status status-neutral">Checked out</span>),
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 130, align: 'right' },
+      cell: ({ row }) => {
+        const v = row.original;
+        if (v.status !== 'Active') return null;
+        return (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleCheckout(v.numericId)} aria-label={`Check out ${v.visitor}`}>
+            <LogOut size={14} aria-hidden="true" /> Check out
+          </button>
+        );
+      },
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const issueButton = (
+    <button type="button" className="btn btn-primary btn-md" onClick={() => setShowForm(true)}>
+      <IdCard size={16} aria-hidden="true" /> Issue visitor pass
+    </button>
+  );
 
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        {/* Page Header */}
-        <div className="hms-page-header">
-          <div>
-            <h1>
-              <span className="header-icon"><Glyph icon="👥" /></span>
-              Visitor Management
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Issue visitor passes, track check-in/out, and enforce visitor limits (max {MAX_VISITORS} per patient).
-            </p>
+      <main className="app-page">
+        <PageHeader
+          title="Visitors"
+          description={`Issue visitor passes and track check-in and check-out. Up to ${MAX_VISITORS} visitors per patient at a time.`}
+          actions={issueButton}
+        />
+
+        <div className="kpi-strip">
+          <div className="panel kpi"><div className="kpi-label">Currently inside</div><div className="kpi-value">{activeVisitors.length}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Checked out today</div><div className="kpi-value">{checkedOut.length}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Patients with visitors</div><div className="kpi-value">{Object.keys(patientCounts).length}</div></div>
+        </div>
+
+        <section className="panel">
+          <div className="panel-head">
+            <h2 className="panel-title" style={{ margin: 0 }}><Users size={16} aria-hidden="true" /> Today's visitor log</h2>
+            <span className="muted">{visitors.length} visitors</span>
           </div>
-          <div className="header-actions">
+          <div className="toolbar">
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search visitors</span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search visitor, patient, pass or ward" />
+            </label>
+            <div className="segmented" role="tablist" aria-label="Filter by status">
+              {VIEWS.map((v) => (
+                <button key={v.key || 'all'} type="button" role="tab" aria-selected={view === v.key} className={view === v.key ? 'is-active' : ''} onClick={() => setView(v.key)}>
+                  {v.label} <span className="seg-count">{viewCounts[v.key]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            loading={loading}
+            getRowId={(v) => String(v.id)}
+            pageSize={50}
+            empty={visitors.length > 0 ? (
+              <EmptyState icon={Search} title="No visitors match" description="Clear the search or pick another status." />
+            ) : (
+              <EmptyState icon={Users} title="No visitors yet today" description="Issue a pass to start tracking visitors." action={issueButton} />
+            )}
+          />
+        </section>
+      </main>
+
+      <Modal
+        open={showForm}
+        onOpenChange={setShowForm}
+        title="Issue visitor pass"
+        description="The visitor is checked in as soon as the pass is issued."
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setShowForm(false)}>Cancel</button>
             <button
-              className={`btn ${showForm ? 'btn-danger' : 'btn-primary'}`}
-              onClick={() => setShowForm(!showForm)}
-              style={{ transition: 'all 0.3s ease' }}
+              type="submit"
+              form="visitor-form"
+              className="btn btn-primary btn-md"
+              disabled={!form.visitor || !form.patient || limitReached}
             >
-              {showForm ? '✕ Close Form' : '+ Issue Visitor Pass'}
+              Issue pass and check in
             </button>
+          </>
+        )}
+      >
+        <form id="visitor-form" onSubmit={(e) => { e.preventDefault(); handleIssuePass(); }} style={{ display: 'grid', gap: 14 }}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="vp-patient">Patient name</label>
+            <input id="vp-patient" type="text" className="form-input" required value={form.patient} onChange={(e) => setForm({ ...form, patient: e.target.value })} />
           </div>
-        </div>
-
-        {/* Issue Pass Form (Animated slide-down) */}
-        <div style={{
-          maxHeight: showForm ? 400 : 0,
-          overflow: 'hidden',
-          transition: 'max-height 0.45s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease',
-          opacity: showForm ? 1 : 0,
-          marginBottom: showForm ? 24 : 0,
-        }}>
-          <div className="card" style={{
-            padding: 0, overflow: 'hidden',
-            borderLeft: '4px solid #3b82f6',
-          }}>
-            <div style={{
-              padding: '16px 24px',
-              background: 'var(--surface-2)',
-              borderBottom: '1px solid var(--border)',
-            }}>
-              <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{
-                  width: 28, height: 28, borderRadius: 8,
-                  background: 'rgba(59,130,246,0.1)', fontSize: '0.85rem',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Glyph icon="📋" />
-                </span>
-                New Visitor Pass
-              </h3>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="vp-ward">Ward</label>
+              <select id="vp-ward" className="form-select" value={form.ward} onChange={(e) => setForm({ ...form, ward: e.target.value })}>
+                <option value="">Select ward</option>
+                {WARDS.map((w) => <option key={w}>{w}</option>)}
+              </select>
             </div>
-            <div style={{ padding: '20px 24px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14, marginBottom: 16 }}>
-                <div className="form-group">
-                  <label className="form-label">Patient Name *</label>
-                  <input type="text" className="form-input" placeholder="Patient name..."
-                    value={form.patient} onChange={e => setForm({...form, patient: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Ward</label>
-                  <select className="form-input" value={form.ward} onChange={e => setForm({...form, ward: e.target.value})}>
-                    <option value="">Select Ward</option>
-                    <option>General-A</option>
-                    <option>General-B</option>
-                    <option>ICU</option>
-                    <option>Maternity</option>
-                    <option>Pediatric</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Bed Number</label>
-                  <input type="text" className="form-input" placeholder="e.g. B-12"
-                    value={form.bed} onChange={e => setForm({...form, bed: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Visitor Name *</label>
-                  <input type="text" className="form-input" placeholder="Full name..."
-                    value={form.visitor} onChange={e => setForm({...form, visitor: e.target.value})} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Relation</label>
-                  <select className="form-input" value={form.relation} onChange={e => setForm({...form, relation: e.target.value})}>
-                    <option value="">Select Relation</option>
-                    <option>Spouse</option>
-                    <option>Father</option>
-                    <option>Mother</option>
-                    <option>Son</option>
-                    <option>Daughter</option>
-                    <option>Sibling</option>
-                    <option>Friend</option>
-                    <option>Other</option>
-                  </select>
-                </div>
-              </div>
-
-              {form.patient && patientCounts[form.patient] >= MAX_VISITORS && (
-                <div style={{
-                  padding: '12px 16px',
-                  background: 'rgba(239,68,68,0.08)',
-                  border: '1px solid rgba(239,68,68,0.2)',
-                  borderRadius: 10,
-                  marginBottom: 14,
-                  color: '#ef4444',
-                  fontSize: '0.85rem',
-                  fontWeight: 500,
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  animation: 'hmsSlideUp 0.3s ease both',
-                }}>
-                  <span style={{ fontSize: '1.1rem' }}><Glyph icon="⚠️" /></span>
-                  Maximum visitor limit ({MAX_VISITORS}) reached for {form.patient}. Cannot issue more passes.
-                </div>
-              )}
-
-              <button
-                className="btn btn-primary"
-                onClick={handleIssuePass}
-                disabled={!form.visitor || !form.patient || (patientCounts[form.patient] >= MAX_VISITORS)}
-                style={{ position: 'relative', overflow: 'hidden' }}
-              >
-                <Glyph icon="✅" /> Issue Pass & Check In
-              </button>
+            <div className="form-group">
+              <label className="form-label" htmlFor="vp-bed">Bed number</label>
+              <input id="vp-bed" type="text" className="form-input" placeholder="e.g. B-12" value={form.bed} onChange={(e) => setForm({ ...form, bed: e.target.value })} />
             </div>
           </div>
-        </div>
-
-        {/* Stats Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-          {statsCards.map((c, i) => (
-            <div key={c.label} className={`hms-stat-card hms-anim-${i + 1}`} style={{
-              padding: 20,
-              borderLeft: `4px solid ${c.color}`,
-              textAlign: 'center',
-              cursor: 'default',
-            }}>
-              <div style={{ position: 'absolute', top: -15, right: -15, width: 60, height: 60, borderRadius: '50%', background: `${c.color}08`, pointerEvents: 'none' }} />
-              <div style={{
-                fontSize: '2rem', fontWeight: 800, color: c.color,
-                lineHeight: 1, marginBottom: 6,
-                animation: 'hmsCountPop 0.6s 0.4s ease both',
-              }}>
-                {c.value}
-              </div>
-              <div style={{
-                fontSize: '0.72rem', color: 'var(--text-muted)',
-                textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.08em',
-              }}>
-                {c.label}
-              </div>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="vp-visitor">Visitor name</label>
+              <input id="vp-visitor" type="text" className="form-input" required value={form.visitor} onChange={(e) => setForm({ ...form, visitor: e.target.value })} />
             </div>
-          ))}
-        </div>
-
-        {/* Visitor Log Table */}
-        <div className="card hms-anim-4" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{
-            padding: '18px 24px',
-            background: 'var(--surface-2)',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          }}>
-            <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-              <span style={{
-                width: 28, height: 28, borderRadius: 8,
-                background: 'rgba(16,185,129,0.1)', fontSize: '0.85rem',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <Glyph icon="📖" />
-              </span>
-              Today's Visitor Log
-            </h3>
-            <span style={{
-              padding: '4px 14px', borderRadius: 20,
-              background: 'var(--green-light)', color: 'var(--green)',
-              fontSize: '0.75rem', fontWeight: 700, border: '1px solid var(--green-border)',
-            }}>
-              {visitors.length} visitors
-            </span>
+            <div className="form-group">
+              <label className="form-label" htmlFor="vp-relation">Relation</label>
+              <select id="vp-relation" className="form-select" value={form.relation} onChange={(e) => setForm({ ...form, relation: e.target.value })}>
+                <option value="">Select relation</option>
+                {RELATIONS.map((r) => <option key={r}>{r}</option>)}
+              </select>
+            </div>
           </div>
 
-          {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60, gap: 12 }}>
-              <div className="spinner" style={{ width: 28, height: 28 }} />
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading visitor log...</span>
-            </div>
-          ) : visitors.length === 0 ? (
-            <div className="hms-empty-state" style={{ margin: 24, border: 'none' }}>
-              <span className="empty-icon"><Glyph icon="📭" /></span>
-              <h3>No Visitors Yet Today</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Issue a pass to start tracking.</p>
-            </div>
-          ) : (
-            <div className="table-wrapper hms-table-anim" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Pass ID</th><th>Patient</th><th>Ward/Bed</th>
-                    <th>Visitor</th><th>Relation</th><th>Check In</th>
-                    <th>Check Out</th><th>Status</th><th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visitors.map(v => (
-                    <tr key={v.id}>
-                      <td><strong style={{ color: 'var(--blue)' }}>{v.id}</strong></td>
-                      <td style={{ fontWeight: 600 }}>{v.patient}</td>
-                      <td>
-                        <span style={{ fontSize: '0.83rem' }}>{v.ward} / {v.bed}</span>
-                      </td>
-                      <td style={{ fontWeight: 500 }}>{v.visitor}</td>
-                      <td>
-                        <span style={{
-                          padding: '2px 10px', borderRadius: 12,
-                          background: 'var(--surface-2)',
-                          border: '1px solid var(--border)',
-                          fontSize: '0.75rem', fontWeight: 500,
-                        }}>
-                          {v.relation}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: '0.83rem', color: 'var(--green)', fontWeight: 500 }}>{v.check_in}</td>
-                      <td style={{ fontSize: '0.83rem', color: 'var(--text-muted)' }}>{v.check_out || '—'}</td>
-                      <td>
-                        <span style={{
-                          padding: '3px 10px', borderRadius: 20,
-                          fontSize: '0.7rem', fontWeight: 700,
-                          background: v.status === 'Active' ? 'rgba(16,185,129,0.1)' : 'rgba(59,130,246,0.1)',
-                          color: v.status === 'Active' ? '#059669' : '#2563eb',
-                          border: `1px solid ${v.status === 'Active' ? 'rgba(16,185,129,0.25)' : 'rgba(59,130,246,0.25)'}`,
-                        }}>
-                          {v.status === 'Active' ? '● Active' : '✓ Out'}
-                        </span>
-                      </td>
-                      <td>
-                        {v.status === 'Active' ? (
-                          <button
-                            className="btn btn-sm"
-                            style={{
-                              background: 'rgba(239,68,68,0.08)',
-                              color: '#ef4444',
-                              border: '1px solid rgba(239,68,68,0.2)',
-                              transition: 'all 0.25s ease',
-                            }}
-                            onClick={() => handleCheckout(v.numericId)}
-                            onMouseEnter={e => {
-                              e.currentTarget.style.background = 'rgba(239,68,68,0.15)';
-                              e.currentTarget.style.transform = 'scale(1.04)';
-                            }}
-                            onMouseLeave={e => {
-                              e.currentTarget.style.background = 'rgba(239,68,68,0.08)';
-                              e.currentTarget.style.transform = 'scale(1)';
-                            }}
-                          >
-                            Check Out
-                          </button>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontStyle: 'italic' }}>Done</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {limitReached && (
+            <div className="alert-strip alert-danger" role="alert" style={{ marginBottom: 0 }}>
+              <TriangleAlert size={16} aria-hidden="true" />
+              {form.patient} already has {MAX_VISITORS} visitors inside. Check one out before issuing another pass.
             </div>
           )}
-        </div>
-      </div>
+        </form>
+      </Modal>
     </>
   );
 }

@@ -1,11 +1,33 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  BarChart3, ChevronLeft, ChevronRight, ClipboardList, Download, FlaskConical, Pill, ScrollText, Stethoscope, Wallet,
+} from 'lucide-react';
 import api from '../api/axios';
 import { openAuthenticatedBlob } from '../utils/authenticatedDownload';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
+import PageHeader from '../components/ui/PageHeader';
+import DataTable from '../components/ui/DataTable';
+import EmptyState from '../components/ui/EmptyState';
 
-const TABS = ['OPD Register', 'Revenue', 'Pharmacy Sales', 'Lab Workload', 'Audit Trail', 'Doctor Performance'];
+const TABS = [
+  { label: 'OPD register', icon: ClipboardList },
+  { label: 'Revenue', icon: Wallet },
+  { label: 'Pharmacy sales', icon: Pill },
+  { label: 'Lab workload', icon: FlaskConical },
+  { label: 'Audit trail', icon: ScrollText },
+  { label: 'Doctor performance', icon: Stethoscope },
+];
+
+// Local calendar date (not UTC), so default ranges match the hospital's day.
+const localYmd = (d = new Date()) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+const daysAgo = (n) => localYmd(new Date(Date.now() - n * 86400000));
+const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState(0);
@@ -13,75 +35,86 @@ export default function ReportsPage() {
   return (
     <>
       <Navbar />
-      <div className="page-wrapper fade-up">
-        <h2 style={{ marginBottom: 24 }}>Reports & Analytics</h2>
-        <div style={{ display: 'flex', gap: 24 }}>
-          <div className="card" style={{ width: 200, padding: 0, flexShrink: 0 }}>
-            {TABS.map((tab, i) => (
-              <div key={tab} onClick={() => setActiveTab(i)} style={{
-                padding: '13px 18px', cursor: 'pointer', fontSize: '0.88rem', fontWeight: activeTab === i ? 600 : 400,
-                background: activeTab === i ? 'var(--primary-color)' : 'transparent',
-                color: activeTab === i ? '#fff' : 'var(--text-primary)',
-                borderBottom: '1px solid var(--border)', transition: 'all 0.15s',
-              }}>{tab}</div>
-            ))}
-          </div>
-          <div style={{ flex: 1 }}>
-            {activeTab === 0 && <OPDRegisterTab />}
-            {activeTab === 1 && <RevenueTab />}
-            {activeTab === 2 && <PharmacySalesTab />}
-            {activeTab === 3 && <LabWorkloadTab />}
-            {activeTab === 4 && <AuditTrailTab />}
-            {activeTab === 5 && <DoctorPerformanceTab />}
-          </div>
+      <main className="app-page">
+        <PageHeader title="Reports and analytics" description="Operational, financial and audit reports for a chosen date range." />
+
+        <div className="tabs" role="tablist" aria-label="Reports">
+          {TABS.map((tab, i) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.label}
+                type="button"
+                role="tab"
+                id={`report-tab-${i}`}
+                aria-selected={activeTab === i}
+                aria-controls={`report-panel-${i}`}
+                className={`tab${activeTab === i ? ' is-active' : ''}`}
+                onClick={() => setActiveTab(i)}
+              >
+                <Icon size={16} aria-hidden="true" /> {tab.label}
+              </button>
+            );
+          })}
         </div>
-      </div>
+
+        <div role="tabpanel" id={`report-panel-${activeTab}`} aria-labelledby={`report-tab-${activeTab}`}>
+          {activeTab === 0 && <OPDRegisterTab />}
+          {activeTab === 1 && <RevenueTab />}
+          {activeTab === 2 && <PharmacySalesTab />}
+          {activeTab === 3 && <LabWorkloadTab />}
+          {activeTab === 4 && <AuditTrailTab />}
+          {activeTab === 5 && <DoctorPerformanceTab />}
+        </div>
+      </main>
     </>
   );
 }
 
-// ── Date Range Component (reusable) ─────────────────
-function DateRangeFilter({ startDate, endDate, setStartDate, setEndDate, onFetch, children }) {
+// ── Date range toolbar (reusable) ─────────────────
+function DateRangeFilter({ id, startDate, endDate, setStartDate, setEndDate, onFetch, loading, children }) {
   return (
-    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 20, flexWrap: 'wrap' }}>
-      <div className="form-group" style={{ margin: 0 }}>
-        <label style={{ fontSize: '0.8rem' }}>From</label>
-        <input type="date" className="form-control" value={startDate} onChange={e => setStartDate(e.target.value)} />
+    <div className="toolbar" style={{ alignItems: 'flex-end' }}>
+      <div className="form-group">
+        <label className="form-label" htmlFor={`${id}-from`}>From</label>
+        <input id={`${id}-from`} type="date" className="form-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
       </div>
-      <div className="form-group" style={{ margin: 0 }}>
-        <label style={{ fontSize: '0.8rem' }}>To</label>
-        <input type="date" className="form-control" value={endDate} onChange={e => setEndDate(e.target.value)} />
+      <div className="form-group">
+        <label className="form-label" htmlFor={`${id}-to`}>To</label>
+        <input id={`${id}-to`} type="date" className="form-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
       </div>
       {children}
-      <button className="btn btn-primary" onClick={onFetch} style={{ height: 40 }}>Generate</button>
+      <button type="button" className="btn btn-primary btn-md" onClick={onFetch} disabled={loading}>
+        <BarChart3 size={16} aria-hidden="true" /> {loading ? 'Generating…' : 'Generate'}
+      </button>
     </div>
   );
 }
 
-// ── KPI Card ────────────────────────────────────────
-function KPICard({ label, value, color, icon }) {
+function PanelTitle({ icon: Icon, children, actions }) {
   return (
-    <div className="card" style={{ padding: '20px 18px', position: 'relative', overflow: 'hidden', flex: 1, minWidth: 160 }}>
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: color }} />
-      <div style={{ fontSize: '1.6rem', marginBottom: 8 }}>{icon}</div>
-      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: '1.4rem', fontWeight: 700, color }}>{value}</div>
+    <div className="panel-head">
+      <h2 className="panel-title" style={{ margin: 0 }}><Icon size={16} aria-hidden="true" /> {children}</h2>
+      {actions}
     </div>
   );
 }
+
+const notGenerated = (text) => <EmptyState icon={BarChart3} title="No report yet" description={text || 'Choose a date range and select Generate.'} />;
 
 // ═══════════════════════════════════════════════════════════════
 function OPDRegisterTab() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localYmd();
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [generated, setGenerated] = useState(false);
   const [doctors, setDoctors] = useState([]);
   const [doctorId, setDoctorId] = useState('');
-  const [dept, setDept] = useState('');
+  const [dept] = useState('');
 
-  useEffect(() => { api.get('/users?role=doctor').then(r => setDoctors(r.data.data || [])).catch(() => {}); }, []);
+  useEffect(() => { api.get('/users?role=doctor').then((r) => setDoctors(r.data.data || [])).catch(() => {}); }, []);
 
   const fetchData = async () => {
     setLoading(true);
@@ -91,6 +124,7 @@ function OPDRegisterTab() {
       if (dept) url += `&department=${dept}`;
       const res = await api.get(url);
       setData(res.data.data);
+      setGenerated(true);
     } catch { toast.error('Failed to load OPD register'); }
     setLoading(false);
   };
@@ -103,58 +137,61 @@ function OPDRegisterTab() {
       .catch(() => toast.error('Export failed.'));
   };
 
+  const columns = useMemo(() => [
+    { id: 'date', header: 'Date', accessorFn: (r) => (r.ENCOUNTER_DATE ? new Date(r.ENCOUNTER_DATE).getTime() : 0), meta: { width: 120 }, cell: ({ row }) => <span className="tabular">{fmtDate(row.original.ENCOUNTER_DATE)}</span> },
+    { id: 'token', header: 'Token', accessorFn: (r) => Number(r.TOKEN_NUMBER) || 0, meta: { width: 80 }, cell: ({ row }) => <span className="tabular">{row.original.TOKEN_NUMBER || '—'}</span> },
+    {
+      id: 'patient', header: 'Patient', accessorFn: (r) => r.PATIENT_NAME || '',
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="cell-primary">{row.original.PATIENT_NAME}</span>
+          <span className="cell-secondary mono">{row.original.UHID}</span>
+        </span>
+      ),
+    },
+    { id: 'agegender', header: 'Age / gender', accessorFn: (r) => Number(r.AGE) || 0, meta: { width: 120 }, cell: ({ row }) => <span className="tabular">{row.original.AGE ?? '—'} / {row.original.GENDER || '—'}</span> },
+    { id: 'doctor', header: 'Doctor', accessorFn: (r) => r.DOCTOR_NAME || '' },
+    { id: 'dept', header: 'Department', accessorFn: (r) => r.DEPARTMENT || '', cell: ({ getValue }) => getValue() || '—' },
+    { id: 'fee', header: 'Fee', accessorFn: (r) => Number(r.FEE) || 0, meta: { width: 110, align: 'right' }, cell: ({ row }) => <span className="tabular">{row.original.FEE ? inr(row.original.FEE) : '—'}</span> },
+  ], []);
+
   return (
-    <div className="card" style={{ padding: 24 }}>
-      <h3 style={{ marginBottom: 16 }}>OPD Register</h3>
-      <DateRangeFilter startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={fetchData}>
-        <div className="form-group" style={{ margin: 0 }}>
-          <label style={{ fontSize: '0.8rem' }}>Doctor</label>
-          <select className="form-control" value={doctorId} onChange={e => setDoctorId(e.target.value)}>
-            <option value="">All</option>
-            {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+    <section className="panel">
+      <PanelTitle
+        icon={ClipboardList}
+        actions={(
+          <button type="button" className="btn btn-secondary btn-sm" onClick={exportExcel}>
+            <Download size={14} aria-hidden="true" /> Export Excel
+          </button>
+        )}
+      >
+        OPD register
+      </PanelTitle>
+      <DateRangeFilter id="opd" startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={fetchData} loading={loading}>
+        <div className="form-group">
+          <label className="form-label" htmlFor="opd-doctor">Doctor</label>
+          <select id="opd-doctor" className="form-select" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
+            <option value="">All doctors</option>
+            {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         </div>
-        <button className="btn btn-outline" onClick={exportExcel} style={{ height: 40 }}>Export Excel</button>
       </DateRangeFilter>
-
-      {loading ? <div style={{ textAlign: 'center', padding: 40 }}>Loading...</div> : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-secondary)' }}>
-              <th style={{ padding: 10 }}>Date</th><th style={{ padding: 10 }}>Token</th><th style={{ padding: 10 }}>UHID</th>
-              <th style={{ padding: 10 }}>Name</th><th style={{ padding: 10 }}>Age</th><th style={{ padding: 10 }}>Gender</th>
-              <th style={{ padding: 10 }}>Doctor</th><th style={{ padding: 10 }}>Dept</th><th style={{ padding: 10 }}>Fee</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.length === 0 ? <tr><td colSpan="9" style={{ padding: 20, textAlign: 'center' }}>No records found</td></tr> :
-              data.map(r => (
-                <tr key={r.ID} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 10 }}>{r.ENCOUNTER_DATE ? new Date(r.ENCOUNTER_DATE).toLocaleDateString('en-IN') : ''}</td>
-                  <td style={{ padding: 10 }}>{r.TOKEN_NUMBER || '-'}</td>
-                  <td style={{ padding: 10, fontWeight: 500 }}>{r.UHID}</td>
-                  <td style={{ padding: 10 }}>{r.PATIENT_NAME}</td>
-                  <td style={{ padding: 10 }}>{r.AGE}</td>
-                  <td style={{ padding: 10 }}>{r.GENDER}</td>
-                  <td style={{ padding: 10 }}>{r.DOCTOR_NAME}</td>
-                  <td style={{ padding: 10 }}>{r.DEPARTMENT || '-'}</td>
-                  <td style={{ padding: 10 }}>{r.FEE ? `Rs.${r.FEE}` : '-'}</td>
-                </tr>
-              ))
-            }
-          </tbody>
-        </table>
-      )}
-    </div>
+      <DataTable
+        columns={columns}
+        data={Array.isArray(data) ? data : []}
+        loading={loading}
+        getRowId={(r, i) => String(r.ID ?? i)}
+        pageSize={50}
+        empty={generated ? <EmptyState icon={ClipboardList} title="No OPD visits" description="No visits were recorded in this date range." /> : notGenerated()}
+      />
+    </section>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
 function RevenueTab() {
-  const today = new Date().toISOString().split('T')[0];
-  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
-  const [startDate, setStartDate] = useState(monthAgo);
-  const [endDate, setEndDate] = useState(today);
+  const [startDate, setStartDate] = useState(daysAgo(30));
+  const [endDate, setEndDate] = useState(localYmd());
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -167,62 +204,76 @@ function RevenueTab() {
     setLoading(false);
   };
 
-  const chartData = data?.dailyCollection?.map(d => ({
+  const chartData = data?.dailyCollection?.map((d) => ({
     date: d.DATE_VAL ? new Date(d.DATE_VAL).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '',
     amount: Number(d.DAILY_TOTAL) || 0,
   })) || [];
 
   return (
-    <div>
-      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
-        <h3 style={{ marginBottom: 16 }}>Revenue Report</h3>
-        <DateRangeFilter startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={fetchData} />
-      </div>
-
-      {loading && <div style={{ textAlign: 'center', padding: 40 }}>Loading...</div>}
+    <div className="stack">
+      <section className="panel">
+        <PanelTitle icon={Wallet}>Revenue</PanelTitle>
+        <DateRangeFilter id="rev" startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={fetchData} loading={loading} />
+        {!data && (loading ? <div className="panel-pad"><p className="muted">Loading…</p></div> : notGenerated())}
+      </section>
 
       {data && (
         <>
-          <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-            <KPICard label="Total Billed" value={`Rs.${Number(data.totals.TOTAL_BILLED || 0).toLocaleString()}`} color="var(--blue)" icon="💰" />
-            <KPICard label="Total Collected" value={`Rs.${Number(data.totals.TOTAL_COLLECTED || 0).toLocaleString()}`} color="#48bb78" icon="✅" />
-            <KPICard label="Outstanding" value={`Rs.${Number(data.totals.OUTSTANDING || 0).toLocaleString()}`} color="#e53e3e" icon="⚠️" />
+          <div className="kpi-strip" style={{ marginBottom: 0 }}>
+            <div className="panel kpi"><div className="kpi-label">Total billed</div><div className="kpi-value">{inr(data.totals?.TOTAL_BILLED)}</div></div>
+            <div className="panel kpi"><div className="kpi-label">Total collected</div><div className="kpi-value">{inr(data.totals?.TOTAL_COLLECTED)}</div></div>
+            <div className="panel kpi">
+              <div className="kpi-label">Outstanding</div>
+              <div className="kpi-value" style={{ color: Number(data.totals?.OUTSTANDING) > 0 ? 'var(--amber)' : undefined }}>{inr(data.totals?.OUTSTANDING)}</div>
+            </div>
           </div>
 
           {chartData.length > 0 && (
-            <div className="card" style={{ padding: 24, marginBottom: 20 }}>
-              <h4 style={{ marginBottom: 16 }}>Daily Collection Trend</h4>
+            <section className="panel panel-pad">
+              <h3 className="panel-title">Daily collection</h3>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" fontSize={11} />
-                  <YAxis fontSize={11} />
-                  <Tooltip />
-                  <Bar dataKey="amount" fill="#0f4c81" radius={[4, 4, 0, 0]} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                  <XAxis dataKey="date" fontSize={11} tickLine={false} tick={{ fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--border)' }} />
+                  <YAxis fontSize={11} tickLine={false} axisLine={false} tick={{ fill: 'var(--text-muted)' }} />
+                  <Tooltip
+                    formatter={(v) => [inr(v), 'Collected']}
+                    cursor={{ fill: 'var(--surface-3)', opacity: 0.5 }}
+                    contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)' }}
+                  />
+                  <Bar dataKey="amount" fill="var(--primary)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            </section>
           )}
 
-          <div style={{ display: 'flex', gap: 20 }}>
-            <div className="card" style={{ padding: 20, flex: 1 }}>
-              <h4 style={{ marginBottom: 12 }}>By Department</h4>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr style={{ borderBottom: '1px solid var(--border)' }}><th style={{ padding: 8, textAlign: 'left' }}>Department</th><th style={{ padding: 8, textAlign: 'right' }}>Revenue</th></tr></thead>
-                <tbody>{(data.byDepartment || []).map((d, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}><td style={{ padding: 8 }}>{d.DEPARTMENT || 'N/A'}</td><td style={{ padding: 8, textAlign: 'right' }}>Rs.{Number(d.REVENUE || 0).toLocaleString()}</td></tr>
-                ))}</tbody>
-              </table>
-            </div>
-            <div className="card" style={{ padding: 20, flex: 1 }}>
-              <h4 style={{ marginBottom: 12 }}>By Payment Mode</h4>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr style={{ borderBottom: '1px solid var(--border)' }}><th style={{ padding: 8, textAlign: 'left' }}>Mode</th><th style={{ padding: 8, textAlign: 'right' }}>Amount</th></tr></thead>
-                <tbody>{(data.byMode || []).map((d, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}><td style={{ padding: 8 }}>{d.PAYMENT_MODE}</td><td style={{ padding: 8, textAlign: 'right' }}>Rs.{Number(d.TOTAL || 0).toLocaleString()}</td></tr>
-                ))}</tbody>
-              </table>
-            </div>
+          <div className="split-2">
+            <section className="panel panel-pad">
+              <h3 className="panel-title">By department</h3>
+              {(data.byDepartment || []).length === 0 ? <p className="muted">No revenue in this period.</p> : (
+                <table className="mini-table">
+                  <thead><tr><th>Department</th><th className="text-right">Revenue</th></tr></thead>
+                  <tbody>
+                    {(data.byDepartment || []).map((d, i) => (
+                      <tr key={i}><td>{d.DEPARTMENT || 'N/A'}</td><td className="text-right tabular">{inr(d.REVENUE)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+            <section className="panel panel-pad">
+              <h3 className="panel-title">By payment mode</h3>
+              {(data.byMode || []).length === 0 ? <p className="muted">No collections in this period.</p> : (
+                <table className="mini-table">
+                  <thead><tr><th>Mode</th><th className="text-right">Amount</th></tr></thead>
+                  <tbody>
+                    {(data.byMode || []).map((d, i) => (
+                      <tr key={i}><td>{d.PAYMENT_MODE}</td><td className="text-right tabular">{inr(d.TOTAL)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
           </div>
         </>
       )}
@@ -232,55 +283,52 @@ function RevenueTab() {
 
 // ═══════════════════════════════════════════════════════════════
 function PharmacySalesTab() {
-  const today = new Date().toISOString().split('T')[0];
-  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
-  const [startDate, setStartDate] = useState(monthAgo);
-  const [endDate, setEndDate] = useState(today);
+  const [startDate, setStartDate] = useState(daysAgo(30));
+  const [endDate, setEndDate] = useState(localYmd());
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [generated, setGenerated] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const res = await api.get(`/reports/pharmacy-sales?start_date=${startDate}&end_date=${endDate}`);
       setData(res.data.data);
-    } catch { toast.error('Failed'); }
+      setGenerated(true);
+    } catch { toast.error('Failed to load pharmacy sales'); }
     setLoading(false);
   };
 
+  const rows = useMemo(() => (Array.isArray(data) ? data : []).map((r, i) => ({ ...r, rank: i + 1 })), [data]);
+
+  const columns = useMemo(() => [
+    { id: 'rank', header: 'Rank', accessorFn: (r) => r.rank, meta: { width: 80 }, cell: ({ getValue }) => <span className="tabular" style={{ fontWeight: 600 }}>{getValue()}</span> },
+    { id: 'medicine', header: 'Medicine', accessorFn: (r) => r.GENERIC_NAME || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    { id: 'category', header: 'Category', accessorFn: (r) => r.CATEGORY || '', cell: ({ getValue }) => getValue() || '—' },
+    { id: 'qty', header: 'Qty sold', accessorFn: (r) => Number(r.TOTAL_QTY) || 0, meta: { width: 110, align: 'right' }, cell: ({ getValue }) => <span className="tabular">{getValue()}</span> },
+    { id: 'value', header: 'Value', accessorFn: (r) => Number(r.TOTAL_VALUE) || 0, meta: { width: 140, align: 'right' }, cell: ({ getValue }) => <span className="tabular" style={{ fontWeight: 600 }}>{inr(getValue())}</span> },
+  ], []);
+
   return (
-    <div className="card" style={{ padding: 24 }}>
-      <h3 style={{ marginBottom: 16 }}>Pharmacy Sales Report</h3>
-      <DateRangeFilter startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={fetchData} />
-      {loading ? <div style={{ textAlign: 'center', padding: 40 }}>Loading...</div> : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
-          <thead><tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-secondary)' }}>
-            <th style={{ padding: 10 }}>Rank</th><th style={{ padding: 10 }}>Medicine</th><th style={{ padding: 10 }}>Category</th>
-            <th style={{ padding: 10 }}>Qty Sold</th><th style={{ padding: 10, textAlign: 'right' }}>Value (Rs.)</th>
-          </tr></thead>
-          <tbody>{data.length === 0 ? <tr><td colSpan="5" style={{ padding: 20, textAlign: 'center' }}>No data</td></tr> :
-            data.map((r, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: 10, fontWeight: 600, color: 'var(--primary-color)' }}>{i + 1}</td>
-                <td style={{ padding: 10 }}>{r.GENERIC_NAME}</td>
-                <td style={{ padding: 10 }}>{r.CATEGORY}</td>
-                <td style={{ padding: 10 }}>{r.TOTAL_QTY}</td>
-                <td style={{ padding: 10, textAlign: 'right', fontWeight: 600 }}>Rs.{Number(r.TOTAL_VALUE || 0).toLocaleString()}</td>
-              </tr>
-            ))
-          }</tbody>
-        </table>
-      )}
-    </div>
+    <section className="panel">
+      <PanelTitle icon={Pill}>Pharmacy sales</PanelTitle>
+      <DateRangeFilter id="pharm" startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={fetchData} loading={loading} />
+      <DataTable
+        columns={columns}
+        data={rows}
+        loading={loading}
+        getRowId={(r) => String(r.rank)}
+        initialSorting={[{ id: 'rank', desc: false }]}
+        empty={generated ? <EmptyState icon={Pill} title="No sales" description="No medicines were sold in this date range." /> : notGenerated()}
+      />
+    </section>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
 function LabWorkloadTab() {
-  const today = new Date().toISOString().split('T')[0];
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-  const [startDate, setStartDate] = useState(weekAgo);
-  const [endDate, setEndDate] = useState(today);
+  const [startDate, setStartDate] = useState(daysAgo(7));
+  const [endDate, setEndDate] = useState(localYmd());
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -289,53 +337,60 @@ function LabWorkloadTab() {
     try {
       const res = await api.get(`/reports/lab-workload?start_date=${startDate}&end_date=${endDate}`);
       setData(res.data.data);
-    } catch { toast.error('Failed'); }
+    } catch { toast.error('Failed to load lab workload'); }
     setLoading(false);
   };
 
-  return (
-    <div>
-      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
-        <h3 style={{ marginBottom: 16 }}>Lab Workload Report</h3>
-        <DateRangeFilter startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={fetchData} />
-      </div>
+  const columns = useMemo(() => [
+    { id: 'patient', header: 'Patient', accessorFn: (r) => r.PATIENT_NAME || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    { id: 'doctor', header: 'Doctor', accessorFn: (r) => r.DOCTOR_NAME || '' },
+    { id: 'test', header: 'Test', accessorFn: (r) => r.ITEM_NAME || '' },
+    {
+      id: 'urgency', header: 'Urgency', accessorFn: (r) => r.URGENCY || '', meta: { width: 120 },
+      cell: ({ getValue }) => <span className={`status ${getValue() === 'STAT' ? 'status-danger' : 'status-neutral'}`}>{getValue() || '—'}</span>,
+    },
+    {
+      id: 'hours', header: 'Pending for', accessorFn: (r) => Number(r.AGE_HOURS || 0), meta: { width: 140, align: 'right' },
+      cell: ({ getValue }) => {
+        const hrs = getValue();
+        const text = `${hrs.toFixed(1)} h`;
+        if (hrs > 48) return <span className="status status-danger">{text}</span>;
+        if (hrs > 24) return <span className="status status-warning">{text}</span>;
+        return <span className="tabular">{text}</span>;
+      },
+    },
+  ], []);
 
-      {loading && <div style={{ textAlign: 'center', padding: 40 }}>Loading...</div>}
+  return (
+    <div className="stack">
+      <section className="panel">
+        <PanelTitle icon={FlaskConical}>Lab workload</PanelTitle>
+        <DateRangeFilter id="lab" startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={fetchData} loading={loading} />
+        {!data && (loading ? <div className="panel-pad"><p className="muted">Loading…</p></div> : notGenerated())}
+      </section>
 
       {data && (
         <>
-          <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-            <KPICard label="Total Ordered" value={data.total_ordered} color="var(--blue)" icon="📋" />
-            <KPICard label="Completed" value={data.total_completed} color="#48bb78" icon="✅" />
-            <KPICard label="Pending" value={data.pending_list.length} color="#e53e3e" icon="⏳" />
+          <div className="kpi-strip" style={{ marginBottom: 0 }}>
+            <div className="panel kpi"><div className="kpi-label">Total ordered</div><div className="kpi-value">{data.total_ordered}</div></div>
+            <div className="panel kpi"><div className="kpi-label">Completed</div><div className="kpi-value">{data.total_completed}</div></div>
+            <div className="panel kpi">
+              <div className="kpi-label">Pending</div>
+              <div className="kpi-value" style={{ color: (data.pending_list || []).length > 0 ? 'var(--amber)' : undefined }}>{(data.pending_list || []).length}</div>
+            </div>
           </div>
 
-          <div className="card" style={{ padding: 24 }}>
-            <h4 style={{ marginBottom: 16 }}>Pending Orders</h4>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
-              <thead><tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-secondary)' }}>
-                <th style={{ padding: 10 }}>Patient</th><th style={{ padding: 10 }}>Doctor</th><th style={{ padding: 10 }}>Test</th>
-                <th style={{ padding: 10 }}>Urgency</th><th style={{ padding: 10 }}>Hours Pending</th>
-              </tr></thead>
-              <tbody>{data.pending_list.length === 0 ? <tr><td colSpan="5" style={{ padding: 20, textAlign: 'center' }}>All clear!</td></tr> :
-                data.pending_list.map((r, i) => {
-                  const hrs = Number(r.AGE_HOURS || 0);
-                  const rowColor = hrs > 48 ? '#fed7d720' : hrs > 24 ? '#fefcbf20' : 'transparent';
-                  return (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: rowColor }}>
-                      <td style={{ padding: 10 }}>{r.PATIENT_NAME}</td>
-                      <td style={{ padding: 10 }}>{r.DOCTOR_NAME}</td>
-                      <td style={{ padding: 10 }}>{r.ITEM_NAME}</td>
-                      <td style={{ padding: 10 }}>
-                        <span style={{ padding: '2px 6px', borderRadius: 8, fontSize: '0.8rem', background: r.URGENCY === 'STAT' ? '#e53e3e20' : '#ecc94b20', color: r.URGENCY === 'STAT' ? '#e53e3e' : '#d69e2e' }}>{r.URGENCY}</span>
-                      </td>
-                      <td style={{ padding: 10, fontWeight: 600, color: hrs > 48 ? '#e53e3e' : hrs > 24 ? '#d69e2e' : 'var(--text-primary)' }}>{hrs.toFixed(1)}h</td>
-                    </tr>
-                  );
-                })
-              }</tbody>
-            </table>
-          </div>
+          <section className="panel">
+            <PanelTitle icon={ClipboardList}>Pending orders</PanelTitle>
+            <DataTable
+              columns={columns}
+              data={data.pending_list || []}
+              loading={loading}
+              getRowId={(r, i) => String(i)}
+              initialSorting={[{ id: 'hours', desc: true }]}
+              empty={<EmptyState icon={FlaskConical} title="No pending orders" description="Every lab order in this range has been completed." />}
+            />
+          </section>
         </>
       )}
     </div>
@@ -348,11 +403,10 @@ function AuditTrailTab() {
   const [totalPages, setTotalPages] = useState(1);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [generated, setGenerated] = useState(false);
   const [moduleFilter, setModuleFilter] = useState('');
-  const today = new Date().toISOString().split('T')[0];
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-  const [startDate, setStartDate] = useState(weekAgo);
-  const [endDate, setEndDate] = useState(today);
+  const [startDate, setStartDate] = useState(daysAgo(7));
+  const [endDate, setEndDate] = useState(localYmd());
 
   const fetchData = async (p = 1) => {
     setLoading(true);
@@ -363,100 +417,118 @@ function AuditTrailTab() {
       setData(res.data.data);
       setTotalPages(res.data.total_pages);
       setPage(p);
-    } catch { toast.error('Failed'); }
+      setGenerated(true);
+    } catch { toast.error('Failed to load audit trail'); }
     setLoading(false);
   };
 
+  const rows = Array.isArray(data) ? data : [];
+
   return (
-    <div className="card" style={{ padding: 24 }}>
-      <h3 style={{ marginBottom: 16 }}>Audit Trail</h3>
-      <DateRangeFilter startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={() => fetchData(1)}>
-        <div className="form-group" style={{ margin: 0 }}>
-          <label style={{ fontSize: '0.8rem' }}>Module</label>
-          <select className="form-control" value={moduleFilter} onChange={e => setModuleFilter(e.target.value)}>
-            <option value="">All</option>
+    <section className="panel">
+      <PanelTitle icon={ScrollText}>Audit trail</PanelTitle>
+      <DateRangeFilter id="audit" startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={() => fetchData(1)} loading={loading}>
+        <div className="form-group">
+          <label className="form-label" htmlFor="audit-module">Module</label>
+          <select id="audit-module" className="form-select" value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)}>
+            <option value="">All modules</option>
             <option>auth</option><option>billing</option><option>admin</option><option>pharmacy</option><option>ipd</option>
           </select>
         </div>
       </DateRangeFilter>
 
-      {loading ? <div style={{ textAlign: 'center', padding: 40 }}>Loading...</div> : (
-        <>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
-            <thead><tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-secondary)' }}>
-              <th style={{ padding: 10 }}>Timestamp</th><th style={{ padding: 10 }}>User</th><th style={{ padding: 10 }}>Role</th>
-              <th style={{ padding: 10 }}>Action</th><th style={{ padding: 10 }}>Module</th><th style={{ padding: 10 }}>IP</th>
-            </tr></thead>
-            <tbody>{data.length === 0 ? <tr><td colSpan="6" style={{ padding: 20, textAlign: 'center' }}>No records</td></tr> :
-              data.map(r => (
-                <tr key={r.ID} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 10 }}>{r.CREATED_AT ? new Date(r.CREATED_AT).toLocaleString() : ''}</td>
-                  <td style={{ padding: 10 }}>{r.USERNAME}</td>
-                  <td style={{ padding: 10 }}>{r.ROLE}</td>
-                  <td style={{ padding: 10 }}>{r.ACTION}</td>
-                  <td style={{ padding: 10 }}>{r.MODULE}</td>
-                  <td style={{ padding: 10, fontFamily: 'monospace', fontSize: '0.8rem' }}>{r.IP_ADDRESS}</td>
+      <div className="dt">
+        <div className="dt-scroll">
+          <table className="dt-table">
+            <thead>
+              <tr>
+                <th style={{ width: 190 }}>Time</th><th>User</th><th style={{ width: 150 }}>Role</th>
+                <th>Action</th><th style={{ width: 120 }}>Module</th><th style={{ width: 150 }}>IP address</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && Array.from({ length: 6 }).map((_, i) => (
+                <tr key={`sk-${i}`} className="dt-skeleton-row" aria-hidden="true">
+                  {Array.from({ length: 6 }).map((__, j) => <td key={j}><span className="skeleton" style={{ width: `${45 + ((i * 7 + j * 13) % 45)}%` }} /></td>)}
                 </tr>
-              ))
-            }</tbody>
+              ))}
+              {!loading && rows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="dt-empty-cell">
+                    {generated ? <EmptyState icon={ScrollText} title="No audit records" description="No activity was logged for these filters." /> : notGenerated()}
+                  </td>
+                </tr>
+              )}
+              {!loading && rows.map((r) => (
+                <tr key={r.ID}>
+                  <td className="tabular">{r.CREATED_AT ? new Date(r.CREATED_AT).toLocaleString('en-IN') : '—'}</td>
+                  <td className="cell-primary">{r.USERNAME}</td>
+                  <td>{r.ROLE}</td>
+                  <td>{r.ACTION}</td>
+                  <td><span className="tag">{r.MODULE}</span></td>
+                  <td className="mono">{r.IP_ADDRESS}</td>
+                </tr>
+              ))}
+            </tbody>
           </table>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 16 }}>
-            <button className="btn btn-outline" disabled={page <= 1} onClick={() => fetchData(page - 1)}>Previous</button>
-            <span style={{ padding: '8px 12px', fontSize: '0.9rem' }}>Page {page} of {totalPages}</span>
-            <button className="btn btn-outline" disabled={page >= totalPages} onClick={() => fetchData(page + 1)}>Next</button>
+        </div>
+        {generated && !loading && rows.length > 0 && (
+          <div className="dt-footer">
+            <span className="dt-count">Page <strong>{page}</strong> of <strong>{totalPages}</strong></span>
+            <div className="dt-pager">
+              <button type="button" className="icon-btn" disabled={page <= 1} onClick={() => fetchData(page - 1)} aria-label="Previous page"><ChevronLeft size={16} /></button>
+              <button type="button" className="icon-btn" disabled={page >= totalPages} onClick={() => fetchData(page + 1)} aria-label="Next page"><ChevronRight size={16} /></button>
+            </div>
           </div>
-        </>
-      )}
-    </div>
+        )}
+      </div>
+    </section>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
 function DoctorPerformanceTab() {
-  const today = new Date().toISOString().split('T')[0];
-  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
-  const [startDate, setStartDate] = useState(monthAgo);
-  const [endDate, setEndDate] = useState(today);
+  const [startDate, setStartDate] = useState(daysAgo(30));
+  const [endDate, setEndDate] = useState(localYmd());
   const [doctorId, setDoctorId] = useState('');
   const [doctors, setDoctors] = useState([]);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => { api.get('/users?role=doctor').then(r => setDoctors(r.data.data || [])).catch(() => {}); }, []);
+  useEffect(() => { api.get('/users?role=doctor').then((r) => setDoctors(r.data.data || [])).catch(() => {}); }, []);
 
   const fetchData = async () => {
-    if (!doctorId) return toast.error('Please select a doctor');
+    if (!doctorId) return toast.error('Select a doctor first');
     setLoading(true);
     try {
       const res = await api.get(`/reports/doctor-performance?doctor_id=${doctorId}&start_date=${startDate}&end_date=${endDate}`);
       setData(res.data.data);
-    } catch { toast.error('Failed'); }
+    } catch { toast.error('Failed to load doctor performance'); }
     setLoading(false);
   };
 
   return (
-    <div>
-      <div className="card" style={{ padding: 24, marginBottom: 20 }}>
-        <h3 style={{ marginBottom: 16 }}>Doctor Performance</h3>
-        <DateRangeFilter startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={fetchData}>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label style={{ fontSize: '0.8rem' }}>Doctor</label>
-            <select className="form-control" value={doctorId} onChange={e => setDoctorId(e.target.value)} required>
-              <option value="">Select Doctor</option>
-              {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+    <div className="stack">
+      <section className="panel">
+        <PanelTitle icon={Stethoscope}>Doctor performance</PanelTitle>
+        <DateRangeFilter id="docperf" startDate={startDate} endDate={endDate} setStartDate={setStartDate} setEndDate={setEndDate} onFetch={fetchData} loading={loading}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="docperf-doctor">Doctor</label>
+            <select id="docperf-doctor" className="form-select" value={doctorId} onChange={(e) => setDoctorId(e.target.value)} required>
+              <option value="">Select doctor</option>
+              {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </div>
         </DateRangeFilter>
-      </div>
-
-      {loading && <div style={{ textAlign: 'center', padding: 40 }}>Loading...</div>}
+        {!data && (loading ? <div className="panel-pad"><p className="muted">Loading…</p></div> : notGenerated('Choose a doctor and date range, then select Generate.'))}
+      </section>
 
       {data && (
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-          <KPICard label="Patients Seen" value={data.encounters} color="var(--blue)" icon="👥" />
-          <KPICard label="Prescriptions" value={data.prescriptions} color="#48bb78" icon="📝" />
-          <KPICard label="Lab Orders" value={data.labOrders} color="#d69e2e" icon="🔬" />
-          <KPICard label="Revenue Generated" value={`Rs.${Number(data.revenue || 0).toLocaleString()}`} color="#0f4c81" icon="💰" />
+        <div className="kpi-strip" style={{ marginBottom: 0 }}>
+          <div className="panel kpi"><div className="kpi-label">Patients seen</div><div className="kpi-value">{data.encounters}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Prescriptions</div><div className="kpi-value">{data.prescriptions}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Lab orders</div><div className="kpi-value">{data.labOrders}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Revenue generated</div><div className="kpi-value">{inr(data.revenue)}</div></div>
         </div>
       )}
     </div>

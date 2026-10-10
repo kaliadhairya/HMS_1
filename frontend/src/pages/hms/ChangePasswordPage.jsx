@@ -1,10 +1,18 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Eye, EyeOff, CircleAlert, Info } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from '../../components/Navbar';
+import PageHeader from '../../components/ui/PageHeader';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import Glyph from '../../components/ui/Glyph';
+
+const STRENGTH = [
+  { label: 'Weak', color: 'var(--red)' },
+  { label: 'Fair', color: 'var(--amber)' },
+  { label: 'Good', color: 'var(--primary)' },
+  { label: 'Strong', color: 'var(--success)' },
+];
 
 export default function ChangePasswordPage() {
   const { user } = useAuth();
@@ -24,8 +32,8 @@ export default function ChangePasswordPage() {
   };
 
   const str = strength(form.newPassword);
-  const strLabel = ['Weak', 'Fair', 'Good', 'Strong'][str - 1] || '';
-  const strColor = ['var(--red)', 'var(--amber)', 'var(--blue)', 'var(--green)'][str - 1] || 'var(--border)';
+  const strLabel = STRENGTH[str - 1]?.label || '';
+  const strColor = STRENGTH[str - 1]?.color || 'var(--border)';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,7 +44,7 @@ export default function ChangePasswordPage() {
       return;
     }
     if (str < 4) {
-      setErr('Password must have min 8 chars, 1 uppercase, 1 number, and 1 special character.');
+      setErr('Password must have at least 8 characters, 1 uppercase letter, 1 number and 1 special character.');
       return;
     }
 
@@ -46,7 +54,7 @@ export default function ChangePasswordPage() {
         currentPassword: form.currentPassword,
         newPassword: form.newPassword,
       });
-      toast.success(data.message || 'Password changed!');
+      toast.success(data.message || 'Password changed');
       // Update first_login in localStorage
       const storedUser = JSON.parse(localStorage.getItem('lab_user') || '{}');
       storedUser.first_login = 'N';
@@ -64,87 +72,85 @@ export default function ChangePasswordPage() {
     }
   };
 
-  const renderField = (label, key, toggleKey) => (
-    <div className="form-group">
-      <label className="form-label">{label}</label>
-      <div style={{ position: 'relative' }}>
-        <input
-          className="form-input"
-          type={showFields[toggleKey] ? 'text' : 'password'}
-          value={form[key]}
-          onChange={(e) => setForm(f => ({ ...f, [key]: e.target.value }))}
-          required
-          style={{ paddingRight: 44 }}
-        />
-        <button
-          type="button"
-          onClick={() => setShowFields(s => ({ ...s, [toggleKey]: !s[toggleKey] }))}
-          style={{
-            position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: 'var(--text-muted)', fontSize: '1rem', padding: 4,
-          }}
-        >{showFields[toggleKey] ? '🙈' : '👁️'}</button>
+  const renderField = (label, key, toggleKey, autoComplete) => {
+    const id = `cp-${key}`;
+    const shown = showFields[toggleKey];
+    return (
+      <div className="form-group">
+        <label className="form-label" htmlFor={id}>{label}</label>
+        <div style={{ position: 'relative' }}>
+          <input
+            id={id}
+            className="form-input"
+            type={shown ? 'text' : 'password'}
+            autoComplete={autoComplete}
+            value={form[key]}
+            onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+            required
+            style={{ width: '100%', paddingRight: 44 }}
+          />
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setShowFields((s) => ({ ...s, [toggleKey]: !s[toggleKey] }))}
+            aria-label={shown ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+            aria-pressed={shown}
+            style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32 }}
+          >
+            {shown ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+          </button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <>
       <Navbar />
-      <div className="page-wrapper">
-        <div className="fade-up" style={{ maxWidth: 460, margin: '0 auto' }}>
-          <div className="card" style={{ padding: 32 }}>
-            <h2 style={{ marginBottom: 8 }}><Glyph icon="🔐" /> Change Password</h2>
+      <main className="app-page">
+        <div style={{ maxWidth: 520, margin: '0 auto' }}>
+          <PageHeader title="Change password" description="Choose a strong password to secure your account." />
+
+          <section className="panel panel-pad">
             {user?.first_login === 'Y' && (
-              <div className="alert alert-success" style={{ marginBottom: 20 }}>
-                <span><Glyph icon="👋" /></span> Welcome! Please set a new password to continue.
+              <div className="alert-strip alert-info" role="status">
+                <Info size={16} aria-hidden="true" /> Welcome. Set a new password to continue.
               </div>
             )}
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: 24 }}>
-              Choose a strong password to secure your account.
-            </p>
 
             {err && (
-              <div className="alert alert-error" style={{ marginBottom: 16 }}>
-                <span><Glyph icon="⚠️" /></span> {err}
+              <div className="alert-strip alert-danger" role="alert">
+                <CircleAlert size={16} aria-hidden="true" /> {err}
               </div>
             )}
 
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {renderField('Current Password', 'currentPassword', 'current')}
-              {renderField('New Password', 'newPassword', 'new')}
+            <form onSubmit={handleSubmit} className="stack">
+              {renderField('Current password', 'currentPassword', 'current', 'current-password')}
+              {renderField('New password', 'newPassword', 'new', 'new-password')}
 
               {form.newPassword && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ flex: 1, height: 4, borderRadius: 4, background: 'var(--surface-3)' }}>
-                    <div style={{
-                      height: '100%', borderRadius: 4,
-                      width: `${(str / 4) * 100}%`,
-                      background: strColor,
-                      transition: 'all 0.3s',
-                    }} />
+                  <div className="bar-track" style={{ flex: 1 }}>
+                    <div className="bar-fill" style={{ width: `${(str / 4) * 100}%`, background: strColor }} />
                   </div>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: strColor }}>{strLabel}</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: strColor }} aria-live="polite">
+                    {strLabel ? `Strength: ${strLabel}` : ''}
+                  </span>
                 </div>
               )}
+              <p className="form-hint" style={{ marginTop: -8 }}>
+                At least 8 characters, with an uppercase letter, a number and a special character.
+              </p>
 
-              {renderField('Confirm New Password', 'confirmPassword', 'confirm')}
+              {renderField('Confirm new password', 'confirmPassword', 'confirm', 'new-password')}
 
-              <button
-                type="submit"
-                className="btn btn-primary btn-lg btn-full"
-                disabled={loading}
-                style={{ marginTop: 8 }}
-              >
-                {loading ? (
-                  <><div className="spinner" style={{ width: 17, height: 17, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }} /> Updating…</>
-                ) : 'Update Password →'}
+              <button type="submit" className="btn btn-primary btn-md" disabled={loading} style={{ justifyContent: 'center' }}>
+                {loading ? 'Updating…' : 'Update password'}
               </button>
             </form>
-          </div>
+          </section>
         </div>
-      </div>
+      </main>
     </>
   );
 }
