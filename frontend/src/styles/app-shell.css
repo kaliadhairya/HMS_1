@@ -213,3 +213,20 @@ body.has-app-shell.sidebar-collapsed[data-scroll-locked] { padding-left: var(--s
   body.has-app-shell, body.has-app-shell.sidebar-collapsed { padding-left: 0 !important; }
   .app-sidebar, .app-topbar, .app-scrim { display: none !important; }
 }
+
+/* Skip link: hidden until focused with the keyboard */
+.skip-link {
+  position: fixed; top: 8px; left: 8px; z-index: 1000; padding: 8px 14px; border-radius: 8px;
+  background: var(--surface); color: var(--primary); font-weight: 600; border: 2px solid var(--primary);
+  transform: translateY(-200%);
+}
+.skip-link:focus { transform: none; outline: 3px solid var(--focus-ring); }
+main:focus { outline: none; }
+
+/* Respect the OS "reduce motion" setting everywhere */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+  }
+}

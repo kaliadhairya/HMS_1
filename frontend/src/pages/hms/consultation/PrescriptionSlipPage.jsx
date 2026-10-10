@@ -1440,6 +1440,7 @@ export default function PrescriptionSlipPage() {
                         <label className="medicine-field-label">Dose</label>
                         <select
                           className="form-input prescription-select dose-select"
+                          aria-label={`Dose for medicine ${index + 1}`}
                           value={getDoseSelectValue(item.dose)}
                           onChange={(event) => {
                             const nextValue = event.target.value;

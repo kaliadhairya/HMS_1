@@ -17,7 +17,7 @@ export default function PatientBanner({ patient, allergies = [], conditions = []
         <span className="pb-avatar" aria-hidden="true">{initials}</span>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span className="pb-name">{patient.name}</span>
+            <h1 className="pb-name">{patient.name}</h1>
             <span className={`status status-${cat.tone}`}>{cat.label}</span>
           </div>
           <div className="pb-ids">

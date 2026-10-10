@@ -144,9 +144,9 @@ export default function SuperAdminDashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 24, marginBottom: 30 }}>
           {/* System Alerts */}
           <div className="card hms-anim-3" style={{ padding: 24 }}>
-            <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: '1.2rem' }}><Glyph icon="🚨" /></span> System Alerts
-            </h3>
+            </h2>
             <div style={{ display: 'grid', gap: 12 }}>
               {alerts.map(a => (
                 <div key={a.label} style={{
@@ -170,9 +170,9 @@ export default function SuperAdminDashboard() {
 
           {/* Quick Links */}
           <div className="card hms-anim-4" style={{ padding: 24 }}>
-            <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: '1.2rem' }}><Glyph icon="⚡" /></span> Admin Controls
-            </h3>
+            </h2>
             <div style={{ display: 'grid', gap: 12 }}>
               <button className="hms-action-btn" onClick={() => navigate('/hms/admin/users')}>
                 <span><Glyph icon="👥" /> User Management</span>
@@ -192,10 +192,10 @@ export default function SuperAdminDashboard() {
 
         {/* Recent Audit Log */}
         <div className="card hms-anim-5" style={{ padding: 24 }}>
-          <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: '1.2rem' }}><Glyph icon="📋" /></span> Recent Audit Log
-          </h3>
-          <div className="table-wrapper hms-table-anim" style={{ maxHeight: 320, overflowY: 'auto' }}>
+          </h2>
+          <div className="table-wrapper hms-table-anim" style={{ maxHeight: 320, overflowY: 'auto' }} tabIndex={0} role="region" aria-label="Recent audit log">
             <table>
               <thead>
                 <tr>

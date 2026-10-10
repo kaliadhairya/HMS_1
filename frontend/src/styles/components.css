@@ -127,7 +127,7 @@
 }
 .pb-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .pb-avatar { width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--primary); color: #fff; font-weight: 600; }
-.pb-name { font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
+.pb-name { margin: 0; font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
 .pb-ids { font-size: 0.8rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .pb-facts { display: flex; gap: 22px; flex-wrap: wrap; }
 .pb-fact { display: flex; flex-direction: column; font-size: 0.85rem; }
@@ -213,3 +213,27 @@
 .alert-danger { background: var(--red-light); border-color: var(--red-border); color: var(--red); }
 .alert-warning { background: var(--amber-light); border-color: var(--amber-border); color: var(--amber); }
 .alert-info { background: var(--primary-light); border-color: var(--primary-border); color: var(--primary); }
+
+/* Layout utilities for converted pages */
+.stack { display: grid; gap: 16px; }
+.stack-sm { display: grid; gap: 10px; }
+.form-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 860px) { .form-grid-3 { grid-template-columns: 1fr; } }
+.inline-actions { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.text-right { text-align: right; }
+
+/* Underline tabs for switching sections within a page */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; }
+.tabs .tab {
+  display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px; margin-bottom: -1px;
+  border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 0.9rem; font-weight: 500;
+  color: var(--text-secondary); cursor: pointer; white-space: nowrap;
+}
+.tabs .tab:hover { color: var(--text-primary); }
+.tabs .tab.is-active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.panel > .tabs { padding: 0 12px; margin-bottom: 0; }
+
+/* Key–value facts (detail panels) */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 20px; }
+.fact-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.fact-value { margin-top: 2px; font-size: 0.92rem; color: var(--text-primary); }

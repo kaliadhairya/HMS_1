@@ -891,7 +891,7 @@ tbody td { padding: 10px 16px; color: var(--text-primary); }
   flex-wrap: wrap;
 }
 
-.doctor-dashboard-card-header h3 {
+.doctor-dashboard-card-header h2, .doctor-dashboard-card-header h3 {
   flex-wrap: wrap;
   line-height: 1.2;
 }

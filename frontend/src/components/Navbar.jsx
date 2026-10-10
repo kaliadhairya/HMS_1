@@ -31,6 +31,15 @@ function showAbout() {
   ), { duration: 6000 });
 }
 
+// Moves keyboard focus past the navigation to the page's main region.
+function skipToMain(e) {
+  const main = document.querySelector('main');
+  if (!main) return;
+  e.preventDefault();
+  if (!main.hasAttribute('tabindex')) main.setAttribute('tabindex', '-1');
+  main.focus();
+}
+
 // App chrome rendered by every page: fixed sidebar + sticky top bar + command palette.
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -65,6 +74,12 @@ export default function Navbar() {
   }, [collapsed]);
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+
+  // Give the page's main region a stable target for the skip link.
+  useEffect(() => {
+    const main = document.querySelector('main');
+    if (main && !main.id) main.id = 'main';
+  }, [location.pathname]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -120,6 +135,7 @@ export default function Navbar() {
 
   return (
     <Tooltip.Provider>
+      <a href="#main" className="skip-link" onClick={skipToMain}>Skip to main content</a>
       <aside className={`app-sidebar${mobileOpen ? ' is-open' : ''}`} aria-label="Main navigation">
         <Link to={links[0]?.to || '/dashboard'} className="sidebar-brand">
           <img src="/logo.png?v=3" alt="" className="sidebar-logo" />

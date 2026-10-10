@@ -408,7 +408,7 @@ export default function DoctorDashboard() {
               background: 'var(--surface-2)',
             }}>
               <div className="doctor-dashboard-card-title-block">
-                <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+                <h2 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     width: 30, height: 30, borderRadius: 8,
@@ -417,7 +417,7 @@ export default function DoctorDashboard() {
                     <Glyph icon="📋" />
                   </span>
                   Today's Patients
-                </h3>
+                </h2>
                 <span className="doctor-dashboard-last-refreshed">Last refreshed: {lastRefreshedLabel}</span>
               </div>
               <div className="doctor-dashboard-card-actions">
@@ -573,7 +573,7 @@ export default function DoctorDashboard() {
               background: 'var(--surface-2)',
             }}>
               <div className="doctor-dashboard-card-title-block">
-                <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+                <h2 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     width: 30, height: 30, borderRadius: 8,
@@ -588,7 +588,7 @@ export default function DoctorDashboard() {
                       background: 'var(--amber-light)', color: 'var(--amber)', border: '1px solid var(--amber-border)',
                     }}>{pendingPatients.length}</span>
                   )}
-                </h3>
+                </h2>
                 <span className="doctor-dashboard-last-refreshed">Last refreshed: {lastRefreshedLabel}</span>
               </div>
               <div className="doctor-dashboard-card-actions">

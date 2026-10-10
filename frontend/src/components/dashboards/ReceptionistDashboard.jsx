@@ -206,7 +206,7 @@ export default function ReceptionistDashboard() {
           borderBottom: '1px solid var(--border)',
           background: 'var(--surface-2)',
         }}>
-          <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h2 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               width: 30, height: 30, borderRadius: 8,
@@ -215,7 +215,7 @@ export default function ReceptionistDashboard() {
               <Glyph icon="⚠️" />
             </span>
             Unpaid OPD Encounters
-          </h3>
+          </h2>
           <button className="btn btn-sm btn-outline" onClick={() => navigate('/receptionist/billing')}>
             View All Bills
           </button>

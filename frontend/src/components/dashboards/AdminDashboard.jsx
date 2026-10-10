@@ -199,9 +199,9 @@ export default function AdminDashboard() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 24, marginBottom: 30 }}>
           {/* Operational Alerts */}
           <div className="card hms-anim-3" style={{ padding: 24 }}>
-            <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: '1.2rem' }}><Glyph icon="⚠️" /></span> Operational Alerts
-            </h3>
+            </h2>
             <div style={{ display: 'grid', gap: 12 }}>
               {alerts.map(a => (
                 <div key={a.label} style={{
@@ -225,9 +225,9 @@ export default function AdminDashboard() {
 
           {/* Quick Links */}
           <div className="card hms-anim-4" style={{ padding: 24 }}>
-            <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: '1.2rem' }}><Glyph icon="⚡" /></span> Quick Access
-            </h3>
+            </h2>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {quickLinks.map(ql => (
                 <div
@@ -252,10 +252,10 @@ export default function AdminDashboard() {
 
         {/* Recent Admissions */}
         <div className="card hms-anim-5" style={{ padding: 24 }}>
-          <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: '1.2rem' }}><Glyph icon="🛏️" /></span> Recent Admissions
-          </h3>
-          <div className="table-wrapper hms-table-anim" style={{ maxHeight: 320, overflowY: 'auto' }}>
+          </h2>
+          <div className="table-wrapper hms-table-anim" style={{ maxHeight: 320, overflowY: 'auto' }} tabIndex={0} role="region" aria-label="Recent admissions">
             <table>
               <thead>
                 <tr>
