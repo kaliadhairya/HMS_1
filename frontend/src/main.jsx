@@ -7,6 +7,7 @@ import './theme-clinical.css';
 import './styles/app-shell.css';
 import './styles/components.css';
 import './styles/legacy-bridge.css';
+import './styles/theme-harbour.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
