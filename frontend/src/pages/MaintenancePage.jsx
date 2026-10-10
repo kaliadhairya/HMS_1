@@ -1,93 +1,38 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import Navbar from '../components/Navbar';
+import { Wrench, RefreshCw, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
+// Shown when the API answers 503 during scheduled maintenance. Standalone: nothing behind it works yet.
 function MaintenancePage() {
   const navigate = useNavigate();
-  const message = localStorage.getItem('hms_maintenance_message') || 'The system is currently undergoing scheduled maintenance. Please check back later.';
+  const { user, logout } = useAuth();
+  const message = localStorage.getItem('hms_maintenance_message') || 'The system is undergoing scheduled maintenance. Please check back later.';
 
-  const handleRetry = () => {
-    // Navigate back to home/dashboard, which will trigger an API call. 
-    // If still in maintenance, the 503 interceptor will bounce them back here.
-    navigate('/');
-  };
+  // Going home triggers an API call; if maintenance is still on, the 503 handler brings the user back here.
+  const handleRetry = () => navigate('/');
+  const handleSignOut = () => { logout(); navigate('/login'); };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--background)' }}>
-      <Navbar />
-      
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-        <div style={{ 
-          maxWidth: 600, 
-          width: '100%',
-          backgroundColor: 'var(--surface)', 
-          borderRadius: 16, 
-          boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
-          overflow: 'hidden',
-          textAlign: 'center',
-          animation: 'fadeUp 0.6s ease-out'
-        }}>
-          {/* Header Banner */}
-          <div style={{ 
-            backgroundColor: '#ef4444', 
-            color: '#fff', 
-            padding: '30px 20px',
-          }}>
-            <div style={{ fontSize: '4rem', marginBottom: 10 }}>🔨</div>
-            <h1 style={{ margin: 0, fontSize: '2rem', fontWeight: 800 }}>System Maintenance</h1>
-          </div>
-
-          {/* Content */}
-          <div style={{ padding: '40px 30px' }}>
-            <p style={{ 
-              fontSize: '1.1rem', 
-              color: 'var(--text-secondary)', 
-              lineHeight: 1.6,
-              marginBottom: 30,
-              fontWeight: 500
-            }}>
-              {message}
-            </p>
-
-            <div style={{ 
-              backgroundColor: 'rgba(239,68,68,0.08)', 
-              border: '1px solid rgba(239,68,68,0.2)',
-              borderRadius: 8,
-              padding: '16px 20px',
-              display: 'inline-block',
-              marginBottom: 30
-            }}>
-              <span style={{ fontSize: '0.85rem', color: '#ef4444', fontWeight: 600 }}>
-                ⚠️ Super Admins can still log in to manage the system.
-              </span>
-            </div>
-
-            <br />
-            
-            <button 
-              onClick={handleRetry}
-              className="btn btn-primary"
-              style={{ padding: '12px 30px', fontSize: '1rem', borderRadius: 8 }}
-            >
-              🔄 Try Again
-            </button>
-            <div style={{ marginTop: 16 }}>
-              <button 
-                onClick={() => {
-                  localStorage.removeItem('lab_token');
-                  localStorage.removeItem('lab_user');
-                  navigate('/login');
-                }}
-                className="btn btn-ghost"
-                style={{ color: 'var(--text-muted)' }}
-              >
-                Log Out
-              </button>
-            </div>
-          </div>
+    <main style={{ display: 'grid', placeItems: 'center', minHeight: '100vh', padding: 16, background: 'var(--bg)' }}>
+      <section className="panel panel-pad" style={{ maxWidth: 520, width: '100%', textAlign: 'center', padding: '36px 28px' }}>
+        <span className="empty-state-icon" style={{ margin: '0 auto 14px' }}><Wrench size={22} aria-hidden="true" /></span>
+        <h1 style={{ fontSize: '1.4rem', marginBottom: 8 }}>System maintenance</h1>
+        <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 18 }}>{message}</p>
+        <div className="alert-strip alert-info" style={{ justifyContent: 'center', marginBottom: 22 }}>
+          Super admins can still sign in to manage the system.
         </div>
-      </div>
-    </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button type="button" className="btn btn-primary btn-md" onClick={handleRetry}>
+            <RefreshCw size={16} aria-hidden="true" /> Try again
+          </button>
+          {user && (
+            <button type="button" className="btn btn-ghost btn-md" onClick={handleSignOut}>
+              <LogOut size={16} aria-hidden="true" /> Sign out
+            </button>
+          )}
+        </div>
+      </section>
+    </main>
   );
 }
 

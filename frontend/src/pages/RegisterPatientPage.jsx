@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { ArrowLeft, ArrowRight, Check, ClipboardList, Search, Stethoscope, UserRound } from 'lucide-react';
 import Navbar from '../components/Navbar';
+import PageHeader from '../components/ui/PageHeader';
 import api from '../api/axios';
 
 const WARDS = ['Medical', 'Surgical', 'Gynaecology', 'Private', 'N/A'];
@@ -71,7 +73,7 @@ export default function RegisterPatientPage() {
       relationship: dep.relationship || 'Self',
       relationshipOther: ''
     }));
-    toast.success(`${dep.relationship === 'Self' ? 'Employee' : dep.relationship} details auto-filled!`);
+    toast.success(`${dep.relationship === 'Self' ? 'Employee' : dep.relationship} details filled in`);
   };
 
   useEffect(() => {
@@ -187,16 +189,16 @@ export default function RegisterPatientPage() {
         payload.empNumber = form.empNumber.trim();
         payload.relationship = form.relationship === 'Other' ? form.relationshipOther.trim() : form.relationship;
       } else {
-        payload.phoneNumber = form.phoneNumber.replace(/\\s/g, '');
+        payload.phoneNumber = form.phoneNumber.replace(/\s/g, '');
       }
 
       if (isEditMode) {
         await api.put(`/patients/${id}`, payload);
-        toast.success('Patient updated successfully!');
+        toast.success('Patient updated');
         navigate(-1); // Go back to the report page where they clicked "Edit"
       } else {
         const { data } = await api.post('/patients', payload);
-        toast.success('Patient registered successfully!');
+        toast.success('Patient registered');
         navigate(`/report/${data.reportId}`, { state: { patient: data.patient } });
       }
     } catch (err) {
@@ -206,240 +208,220 @@ export default function RegisterPatientPage() {
     }
   };
 
-  const accentColor = isCorporate ? 'var(--teal)' : 'var(--amber)';
-  const accentBg = isCorporate ? 'rgba(0,180,160,0.1)' : 'rgba(245,158,11,0.08)';
-  const accentBorder = isCorporate ? 'rgba(0,180,160,0.3)' : 'rgba(245,158,11,0.25)';
+  // Inline field error, announced to assistive tech and linked to its input.
+  const fieldError = (field) => (errors[field]
+    ? <span className="form-error" id={`rp-${field}-error`} role="alert">{errors[field]}</span>
+    : null);
+  const errorProps = (field) => (errors[field]
+    ? { 'aria-invalid': true, 'aria-describedby': `rp-${field}-error` }
+    : {});
 
   if (initialLoading) {
     return (
       <>
         <Navbar />
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
-          <div className="spinner" style={{ width: 36, height: 36 }} />
-        </div>
+        <main className="app-page"><p className="muted">Loading…</p></main>
       </>
     );
   }
 
+  const categoryLabel = isCorporate ? 'corporate beneficiary' : 'other patient';
+
   return (
     <>
       <Navbar />
-      <div className="page-wrapper" style={{ maxWidth: 740 }}>
-        {/* Back */}
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)} style={{ marginBottom: 20 }}>
-          ← Back
-        </button>
+      <main className="app-page" style={{ maxWidth: 820 }}>
+        <PageHeader
+          title={`${isEditMode ? 'Edit' : 'Register'} ${categoryLabel}`}
+          description={isCorporate
+            ? 'Corporate employee and dependent registration, identified by employee number.'
+            : 'General patient registration, identified by phone number.'}
+          meta={<span className={`status ${isCorporate ? 'status-info' : 'status-neutral'}`}>{isCorporate ? 'Corporate' : 'General'}</span>}
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate(-1)}>
+              <ArrowLeft size={16} aria-hidden="true" /> Back
+            </button>
+          )}
+        />
 
-        {/* Header */}
-        <div className="page-header fade-up">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{
-              width: 46, height: 46, borderRadius: 12,
-              background: accentBg, border: `1.5px solid ${accentBorder}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem',
-            }}>{isCorporate ? '🏢' : '🧑‍⚕️'}</div>
-            <div>
-              <h1 style={{ fontSize: '1.5rem' }}>
-                {isEditMode ? 'Edit ' : 'Register '} <span style={{ color: accentColor }}>{isCorporate ? 'Corporate Beneficiary' : 'Other Patient'}</span>
-              </h1>
-              <p>{isCorporate ? 'Corporate employee & dependent registration with employee number' : 'General patient registration with Phone Number identification'}</p>
-            </div>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="card fade-up-2">
-          {/* ── Personal Details ─────────────────────────────── */}
-          <div className="card-section">
-            <div className="card-section-title">Personal Details</div>
+        <form onSubmit={handleSubmit} className="stack">
+          {/* Personal details */}
+          <section className="panel panel-pad">
+            <h2 className="panel-title"><UserRound size={16} aria-hidden="true" /> Personal details</h2>
             <div className="form-grid">
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label className="form-label">Full Name *</label>
-                <input className="form-input" placeholder="e.g. B.S Shergill" value={form.name} onChange={e => set('name', e.target.value)} />
-                {errors.name && <span className="form-error">{errors.name}</span>}
+                <label className="form-label" htmlFor="rp-name">Full name *</label>
+                <input id="rp-name" className="form-input" placeholder="e.g. B.S Shergill" value={form.name} onChange={e => set('name', e.target.value)} {...errorProps('name')} />
+                {fieldError('name')}
               </div>
 
               <div className="form-group">
-                <label className="form-label">Age (years) *</label>
-                <input className="form-input" type="number" min="1" max="120" placeholder="e.g. 35" value={form.age} onChange={e => set('age', e.target.value)} />
-                {errors.age && <span className="form-error">{errors.age}</span>}
+                <label className="form-label" htmlFor="rp-age">Age (years) *</label>
+                <input id="rp-age" className="form-input" type="number" min="1" max="120" placeholder="e.g. 35" value={form.age} onChange={e => set('age', e.target.value)} {...errorProps('age')} />
+                {fieldError('age')}
               </div>
 
               <div className="form-group">
-                <label className="form-label">Gender *</label>
-                <select className="form-select" value={form.gender} onChange={e => set('gender', e.target.value)}>
+                <label className="form-label" htmlFor="rp-gender">Gender *</label>
+                <select id="rp-gender" className="form-select" value={form.gender} onChange={e => set('gender', e.target.value)} {...errorProps('gender')}>
                   <option value="">Select gender</option>
                   <option>Male</option>
                   <option>Female</option>
                   <option>Other</option>
                 </select>
-                {errors.gender && <span className="form-error">{errors.gender}</span>}
+                {fieldError('gender')}
               </div>
 
               {/* Corporate employee fields */}
               {isCorporate && (
                 <>
                   <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '10px' }}>
-                      <div style={{ flex: 1 }}>
-                        <label className="form-label">Employee Number *</label>
-                        <input 
-                          className="form-input" 
-                          placeholder="e.g. EMP-12345" 
-                          value={form.empNumber} 
-                          onChange={e => set('empNumber', e.target.value)}
-                          onBlur={(e) => fetchDependents(e.target.value)} 
-                        />
-                      </div>
-                      <button 
-                        type="button" 
-                        className="btn btn-outline" 
-                        style={{ height: '42px', padding: '0 20px', borderColor: accentBorder, color: accentColor }}
+                    <label className="form-label" htmlFor="rp-emp">Employee number *</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <input
+                        id="rp-emp"
+                        className="form-input"
+                        style={{ flex: '1 1 220px' }}
+                        placeholder="e.g. EMP-12345"
+                        value={form.empNumber}
+                        onChange={e => set('empNumber', e.target.value)}
+                        onBlur={(e) => fetchDependents(e.target.value)}
+                        {...errorProps('empNumber')}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-md"
                         onClick={() => fetchDependents(form.empNumber)}
                         disabled={isSearchingDependents}
                       >
-                        {isSearchingDependents ? 'Searching...' : 'Search Dependents'}
+                        <Search size={16} aria-hidden="true" /> {isSearchingDependents ? 'Searching…' : 'Find dependents'}
                       </button>
                     </div>
-                    {errors.empNumber && <span className="form-error">{errors.empNumber}</span>}
+                    {fieldError('empNumber')}
 
-                    {/* Dependents Selection UI */}
+                    {/* Dependents selection */}
                     {dependents.length > 0 && (
-                      <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(0,0,0,0.02)', borderRadius: '8px', border: '1px dashed rgba(0,0,0,0.1)' }}>
-                        <label className="form-label" style={{ marginBottom: '10px' }}>Matched Profiles Found (Click to Auto-fill)</label>
-                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <div style={{ marginTop: 12, padding: 12, background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                        <p className="form-label" style={{ marginBottom: 8 }}>Matching profiles. Select one to fill in the details.</p>
+                        <ul className="list-rows" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
                           {dependents.map((dep, idx) => (
-                            <div 
-                              key={idx}
-                              onClick={() => selectDependent(dep)}
-                              style={{
-                                padding: '10px 16px',
-                                background: '#fff',
-                                border: `1.5px solid ${accentBorder}`,
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s',
-                                flex: '1 1 calc(50% - 10px)',
-                                minWidth: '200px'
-                              }}
-                              onMouseOver={e => { e.currentTarget.style.borderColor = accentColor; e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)'; }}
-                              onMouseOut={e => { e.currentTarget.style.borderColor = accentBorder; e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-                            >
-                              <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                                {dep.name} <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 400 }}>({dep.age}y, {dep.gender})</span>
-                              </div>
-                              <div style={{ fontSize: '0.85rem', color: accentColor, fontWeight: 500, display: 'inline-block', background: accentBg, padding: '2px 8px', borderRadius: '12px' }}>
-                                {dep.relationship}
-                              </div>
-                            </div>
+                            <li key={idx}>
+                              <button type="button" className="list-row" onClick={() => selectDependent(dep)}>
+                                <span className="cell-stack">
+                                  <span className="cell-primary">{dep.name}</span>
+                                  <span className="cell-secondary">{dep.age} y · {dep.gender}</span>
+                                </span>
+                                <span className="tag">{dep.relationship}</span>
+                              </button>
+                            </li>
                           ))}
-                        </div>
+                        </ul>
                       </div>
                     )}
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Relationship to Employee</label>
-                    <select className="form-select" value={form.relationship} onChange={e => set('relationship', e.target.value)}>
+                    <label className="form-label" htmlFor="rp-relationship">Relationship to employee</label>
+                    <select id="rp-relationship" className="form-select" value={form.relationship} onChange={e => set('relationship', e.target.value)}>
                       {RELATIONSHIPS.map(r => <option key={r}>{r}</option>)}
                     </select>
                   </div>
                   {form.relationship === 'Other' && (
                     <div className="form-group">
-                      <label className="form-label">Specify Relationship *</label>
-                      <input className="form-input" placeholder="e.g. Brother" value={form.relationshipOther} onChange={e => set('relationshipOther', e.target.value)} />
-                      {errors.relationshipOther && <span className="form-error">{errors.relationshipOther}</span>}
+                      <label className="form-label" htmlFor="rp-relationship-other">Specify relationship *</label>
+                      <input id="rp-relationship-other" className="form-input" placeholder="e.g. Brother" value={form.relationshipOther} onChange={e => set('relationshipOther', e.target.value)} {...errorProps('relationshipOther')} />
+                      {fieldError('relationshipOther')}
                     </div>
                   )}
                 </>
               )}
 
-              {/* OTHERS ONLY */}
+              {/* Other patients only */}
               {!isCorporate && (
                 <div className="form-group">
-                  <label className="form-label">Phone Number *</label>
+                  <label className="form-label" htmlFor="rp-phone">Phone number *</label>
                   <input
-                    className="form-input" placeholder="10-digit Phone number"
+                    id="rp-phone"
+                    className="form-input" placeholder="10-digit phone number"
+                    inputMode="numeric"
                     value={form.phoneNumber}
                     onChange={e => set('phoneNumber', e.target.value.replace(/\D/g, '').slice(0, 10))}
                     maxLength={10}
+                    {...errorProps('phoneNumber')}
                   />
-                  {errors.phoneNumber && <span className="form-error">{errors.phoneNumber}</span>}
+                  {fieldError('phoneNumber')}
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
-          {/* ── Visit Details ─────────────────────────────────── */}
-          <div className="card-section">
-            <div className="card-section-title">Visit Details</div>
+          {/* Visit details */}
+          <section className="panel panel-pad">
+            <h2 className="panel-title"><ClipboardList size={16} aria-hidden="true" /> Visit details</h2>
             <div className="form-grid">
               <div className="form-group">
-                <label className="form-label">OPD / Indoor</label>
-                <div style={{ display: 'flex', gap: 10 }}>
+                <span className="form-label" id="rp-opd-label">OPD or indoor</span>
+                <div className="segmented" role="radiogroup" aria-labelledby="rp-opd-label">
                   {['OPD', 'Indoor'].map(opt => (
                     <button
-                      key={opt} type="button"
+                      key={opt}
+                      type="button"
+                      role="radio"
+                      aria-checked={form.opdIndoor === opt}
+                      className={form.opdIndoor === opt ? 'is-active' : ''}
                       onClick={() => set('opdIndoor', opt)}
-                      style={{
-                        flex: 1, padding: '10px', borderRadius: 8,
-                        border: `1.5px solid ${form.opdIndoor === opt ? accentColor : 'var(--input-border)'}`,
-                        background: form.opdIndoor === opt ? accentBg : 'var(--input-bg)',
-                        color: form.opdIndoor === opt ? accentColor : 'var(--text-secondary)',
-                        cursor: 'pointer', fontFamily: 'var(--font-body)',
-                        fontWeight: form.opdIndoor === opt ? 600 : 400, fontSize: '0.875rem',
-                        transition: 'all 0.2s',
-                      }}
                     >{opt}</button>
                   ))}
                 </div>
               </div>
 
               <div className="form-group">
-                <label className="form-label">Ward</label>
-                <select className="form-select" value={form.ward} onChange={e => set('ward', e.target.value)}>
+                <label className="form-label" htmlFor="rp-ward">Ward</label>
+                <select id="rp-ward" className="form-select" value={form.ward} onChange={e => set('ward', e.target.value)}>
                   {WARDS.map(w => <option key={w}>{w}</option>)}
                 </select>
               </div>
 
               <div className="form-group">
-                <label className="form-label">Test Date *</label>
-                <input className="form-input" type="date" value={form.testDate} onChange={e => set('testDate', e.target.value)} />
-                {errors.testDate && <span className="form-error">{errors.testDate}</span>}
+                <label className="form-label" htmlFor="rp-test-date">Test date *</label>
+                <input id="rp-test-date" className="form-input" type="date" value={form.testDate} onChange={e => set('testDate', e.target.value)} {...errorProps('testDate')} />
+                {fieldError('testDate')}
               </div>
 
               <div className="form-group">
-                <label className="form-label">Provisional Diagnosis</label>
-                <select className="form-select" value={form.provDiagnosis} onChange={e => set('provDiagnosis', e.target.value)}>
+                <label className="form-label" htmlFor="rp-diagnosis">Provisional diagnosis</label>
+                <select id="rp-diagnosis" className="form-select" value={form.provDiagnosis} onChange={e => set('provDiagnosis', e.target.value)}>
                   <option value="">Select or leave blank</option>
                   {DIAGNOSES.map(d => <option key={d}>{d}</option>)}
                 </select>
               </div>
-              
+
               {form.provDiagnosis === 'Other' && (
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label className="form-label">Specify Diagnosis *</label>
-                  <input className="form-input" placeholder="e.g. COVID-19" value={form.provDiagnosisOther} onChange={e => set('provDiagnosisOther', e.target.value)} />
-                  {errors.provDiagnosisOther && <span className="form-error">{errors.provDiagnosisOther}</span>}
+                  <label className="form-label" htmlFor="rp-diagnosis-other">Specify diagnosis *</label>
+                  <input id="rp-diagnosis-other" className="form-input" placeholder="e.g. COVID-19" value={form.provDiagnosisOther} onChange={e => set('provDiagnosisOther', e.target.value)} {...errorProps('provDiagnosisOther')} />
+                  {fieldError('provDiagnosisOther')}
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
-          {/* ── Doctor & Department Assignment (NEW) ─────────── */}
-          <div className="card-section">
-            <div className="card-section-title">Doctor & Department Assignment</div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '16px' }}>
-              Optionally assign this patient to a doctor and department for easier tracking
+          {/* Doctor and department assignment */}
+          <section className="panel panel-pad">
+            <h2 className="panel-title" style={{ marginBottom: 4 }}><Stethoscope size={16} aria-hidden="true" /> Doctor and department</h2>
+            <p className="muted" style={{ marginBottom: 14 }}>
+              Optional. Assign the patient to a doctor and department for easier tracking.
             </p>
             <div className="form-grid">
               <div className="form-group">
-                <label className="form-label">Doctor</label>
-                <select 
-                  className="form-select" 
-                  value={form.doctorId} 
+                <label className="form-label" htmlFor="rp-doctor">Doctor</label>
+                <select
+                  id="rp-doctor"
+                  className="form-select"
+                  value={form.doctorId}
                   onChange={e => set('doctorId', e.target.value)}
                   disabled={loadingOptions}
                 >
-                  <option value="">Select Doctor (Optional)</option>
+                  <option value="">No doctor assigned</option>
                   {doctors.map(doc => (
                     <option key={doc.id} value={doc.id}>
                       {doc.user?.name || doc.user?.username} {doc.speciality ? `- ${doc.speciality}` : ''}
@@ -449,14 +431,15 @@ export default function RegisterPatientPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Department</label>
-                <select 
-                  className="form-select" 
-                  value={form.departmentId} 
+                <label className="form-label" htmlFor="rp-department">Department</label>
+                <select
+                  id="rp-department"
+                  className="form-select"
+                  value={form.departmentId}
                   onChange={e => set('departmentId', e.target.value)}
                   disabled={loadingOptions}
                 >
-                  <option value="">Select Department (Optional)</option>
+                  <option value="">No department assigned</option>
                   {departments.map(dept => (
                     <option key={dept.id} value={dept.id}>
                       {dept.name} {dept.short_code ? `(${dept.short_code})` : ''}
@@ -465,23 +448,23 @@ export default function RegisterPatientPage() {
                 </select>
               </div>
             </div>
-          </div>
+          </section>
 
           {/* Submit */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-            <button type="button" className="btn btn-ghost" onClick={() => navigate(-1)}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate(-1)}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? (
-                <><div className="spinner" style={{ width: 16, height: 16 }} /> {isEditMode ? 'Updating…' : 'Registering…'}</>
+            <button type="submit" className="btn btn-primary btn-md" disabled={loading}>
+              {loading ? (isEditMode ? 'Updating…' : 'Registering…') : isEditMode ? (
+                <><Check size={16} aria-hidden="true" /> Update patient</>
               ) : (
-                isEditMode ? 'Update Patient ✓' : 'Register & Enter Test Results →'
+                <>Register and enter test results <ArrowRight size={16} aria-hidden="true" /></>
               )}
             </button>
           </div>
         </form>
-      </div>
+      </main>
     </>
   );
 }

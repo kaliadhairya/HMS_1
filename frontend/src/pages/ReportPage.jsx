@@ -1,9 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import {
+  ArrowLeft, ClipboardList, Droplet, Eye, FileDown, FlaskConical, Microscope, NotebookPen, Pencil, Save, TestTube, TestTubes,
+} from 'lucide-react';
 import Navbar from '../components/Navbar';
 import api from '../api/axios';
 import { openAuthenticatedBlob } from '../utils/authenticatedDownload';
+import PageHeader from '../components/ui/PageHeader';
 
 // ── Helper: nested path setter ─────────────────────
 function setNestedValue(obj, path, value) {
@@ -23,51 +27,42 @@ function getNestedValue(obj, path) {
 }
 
 // ── Section component ──────────────────────────────
-function TestSection({ title, icon, rows, reportData, onChange, accentColor = 'var(--teal)' }) {
+function TestSection({ title, icon: Icon, rows, reportData, onChange }) {
   return (
-    <div style={{
-      background: 'rgba(255,255,255,0.025)',
-      border: '1px solid rgba(255,255,255,0.07)',
-      borderRadius: 12, marginBottom: 16, overflow: 'hidden',
-    }}>
-      <div style={{
-        padding: '12px 18px',
-        background: `linear-gradient(90deg, rgba(0,180,160,0.08), transparent)`,
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <span style={{ fontSize: '1.1rem' }}>{icon}</span>
-        <span style={{ fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: accentColor }}>
-          {title}
-        </span>
+    <section className="panel" style={{ overflow: 'hidden' }}>
+      <div className="panel-head">
+        <h2 className="panel-title" style={{ margin: 0 }}><Icon size={16} aria-hidden="true" /> {title}</h2>
       </div>
-      <table className="test-table" style={{ width: '100%' }}>
-        <thead>
-          <tr>
-            <th style={{ width: '48%' }}>Test</th>
-            <th style={{ width: '22%' }}>Result</th>
-            <th style={{ width: '30%' }}>Normal Value</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(row => (
-            <tr key={row.path}>
-              <td className={`label-cell ${row.sub ? 'test-sub' : ''}`}>{row.label}</td>
-              <td className="result-cell">
-                <input
-                  className="result-input"
-                  type="text"
-                  value={getNestedValue(reportData, row.path)}
-                  onChange={e => onChange(row.path, e.target.value)}
-                  placeholder="—"
-                />
-              </td>
-              <td className="normal-cell" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{row.normal || '—'}</td>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="test-table" style={{ width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={{ width: '48%' }}>Test</th>
+              <th style={{ width: '22%' }}>Result</th>
+              <th style={{ width: '30%' }}>Normal value</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.path}>
+                <td className={`label-cell ${row.sub ? 'test-sub' : ''}`}>{row.label}</td>
+                <td className="result-cell">
+                  <input
+                    className="result-input"
+                    type="text"
+                    aria-label={`${row.label} result`}
+                    value={getNestedValue(reportData, row.path)}
+                    onChange={(e) => onChange(row.path, e.target.value)}
+                    placeholder="—"
+                  />
+                </td>
+                <td className="normal-cell" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{row.normal || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -131,61 +126,52 @@ const WIDAL_DILUTIONS = ['1/20', '1/40', '1/80', '1/160', '1/320'];
 
 function WidalGrid({ reportData, onChange }) {
   return (
-    <div style={{
-      background: 'rgba(255,255,255,0.025)',
-      border: '1px solid rgba(255,255,255,0.07)',
-      borderRadius: 12, marginTop: 16, overflow: 'hidden',
-    }}>
-      <div style={{
-        padding: '12px 18px',
-        background: 'linear-gradient(90deg, rgba(167,139,250,0.08), transparent)',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-        display: 'flex', alignItems: 'center', gap: 10,
-      }}>
-        <span style={{ fontSize: '1.1rem' }}>🧫</span>
-        <span style={{ fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#a78bfa' }}>
-          Widal Test
-        </span>
+    <section className="panel" style={{ overflow: 'hidden' }}>
+      <div className="panel-head">
+        <h2 className="panel-title" style={{ margin: 0 }}><TestTubes size={16} aria-hidden="true" /> Widal test</h2>
       </div>
-      <table className="test-table" style={{ width: '100%', tableLayout: 'fixed' }}>
-        <colgroup>
-          <col style={{ width: 80 }} />
-          {WIDAL_DILUTIONS.map(d => <col key={d} />)}
-        </colgroup>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Antibody</th>
-            {WIDAL_DILUTIONS.map(d => <th key={d} style={{ textAlign: 'center' }}>{d}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {WIDAL_ANTIBODIES.map(ab => {
-            const key = ab.toLowerCase();
-            return (
-              <tr key={ab}>
-                <td className="label-cell" style={{ fontWeight: 700 }}>{ab}</td>
-                {WIDAL_DILUTIONS.map(d => {
-                  const dilKey = d.replace('/', '_');
-                  const path = `serology.widal.${key}_${dilKey}`;
-                  return (
-                    <td key={d} className="result-cell" style={{ textAlign: 'center', padding: '6px 4px' }}>
-                      <input
-                        className="result-input"
-                        type="text"
-                        value={getNestedValue(reportData, path)}
-                        onChange={e => onChange(path, e.target.value)}
-                        placeholder="—"
-                        style={{ textAlign: 'center', width: '100%', maxWidth: 'none' }}
-                      />
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="test-table" style={{ width: '100%', tableLayout: 'fixed', minWidth: 480 }}>
+          <colgroup>
+            <col style={{ width: 80 }} />
+            {WIDAL_DILUTIONS.map((d) => <col key={d} />)}
+          </colgroup>
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left' }}>Antibody</th>
+              {WIDAL_DILUTIONS.map((d) => <th key={d} style={{ textAlign: 'center' }}>{d}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {WIDAL_ANTIBODIES.map((ab) => {
+              const key = ab.toLowerCase();
+              return (
+                <tr key={ab}>
+                  <td className="label-cell" style={{ fontWeight: 700 }}>{ab}</td>
+                  {WIDAL_DILUTIONS.map((d) => {
+                    const dilKey = d.replace('/', '_');
+                    const path = `serology.widal.${key}_${dilKey}`;
+                    return (
+                      <td key={d} className="result-cell" style={{ textAlign: 'center', padding: '6px 4px' }}>
+                        <input
+                          className="result-input"
+                          type="text"
+                          aria-label={`Widal ${ab} at ${d}`}
+                          value={getNestedValue(reportData, path)}
+                          onChange={(e) => onChange(path, e.target.value)}
+                          placeholder="—"
+                          style={{ textAlign: 'center', width: '100%', maxWidth: 'none' }}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -230,7 +216,8 @@ export default function ReportPage() {
         if (reportId === 'new') {
            if (forcedPatientId) {
              const pRes = await api.get(`/patients/${forcedPatientId}`);
-             setPatient(pRes.data);
+             // GET /patients/:id responds with { success, patient, report }
+             setPatient(pRes.data?.patient || pRes.data);
            }
            setLoading(false);
            return;
@@ -252,7 +239,7 @@ export default function ReportPage() {
   }, [reportId, location.search]);
 
   const handleChange = useCallback((path, value) => {
-    setReportData(prev => setNestedValue(prev, path, value));
+    setReportData((prev) => setNestedValue(prev, path, value));
   }, []);
 
   const handleSave = async () => {
@@ -268,7 +255,7 @@ export default function ReportPage() {
         suggestions,
         status: 'final',
       });
-      toast.success('Report saved successfully!');
+      toast.success('Report saved');
     } catch {
       toast.error('Failed to save report.');
     } finally {
@@ -291,7 +278,7 @@ export default function ReportPage() {
         status: 'final',
       });
       await openAuthenticatedBlob(`/reports/${reportId}/pdf?download=true`, { download: true, filename: `lab-report-${reportId}.pdf` });
-      toast.success('PDF downloading!');
+      toast.success('PDF downloading');
     } catch {
       toast.error('PDF generation failed.');
     } finally {
@@ -314,7 +301,7 @@ export default function ReportPage() {
         status: 'final',
       });
       await openAuthenticatedBlob(`/reports/${reportId}/pdf?preview=true`);
-      toast.success('PDF Preview opened!');
+      toast.success('PDF preview opened');
     } catch {
       toast.error('PDF preview failed.');
     } finally {
@@ -326,9 +313,7 @@ export default function ReportPage() {
     return (
       <>
         <Navbar />
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
-          <div className="spinner" style={{ width: 36, height: 36 }} />
-        </div>
+        <main className="app-page"><p className="muted">Loading…</p></main>
       </>
     );
   }
@@ -336,174 +321,150 @@ export default function ReportPage() {
   const isCorporate = patient?.patientType === 'corporate_employee';
 
   const TABS = [
-    { id: 'haematology', label: 'Haematology', icon: '🩸', color: 'var(--teal)' },
-    { id: 'biochemistry', label: 'Bio-Chemistry', icon: '🧪', color: '#60a5fa' },
-    { id: 'serology', label: 'Serology', icon: '🔬', color: '#a78bfa' },
-    { id: 'urine', label: 'Urine', icon: '💛', color: '#fbbf24' },
-    { id: 'other', label: 'Other Tests', icon: '📋', color: '#34d399' },
-    { id: 'remarks', label: 'Remarks', icon: '📝', color: '#f43f5e' },
+    { id: 'haematology', label: 'Haematology', icon: Droplet },
+    { id: 'biochemistry', label: 'Biochemistry', icon: FlaskConical },
+    { id: 'serology', label: 'Serology', icon: Microscope },
+    { id: 'urine', label: 'Urine', icon: TestTube },
+    { id: 'other', label: 'Other tests', icon: ClipboardList },
+    { id: 'remarks', label: 'Remarks', icon: NotebookPen },
   ];
+
+  const facts = [
+    { label: 'Age', value: patient?.age != null ? `${patient.age} y` : '—' },
+    { label: 'Gender', value: patient?.gender || '—' },
+    { label: isCorporate ? 'Employee no.' : 'Phone', value: (isCorporate ? patient?.empNumber : patient?.phoneNumber) || '—', mono: true },
+    isCorporate && { label: 'Relation', value: patient?.relationship || '—' },
+    { label: 'Ward', value: patient?.ward || '—' },
+    { label: 'Test date', value: patient?.testDate ? new Date(patient.testDate).toLocaleDateString('en-IN') : '—' },
+    patient?.provDiagnosis && { label: 'Provisional diagnosis', value: patient.provDiagnosis },
+  ].filter(Boolean);
 
   return (
     <>
       <Navbar />
-      <div className="page-wrapper" style={{ maxWidth: 1400, paddingBottom: 100 }}>
-        {/* Back */}
-        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/dashboard')} style={{ marginBottom: 20 }}>
-          ← Back to Dashboard
-        </button>
-
-        {/* Patient Info Card */}
-        <div className="card fade-up" style={{ marginBottom: 20, padding: '20px 24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <span className={`badge ${isCorporate ? 'badge-teal' : 'badge-amber'}`}>
-                  {isCorporate ? '🏢 Corporate Beneficiary' : '🧑‍⚕️ General Patient'}
-                </span>
-                <span className="badge badge-green">Report Active</span>
-                <button 
-                  className="btn btn-outline btn-sm" 
-                  style={{ padding: '2px 8px', fontSize: '0.75rem', height: 'auto', marginLeft: 'auto' }}
-                  onClick={() => navigate(`/edit/${patient.id}`)}
-                >
-                  ✏️ Edit Patient
+      <main className="app-page">
+        <PageHeader
+          title={patient?.name ? `Lab report: ${patient.name}` : 'Lab report'}
+          description="Enter results by section. Saving marks the report as final."
+          meta={(
+            <>
+              <span className={`status ${isCorporate ? 'status-info' : 'status-neutral'}`}>{isCorporate ? 'Corporate beneficiary' : 'General patient'}</span>
+              <span className="status status-success">Report active</span>
+            </>
+          )}
+          actions={(
+            <>
+              <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/dashboard')}>
+                <ArrowLeft size={16} aria-hidden="true" /> Back to dashboard
+              </button>
+              {patient?.id && (
+                <button type="button" className="btn btn-secondary btn-md" onClick={() => navigate(`/edit/${patient.id}`)}>
+                  <Pencil size={16} aria-hidden="true" /> Edit patient
                 </button>
-              </div>
-              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', marginBottom: 4 }}>
-                {patient?.name}
-              </h2>
-              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                <span>Age: <strong style={{ color: 'var(--text-primary)' }}>{patient?.age} yrs</strong></span>
-                <span>Gender: <strong style={{ color: 'var(--text-primary)' }}>{patient?.gender}</strong></span>
-                <span>{isCorporate ? 'Emp No.' : 'Phone No.'}: <strong style={{ color: 'var(--teal)' }}>
-                  {isCorporate ? patient?.empNumber : patient?.phoneNumber}
-                </strong></span>
-                {isCorporate && <span>Relation: <strong style={{ color: 'var(--text-primary)' }}>{patient?.relationship}</strong></span>}
-                <span>Ward: <strong style={{ color: 'var(--text-primary)' }}>{patient?.ward}</strong></span>
-                <span>Date: <strong style={{ color: 'var(--text-primary)' }}>{new Date(patient?.testDate).toLocaleDateString('en-IN')}</strong></span>
-                {patient?.provDiagnosis && <span>Dx: <strong style={{ color: 'var(--text-primary)' }}>{patient?.provDiagnosis}</strong></span>}
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn btn-outline btn-sm" onClick={handleSave} disabled={saving}>
-                {saving ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Saving…</> : '💾 Save'}
-              </button>
-              <button className="btn btn-secondary btn-sm" onClick={handlePreviewPDF} disabled={pdfLoading}>
-                {pdfLoading ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Generating…</> : '👁️ Preview PDF'}
-              </button>
-              <button className="btn btn-primary btn-sm" onClick={handleDownloadPDF} disabled={pdfLoading}>
-                {pdfLoading ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Generating…</> : '📄 Download PDF'}
-              </button>
-            </div>
-          </div>
-        </div>
+              )}
+            </>
+          )}
+        />
 
-        {/* Tabs Layout */}
-        <div className="fade-up-2" style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginBottom: 24 }}>
-          {/* Sidebar Tabs */}
-          <div style={{ width: 250, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {TABS.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '14px 18px', borderRadius: 12,
-                  background: activeTab === tab.id ? 'var(--tab-bg-active)' : 'var(--tab-bg)',
-                  border: `1.5px solid ${activeTab === tab.id ? tab.color : 'var(--tab-border)'}`,
-                  color: activeTab === tab.id ? tab.color : 'var(--text-secondary)',
-                  fontWeight: activeTab === tab.id ? 600 : 500,
-                  textAlign: 'left', cursor: 'pointer', transition: 'all 0.2s',
-                  boxShadow: activeTab === tab.id ? 'var(--tab-shadow-active)' : 'var(--tab-shadow)'
-                }}
-              >
-                <div style={{ 
-                  width: 34, height: 34, borderRadius: 10, flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem',
-                  background: activeTab === tab.id ? tab.color : 'var(--surface-3)',
-                  color: activeTab === tab.id ? '#fff' : 'inherit'
-                }}>
-                  {tab.icon}
-                </div>
-                {tab.label}
-              </button>
+        <section className="panel panel-pad" style={{ marginBottom: 16 }} aria-label="Patient details">
+          <div className="facts">
+            {facts.map((f) => (
+              <div key={f.label}>
+                <div className="fact-label">{f.label}</div>
+                <div className={`fact-value${f.mono ? ' mono' : ''}`}>{f.value}</div>
+              </div>
             ))}
           </div>
+        </section>
 
-          {/* Main Content Area */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {activeTab === 'haematology' && <TestSection title="Haematology" icon="🩸" rows={HAEMATOLOGY_ROWS} reportData={reportData} onChange={handleChange} accentColor="var(--teal)" />}
-            {activeTab === 'biochemistry' && <TestSection title="Bio-Chemistry" icon="🧪" rows={BIOCHEMISTRY_ROWS} reportData={reportData} onChange={handleChange} accentColor="#60a5fa" />}
-            {activeTab === 'serology' && (
-              <>
-                <TestSection title="Serology" icon="🔬" rows={SEROLOGY_ROWS} reportData={reportData} onChange={handleChange} accentColor="#a78bfa" />
-                <WidalGrid reportData={reportData} onChange={handleChange} />
-              </>
-            )}
-            {activeTab === 'urine' && <TestSection title="Urine" icon="💛" rows={URINE_ROWS} reportData={reportData} onChange={handleChange} accentColor="#fbbf24" />}
-            {activeTab === 'other' && <TestSection title="Other Tests" icon="📋" rows={OTHER_ROWS} reportData={reportData} onChange={handleChange} accentColor="#34d399" />}
-            
-            {activeTab === 'remarks' && (
-              <div className="card fade-in" style={{ padding: '24px 28px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-                  <span style={{ fontSize: '1.4rem' }}>📝</span>
-                  <div className="card-section-title" style={{ marginBottom: 0 }}>Remarks & Suggestions</div>
-                </div>
-                <div className="form-grid-2">
+        <div className="tabs" role="tablist" aria-label="Report sections">
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`rp-tab-${tab.id}`}
+                aria-selected={activeTab === tab.id}
+                aria-controls={`rp-panel-${tab.id}`}
+                className={`tab${activeTab === tab.id ? ' is-active' : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <Icon size={16} aria-hidden="true" /> {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div role="tabpanel" id={`rp-panel-${activeTab}`} aria-labelledby={`rp-tab-${activeTab}`} className="stack" style={{ marginBottom: 16 }}>
+          {activeTab === 'haematology' && <TestSection title="Haematology" icon={Droplet} rows={HAEMATOLOGY_ROWS} reportData={reportData} onChange={handleChange} />}
+          {activeTab === 'biochemistry' && <TestSection title="Biochemistry" icon={FlaskConical} rows={BIOCHEMISTRY_ROWS} reportData={reportData} onChange={handleChange} />}
+          {activeTab === 'serology' && (
+            <>
+              <TestSection title="Serology" icon={Microscope} rows={SEROLOGY_ROWS} reportData={reportData} onChange={handleChange} />
+              <WidalGrid reportData={reportData} onChange={handleChange} />
+            </>
+          )}
+          {activeTab === 'urine' && <TestSection title="Urine" icon={TestTube} rows={URINE_ROWS} reportData={reportData} onChange={handleChange} />}
+          {activeTab === 'other' && <TestSection title="Other tests" icon={ClipboardList} rows={OTHER_ROWS} reportData={reportData} onChange={handleChange} />}
+
+          {activeTab === 'remarks' && (
+            <section className="panel">
+              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><NotebookPen size={16} aria-hidden="true" /> Remarks and suggestions</h2></div>
+              <div className="panel-pad">
+                <div className="form-row-2">
                   <div className="form-group">
-                    <label className="form-label">Remarks</label>
+                    <label className="form-label" htmlFor="rp-remarks">Remarks</label>
                     <textarea
+                      id="rp-remarks"
                       className="form-textarea"
-                      placeholder="Any clinical remarks or observations…"
+                      placeholder="Clinical remarks or observations"
                       value={remarks}
-                      onChange={e => setRemarks(e.target.value)}
+                      onChange={(e) => setRemarks(e.target.value)}
                       rows={6}
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Suggestions / Advice</label>
+                    <label className="form-label" htmlFor="rp-suggestions">Suggestions and advice</label>
                     <textarea
+                      id="rp-suggestions"
                       className="form-textarea"
-                      placeholder="Dietary advice, follow-up, referral, repeat tests…"
+                      placeholder="Dietary advice, follow-up, referral, repeat tests"
                       value={suggestions}
-                      onChange={e => setSuggestions(e.target.value)}
+                      onChange={(e) => setSuggestions(e.target.value)}
                       rows={6}
                     />
                   </div>
                 </div>
               </div>
-            )}
-          </div>
+            </section>
+          )}
         </div>
 
         {/* Bottom action bar */}
-      </div>
-
-      <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
-        display: 'flex', justifyContent: 'center',
-        background: 'rgba(15,23,42,0.97)', backdropFilter: 'blur(12px)',
-        borderTop: '1px solid rgba(255,255,255,0.1)',
-        padding: '16px 24px',
-        boxShadow: '0 -4px 20px rgba(0,0,0,0.2)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%', maxWidth: 1400, margin: '0 auto' }}>
-          <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginRight: 'auto' }}>
-            Report ID: {reportId?.slice(-8).toUpperCase()}
+        <div
+          className="panel"
+          style={{
+            position: 'sticky', bottom: 0, zIndex: 100, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+            padding: '12px 16px', boxShadow: 'var(--shadow-md)',
+          }}
+        >
+          <span className="muted" style={{ marginRight: 'auto' }}>
+            Report ID <span className="mono">{reportId?.slice(-8).toUpperCase()}</span>
           </span>
-          <button className="btn btn-ghost" onClick={() => navigate('/search')}>View All Records</button>
-          <button className="btn btn-outline" onClick={handleSave} disabled={saving}>
-            {saving ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Saving…</> : '💾 Save Report'}
+          <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/search')}>View all records</button>
+          <button type="button" className="btn btn-secondary btn-md" onClick={handleSave} disabled={saving}>
+            <Save size={16} aria-hidden="true" /> {saving ? 'Saving…' : 'Save report'}
           </button>
-          <button className="btn btn-secondary" onClick={handlePreviewPDF} disabled={pdfLoading}>
-            {pdfLoading ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Generating…</> : '👁️ Preview PDF'}
+          <button type="button" className="btn btn-secondary btn-md" onClick={handlePreviewPDF} disabled={pdfLoading}>
+            <Eye size={16} aria-hidden="true" /> {pdfLoading ? 'Generating…' : 'Preview PDF'}
           </button>
-          <button className="btn btn-primary" onClick={handleDownloadPDF} disabled={pdfLoading}>
-            {pdfLoading ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Generating…</> : '📄 Download PDF Report'}
+          <button type="button" className="btn btn-primary btn-md" onClick={handleDownloadPDF} disabled={pdfLoading}>
+            <FileDown size={16} aria-hidden="true" /> {pdfLoading ? 'Generating…' : 'Download PDF'}
           </button>
         </div>
-      </div>
+      </main>
     </>
   );
 }

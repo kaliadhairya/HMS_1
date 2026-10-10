@@ -1,51 +1,152 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import toast from 'react-hot-toast';
+import {
+  Activity, BadgeCheck, Ban, BellRing, Bug, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, ClipboardCheck, CreditCard,
+  Database, DatabaseBackup, Globe, Hammer, Hospital, KeyRound, Link, LockOpen, LogOut, Mail, Megaphone, Microscope, Monitor,
+  Network, Pencil, Plug, Plus, RefreshCw, RotateCcw, Save, ScrollText, Server, Shield, ShieldAlert, ShieldCheck, Tags, Trash2,
+  Wrench, X, Zap,
+} from 'lucide-react';
 import Navbar from '../../components/Navbar';
+import PageHeader from '../../components/ui/PageHeader';
+import DataTable from '../../components/ui/DataTable';
+import EmptyState from '../../components/ui/EmptyState';
+import Modal from '../../components/ui/Modal';
 import api from '../../api/axios';
 
-// ─── Priority Badges ──────────────────────────────────
-const PB = { Critical: '#ef4444', High: '#fbbf24', Medium: '#94a3b8' };
-
-// ─── Sidebar Navigation Items ─────────────────────────
+// ─── Navigation: areas (tabs) and their sections ──────
 const NAV = [
-  { id: 'center',       icon: '🛡️', label: 'Security Center',     section: 'Security' },
-  { id: 'sessions',     icon: '🖥️', label: 'Session Manager',     section: 'Security' },
-  { id: '2fa',          icon: '🔑', label: '2FA Management',      section: 'Security' },
-  { id: 'ip-rules',     icon: '🌐', label: 'IP Whitelist/Blacklist', section: 'Security' },
-  { id: 'audit',        icon: '📋', label: 'Audit Trail',         section: 'System' },
-  { id: 'health',       icon: '💓', label: 'System Health',       section: 'System' },
-  { id: 'backups',      icon: '📦', label: 'Backup & Recovery',   section: 'System' },
-  { id: 'maintenance',  icon: '🔨', label: 'Maintenance Mode',    section: 'System' },
-  { id: 'api-keys',     icon: '⚡', label: 'API Manager',         section: 'Integrations' },
-  { id: 'integrations', icon: '🏥', label: 'Integration Hub',     section: 'Integrations' },
-  { id: 'notifications',icon: '🔔', label: 'Notification Config',  section: 'Integrations' },
-  { id: 'compliance',   icon: '📑', label: 'Compliance Center',   section: 'Compliance' },
-  { id: 'data-gov',     icon: '📝', label: 'Data Governance',     section: 'Compliance' },
-  { id: 'licenses',     icon: '🪪', label: 'License Manager',     section: 'Compliance' },
-  { id: 'announcements',icon: '📢', label: 'Announcements',       section: 'Operations' },
-  { id: 'error-logs',   icon: '🐛', label: 'Error Logs',          section: 'Operations' },
-  { id: 'role-templates',icon: '🏷️', label: 'Role Templates',     section: 'Operations' },
+  { id: 'center',        icon: ShieldAlert,    label: 'Security center',        section: 'Security' },
+  { id: 'sessions',      icon: Monitor,        label: 'Sessions',               section: 'Security' },
+  { id: '2fa',           icon: KeyRound,       label: 'Two-factor auth',        section: 'Security' },
+  { id: 'ip-rules',      icon: Globe,          label: 'IP allow and block',     section: 'Security' },
+  { id: 'audit',         icon: ScrollText,     label: 'Audit trail',            section: 'System' },
+  { id: 'health',        icon: Activity,       label: 'System health',          section: 'System' },
+  { id: 'backups',       icon: DatabaseBackup, label: 'Backup and recovery',    section: 'System' },
+  { id: 'maintenance',   icon: Hammer,         label: 'Maintenance mode',       section: 'System' },
+  { id: 'api-keys',      icon: Zap,            label: 'API keys',               section: 'Integrations' },
+  { id: 'integrations',  icon: Network,        label: 'Integration hub',        section: 'Integrations' },
+  { id: 'notifications', icon: BellRing,       label: 'Notification rules',     section: 'Integrations' },
+  { id: 'compliance',    icon: ClipboardCheck, label: 'Compliance',             section: 'Compliance' },
+  { id: 'data-gov',      icon: Database,       label: 'Data governance',        section: 'Compliance' },
+  { id: 'licenses',      icon: BadgeCheck,     label: 'Licenses',               section: 'Compliance' },
+  { id: 'announcements', icon: Megaphone,      label: 'Announcements',          section: 'Operations' },
+  { id: 'error-logs',    icon: Bug,            label: 'Error logs',             section: 'Operations' },
+  { id: 'role-templates', icon: Tags,          label: 'Role templates',         section: 'Operations' },
 ];
+const GROUP_ICON = { Security: Shield, System: Server, Integrations: Plug, Compliance: ClipboardCheck, Operations: Wrench };
 
-// ─── Helper Components ─────────────────────────────────
-function StatCard({ icon, label, value, color, sub }) {
+// ─── Helpers ──────────────────────────────────────────
+const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('en-IN') : '—');
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN') : '—');
+const human = (s) => String(s || '').replace(/_/g, ' ');
+const sentence = (s) => { const h = human(s); return h ? h.charAt(0).toUpperCase() + h.slice(1) : '—'; };
+const ROLE_TONE = { super_admin: 'danger', doctor: 'info' };
+
+// Detail column for failed sign-ins; NEW_VALUE is JSON written by the backend, but never trust it to parse.
+const failureDetail = (v) => {
+  if (!v) return '—';
+  try {
+    const p = JSON.parse(v);
+    return p?.reason || `${p?.attempts} attempts`;
+  } catch {
+    return String(v);
+  }
+};
+
+function Loading() {
+  return <section className="panel panel-pad"><p className="muted">Loading…</p></section>;
+}
+
+function LoadFailed() {
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: color || 'var(--green)' }} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: '1.4rem' }}>{icon}</span>
-        <div>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: color || 'var(--text-primary)' }}>{value}</div>
-          {sub && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>}
-        </div>
-      </div>
+    <div className="alert-strip alert-danger" role="alert">
+      <CircleAlert size={16} aria-hidden="true" /> This section could not be loaded. Refresh the page to try again.
     </div>
   );
 }
 
-function SectionTitle({ children }) {
-  return <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12, marginTop: 24 }}>{children}</div>;
+function SubHead({ title, description, actions }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 650 }}>{title}</h2>
+        {description && <p className="muted" style={{ marginTop: 2 }}>{description}</p>}
+      </div>
+      {actions && <div className="inline-actions">{actions}</div>}
+    </div>
+  );
 }
+
+function PanelHead({ icon: Icon, title, actions }) {
+  return (
+    <div className="panel-head">
+      <h3 className="panel-title" style={{ margin: 0 }}>{Icon && <Icon size={16} aria-hidden="true" />} {title}</h3>
+      {actions}
+    </div>
+  );
+}
+
+function Kpi({ label, value, tone, sub }) {
+  const color = tone === 'danger' ? 'var(--red)' : tone === 'warning' ? 'var(--amber)' : undefined;
+  return (
+    <div className="panel kpi">
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value" style={{ color }}>{value}</div>
+      {sub && <div className="kpi-sub">{sub}</div>}
+    </div>
+  );
+}
+
+// Accessible on/off switch (button with role="switch").
+function Switch({ checked, onChange, label }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={Boolean(checked)}
+      aria-label={label}
+      onClick={onChange}
+      style={{
+        width: 40, height: 22, borderRadius: 11, padding: 2, flexShrink: 0, cursor: 'pointer',
+        border: `1px solid ${checked ? 'var(--primary)' : 'var(--border-dark)'}`,
+        background: checked ? 'var(--primary)' : 'var(--surface-3)',
+        display: 'inline-flex', alignItems: 'center', justifyContent: checked ? 'flex-end' : 'flex-start',
+      }}
+    >
+      <span aria-hidden="true" style={{ width: 16, height: 16, borderRadius: '50%', background: 'var(--surface)', boxShadow: 'var(--shadow-sm)' }} />
+    </button>
+  );
+}
+
+function ConfirmModal({ target, onClose, title, description, confirmLabel, cancelLabel = 'Cancel', onConfirm, children }) {
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    try { await onConfirm(target); } finally { setBusy(false); }
+  };
+  return (
+    <Modal
+      open={Boolean(target)}
+      onOpenChange={(open) => { if (!open) onClose(); }}
+      title={title}
+      description={description}
+      size="sm"
+      footer={(
+        <>
+          <button type="button" className="btn btn-ghost btn-md" onClick={onClose}>{cancelLabel}</button>
+          <button type="button" className="btn btn-danger btn-md" onClick={run} disabled={busy}>{busy ? 'Working…' : confirmLabel}</button>
+        </>
+      )}
+    >
+      {children || <p className="muted">This cannot be undone.</p>}
+    </Modal>
+  );
+}
+
+const rowStyle = {
+  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+  padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)',
+};
 
 // ═══════════════════════════════════════════════════════
 // SECURITY CENTER PANEL
@@ -53,53 +154,62 @@ function SectionTitle({ children }) {
 function SecurityCenterPanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { api.get('/security/center').then(r => setData(r.data.data)).catch(console.error).finally(() => setLoading(false)); }, []);
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
-  if (!data) return <p>Failed to load.</p>;
+  useEffect(() => { api.get('/security/center').then((r) => setData(r.data.data)).catch(console.error).finally(() => setLoading(false)); }, []);
+
+  const columns = useMemo(() => [
+    { id: 'user', header: 'User', accessorFn: (l) => l.USERNAME || l.USER_NAME || `User #${l.USER_ID}`, cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    { id: 'ip', header: 'IP address', accessorFn: (l) => l.IP_ADDRESS || '', meta: { width: 160 }, cell: ({ getValue }) => <span className="mono">{getValue() || '—'}</span> },
+    { id: 'time', header: 'Time', accessorFn: (l) => (l.CREATED_AT ? new Date(l.CREATED_AT).getTime() : 0), meta: { width: 200 }, cell: ({ row }) => <span className="tabular cell-secondary">{fmtDateTime(row.original.CREATED_AT)}</span> },
+    { id: 'detail', header: 'Details', accessorFn: (l) => failureDetail(l.NEW_VALUE), enableSorting: false },
+  ], []);
+
+  if (loading) return <Loading />;
+  if (!data) return <LoadFailed />;
+
+  const blocked = data.blocked_ips || [];
 
   return (
-    <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🛡️ Security Center</h2>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Real-time threat monitoring and access alerts</p>
+    <div className="stack">
+      <SubHead title="Security center" description="Failed sign-ins, locked accounts and suspicious addresses." />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 28 }}>
-        <StatCard icon="🚨" label="Failed Logins Today" value={data.failed_logins_today} color={data.failed_logins_today > 0 ? '#ef4444' : 'var(--green)'} />
-        <StatCard icon="📊" label="Failed This Week" value={data.failed_logins_week} color="#fbbf24" />
-        <StatCard icon="🔒" label="Locked Accounts" value={data.locked_accounts} color={data.locked_accounts > 0 ? '#ef4444' : 'var(--green)'} />
-        <StatCard icon="✅" label="Logins Today" value={data.logins_today} color="var(--green)" />
+      <div className="kpi-strip" style={{ marginBottom: 0 }}>
+        <Kpi label="Failed sign-ins today" value={data.failed_logins_today} tone={data.failed_logins_today > 0 ? 'danger' : undefined} />
+        <Kpi label="Failed this week" value={data.failed_logins_week} tone={data.failed_logins_week > 0 ? 'warning' : undefined} />
+        <Kpi label="Locked accounts" value={data.locked_accounts} tone={data.locked_accounts > 0 ? 'danger' : undefined} />
+        <Kpi label="Sign-ins today" value={data.logins_today} />
       </div>
 
       {data.suspicious_ips?.length > 0 && (
-        <>
-          <SectionTitle>⚠️ Suspicious IPs (3+ failures today)</SectionTitle>
-          <div className="table-wrapper" style={{ marginBottom: 24 }}>
-            <table><thead><tr><th>IP Address</th><th>Attempts</th><th>Status</th></tr></thead>
-              <tbody>{data.suspicious_ips.map((ip, i) => (
-                <tr key={i}>
-                  <td style={{ fontWeight: 600, fontFamily: 'monospace' }}>{ip.IP_ADDRESS}</td>
-                  <td><span className="badge badge-red">{ip.ATTEMPTS} attempts</span></td>
-                  <td>{data.blocked_ips.includes(ip.IP_ADDRESS) ? <span className="badge badge-red">Blocked</span> : <span className="badge badge-amber">Monitoring</span>}</td>
-                </tr>
-              ))}</tbody></table>
+        <section className="panel">
+          <PanelHead icon={ShieldAlert} title="Suspicious IP addresses (3 or more failures today)" />
+          <div className="panel-pad">
+            <table className="mini-table">
+              <thead><tr><th>IP address</th><th>Attempts</th><th>Status</th></tr></thead>
+              <tbody>
+                {data.suspicious_ips.map((ip, i) => (
+                  <tr key={i}>
+                    <td className="mono">{ip.IP_ADDRESS}</td>
+                    <td><span className="status status-danger">{ip.ATTEMPTS} attempts</span></td>
+                    <td>{blocked.includes(ip.IP_ADDRESS) ? <span className="status status-danger">Blocked</span> : <span className="status status-warning">Monitoring</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </>
+        </section>
       )}
 
-      <SectionTitle>Recent Failed Login Attempts</SectionTitle>
-      <div className="table-wrapper" style={{ maxHeight: 400, overflowY: 'auto' }}>
-        <table><thead><tr><th>User</th><th>IP Address</th><th>Time</th><th>Details</th></tr></thead>
-          <tbody>
-            {data.recent_failed?.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 30 }}>No failed login attempts. System is secure. ✅</td></tr>}
-            {data.recent_failed?.map((log, i) => (
-              <tr key={i}>
-                <td style={{ fontWeight: 600 }}>{log.USERNAME || log.USER_NAME || `User #${log.USER_ID}`}</td>
-                <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{log.IP_ADDRESS || '—'}</td>
-                <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{log.CREATED_AT ? new Date(log.CREATED_AT).toLocaleString('en-IN') : '—'}</td>
-                <td style={{ fontSize: '0.78rem' }}>{log.NEW_VALUE ? JSON.parse(log.NEW_VALUE)?.reason || JSON.parse(log.NEW_VALUE)?.attempts + ' attempts' : '—'}</td>
-              </tr>
-            ))}
-          </tbody></table>
-      </div>
+      <section className="panel">
+        <PanelHead icon={ScrollText} title="Recent failed sign-in attempts" />
+        <DataTable
+          columns={columns}
+          data={data.recent_failed || []}
+          getRowId={(l, i) => String(l.ID ?? i)}
+          pageSize={15}
+          initialSorting={[{ id: 'time', desc: true }]}
+          empty={<EmptyState icon={ShieldCheck} title="No failed sign-ins" description="There have been no failed sign-in attempts recently." />}
+        />
+      </section>
     </div>
   );
 }
@@ -110,56 +220,126 @@ function SecurityCenterPanel() {
 function SessionManagerPanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const load = () => api.get('/security/sessions').then(r => setData(r.data.data)).catch(console.error).finally(() => setLoading(false));
+  const [endTarget, setEndTarget] = useState(null);
+  const load = () => api.get('/security/sessions').then((r) => setData(r.data.data)).catch(console.error).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const forceLogout = async (userId) => {
-    if (!confirm('Force logout this user? Their session will be terminated.')) return;
-    try { await api.post(`/security/sessions/${userId}/force-logout`); load(); } catch { alert('Failed'); }
+    try {
+      await api.post(`/security/sessions/${userId}/force-logout`);
+      setEndTarget(null);
+      toast.success('Session ended');
+      load();
+    } catch { toast.error('Failed to end the session'); }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
+  const unlock = async (userId) => {
+    try {
+      await api.post(`/security/users/${userId}/unlock`);
+      toast.success('Account unlocked');
+      load();
+    } catch { toast.error('Failed to unlock the account'); }
+  };
 
-  const now = new Date();
+  const columns = useMemo(() => [
+    {
+      id: 'user', header: 'User', accessorFn: (s) => s.NAME || '',
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="cell-primary">{row.original.NAME}</span>
+          <span className="cell-secondary mono">{row.original.USERNAME}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'role', header: 'Role', accessorFn: (s) => s.ROLE || '', meta: { width: 160 },
+      cell: ({ getValue }) => <span className={`status status-${ROLE_TONE[getValue()] || 'neutral'}`}>{sentence(getValue())}</span>,
+    },
+    {
+      id: 'last', header: 'Last active', accessorFn: (s) => (s.LAST_LOGIN ? new Date(s.LAST_LOGIN).getTime() : 0), meta: { width: 200 },
+      cell: ({ row }) => <span className="tabular">{row.original.LAST_LOGIN ? fmtDateTime(row.original.LAST_LOGIN) : 'Never'}</span>,
+    },
+    {
+      id: 'status', header: 'Status', accessorFn: (s) => s._state, meta: { width: 110 },
+      cell: ({ getValue }) => {
+        const st = getValue();
+        if (st === 'Locked') return <span className="status status-danger">Locked</span>;
+        if (st === 'Active') return <span className="status status-success">Active</span>;
+        return <span className="status status-neutral">Inactive</span>;
+      },
+    },
+    {
+      id: 'failed', header: 'Failed', accessorFn: (s) => Number(s.FAILED_ATTEMPTS) || 0, meta: { width: 90, align: 'right' },
+      cell: ({ getValue }) => (getValue() > 0 ? <span className="status status-warning">{getValue()}</span> : <span className="tabular">0</span>),
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 130, align: 'right' },
+      cell: ({ row }) => {
+        const s = row.original;
+        return s._state === 'Locked' ? (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => unlock(s.ID)}><LockOpen size={14} aria-hidden="true" /> Unlock</button>
+        ) : (
+          <button type="button" className="btn btn-danger btn-sm" onClick={() => setEndTarget(s)}><LogOut size={14} aria-hidden="true" /> End session</button>
+        );
+      },
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const rows = useMemo(() => {
+    const now = new Date();
+    return (data?.sessions || []).map((s) => {
+      const lastLogin = s.LAST_LOGIN ? new Date(s.LAST_LOGIN) : null;
+      const isRecent = lastLogin && (now - lastLogin < 8 * 3600000);
+      const isLocked = s.LOCKED_UNTIL && new Date(s.LOCKED_UNTIL) > now;
+      return { ...s, _state: isLocked ? 'Locked' : isRecent ? 'Active' : 'Inactive' };
+    });
+  }, [data]);
+
+  if (loading) return <Loading />;
+
   return (
-    <div className="fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>🖥️ Session Manager</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Monitor and control active user sessions</p></div>
-        <button className="btn btn-outline" onClick={load}>↻ Refresh</button>
-      </div>
+    <div className="stack">
+      <SubHead
+        title="Sessions"
+        description="Monitor and control active user sessions."
+        actions={<button type="button" className="btn btn-ghost btn-md" onClick={load}><RefreshCw size={16} aria-hidden="true" /> Refresh</button>}
+      />
 
-      <div className="table-wrapper">
-        <table><thead><tr><th>User</th><th>Role</th><th>Last Active</th><th>Status</th><th>Failed</th><th>Actions</th></tr></thead>
-          <tbody>{data?.sessions?.map(s => {
-            const lastLogin = s.LAST_LOGIN ? new Date(s.LAST_LOGIN) : null;
-            const isRecent = lastLogin && (now - lastLogin < 8 * 3600000);
-            const isLocked = s.LOCKED_UNTIL && new Date(s.LOCKED_UNTIL) > now;
-            return (
-              <tr key={s.ID}>
-                <td><div style={{ fontWeight: 600 }}>{s.NAME}</div><div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{s.USERNAME}</div></td>
-                <td><span className={`badge badge-${s.ROLE === 'super_admin' ? 'red' : s.ROLE === 'doctor' ? 'blue' : 'green'}`}>{s.ROLE?.replace(/_/g, ' ')}</span></td>
-                <td style={{ fontSize: '0.82rem' }}>{lastLogin ? lastLogin.toLocaleString('en-IN') : 'Never'}</td>
-                <td>{isLocked ? <span className="badge badge-red">Locked</span> : isRecent ? <span className="badge badge-green">Active</span> : <span className="badge" style={{ background: 'var(--surface-3)' }}>Inactive</span>}</td>
-                <td>{s.FAILED_ATTEMPTS > 0 ? <span className="badge badge-amber">{s.FAILED_ATTEMPTS}</span> : '0'}</td>
-                <td style={{ display: 'flex', gap: 6 }}>
-                  {isLocked
-                    ? <button className="btn btn-sm btn-outline" onClick={async () => { await api.post(`/security/users/${s.ID}/unlock`); load(); }}>🔓 Unlock</button>
-                    : <button className="btn btn-sm btn-ghost" style={{ color: '#ef4444' }} onClick={() => forceLogout(s.ID)}>⛔ End</button>}
-                </td>
-              </tr>
-            );
-          })}</tbody></table>
-      </div>
+      <section className="panel">
+        <DataTable
+          columns={columns}
+          data={rows}
+          getRowId={(s) => String(s.ID)}
+          pageSize={50}
+          empty={<EmptyState icon={Monitor} title="No sessions" description="User sessions appear here once staff sign in." />}
+        />
+      </section>
 
-      <SectionTitle>Session Timeout Config (minutes)</SectionTitle>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
-        {Object.entries(data?.timeout_settings || {}).map(([role, mins]) => (
-          <div key={role} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px' }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>{role.replace(/_/g, ' ')}</div>
-            <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{mins} min</div>
+      <section className="panel">
+        <PanelHead title="Session timeout (minutes)" />
+        <div className="panel-pad">
+          <div className="facts">
+            {Object.entries(data?.timeout_settings || {}).map(([role, mins]) => (
+              <div key={role}>
+                <div className="fact-label">{human(role)}</div>
+                <div className="fact-value tabular" style={{ fontWeight: 600 }}>{mins} min</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      </section>
+
+      <ConfirmModal
+        target={endTarget}
+        onClose={() => setEndTarget(null)}
+        title="End this session?"
+        description={endTarget ? `${endTarget.NAME} (${endTarget.USERNAME}) will be signed out.` : ''}
+        confirmLabel="End session"
+        onConfirm={(s) => forceLogout(s.ID)}
+      >
+        <p className="muted">Their session is terminated and they will need to sign in again.</p>
+      </ConfirmModal>
     </div>
   );
 }
@@ -171,57 +351,56 @@ function TwoFAPanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [enforced, setEnforced] = useState([]);
-  useEffect(() => { api.get('/security/2fa').then(r => { setData(r.data.data); setEnforced(r.data.data.enforced_roles || []); }).catch(console.error).finally(() => setLoading(false)); }, []);
+  useEffect(() => { api.get('/security/2fa').then((r) => { setData(r.data.data); setEnforced(r.data.data.enforced_roles || []); }).catch(console.error).finally(() => setLoading(false)); }, []);
 
   const toggleRole = (role) => {
-    setEnforced(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]);
+    setEnforced((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]));
   };
   const save = async () => {
-    try { await api.put('/security/2fa', { enforced_roles: enforced }); alert('2FA settings saved!'); } catch { alert('Failed'); }
+    try { await api.put('/security/2fa', { enforced_roles: enforced }); toast.success('2FA settings saved'); } catch { toast.error('Failed to save 2FA settings'); }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
+  if (loading) return <Loading />;
 
   const roles = data?.role_breakdown || [];
   return (
-    <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🔑 Two-Factor Authentication</h2>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Enforce 2FA per role to strengthen authentication</p>
+    <div className="stack">
+      <SubHead
+        title="Two-factor authentication"
+        description="Require 2FA for a role to strengthen sign-in."
+        actions={<button type="button" className="btn btn-primary btn-md" onClick={save}><Save size={16} aria-hidden="true" /> Save 2FA settings</button>}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 28 }}>
-        <StatCard icon="👥" label="Total Active Users" value={data?.total_users || 0} color="var(--blue)" />
-        <StatCard icon="🔐" label="2FA Enforced Roles" value={enforced.length} color={enforced.length > 0 ? 'var(--green)' : '#ef4444'} />
-        <StatCard icon="📈" label="Compliance" value={data?.total_users > 0 ? Math.round((enforced.length / (roles.length || 1)) * 100) + '%' : '0%'} color="var(--teal)" />
+      <div className="kpi-strip" style={{ marginBottom: 0 }}>
+        <Kpi label="Active users" value={data?.total_users || 0} />
+        <Kpi label="Roles with 2FA required" value={enforced.length} tone={enforced.length > 0 ? undefined : 'warning'} />
+        <Kpi label="Coverage" value={data?.total_users > 0 ? `${Math.round((enforced.length / (roles.length || 1)) * 100)}%` : '0%'} />
       </div>
 
-      <SectionTitle>Enforce 2FA by Role</SectionTitle>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12, marginBottom: 24 }}>
-        {roles.map(r => {
-          const isOn = enforced.includes(r.ROLE);
-          return (
-            <div key={r.ROLE} onClick={() => toggleRole(r.ROLE)} style={{
-              background: isOn ? 'rgba(16,185,129,0.08)' : 'var(--surface)',
-              border: `2px solid ${isOn ? 'var(--green)' : 'var(--border)'}`,
-              borderRadius: 12, padding: '16px 20px', cursor: 'pointer', transition: 'all 0.2s',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 700, textTransform: 'capitalize' }}>{r.ROLE?.replace(/_/g, ' ')}</div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{r.CNT || r.cnt} users</div>
-                </div>
-                <div style={{
-                  width: 44, height: 24, borderRadius: 12, padding: 2,
-                  background: isOn ? 'var(--green)' : 'var(--surface-3)', transition: 'all 0.2s',
-                  display: 'flex', alignItems: isOn ? 'center' : 'center', justifyContent: isOn ? 'flex-end' : 'flex-start',
-                }}>
-                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <button className="btn btn-primary" onClick={save}>💾 Save 2FA Configuration</button>
+      <section className="panel">
+        <PanelHead icon={KeyRound} title="Require 2FA by role" />
+        <div className="panel-pad">
+          {roles.length === 0 ? <p className="muted">No roles found.</p> : (
+            <ul className="list-rows">
+              {roles.map((r) => {
+                const isOn = enforced.includes(r.ROLE);
+                return (
+                  <li key={r.ROLE} style={rowStyle}>
+                    <span className="cell-stack">
+                      <span className="cell-primary">{sentence(r.ROLE)}</span>
+                      <span className="cell-secondary">{r.CNT || r.cnt} users</span>
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                      <span className={`status ${isOn ? 'status-success' : 'status-neutral'}`}>{isOn ? 'Required' : 'Optional'}</span>
+                      <Switch checked={isOn} onChange={() => toggleRole(r.ROLE)} label={`Require 2FA for ${human(r.ROLE)}`} />
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -237,51 +416,76 @@ function IPRulesPanel() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/security/ip-rules').then(r => { setWhitelist(r.data.data.whitelist); setBlacklist(r.data.data.blacklist); }).finally(() => setLoading(false));
+    api.get('/security/ip-rules')
+      .then((r) => { setWhitelist(r.data.data.whitelist); setBlacklist(r.data.data.blacklist); })
+      .catch((err) => { console.error(err); toast.error('Could not load IP rules'); })
+      .finally(() => setLoading(false));
   }, []);
 
   const save = async () => {
-    try { await api.put('/security/ip-rules', { whitelist, blacklist }); alert('IP rules saved!'); } catch { alert('Failed'); }
+    try { await api.put('/security/ip-rules', { whitelist, blacklist }); toast.success('IP rules saved'); } catch { toast.error('Failed to save IP rules'); }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
+  if (loading) return <Loading />;
 
   return (
-    <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🌐 IP Access Control</h2>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Restrict login access to trusted networks</p>
+    <div className="stack">
+      <SubHead
+        title="IP access control"
+        description="Restrict sign-in to trusted networks, and block known bad addresses."
+        actions={<button type="button" className="btn btn-primary btn-md" onClick={save}><Save size={16} aria-hidden="true" /> Save IP rules</button>}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-        {/* Whitelist */}
-        <div className="card" style={{ borderTop: '3px solid var(--green)' }}>
-          <h3 style={{ color: 'var(--green)', marginBottom: 12 }}>✅ Whitelist ({whitelist.length})</h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 16 }}>Only these IPs can access the system (empty = allow all)</p>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input className="form-input" placeholder="e.g. 10.2.111.0/24" value={newWL} onChange={e => setNewWL(e.target.value)} style={{ flex: 1 }} />
-            <button className="btn btn-primary btn-sm" onClick={() => { if (newWL) { setWhitelist([...whitelist, newWL]); setNewWL(''); } }}>Add</button>
+      <div className="split-2" style={{ alignItems: 'start' }}>
+        <section className="panel">
+          <PanelHead icon={ShieldCheck} title={`Allow list (${whitelist.length})`} />
+          <div className="panel-pad stack-sm">
+            <p className="muted">Only these addresses can access the system. Leave empty to allow all.</p>
+            <form style={{ display: 'flex', gap: 8 }} onSubmit={(e) => { e.preventDefault(); if (newWL) { setWhitelist([...whitelist, newWL]); setNewWL(''); } }}>
+              <label className="sr-only" htmlFor="ip-allow">IP address or range to allow</label>
+              <input id="ip-allow" className="form-input mono" placeholder="e.g. 192.168.1.0/24" value={newWL} onChange={(e) => setNewWL(e.target.value)} style={{ flex: 1 }} />
+              <button type="submit" className="btn btn-secondary btn-md"><Plus size={16} aria-hidden="true" /> Add</button>
+            </form>
+            {whitelist.length > 0 && (
+              <ul className="list-rows">
+                {whitelist.map((ip, i) => (
+                  <li key={i} style={rowStyle}>
+                    <span className="mono">{ip}</span>
+                    <button type="button" className="icon-btn" aria-label={`Remove ${ip} from the allow list`} onClick={() => setWhitelist(whitelist.filter((_, j) => j !== i))}>
+                      <X size={16} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          {whitelist.map((ip, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 6, marginBottom: 6, fontFamily: 'monospace', fontSize: '0.85rem' }}>
-              {ip} <button className="btn btn-ghost btn-sm" onClick={() => setWhitelist(whitelist.filter((_, j) => j !== i))} style={{ color: '#ef4444', padding: '2px 6px' }}>✕</button>
-            </div>
-          ))}
-        </div>
-        {/* Blacklist */}
-        <div className="card" style={{ borderTop: '3px solid #ef4444' }}>
-          <h3 style={{ color: '#ef4444', marginBottom: 12 }}>🚫 Blacklist ({blacklist.length})</h3>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 16 }}>These IPs are permanently blocked from accessing the system</p>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input className="form-input" placeholder="e.g. 192.168.1.100" value={newBL} onChange={e => setNewBL(e.target.value)} style={{ flex: 1 }} />
-            <button className="btn btn-sm" style={{ background: '#ef4444', color: '#fff' }} onClick={() => { if (newBL) { setBlacklist([...blacklist, newBL]); setNewBL(''); } }}>Block</button>
+        </section>
+
+        <section className="panel">
+          <PanelHead icon={Ban} title={`Block list (${blacklist.length})`} />
+          <div className="panel-pad stack-sm">
+            <p className="muted">These addresses are always blocked from accessing the system.</p>
+            <form style={{ display: 'flex', gap: 8 }} onSubmit={(e) => { e.preventDefault(); if (newBL) { setBlacklist([...blacklist, newBL]); setNewBL(''); } }}>
+              <label className="sr-only" htmlFor="ip-block">IP address to block</label>
+              <input id="ip-block" className="form-input mono" placeholder="e.g. 192.168.1.100" value={newBL} onChange={(e) => setNewBL(e.target.value)} style={{ flex: 1 }} />
+              <button type="submit" className="btn btn-danger btn-md"><Ban size={16} aria-hidden="true" /> Block</button>
+            </form>
+            {blacklist.length > 0 && (
+              <ul className="list-rows">
+                {blacklist.map((ip, i) => (
+                  <li key={i} style={{ ...rowStyle, background: 'var(--red-light)', borderColor: 'var(--red-border)' }}>
+                    <span className="mono">{ip}</span>
+                    <button type="button" className="icon-btn" aria-label={`Remove ${ip} from the block list`} onClick={() => setBlacklist(blacklist.filter((_, j) => j !== i))}>
+                      <X size={16} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          {blacklist.map((ip, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(239,68,68,0.05)', borderRadius: 6, marginBottom: 6, fontFamily: 'monospace', fontSize: '0.85rem', border: '1px solid rgba(239,68,68,0.15)' }}>
-              {ip} <button className="btn btn-ghost btn-sm" onClick={() => setBlacklist(blacklist.filter((_, j) => j !== i))} style={{ color: 'var(--text-muted)', padding: '2px 6px' }}>✕</button>
-            </div>
-          ))}
-        </div>
+        </section>
       </div>
-      <div style={{ marginTop: 20 }}><button className="btn btn-primary" onClick={save}>💾 Save IP Rules</button></div>
+      <p className="form-hint">Changes to either list take effect after you save.</p>
     </div>
   );
 }
@@ -289,6 +493,8 @@ function IPRulesPanel() {
 // ═══════════════════════════════════════════════════════
 // AUDIT TRAIL PANEL
 // ═══════════════════════════════════════════════════════
+const ACTION_TONE = { LOGIN: 'success', LOGIN_FAILED: 'danger', CREATE: 'info', DELETE: 'danger', FORCE_LOGOUT: 'warning' };
+
 function AuditTrailPanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -297,71 +503,89 @@ function AuditTrailPanel() {
   const load = useCallback(() => {
     setLoading(true);
     const q = Object.entries(filters).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('&');
-    api.get(`/security/audit-trail?${q}`).then(r => setData(r.data.data)).catch(console.error).finally(() => setLoading(false));
+    api.get(`/security/audit-trail?${q}`).then((r) => setData(r.data.data)).catch(console.error).finally(() => setLoading(false));
   }, [filters]);
 
   useEffect(() => { load(); }, [load]);
 
-  const actionColor = (a) => a === 'LOGIN' ? 'green' : a === 'LOGIN_FAILED' ? 'red' : a === 'CREATE' ? 'blue' : a === 'DELETE' ? 'red' : a === 'FORCE_LOGOUT' ? 'amber' : 'teal';
+  const logs = data?.logs || [];
 
   return (
-    <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>📋 Audit Trail</h2>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Immutable log of every action — who, what, when, where</p>
+    <div className="stack">
+      <SubHead title="Audit trail" description="A permanent log of every action: who, what, when and from where." />
 
-      <div className="card" style={{ marginBottom: 20, padding: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <div className="form-group" style={{ margin: 0, flex: 1, minWidth: 140 }}>
-          <label className="form-label" style={{ fontSize: '0.7rem' }}>Action</label>
-          <select className="form-select" value={filters.action} onChange={e => setFilters({ ...filters, action: e.target.value, page: 1 })}>
-            <option value="">All Actions</option>
-            {data?.filters?.actions?.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </div>
-        <div className="form-group" style={{ margin: 0, flex: 1, minWidth: 140 }}>
-          <label className="form-label" style={{ fontSize: '0.7rem' }}>Module</label>
-          <select className="form-select" value={filters.module} onChange={e => setFilters({ ...filters, module: e.target.value, page: 1 })}>
-            <option value="">All Modules</option>
-            {data?.filters?.modules?.map(m => <option key={m} value={m}>{m}</option>)}
-          </select>
-        </div>
-        <div className="form-group" style={{ margin: 0, minWidth: 140 }}>
-          <label className="form-label" style={{ fontSize: '0.7rem' }}>From</label>
-          <input type="date" className="form-input" value={filters.from_date} onChange={e => setFilters({ ...filters, from_date: e.target.value, page: 1 })} />
-        </div>
-        <div className="form-group" style={{ margin: 0, minWidth: 140 }}>
-          <label className="form-label" style={{ fontSize: '0.7rem' }}>To</label>
-          <input type="date" className="form-input" value={filters.to_date} onChange={e => setFilters({ ...filters, to_date: e.target.value, page: 1 })} />
-        </div>
-        <button className="btn btn-outline" onClick={() => setFilters({ action: '', module: '', from_date: '', to_date: '', page: 1 })}>Clear</button>
-      </div>
-
-      {loading ? <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" /></div> : (
-        <>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-            Showing {data?.logs?.length} of {data?.total} records • Page {data?.page}/{data?.pages || 1}
+      <section className="panel">
+        <div className="toolbar" style={{ alignItems: 'flex-end' }}>
+          <div className="form-group" style={{ flex: 1, minWidth: 150 }}>
+            <label className="form-label" htmlFor="at-action">Action</label>
+            <select id="at-action" className="form-select" value={filters.action} onChange={(e) => setFilters({ ...filters, action: e.target.value, page: 1 })}>
+              <option value="">All actions</option>
+              {data?.filters?.actions?.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
           </div>
-          <div className="table-wrapper" style={{ maxHeight: 500, overflowY: 'auto' }}>
-            <table><thead><tr><th>User</th><th>Action</th><th>Module</th><th>IP Address</th><th>Details</th><th>Timestamp</th></tr></thead>
-              <tbody>{data?.logs?.map((log, i) => (
-                <tr key={i}>
-                  <td style={{ fontWeight: 600 }}>{log.USERNAME || log.USER_NAME || `#${log.USER_ID}`}</td>
-                  <td><span className={`badge badge-${actionColor(log.ACTION)}`}>{log.ACTION}</span></td>
-                  <td>{log.MODULE || '—'}</td>
-                  <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{log.IP_ADDRESS || '—'}</td>
-                  <td style={{ fontSize: '0.78rem', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{log.NEW_VALUE || '—'}</td>
-                  <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{log.CREATED_AT ? new Date(log.CREATED_AT).toLocaleString('en-IN') : '—'}</td>
+          <div className="form-group" style={{ flex: 1, minWidth: 150 }}>
+            <label className="form-label" htmlFor="at-module">Module</label>
+            <select id="at-module" className="form-select" value={filters.module} onChange={(e) => setFilters({ ...filters, module: e.target.value, page: 1 })}>
+              <option value="">All modules</option>
+              {data?.filters?.modules?.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="at-from">From</label>
+            <input id="at-from" type="date" className="form-input" value={filters.from_date} onChange={(e) => setFilters({ ...filters, from_date: e.target.value, page: 1 })} />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="at-to">To</label>
+            <input id="at-to" type="date" className="form-input" value={filters.to_date} onChange={(e) => setFilters({ ...filters, to_date: e.target.value, page: 1 })} />
+          </div>
+          <button type="button" className="btn btn-ghost btn-md" onClick={() => setFilters({ action: '', module: '', from_date: '', to_date: '', page: 1 })}>Clear</button>
+        </div>
+
+        <div className="dt">
+          <div className="dt-scroll" style={{ maxHeight: 560 }}>
+            <table className="dt-table">
+              <thead>
+                <tr>
+                  <th>User</th><th style={{ width: 160 }}>Action</th><th style={{ width: 120 }}>Module</th>
+                  <th style={{ width: 150 }}>IP address</th><th>Details</th><th style={{ width: 190 }}>Time</th>
                 </tr>
-              ))}</tbody></table>
+              </thead>
+              <tbody>
+                {loading && Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={`sk-${i}`} className="dt-skeleton-row" aria-hidden="true">
+                    {Array.from({ length: 6 }).map((__, j) => <td key={j}><span className="skeleton" style={{ width: `${45 + ((i * 7 + j * 13) % 45)}%` }} /></td>)}
+                  </tr>
+                ))}
+                {!loading && logs.length === 0 && (
+                  <tr><td colSpan={6} className="dt-empty-cell"><EmptyState icon={ScrollText} title="No audit records" description="No actions match these filters." /></td></tr>
+                )}
+                {!loading && logs.map((log, i) => (
+                  <tr key={log.ID ?? i}>
+                    <td className="cell-primary">{log.USERNAME || log.USER_NAME || `#${log.USER_ID}`}</td>
+                    <td><span className={`status status-${ACTION_TONE[log.ACTION] || 'neutral'}`}>{log.ACTION}</span></td>
+                    <td>{log.MODULE || '—'}</td>
+                    <td className="mono">{log.IP_ADDRESS || '—'}</td>
+                    <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }} title={log.NEW_VALUE || ''}>{log.NEW_VALUE || '—'}</td>
+                    <td className="tabular cell-secondary" style={{ whiteSpace: 'nowrap' }}>{fmtDateTime(log.CREATED_AT)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          {data?.pages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16 }}>
-              <button className="btn btn-outline btn-sm" disabled={data.page <= 1} onClick={() => setFilters({ ...filters, page: data.page - 1 })}>← Prev</button>
-              <span style={{ padding: '6px 16px', fontSize: '0.85rem' }}>Page {data.page} of {data.pages}</span>
-              <button className="btn btn-outline btn-sm" disabled={data.page >= data.pages} onClick={() => setFilters({ ...filters, page: data.page + 1 })}>Next →</button>
+          {!loading && data && (
+            <div className="dt-footer">
+              <span className="dt-count">Showing <strong>{logs.length}</strong> of <strong>{data.total}</strong> records</span>
+              {data.pages > 1 && (
+                <div className="dt-pager">
+                  <button type="button" className="icon-btn" disabled={data.page <= 1} onClick={() => setFilters({ ...filters, page: data.page - 1 })} aria-label="Previous page"><ChevronLeft size={16} /></button>
+                  <span>Page {data.page} of {data.pages}</span>
+                  <button type="button" className="icon-btn" disabled={data.page >= data.pages} onClick={() => setFilters({ ...filters, page: data.page + 1 })} aria-label="Next page"><ChevronRight size={16} /></button>
+                </div>
+              )}
             </div>
           )}
-        </>
-      )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -372,62 +596,75 @@ function AuditTrailPanel() {
 function SystemHealthPanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const load = () => { setLoading(true); api.get('/security/system-health').then(r => setData(r.data.data)).catch(console.error).finally(() => setLoading(false)); };
+  const load = () => { setLoading(true); api.get('/security/system-health').then((r) => setData(r.data.data)).catch(console.error).finally(() => setLoading(false)); };
   useEffect(() => { load(); const iv = setInterval(load, 15000); return () => clearInterval(iv); }, []);
-  if (loading && !data) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
+  if (loading && !data) return <Loading />;
 
   const memPct = parseFloat(data?.memory?.usage_percent || 0);
-  const memColor = memPct > 90 ? '#ef4444' : memPct > 70 ? '#fbbf24' : 'var(--green)';
+  const memColor = memPct > 90 ? 'var(--red)' : memPct > 70 ? 'var(--amber)' : 'var(--success)';
+  const memLabel = memPct > 90 ? 'Critical' : memPct > 70 ? 'High' : 'Normal';
+  const dbSlow = data?.database?.response_time_ms > 200;
+
+  const facts = [
+    { label: 'Uptime', value: data?.server?.uptime_human },
+    { label: 'Platform', value: `${data?.server?.platform} (${data?.server?.arch})` },
+    { label: 'Node.js', value: data?.server?.node_version },
+    { label: 'CPU cores', value: data?.cpu?.cores },
+    { label: 'DB records', value: `${data?.database?.total_users} users, ${data?.database?.total_audit_logs} audit logs` },
+  ];
 
   return (
-    <div className="fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>💓 System Health</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Live server metrics — auto-refreshes every 15s</p></div>
-        <button className="btn btn-outline" onClick={load}>↻ Refresh</button>
+    <div className="stack">
+      <SubHead
+        title="System health"
+        description="Live server metrics. Refreshes every 15 seconds."
+        actions={<button type="button" className="btn btn-ghost btn-md" onClick={load}><RefreshCw size={16} aria-hidden="true" /> Refresh</button>}
+      />
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+        {data?.services?.map((s) => {
+          const ok = s.status === 'running' || s.status === 'healthy' || s.status === 'active';
+          return (
+            <div key={s.name} className="panel panel-pad" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              <span className="cell-stack">
+                <span className="cell-primary">{s.name}</span>
+                <span className="cell-secondary">{s.uptime || s.response || ''}</span>
+              </span>
+              <span className={`status ${ok ? 'status-success' : 'status-danger'}`}>{s.status}</span>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Services Status */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14, marginBottom: 28 }}>
-        {data?.services?.map(s => (
-          <div key={s.name} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div><div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{s.name}</div><div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{s.uptime || s.response || ''}</div></div>
-            <span className={`badge badge-${s.status === 'running' || s.status === 'healthy' || s.status === 'active' ? 'green' : 'red'}`}>{s.status}</span>
+      <div className="split-2">
+        <section className="panel panel-pad">
+          <h3 className="panel-title">Memory usage</h3>
+          <div className="bar-row">
+            <span>{memLabel}</span>
+            <strong className="tabular" style={{ color: memColor }}>{memPct}%</strong>
           </div>
-        ))}
-      </div>
+          <div className="bar-track" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={memPct} aria-label="Memory usage">
+            <div className="bar-fill" style={{ width: `${Math.min(memPct, 100)}%`, background: memColor }} />
+          </div>
+          <div className="facts" style={{ marginTop: 16 }}>
+            <div><div className="fact-label">Total</div><div className="fact-value tabular">{data?.memory?.total_gb} GB</div></div>
+            <div><div className="fact-label">Used</div><div className="fact-value tabular">{data?.memory?.used_gb} GB</div></div>
+            <div><div className="fact-label">Free</div><div className="fact-value tabular">{data?.memory?.free_gb} GB</div></div>
+          </div>
+        </section>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-        {/* Memory */}
-        <div className="card">
-          <SectionTitle>Memory Usage</SectionTitle>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-            <div style={{ position: 'relative', width: 100, height: 100 }}>
-              <svg viewBox="0 0 36 36" style={{ width: 100, height: 100, transform: 'rotate(-90deg)' }}>
-                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="var(--border)" strokeWidth="3" />
-                <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={memColor} strokeWidth="3" strokeDasharray={`${memPct}, 100`} strokeLinecap="round" />
-              </svg>
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem', color: memColor }}>{memPct}%</div>
-            </div>
-            <div style={{ fontSize: '0.85rem' }}>
-              <div><strong>Total:</strong> {data?.memory?.total_gb} GB</div>
-              <div><strong>Used:</strong> {data?.memory?.used_gb} GB</div>
-              <div><strong>Free:</strong> {data?.memory?.free_gb} GB</div>
+        <section className="panel panel-pad">
+          <h3 className="panel-title">Server information</h3>
+          <div className="facts">
+            {facts.map((f) => (
+              <div key={f.label}><div className="fact-label">{f.label}</div><div className="fact-value">{f.value ?? '—'}</div></div>
+            ))}
+            <div>
+              <div className="fact-label">DB response</div>
+              <div className="fact-value"><span className={`status ${dbSlow ? 'status-danger' : 'status-success'}`}>{data?.database?.response_time_ms} ms</span></div>
             </div>
           </div>
-        </div>
-
-        {/* Server Info */}
-        <div className="card">
-          <SectionTitle>Server Information</SectionTitle>
-          <table style={{ width: '100%', fontSize: '0.85rem' }}><tbody>
-            <tr><td style={{ color: 'var(--text-muted)', padding: '4px 0' }}>Uptime</td><td style={{ fontWeight: 600 }}>{data?.server?.uptime_human}</td></tr>
-            <tr><td style={{ color: 'var(--text-muted)', padding: '4px 0' }}>Platform</td><td>{data?.server?.platform} ({data?.server?.arch})</td></tr>
-            <tr><td style={{ color: 'var(--text-muted)', padding: '4px 0' }}>Node.js</td><td>{data?.server?.node_version}</td></tr>
-            <tr><td style={{ color: 'var(--text-muted)', padding: '4px 0' }}>CPU Cores</td><td>{data?.cpu?.cores}</td></tr>
-            <tr><td style={{ color: 'var(--text-muted)', padding: '4px 0' }}>DB Response</td><td style={{ color: data?.database?.response_time_ms > 200 ? '#ef4444' : 'var(--green)', fontWeight: 600 }}>{data?.database?.response_time_ms}ms</td></tr>
-            <tr><td style={{ color: 'var(--text-muted)', padding: '4px 0' }}>DB Records</td><td>{data?.database?.total_users} users, {data?.database?.total_audit_logs} audit logs</td></tr>
-          </tbody></table>
-        </div>
+        </section>
       </div>
     </div>
   );
@@ -440,43 +677,61 @@ function BackupPanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
-  const load = () => api.get('/security/backups').then(r => setData(r.data.data)).catch(console.error).finally(() => setLoading(false));
+  const load = () => api.get('/security/backups').then((r) => setData(r.data.data)).catch(console.error).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const triggerBackup = async () => {
     setTriggering(true);
-    try { await api.post('/security/backups/trigger'); load(); alert('Backup completed!'); } catch { alert('Backup failed'); }
+    try { await api.post('/security/backups/trigger'); load(); toast.success('Backup completed'); } catch { toast.error('Backup failed'); }
     setTriggering(false);
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
+  if (loading) return <Loading />;
 
   return (
-    <div className="fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>📦 Backup & Recovery</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Manage database backups and restore points</p></div>
-        <button className="btn btn-primary" onClick={triggerBackup} disabled={triggering}>{triggering ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : '🔄 Trigger Manual Backup'}</button>
+    <div className="stack">
+      <SubHead
+        title="Backup and recovery"
+        description="Database backups and restore points."
+        actions={(
+          <button type="button" className="btn btn-primary btn-md" onClick={triggerBackup} disabled={triggering}>
+            <DatabaseBackup size={16} aria-hidden="true" /> {triggering ? 'Backing up…' : 'Back up now'}
+          </button>
+        )}
+      />
+
+      <div className="kpi-strip" style={{ marginBottom: 0 }}>
+        <Kpi label="Schedule" value={data?.schedule?.frequency} sub={`at ${data?.schedule?.time}`} />
+        <Kpi label="Last backup" value={data?.last_backup ? fmtDate(data.last_backup) : 'Never'} tone={data?.last_backup ? undefined : 'warning'} />
+        <Kpi label="Retention" value={`${data?.schedule?.retention_days} days`} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
-        <StatCard icon="📅" label="Schedule" value={data?.schedule?.frequency} sub={`at ${data?.schedule?.time}`} color="var(--blue)" />
-        <StatCard icon="🕐" label="Last Backup" value={data?.last_backup ? new Date(data.last_backup).toLocaleDateString() : 'Never'} color="var(--green)" />
-        <StatCard icon="📁" label="Retention" value={`${data?.schedule?.retention_days} days`} color="var(--teal)" />
-      </div>
-
-      <SectionTitle>Backup History</SectionTitle>
-      <div className="table-wrapper">
-        <table><thead><tr><th>Date</th><th>Type</th><th>Size</th><th>Tables</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody>{data?.history?.map(b => (
-            <tr key={b.id}>
-              <td style={{ fontSize: '0.85rem' }}>{new Date(b.timestamp).toLocaleString('en-IN')}</td>
-              <td><span className={`badge badge-${b.type === 'Manual' ? 'blue' : 'green'}`}>{b.type}</span></td>
-              <td>{b.size}</td><td>{b.tables}</td>
-              <td><span className="badge badge-green">{b.status}</span></td>
-              <td><button className="btn btn-outline btn-sm">↩ Restore</button></td>
-            </tr>
-          ))}</tbody></table>
-      </div>
+      <section className="panel">
+        <PanelHead icon={DatabaseBackup} title="Backup history" />
+        <div className="panel-pad">
+          {(data?.history || []).length === 0 ? <p className="muted">No backups yet.</p> : (
+            <table className="mini-table">
+              <thead><tr><th>Date</th><th>Type</th><th>Size</th><th>Tables</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
+              <tbody>
+                {data.history.map((b) => (
+                  <tr key={b.id}>
+                    <td className="tabular">{fmtDateTime(b.timestamp)}</td>
+                    <td><span className={`status ${b.type === 'Manual' ? 'status-info' : 'status-neutral'}`}>{b.type}</span></td>
+                    <td className="tabular">{b.size}</td>
+                    <td className="tabular">{b.tables}</td>
+                    <td><span className="status status-success">{b.status}</span></td>
+                    <td className="text-right">
+                      <button type="button" className="btn btn-ghost btn-sm" disabled title="Restore is not available from this screen yet">
+                        <RotateCcw size={14} aria-hidden="true" /> Restore
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -490,52 +745,51 @@ function MaintenancePanel() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/security/maintenance').then(r => { setEnabled(r.data.data.enabled); setMessage(r.data.data.message); }).finally(() => setLoading(false));
+    api.get('/security/maintenance')
+      .then((r) => { setEnabled(r.data.data.enabled); setMessage(r.data.data.message); })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
   const save = async () => {
-    try { await api.put('/security/maintenance', { enabled, message }); alert(`Maintenance mode ${enabled ? 'ENABLED' : 'DISABLED'}`); } catch { alert('Failed'); }
+    try { await api.put('/security/maintenance', { enabled, message }); toast.success(`Maintenance mode ${enabled ? 'enabled' : 'disabled'}`); } catch { toast.error('Failed to save maintenance mode'); }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
+  if (loading) return <Loading />;
 
   return (
-    <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🔨 Maintenance Mode</h2>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 24 }}>Take the system offline for updates and show a downtime notice</p>
+    <div className="stack" style={{ maxWidth: 640 }}>
+      <SubHead title="Maintenance mode" description="Take the system offline for updates and show a downtime notice." />
 
-      <div className="card" style={{ maxWidth: 600, borderTop: `4px solid ${enabled ? '#ef4444' : 'var(--green)'}` }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>System Status</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Toggle maintenance mode on/off</div>
+      <section className="panel">
+        <div className="panel-pad stack">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div>
+              <div className="cell-primary" id="mm-label">Maintenance mode</div>
+              <div className="muted">When on, staff cannot use the system.</div>
+            </div>
+            <Switch checked={enabled} onChange={() => setEnabled(!enabled)} label="Maintenance mode" />
           </div>
-          <div onClick={() => setEnabled(!enabled)} style={{
-            width: 56, height: 28, borderRadius: 14, padding: 3, cursor: 'pointer', transition: 'all 0.3s',
-            background: enabled ? '#ef4444' : 'var(--green)',
-            display: 'flex', alignItems: 'center', justifyContent: enabled ? 'flex-end' : 'flex-start',
-          }}>
-            <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#fff', boxShadow: '0 2px 4px rgba(0,0,0,0.15)', transition: 'all 0.3s' }} />
+
+          {enabled ? (
+            <div className="alert-strip alert-danger" role="status" style={{ marginBottom: 0 }}>
+              <CircleAlert size={16} aria-hidden="true" /> Maintenance mode is on. Users cannot access the system.
+            </div>
+          ) : (
+            <div className="alert-strip" role="status" style={{ marginBottom: 0, background: 'var(--success-light)', borderColor: 'var(--success-border)', color: 'var(--success)' }}>
+              <CircleCheck size={16} aria-hidden="true" /> The system is online. All users can access it normally.
+            </div>
+          )}
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="mm-message">Downtime message</label>
+            <textarea id="mm-message" className="form-textarea" value={message} onChange={(e) => setMessage(e.target.value)} rows={3} />
+            <p className="form-hint">Shown to users while maintenance mode is on.</p>
           </div>
-        </div>
 
-        <div style={{
-          padding: '16px 20px', borderRadius: 10, marginBottom: 20,
-          background: enabled ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)',
-          border: `1px solid ${enabled ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`,
-          fontWeight: 600, textAlign: 'center', fontSize: '1rem',
-          color: enabled ? '#ef4444' : 'var(--green)',
-        }}>
-          {enabled ? '⚠️ MAINTENANCE MODE IS ON — Users cannot access the system' : '✅ System is ONLINE — All users can access normally'}
+          <div><button type="button" className="btn btn-primary btn-md" onClick={save}><Save size={16} aria-hidden="true" /> Save changes</button></div>
         </div>
-
-        <div className="form-group" style={{ marginBottom: 20 }}>
-          <label className="form-label">Downtime Message</label>
-          <textarea className="form-textarea" value={message} onChange={e => setMessage(e.target.value)} rows={3} />
-        </div>
-
-        <button className="btn btn-primary" onClick={save}>💾 Save Changes</button>
-      </div>
+      </section>
     </div>
   );
 }
@@ -549,62 +803,109 @@ function APIManagerPanel() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPerms, setNewPerms] = useState(['read']);
+  const [revokeTarget, setRevokeTarget] = useState(null);
 
-  const load = () => api.get('/security/api-keys').then(r => setKeys(r.data.data)).catch(console.error).finally(() => setLoading(false));
+  const load = () => api.get('/security/api-keys').then((r) => setKeys(r.data.data)).catch(console.error).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const create = async () => {
     if (!newName) return;
-    try { await api.post('/security/api-keys', { name: newName, permissions: newPerms }); setNewName(''); setShowCreate(false); load(); } catch { alert('Failed'); }
+    try {
+      await api.post('/security/api-keys', { name: newName, permissions: newPerms });
+      setNewName(''); setShowCreate(false); load();
+      toast.success('API key generated');
+    } catch { toast.error('Failed to generate API key'); }
   };
 
   const revoke = async (id) => {
-    if (!confirm('Revoke this API key? This cannot be undone.')) return;
-    try { await api.delete(`/security/api-keys/${id}`); load(); } catch { alert('Failed'); }
+    try {
+      await api.delete(`/security/api-keys/${id}`);
+      setRevokeTarget(null);
+      toast.success('API key revoked');
+      load();
+    } catch { toast.error('Failed to revoke API key'); }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
+  const list = Array.isArray(keys) ? keys : [];
+
+  const columns = useMemo(() => [
+    { id: 'name', header: 'Name', accessorFn: (k) => k.name || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    { id: 'key', header: 'Key', accessorFn: (k) => k.key || '', enableSorting: false, cell: ({ row }) => <span className="mono">{row.original.key?.substring(0, 20)}…</span> },
+    {
+      id: 'perms', header: 'Permissions', accessorFn: (k) => (k.permissions || []).join(', '), enableSorting: false,
+      cell: ({ row }) => <span className="chip-row">{(row.original.permissions || []).map((p) => <span key={p} className="tag">{p}</span>)}</span>,
+    },
+    { id: 'created', header: 'Created', accessorFn: (k) => (k.created_at ? new Date(k.created_at).getTime() : 0), meta: { width: 130 }, cell: ({ row }) => <span className="tabular">{fmtDate(row.original.created_at)}</span> },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 120, align: 'right' },
+      cell: ({ row }) => (
+        <button type="button" className="btn btn-danger btn-sm" onClick={() => setRevokeTarget(row.original)}>
+          <Trash2 size={14} aria-hidden="true" /> Revoke
+        </button>
+      ),
+    },
+  ], []);
+
+  if (loading) return <Loading />;
+
+  const generateButton = (
+    <button type="button" className="btn btn-primary btn-md" onClick={() => setShowCreate(true)}>
+      <Plus size={16} aria-hidden="true" /> Generate key
+    </button>
+  );
 
   return (
-    <div className="fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>⚡ API Manager</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Generate, manage, and revoke API keys</p></div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(!showCreate)}>+ Generate Key</button>
-      </div>
+    <div className="stack">
+      <SubHead title="API keys" description="Generate, manage and revoke keys for integrations." actions={generateButton} />
 
-      {showCreate && (
-        <div className="card fade-up" style={{ marginBottom: 20, borderTop: '3px solid var(--blue)' }}>
-          <div className="form-group"><label className="form-label">Key Name</label><input className="form-input" value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Lab Machine Integration" /></div>
+      <section className="panel">
+        <DataTable
+          columns={columns}
+          data={list}
+          getRowId={(k) => String(k.id)}
+          empty={<EmptyState icon={KeyRound} title="No API keys" description="Generate a key to enable an integration." action={generateButton} />}
+        />
+      </section>
+
+      <Modal
+        open={showCreate}
+        onOpenChange={setShowCreate}
+        title="Generate API key"
+        description="The key is shown in the list once it is generated."
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setShowCreate(false)}>Cancel</button>
+            <button type="submit" form="apikey-form" className="btn btn-primary btn-md">Generate key</button>
+          </>
+        )}
+      >
+        <form id="apikey-form" onSubmit={(e) => { e.preventDefault(); create(); }} style={{ display: 'grid', gap: 14 }}>
           <div className="form-group">
-            <label className="form-label">Permissions</label>
-            <div style={{ display: 'flex', gap: 12 }}>
-              {['read', 'write', 'admin'].map(p => (
-                <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'capitalize' }}>
-                  <input type="checkbox" checked={newPerms.includes(p)} onChange={() => setNewPerms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])} /> {p}
+            <label className="form-label" htmlFor="ak-name">Key name</label>
+            <input id="ak-name" className="form-input" required value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Lab machine integration" />
+          </div>
+          <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+            <legend className="form-label" style={{ marginBottom: 6 }}>Permissions</legend>
+            <div style={{ display: 'flex', gap: 16 }}>
+              {['read', 'write', 'admin'].map((p) => (
+                <label key={p} className="check-row">
+                  <input type="checkbox" checked={newPerms.includes(p)} onChange={() => setNewPerms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]))} /> {sentence(p)}
                 </label>
               ))}
             </div>
-          </div>
-          <button className="btn btn-primary" onClick={create}>Generate API Key</button>
-        </div>
-      )}
+          </fieldset>
+        </form>
+      </Modal>
 
-      {keys.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 50 }}><div style={{ fontSize: '3rem', marginBottom: 12 }}>🔑</div><h3>No API Keys</h3><p style={{ color: 'var(--text-muted)' }}>Generate your first API key to enable integrations.</p></div>
-      ) : (
-        <div className="table-wrapper">
-          <table><thead><tr><th>Name</th><th>Key</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
-            <tbody>{keys.map(k => (
-              <tr key={k.id}>
-                <td style={{ fontWeight: 600 }}>{k.name}</td>
-                <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.key?.substring(0, 20)}...</td>
-                <td>{k.permissions?.map(p => <span key={p} className="badge badge-blue" style={{ marginRight: 4 }}>{p}</span>)}</td>
-                <td style={{ fontSize: '0.82rem' }}>{new Date(k.created_at).toLocaleDateString()}</td>
-                <td><button className="btn btn-sm btn-ghost" style={{ color: '#ef4444' }} onClick={() => revoke(k.id)}>🗑 Revoke</button></td>
-              </tr>
-            ))}</tbody></table>
-        </div>
-      )}
+      <ConfirmModal
+        target={revokeTarget}
+        onClose={() => setRevokeTarget(null)}
+        title="Revoke this API key?"
+        description={revokeTarget ? `${revokeTarget.name} will stop working immediately.` : ''}
+        confirmLabel="Revoke key"
+        cancelLabel="Keep key"
+        onConfirm={(k) => revoke(k.id)}
+      />
     </div>
   );
 }
@@ -612,62 +913,132 @@ function APIManagerPanel() {
 // ═══════════════════════════════════════════════════════
 // ANNOUNCEMENTS PANEL
 // ═══════════════════════════════════════════════════════
+const SEVERITY_TONE = { info: 'info', warning: 'warning', critical: 'danger' };
+const EMPTY_ANNOUNCEMENT = { title: '', message: '', severity: 'info', target_roles: ['all'] };
+
 function AnnouncementsPanel() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', message: '', severity: 'info', target_roles: ['all'] });
+  const [form, setForm] = useState(EMPTY_ANNOUNCEMENT);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const load = () => api.get('/security/announcements').then(r => setItems(r.data.data)).catch(console.error).finally(() => setLoading(false));
+  const load = () => api.get('/security/announcements').then((r) => setItems(r.data.data)).catch(console.error).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const create = async () => {
-    if (!form.title || !form.message) return alert('Fill all fields');
-    try { await api.post('/security/announcements', form); setForm({ title: '', message: '', severity: 'info', target_roles: ['all'] }); setShowForm(false); load(); } catch { alert('Failed'); }
+    if (!form.title || !form.message) return toast.error('Enter a title and a message');
+    try {
+      await api.post('/security/announcements', form);
+      setForm(EMPTY_ANNOUNCEMENT); setShowForm(false); load();
+      toast.success('Announcement published');
+    } catch { toast.error('Failed to publish announcement'); }
   };
 
-  const remove = async (id) => { if (!confirm('Delete?')) return; try { await api.delete(`/security/announcements/${id}`); load(); } catch { alert('Failed'); } };
+  const remove = async (id) => {
+    try {
+      await api.delete(`/security/announcements/${id}`);
+      setDeleteTarget(null);
+      toast.success('Announcement deleted');
+      load();
+    } catch { toast.error('Failed to delete announcement'); }
+  };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
+  const list = Array.isArray(items) ? items : [];
 
-  const sevColor = { info: 'var(--blue)', warning: '#fbbf24', critical: '#ef4444' };
+  const columns = useMemo(() => [
+    {
+      id: 'title', header: 'Announcement', accessorFn: (a) => a.title || '',
+      cell: ({ row }) => (
+        <span className="cell-stack" style={{ maxWidth: 620 }}>
+          <span className="cell-primary">{row.original.title}</span>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.86rem' }}>{row.original.message}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'severity', header: 'Severity', accessorFn: (a) => a.severity || '', meta: { width: 120 },
+      cell: ({ getValue }) => <span className={`status status-${SEVERITY_TONE[getValue()] || 'neutral'}`}>{sentence(getValue())}</span>,
+    },
+    {
+      id: 'posted', header: 'Posted', accessorFn: (a) => (a.created_at ? new Date(a.created_at).getTime() : 0), meta: { width: 210 },
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="tabular">{fmtDateTime(row.original.created_at)}</span>
+          <span className="cell-secondary">By {row.original.created_by}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 56, align: 'right' },
+      cell: ({ row }) => (
+        <button type="button" className="icon-btn row-action" aria-label={`Delete announcement ${row.original.title}`} onClick={() => setDeleteTarget(row.original)}>
+          <Trash2 size={16} aria-hidden="true" />
+        </button>
+      ),
+    },
+  ], []);
+
+  if (loading) return <Loading />;
+
+  const newButton = (
+    <button type="button" className="btn btn-primary btn-md" onClick={() => setShowForm(true)}>
+      <Plus size={16} aria-hidden="true" /> New announcement
+    </button>
+  );
 
   return (
-    <div className="fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>📢 Announcements</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Broadcast notices to users across the hospital</p></div>
-        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>+ New Announcement</button>
-      </div>
+    <div className="stack">
+      <SubHead title="Announcements" description="Broadcast notices to users across the hospital." actions={newButton} />
 
-      {showForm && (
-        <div className="card fade-up" style={{ marginBottom: 20, borderTop: '3px solid var(--blue)' }}>
-          <div className="form-group"><label className="form-label">Title</label><input className="form-input" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></div>
-          <div className="form-group"><label className="form-label">Message</label><textarea className="form-textarea" value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} rows={3} /></div>
-          <div className="form-group"><label className="form-label">Severity</label>
-            <select className="form-select" value={form.severity} onChange={e => setForm({ ...form, severity: e.target.value })}>
+      <section className="panel">
+        <DataTable
+          columns={columns}
+          data={list}
+          getRowId={(a) => String(a.id)}
+          initialSorting={[{ id: 'posted', desc: true }]}
+          empty={<EmptyState icon={Megaphone} title="No announcements" description="Publish an announcement to notify users." action={newButton} />}
+        />
+      </section>
+
+      <Modal
+        open={showForm}
+        onOpenChange={setShowForm}
+        title="New announcement"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setShowForm(false)}>Cancel</button>
+            <button type="submit" form="announcement-form" className="btn btn-primary btn-md">Publish</button>
+          </>
+        )}
+      >
+        <form id="announcement-form" onSubmit={(e) => { e.preventDefault(); create(); }} style={{ display: 'grid', gap: 14 }}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="an-title">Title</label>
+            <input id="an-title" className="form-input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="an-message">Message</label>
+            <textarea id="an-message" className="form-textarea" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={3} />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="an-severity">Severity</label>
+            <select id="an-severity" className="form-select" value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value })}>
               <option value="info">Info</option><option value="warning">Warning</option><option value="critical">Critical</option>
             </select>
           </div>
-          <button className="btn btn-primary" onClick={create}>📤 Publish</button>
-        </div>
-      )}
+        </form>
+      </Modal>
 
-      {items.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 50 }}><div style={{ fontSize: '3rem', marginBottom: 12 }}>📭</div><h3>No Announcements</h3></div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {items.map(a => (
-            <div key={a.id} className="card" style={{ borderLeft: `4px solid ${sevColor[a.severity] || 'var(--border)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div style={{ fontWeight: 700, marginBottom: 4 }}>{a.title}</div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 6 }}>{a.message}</p>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>By {a.created_by} • {new Date(a.created_at).toLocaleString('en-IN')}</div>
-              </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => remove(a.id)} style={{ color: '#ef4444' }}>🗑</button>
-            </div>
-          ))}
-        </div>
-      )}
+      <ConfirmModal
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete this announcement?"
+        description={deleteTarget ? `"${deleteTarget.title}" will no longer be shown to users.` : ''}
+        confirmLabel="Delete announcement"
+        cancelLabel="Keep announcement"
+        onConfirm={(a) => remove(a.id)}
+      />
     </div>
   );
 }
@@ -678,34 +1049,35 @@ function AnnouncementsPanel() {
 function ErrorLogsPanel() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const load = () => { setLoading(true); api.get('/security/error-logs').then(r => setLogs(r.data.data)).catch(console.error).finally(() => setLoading(false)); };
+  const load = () => { setLoading(true); api.get('/security/error-logs').then((r) => setLogs(r.data.data)).catch(console.error).finally(() => setLoading(false)); };
   useEffect(() => { load(); }, []);
 
-  return (
-    <div className="fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>🐛 Error Logs</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Application errors, stack traces, API failures</p></div>
-        <button className="btn btn-outline" onClick={load}>↻ Refresh</button>
-      </div>
+  const columns = useMemo(() => [
+    { id: 'level', header: 'Level', accessorFn: (l) => l.level || '', meta: { width: 110 }, cell: ({ getValue }) => <span className="status status-danger">{getValue()}</span> },
+    {
+      id: 'message', header: 'Message', accessorFn: (l) => l.message || '', enableSorting: false,
+      cell: ({ getValue }) => <span className="mono" style={{ color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{getValue()}</span>,
+    },
+    { id: 'time', header: 'Time', accessorFn: (l) => (l.timestamp ? new Date(l.timestamp).getTime() : 0), meta: { width: 200 }, cell: ({ row }) => <span className="tabular cell-secondary">{fmtDateTime(row.original.timestamp)}</span> },
+  ], []);
 
-      {logs.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 50 }}><div style={{ fontSize: '3rem', marginBottom: 12 }}>✅</div><h3>No Errors</h3><p style={{ color: 'var(--text-muted)' }}>System is running clean.</p></div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {logs.map(log => (
-            <div key={log.id} style={{
-              background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: '4px solid #ef4444',
-              borderRadius: 8, padding: '12px 16px', fontFamily: 'monospace', fontSize: '0.78rem',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span className="badge badge-red">{log.level}</span>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{new Date(log.timestamp).toLocaleString('en-IN')}</span>
-              </div>
-              <div style={{ color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{log.message}</div>
-            </div>
-          ))}
-        </div>
-      )}
+  return (
+    <div className="stack">
+      <SubHead
+        title="Error logs"
+        description="Application errors and failed API calls."
+        actions={<button type="button" className="btn btn-ghost btn-md" onClick={load}><RefreshCw size={16} aria-hidden="true" /> Refresh</button>}
+      />
+      <section className="panel">
+        <DataTable
+          columns={columns}
+          data={Array.isArray(logs) ? logs : []}
+          loading={loading}
+          getRowId={(l, i) => String(l.id ?? i)}
+          pageSize={50}
+          empty={<EmptyState icon={CircleCheck} title="No errors" description="No application errors have been recorded." />}
+        />
+      </section>
     </div>
   );
 }
@@ -713,52 +1085,58 @@ function ErrorLogsPanel() {
 // ═══════════════════════════════════════════════════════
 // INTEGRATION HUB PANEL
 // ═══════════════════════════════════════════════════════
+const CATEGORY_ICON = { EHR: Hospital, Insurance: ShieldCheck, Communication: Mail, Lab: Microscope, Billing: CreditCard };
+
 function IntegrationHubPanel() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const load = () => api.get('/security/integrations').then(r => setItems(r.data.data)).catch(console.error).finally(() => setLoading(false));
+  const load = () => api.get('/security/integrations').then((r) => setItems(r.data.data)).catch(console.error).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const toggle = async (id) => {
-    try { await api.put(`/security/integrations/${id}/toggle`); load(); } catch { alert('Failed'); }
+    try { await api.put(`/security/integrations/${id}/toggle`); load(); } catch { toast.error('Failed to change the integration'); }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
+  if (loading) return <Loading />;
 
-  const catIcon = { EHR: '🏥', Insurance: '🛡️', Communication: '📧', Lab: '🔬', Billing: '💳' };
+  const list = Array.isArray(items) ? items : [];
 
   return (
-    <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🏥 Integration Hub</h2>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Connect third-party systems — HL7/FHIR, insurance portals, lab machines, gateways</p>
+    <div className="stack">
+      <SubHead title="Integration hub" description="Third-party systems: HL7/FHIR, insurance portals, lab machines and gateways." />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
-        {items.map(intg => (
-          <div key={intg.id} className="card" style={{ borderLeft: `4px solid ${intg.status === 'active' ? 'var(--green)' : 'var(--border)'}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: '1.2rem' }}>{catIcon[intg.category] || '🔗'}</span>
-                  <div style={{ fontWeight: 700 }}>{intg.name}</div>
+      {list.length === 0 ? (
+        <section className="panel"><EmptyState icon={Network} title="No integrations" description="Configured integrations appear here." /></section>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 12 }}>
+          {list.map((intg) => {
+            const Icon = CATEGORY_ICON[intg.category] || Link;
+            const active = intg.status === 'active';
+            return (
+              <section key={intg.id} className="panel panel-pad stack-sm">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                  <span className="cell-person">
+                    <span className="cell-avatar" aria-hidden="true"><Icon size={16} /></span>
+                    <span className="cell-stack">
+                      <span className="cell-primary">{intg.name}</span>
+                      <span className="cell-secondary">{intg.category}</span>
+                    </span>
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <span className={`status ${active ? 'status-success' : 'status-neutral'}`}>{active ? 'Active' : 'Off'}</span>
+                    <Switch checked={active} onChange={() => toggle(intg.id)} label={`${intg.name} integration`} />
+                  </span>
                 </div>
-                <span className="badge" style={{ marginTop: 4, background: 'var(--surface-3)', fontSize: '0.68rem' }}>{intg.category}</span>
-              </div>
-              <div onClick={() => toggle(intg.id)} style={{
-                width: 44, height: 24, borderRadius: 12, padding: 2, cursor: 'pointer', transition: 'all 0.2s',
-                background: intg.status === 'active' ? 'var(--green)' : 'var(--surface-3)',
-                display: 'flex', alignItems: 'center', justifyContent: intg.status === 'active' ? 'flex-end' : 'flex-start',
-              }}>
-                <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-              </div>
-            </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'monospace', marginBottom: 8, wordBreak: 'break-all' }}>{intg.endpoint}</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              <span>Last sync: {intg.last_sync ? new Date(intg.last_sync).toLocaleString('en-IN') : 'Never'}</span>
-              <span>{intg.requests_today} reqs today</span>
-            </div>
-          </div>
-        ))}
-      </div>
+                <div className="mono" style={{ color: 'var(--text-muted)', wordBreak: 'break-all' }}>{intg.endpoint}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  <span>Last sync: {intg.last_sync ? fmtDateTime(intg.last_sync) : 'Never'}</span>
+                  <span className="tabular">{intg.requests_today} requests today</span>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -766,65 +1144,99 @@ function IntegrationHubPanel() {
 // ═══════════════════════════════════════════════════════
 // NOTIFICATION CONFIG PANEL
 // ═══════════════════════════════════════════════════════
+const EMPTY_RULE = { event: '', channel: 'Email', recipients: 'super_admin', threshold: 1 };
+
 function NotificationConfigPanel() {
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ event: '', channel: 'Email', recipients: 'super_admin', threshold: 1 });
+  const [form, setForm] = useState(EMPTY_RULE);
 
-  const load = () => api.get('/security/notifications').then(r => setRules(r.data.data)).catch(console.error).finally(() => setLoading(false));
+  const load = () => api.get('/security/notifications').then((r) => setRules(r.data.data)).catch(console.error).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
-  const toggle = async (id) => { try { await api.put(`/security/notifications/${id}/toggle`); load(); } catch { alert('Failed'); } };
+  const toggle = async (id) => { try { await api.put(`/security/notifications/${id}/toggle`); load(); } catch { toast.error('Failed to change the rule'); } };
   const create = async () => {
     if (!form.event) return;
-    try { await api.post('/security/notifications', form); setForm({ event: '', channel: 'Email', recipients: 'super_admin', threshold: 1 }); setShowForm(false); load(); } catch { alert('Failed'); }
+    try {
+      await api.post('/security/notifications', form);
+      setForm(EMPTY_RULE); setShowForm(false); load();
+      toast.success('Rule saved');
+    } catch { toast.error('Failed to save the rule'); }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
+  const columns = useMemo(() => [
+    { id: 'event', header: 'Event', accessorFn: (r) => r.event || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    { id: 'channel', header: 'Channel', accessorFn: (r) => r.channel || '', meta: { width: 140 }, cell: ({ getValue }) => <span className="tag">{getValue()}</span> },
+    { id: 'recipients', header: 'Recipients', accessorFn: (r) => human(r.recipients), cell: ({ getValue }) => sentence(getValue()) },
+    { id: 'threshold', header: 'Threshold', accessorFn: (r) => Number(r.threshold) || 0, meta: { width: 110, align: 'right' }, cell: ({ getValue }) => <span className="tabular">{getValue()}</span> },
+    {
+      id: 'active', header: 'Status', accessorFn: (r) => (r.active ? 1 : 0), meta: { width: 150 },
+      cell: ({ row }) => (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <Switch checked={row.original.active} onChange={() => toggle(row.original.id)} label={`Rule: ${row.original.event}`} />
+          <span className={`status ${row.original.active ? 'status-success' : 'status-neutral'}`}>{row.original.active ? 'Active' : 'Off'}</span>
+        </span>
+      ),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  if (loading) return <Loading />;
+
+  const newButton = (
+    <button type="button" className="btn btn-primary btn-md" onClick={() => setShowForm(true)}>
+      <Plus size={16} aria-hidden="true" /> New rule
+    </button>
+  );
 
   return (
-    <div className="fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>🔔 Notification Config</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>System alert routing — who gets notified on failures, thresholds, escalations</p></div>
-        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>+ New Rule</button>
-      </div>
+    <div className="stack">
+      <SubHead title="Notification rules" description="Who is alerted about failures, thresholds and escalations." actions={newButton} />
 
-      {showForm && (
-        <div className="card fade-up" style={{ marginBottom: 20, borderTop: '3px solid var(--blue)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Event</label><input className="form-input" value={form.event} onChange={e => setForm({ ...form, event: e.target.value })} placeholder="e.g. Server CPU > 90%" /></div>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Channel</label>
-              <select className="form-select" value={form.channel} onChange={e => setForm({ ...form, channel: e.target.value })}>
+      <section className="panel">
+        <DataTable
+          columns={columns}
+          data={Array.isArray(rules) ? rules : []}
+          getRowId={(r) => String(r.id)}
+          empty={<EmptyState icon={BellRing} title="No rules" description="Add a rule to route system alerts." action={newButton} />}
+        />
+      </section>
+
+      <Modal
+        open={showForm}
+        onOpenChange={setShowForm}
+        title="New notification rule"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setShowForm(false)}>Cancel</button>
+            <button type="submit" form="rule-form" className="btn btn-primary btn-md">Save rule</button>
+          </>
+        )}
+      >
+        <form id="rule-form" onSubmit={(e) => { e.preventDefault(); create(); }} style={{ display: 'grid', gap: 14 }}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="nr-event">Event</label>
+            <input id="nr-event" className="form-input" required value={form.event} onChange={(e) => setForm({ ...form, event: e.target.value })} placeholder="e.g. Server CPU > 90%" />
+          </div>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="nr-channel">Channel</label>
+              <select id="nr-channel" className="form-select" value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value })}>
                 <option>Email</option><option>SMS</option><option>SMS + Email</option>
               </select>
             </div>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Recipients</label><input className="form-input" value={form.recipients} onChange={e => setForm({ ...form, recipients: e.target.value })} /></div>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Threshold</label><input type="number" className="form-input" value={form.threshold} onChange={e => setForm({ ...form, threshold: Number(e.target.value) })} /></div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="nr-threshold">Threshold</label>
+              <input id="nr-threshold" type="number" className="form-input" value={form.threshold} onChange={(e) => setForm({ ...form, threshold: Number(e.target.value) })} />
+            </div>
           </div>
-          <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={create}>Save Rule</button>
-        </div>
-      )}
-
-      <div className="table-wrapper">
-        <table><thead><tr><th>Event</th><th>Channel</th><th>Recipients</th><th>Threshold</th><th>Status</th><th>Toggle</th></tr></thead>
-          <tbody>{rules.map(r => (
-            <tr key={r.id}>
-              <td style={{ fontWeight: 600 }}>{r.event}</td>
-              <td><span className="badge badge-blue">{r.channel}</span></td>
-              <td style={{ textTransform: 'capitalize' }}>{r.recipients?.replace(/_/g, ' ')}</td>
-              <td>{r.threshold}</td>
-              <td>{r.active ? <span className="badge badge-green">Active</span> : <span className="badge" style={{ background: 'var(--surface-3)' }}>Off</span>}</td>
-              <td>
-                <div onClick={() => toggle(r.id)} style={{
-                  width: 44, height: 24, borderRadius: 12, padding: 2, cursor: 'pointer', transition: 'all 0.2s',
-                  background: r.active ? 'var(--green)' : 'var(--surface-3)',
-                  display: 'flex', alignItems: 'center', justifyContent: r.active ? 'flex-end' : 'flex-start',
-                }}><div style={{ width: 20, height: 20, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} /></div>
-              </td>
-            </tr>
-          ))}</tbody></table>
-      </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="nr-recipients">Recipients</label>
+            <input id="nr-recipients" className="form-input" value={form.recipients} onChange={(e) => setForm({ ...form, recipients: e.target.value })} />
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -832,54 +1244,65 @@ function NotificationConfigPanel() {
 // ═══════════════════════════════════════════════════════
 // COMPLIANCE CENTER PANEL
 // ═══════════════════════════════════════════════════════
+const CHECK_STATUS = { pass: { tone: 'success', label: 'Pass' }, warn: { tone: 'warning', label: 'Warning' }, fail: { tone: 'danger', label: 'Fail' } };
+
 function ComplianceCenterPanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { api.get('/security/compliance').then(r => setData(r.data.data)).catch(console.error).finally(() => setLoading(false)); }, []);
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
-  if (!data) return <p>Failed to load.</p>;
+  useEffect(() => { api.get('/security/compliance').then((r) => setData(r.data.data)).catch(console.error).finally(() => setLoading(false)); }, []);
+  if (loading) return <Loading />;
+  if (!data) return <LoadFailed />;
 
-  const statusIcon = { pass: '✅', warn: '⚠️', fail: '❌' };
-  const statusColor = { pass: 'var(--green)', warn: '#fbbf24', fail: '#ef4444' };
-  const passCount = data.checks.filter(c => c.status === 'pass').length;
-  const warnCount = data.checks.filter(c => c.status === 'warn').length;
-  const failCount = data.checks.filter(c => c.status === 'fail').length;
+  const checks = data.checks || [];
+  const passCount = checks.filter((c) => c.status === 'pass').length;
+  const warnCount = checks.filter((c) => c.status === 'warn').length;
+  const failCount = checks.filter((c) => c.status === 'fail').length;
+  const score = data.overall_score;
+  const scoreTone = score >= 80 ? undefined : score >= 60 ? 'warning' : 'danger';
+  const scoreColor = score >= 80 ? 'var(--success)' : score >= 60 ? 'var(--amber)' : 'var(--red)';
 
   return (
-    <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>📑 Compliance Center</h2>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>HIPAA/DPDP compliance status, data access policies, breach alerts</p>
+    <div className="stack">
+      <SubHead title="Compliance" description="HIPAA and DPDP compliance status, data access policies and breach alerts." />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14, marginBottom: 28 }}>
-        <StatCard icon="📊" label="Compliance Score" value={`${data.overall_score}%`} color={data.overall_score >= 80 ? 'var(--green)' : data.overall_score >= 60 ? '#fbbf24' : '#ef4444'} />
-        <StatCard icon="✅" label="Checks Passed" value={passCount} color="var(--green)" />
-        <StatCard icon="⚠️" label="Warnings" value={warnCount} color="#fbbf24" />
-        <StatCard icon="❌" label="Failed" value={failCount} color="#ef4444" />
+      <div className="kpi-strip" style={{ marginBottom: 0 }}>
+        <Kpi label="Compliance score" value={`${score}%`} tone={scoreTone} />
+        <Kpi label="Checks passed" value={passCount} />
+        <Kpi label="Warnings" value={warnCount} tone={warnCount > 0 ? 'warning' : undefined} />
+        <Kpi label="Failed" value={failCount} tone={failCount > 0 ? 'danger' : undefined} />
       </div>
 
-      {/* Score Bar */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '16px 20px', marginBottom: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{ fontWeight: 700 }}>Overall Compliance</span>
-          <span style={{ fontWeight: 700, color: data.overall_score >= 80 ? 'var(--green)' : '#fbbf24' }}>{data.overall_score}%</span>
+      <section className="panel panel-pad">
+        <div className="bar-row">
+          <span>Overall compliance</span>
+          <strong className="tabular" style={{ color: scoreColor }}>{score}%</strong>
         </div>
-        <div style={{ height: 12, background: 'var(--surface-3)', borderRadius: 6, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${data.overall_score}%`, borderRadius: 6, background: data.overall_score >= 80 ? 'var(--green)' : data.overall_score >= 60 ? 'linear-gradient(90deg, #fbbf24, #f59e0b)' : 'linear-gradient(90deg, #ef4444, #f87171)', transition: 'width 0.5s' }} />
+        <div className="bar-track" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={score} aria-label="Overall compliance" style={{ height: 10, borderRadius: 5 }}>
+          <div className="bar-fill" style={{ width: `${score}%`, background: scoreColor }} />
         </div>
-      </div>
+      </section>
 
-      <SectionTitle>Compliance Checks</SectionTitle>
-      <div className="table-wrapper">
-        <table><thead><tr><th>Check</th><th>Category</th><th>Status</th><th>Detail</th></tr></thead>
-          <tbody>{data.checks.map((c, i) => (
-            <tr key={i}>
-              <td style={{ fontWeight: 600 }}>{c.name}</td>
-              <td><span className="badge" style={{ background: 'var(--surface-3)', fontSize: '0.72rem' }}>{c.category}</span></td>
-              <td><span style={{ color: statusColor[c.status], fontWeight: 700 }}>{statusIcon[c.status]} {c.status.toUpperCase()}</span></td>
-              <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{c.detail}</td>
-            </tr>
-          ))}</tbody></table>
-      </div>
+      <section className="panel">
+        <PanelHead icon={ClipboardCheck} title="Compliance checks" />
+        <div className="panel-pad">
+          <table className="mini-table">
+            <thead><tr><th>Check</th><th>Category</th><th>Status</th><th>Detail</th></tr></thead>
+            <tbody>
+              {checks.map((c, i) => {
+                const st = CHECK_STATUS[c.status] || { tone: 'neutral', label: c.status };
+                return (
+                  <tr key={i}>
+                    <td className="cell-primary">{c.name}</td>
+                    <td><span className="tag">{c.category}</span></td>
+                    <td><span className={`status status-${st.tone}`}>{st.label}</span></td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{c.detail}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }
@@ -890,53 +1313,58 @@ function ComplianceCenterPanel() {
 function DataGovernancePanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const load = () => api.get('/security/data-governance').then(r => setData(r.data.data)).catch(console.error).finally(() => setLoading(false));
+  const load = () => api.get('/security/data-governance').then((r) => setData(r.data.data)).catch(console.error).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const toggleMask = async (idx) => {
-    try { await api.put(`/security/data-governance/pii/${idx}/toggle`); load(); } catch { alert('Failed'); }
+    try { await api.put(`/security/data-governance/pii/${idx}/toggle`); load(); } catch { toast.error('Failed to change masking'); }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
-  if (!data) return <p>Failed to load.</p>;
+  if (loading) return <Loading />;
+  if (!data) return <LoadFailed />;
 
   return (
-    <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>📝 Data Governance</h2>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Retention policies, PII masking rules, data purge schedules</p>
+    <div className="stack">
+      <SubHead title="Data governance" description="Retention policies, PII masking rules and purge schedules." />
 
-      <SectionTitle>Data Retention Policies</SectionTitle>
-      <div className="table-wrapper" style={{ marginBottom: 28 }}>
-        <table><thead><tr><th>Entity</th><th>Retention Period</th><th>Auto Purge</th><th>Last Purge</th></tr></thead>
-          <tbody>{data.retention_policies?.map(p => (
-            <tr key={p.id}>
-              <td style={{ fontWeight: 600 }}>{p.entity}</td>
-              <td>{p.retention}</td>
-              <td>{p.auto_purge ? <span className="badge badge-green">Enabled</span> : <span className="badge" style={{ background: 'var(--surface-3)' }}>Off</span>}</td>
-              <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{p.last_purge ? new Date(p.last_purge).toLocaleDateString() : 'Never'}</td>
-            </tr>
-          ))}</tbody></table>
-      </div>
+      <section className="panel">
+        <PanelHead icon={Database} title="Data retention policies" />
+        <div className="panel-pad">
+          <table className="mini-table">
+            <thead><tr><th>Entity</th><th>Retention period</th><th>Auto purge</th><th>Last purge</th></tr></thead>
+            <tbody>
+              {data.retention_policies?.map((p) => (
+                <tr key={p.id}>
+                  <td className="cell-primary">{p.entity}</td>
+                  <td>{p.retention}</td>
+                  <td>{p.auto_purge ? <span className="status status-success">On</span> : <span className="status status-neutral">Off</span>}</td>
+                  <td className="tabular cell-secondary">{p.last_purge ? fmtDate(p.last_purge) : 'Never'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-      <SectionTitle>PII Field Masking</SectionTitle>
-      <div className="table-wrapper">
-        <table><thead><tr><th>Table</th><th>Field</th><th>Masking Rule</th><th>Status</th><th>Toggle</th></tr></thead>
-          <tbody>{data.pii_fields?.map((f, i) => (
-            <tr key={i}>
-              <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{f.table}</td>
-              <td style={{ fontWeight: 600 }}>{f.field}</td>
-              <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{f.masking_rule}</td>
-              <td>{f.masked ? <span className="badge badge-green">Masked</span> : <span className="badge badge-amber">Exposed</span>}</td>
-              <td>
-                <div onClick={() => toggleMask(i)} style={{
-                  width: 44, height: 24, borderRadius: 12, padding: 2, cursor: 'pointer', transition: 'all 0.2s',
-                  background: f.masked ? 'var(--green)' : 'var(--surface-3)',
-                  display: 'flex', alignItems: 'center', justifyContent: f.masked ? 'flex-end' : 'flex-start',
-                }}><div style={{ width: 20, height: 20, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} /></div>
-              </td>
-            </tr>
-          ))}</tbody></table>
-      </div>
+      <section className="panel">
+        <PanelHead icon={ShieldCheck} title="PII field masking" />
+        <div className="panel-pad">
+          <table className="mini-table">
+            <thead><tr><th>Table</th><th>Field</th><th>Masking rule</th><th>Status</th><th><span className="sr-only">Masking on or off</span></th></tr></thead>
+            <tbody>
+              {data.pii_fields?.map((f, i) => (
+                <tr key={i}>
+                  <td className="mono">{f.table}</td>
+                  <td className="cell-primary">{f.field}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{f.masking_rule}</td>
+                  <td>{f.masked ? <span className="status status-success">Masked</span> : <span className="status status-warning">Exposed</span>}</td>
+                  <td className="text-right"><Switch checked={f.masked} onChange={() => toggleMask(i)} label={`Mask ${f.table}.${f.field}`} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }
@@ -944,61 +1372,100 @@ function DataGovernancePanel() {
 // ═══════════════════════════════════════════════════════
 // LICENSE MANAGER PANEL
 // ═══════════════════════════════════════════════════════
+const LICENSE_TONE = { active: 'success', expiring_soon: 'warning', expired: 'danger' };
+const EMPTY_LICENSE = { name: '', vendor: '', type: 'Subscription', expiry: '', seats: '' };
+
 function LicenseManagerPanel() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', vendor: '', type: 'Subscription', expiry: '', seats: '' });
+  const [form, setForm] = useState(EMPTY_LICENSE);
 
-  const load = () => api.get('/security/licenses').then(r => setItems(r.data.data)).catch(console.error).finally(() => setLoading(false));
+  const load = () => api.get('/security/licenses').then((r) => setItems(r.data.data)).catch(console.error).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const create = async () => {
     if (!form.name) return;
-    try { await api.post('/security/licenses', form); setForm({ name: '', vendor: '', type: 'Subscription', expiry: '', seats: '' }); setShowForm(false); load(); } catch { alert('Failed'); }
+    try {
+      await api.post('/security/licenses', form);
+      setForm(EMPTY_LICENSE); setShowForm(false); load();
+      toast.success('License added');
+    } catch { toast.error('Failed to add license'); }
   };
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
+  const columns = useMemo(() => [
+    { id: 'name', header: 'Software', accessorFn: (l) => l.name || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    { id: 'vendor', header: 'Vendor', accessorFn: (l) => l.vendor || '' },
+    { id: 'type', header: 'Type', accessorFn: (l) => l.type || '', meta: { width: 130 }, cell: ({ getValue }) => <span className="tag">{getValue()}</span> },
+    { id: 'seats', header: 'Seats', accessorFn: (l) => l.seats || '', meta: { width: 100 }, cell: ({ getValue }) => <span className="tabular">{getValue() || '—'}</span> },
+    { id: 'expiry', header: 'Expiry', accessorFn: (l) => l.expiry || '', meta: { width: 130 }, cell: ({ getValue }) => <span className="tabular">{getValue() || '—'}</span> },
+    {
+      id: 'status', header: 'Status', accessorFn: (l) => l.status || '', meta: { width: 140 },
+      cell: ({ getValue }) => <span className={`status status-${LICENSE_TONE[getValue()] || 'success'}`}>{sentence(getValue())}</span>,
+    },
+  ], []);
 
-  const statusColor = { active: 'green', expiring_soon: 'amber', expired: 'red' };
+  if (loading) return <Loading />;
+
+  const addButton = (
+    <button type="button" className="btn btn-primary btn-md" onClick={() => setShowForm(true)}>
+      <Plus size={16} aria-hidden="true" /> Add license
+    </button>
+  );
 
   return (
-    <div className="fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>🪪 License Manager</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Track software licenses, module subscriptions, expiry alerts</p></div>
-        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>+ Add License</button>
-      </div>
+    <div className="stack">
+      <SubHead title="Licenses" description="Software licenses, module subscriptions and expiry dates." actions={addButton} />
 
-      {showForm && (
-        <div className="card fade-up" style={{ marginBottom: 20, borderTop: '3px solid var(--blue)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Name</label><input className="form-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Vendor</label><input className="form-input" value={form.vendor} onChange={e => setForm({ ...form, vendor: e.target.value })} /></div>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Type</label>
-              <select className="form-select" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+      <section className="panel">
+        <DataTable
+          columns={columns}
+          data={Array.isArray(items) ? items : []}
+          getRowId={(l) => String(l.id)}
+          empty={<EmptyState icon={BadgeCheck} title="No licenses" description="Add a license to track its expiry." action={addButton} />}
+        />
+      </section>
+
+      <Modal
+        open={showForm}
+        onOpenChange={setShowForm}
+        title="Add license"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setShowForm(false)}>Cancel</button>
+            <button type="submit" form="license-form" className="btn btn-primary btn-md">Save license</button>
+          </>
+        )}
+      >
+        <form id="license-form" onSubmit={(e) => { e.preventDefault(); create(); }} style={{ display: 'grid', gap: 14 }}>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="lc-name">Name</label>
+              <input id="lc-name" className="form-input" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="lc-vendor">Vendor</label>
+              <input id="lc-vendor" className="form-input" value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} />
+            </div>
+          </div>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="lc-type">Type</label>
+              <select id="lc-type" className="form-select" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
                 <option>Subscription</option><option>Enterprise</option><option>Free</option><option>Internal</option>
               </select>
             </div>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Expiry Date</label><input type="date" className="form-input" value={form.expiry} onChange={e => setForm({ ...form, expiry: e.target.value })} /></div>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Seats / Capacity</label><input className="form-input" value={form.seats} onChange={e => setForm({ ...form, seats: e.target.value })} /></div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="lc-expiry">Expiry date</label>
+              <input id="lc-expiry" type="date" className="form-input" value={form.expiry} onChange={(e) => setForm({ ...form, expiry: e.target.value })} />
+            </div>
           </div>
-          <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={create}>Save License</button>
-        </div>
-      )}
-
-      <div className="table-wrapper">
-        <table><thead><tr><th>Software</th><th>Vendor</th><th>Type</th><th>Seats</th><th>Expiry</th><th>Status</th></tr></thead>
-          <tbody>{items.map(l => (
-            <tr key={l.id}>
-              <td style={{ fontWeight: 600 }}>{l.name}</td>
-              <td>{l.vendor}</td>
-              <td><span className="badge" style={{ background: 'var(--surface-3)', fontSize: '0.72rem' }}>{l.type}</span></td>
-              <td>{l.seats}</td>
-              <td style={{ fontSize: '0.82rem' }}>{l.expiry}</td>
-              <td><span className={`badge badge-${statusColor[l.status] || 'green'}`}>{l.status?.replace(/_/g, ' ')}</span></td>
-            </tr>
-          ))}</tbody></table>
-      </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="lc-seats">Seats or capacity</label>
+            <input id="lc-seats" className="form-input" value={form.seats} onChange={(e) => setForm({ ...form, seats: e.target.value })} />
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
@@ -1012,59 +1479,76 @@ function RoleTemplatesPanel() {
   const [editing, setEditing] = useState(null);
   const [editPerms, setEditPerms] = useState([]);
 
-  const load = () => api.get('/security/role-templates').then(r => setData(r.data.data)).catch(console.error).finally(() => setLoading(false));
+  const load = () => api.get('/security/role-templates').then((r) => setData(r.data.data)).catch(console.error).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const startEdit = (tmpl) => { setEditing(tmpl.id); setEditPerms([...tmpl.permissions]); };
   const cancelEdit = () => { setEditing(null); setEditPerms([]); };
   const saveEdit = async (id) => {
-    try { await api.put(`/security/role-templates/${id}`, { permissions: editPerms }); setEditing(null); load(); } catch { alert('Failed'); }
+    try { await api.put(`/security/role-templates/${id}`, { permissions: editPerms }); setEditing(null); load(); toast.success('Role template saved'); } catch { toast.error('Failed to save role template'); }
   };
-  const togglePerm = (p) => setEditPerms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+  const togglePerm = (p) => setEditPerms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
 
-  if (loading) return <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>;
-  if (!data) return <p>Failed to load.</p>;
+  if (loading) return <Loading />;
+  if (!data) return <LoadFailed />;
 
   return (
-    <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🏷️ Role Templates</h2>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Pre-built permission sets for each role — Doctor, Nurse, Receptionist, Lab Tech, etc.</p>
+    <div className="stack">
+      <SubHead title="Role templates" description="Ready-made permission sets for each role: doctor, nurse, receptionist, lab technician and more." />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
-        {data.templates?.map(tmpl => (
-          <div key={tmpl.id} className="card" style={{ borderTop: `4px solid ${tmpl.color}`, position: 'relative' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ fontWeight: 800, fontSize: '1rem', color: tmpl.color, textTransform: 'capitalize' }}>{tmpl.label}</div>
-              {editing === tmpl.id
-                ? <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-primary btn-sm" onClick={() => saveEdit(tmpl.id)}>💾 Save</button>
-                    <button className="btn btn-outline btn-sm" onClick={cancelEdit}>Cancel</button>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
+        {data.templates?.map((tmpl) => {
+          const isEditing = editing === tmpl.id;
+          return (
+            <section key={tmpl.id} className="panel">
+              <PanelHead
+                title={sentence(tmpl.label)}
+                actions={isEditing ? (
+                  <span className="inline-actions">
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => saveEdit(tmpl.id)}><Save size={14} aria-hidden="true" /> Save</button>
+                  </span>
+                ) : (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit(tmpl)}><Pencil size={14} aria-hidden="true" /> Edit</button>
+                )}
+              />
+              <div className="panel-pad">
+                {isEditing ? (
+                  <div className="chip-row" role="group" aria-label={`Permissions for ${tmpl.label}`}>
+                    {data.all_permissions?.map((p) => {
+                      const on = editPerms.includes(p);
+                      return (
+                        <button
+                          key={p}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => togglePerm(p)}
+                          className="tag"
+                          style={{
+                            cursor: 'pointer', font: 'inherit', fontSize: '0.78rem',
+                            background: on ? 'var(--primary-light)' : 'var(--surface-2)',
+                            borderColor: on ? 'var(--primary)' : 'var(--border)',
+                            color: on ? 'var(--primary)' : 'var(--text-secondary)',
+                            fontWeight: on ? 600 : 400,
+                          }}
+                        >
+                          {human(p)}
+                        </button>
+                      );
+                    })}
                   </div>
-                : <button className="btn btn-outline btn-sm" onClick={() => startEdit(tmpl)}>✏️ Edit</button>}
-            </div>
-
-            {editing === tmpl.id ? (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {data.all_permissions?.map(p => (
-                  <div key={p} onClick={() => togglePerm(p)} style={{
-                    padding: '4px 10px', borderRadius: 6, fontSize: '0.72rem', cursor: 'pointer', transition: 'all 0.15s',
-                    background: editPerms.includes(p) ? tmpl.color : 'var(--surface-3)',
-                    color: editPerms.includes(p) ? '#fff' : 'var(--text-secondary)',
-                    border: `1px solid ${editPerms.includes(p) ? tmpl.color : 'var(--border)'}`,
-                  }}>{p.replace(/_/g, ' ')}</div>
-                ))}
+                ) : (
+                  <div className="chip-row">
+                    {tmpl.permissions?.map((p) => <span key={p} className="tag">{human(p)}</span>)}
+                  </div>
+                )}
+                <p className="muted" style={{ marginTop: 12, fontSize: '0.8rem' }}>
+                  {isEditing ? editPerms.length : tmpl.permissions?.length} permissions assigned
+                </p>
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {tmpl.permissions?.map(p => (
-                  <span key={p} className="badge" style={{ background: `${tmpl.color}18`, color: tmpl.color, border: `1px solid ${tmpl.color}30`, fontSize: '0.7rem' }}>{p.replace(/_/g, ' ')}</span>
-                ))}
-              </div>
-            )}
-
-            <div style={{ marginTop: 12, fontSize: '0.72rem', color: 'var(--text-muted)' }}>{tmpl.permissions?.length} permissions assigned</div>
-          </div>
-        ))}
+            </section>
+          );
+        })}
       </div>
     </div>
   );
@@ -1096,54 +1580,61 @@ export default function SecurityPage() {
     'role-templates': <RoleTemplatesPanel />,
   };
 
-  const sections = [...new Set(NAV.map(n => n.section))];
+  const sections = [...new Set(NAV.map((n) => n.section))];
+  const activeSection = NAV.find((n) => n.id === activePanel)?.section || sections[0];
+  const sectionItems = NAV.filter((n) => n.section === activeSection);
+  const activeItem = NAV.find((n) => n.id === activePanel);
 
   return (
     <>
       <Navbar />
-      <div style={{ display: 'flex', minHeight: 'calc(100vh - 61px)' }}>
-        {/* Sidebar */}
-        <div style={{
-          width: 260, background: 'var(--surface)', borderRight: '1px solid var(--border)',
-          padding: '20px 0', overflowY: 'auto', flexShrink: 0,
-        }}>
-          <div style={{ padding: '0 20px 16px', borderBottom: '1px solid var(--border)', marginBottom: 8 }}>
-            <div style={{ fontWeight: 800, fontSize: '1rem' }}>🔐 Security</div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>System Administration</div>
-          </div>
+      <main className="app-page">
+        <PageHeader title="Security and system" description="Access control, audit, system health, integrations and compliance." />
 
-          {sections.map(sec => (
-            <div key={sec}>
-              <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '12px 20px 4px' }}>{sec}</div>
-              {NAV.filter(n => n.section === sec).map(n => (
-                <div
-                  key={n.id}
-                  onClick={() => setActivePanel(n.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '10px 20px', cursor: 'pointer', fontSize: '0.85rem',
-                    background: activePanel === n.id ? 'var(--surface-3)' : 'transparent',
-                    borderRight: activePanel === n.id ? '3px solid var(--green)' : '3px solid transparent',
-                    color: activePanel === n.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    fontWeight: activePanel === n.id ? 600 : 400,
-                    transition: 'all 0.15s',
-                  }}
-                  onMouseEnter={e => { if (activePanel !== n.id) e.currentTarget.style.background = 'var(--surface-2)'; }}
-                  onMouseLeave={e => { if (activePanel !== n.id) e.currentTarget.style.background = 'transparent'; }}
-                >
-                  <span style={{ fontSize: '1rem', width: 24, textAlign: 'center' }}>{n.icon}</span>
-                  {n.label}
-                </div>
-              ))}
-            </div>
-          ))}
+        <div className="tabs" role="tablist" aria-label="Areas">
+          {sections.map((sec) => {
+            const Icon = GROUP_ICON[sec] || Shield;
+            const isActive = sec === activeSection;
+            return (
+              <button
+                key={sec}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`tab${isActive ? ' is-active' : ''}`}
+                onClick={() => { if (!isActive) setActivePanel(NAV.find((n) => n.section === sec).id); }}
+              >
+                <Icon size={16} aria-hidden="true" /> {sec}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Main Content */}
-        <div style={{ flex: 1, padding: 32, overflowY: 'auto', background: 'var(--bg)' }}>
-          {panels[activePanel] || <p>Panel not found</p>}
+        <div className="segmented" role="tablist" aria-label={`${activeSection} sections`} style={{ marginBottom: 20 }}>
+          {sectionItems.map((n) => {
+            const Icon = n.icon;
+            return (
+              <button
+                key={n.id}
+                type="button"
+                role="tab"
+                id={`sec-tab-${n.id}`}
+                aria-selected={activePanel === n.id}
+                aria-controls="sec-panel"
+                className={activePanel === n.id ? 'is-active' : ''}
+                onClick={() => setActivePanel(n.id)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <Icon size={15} aria-hidden="true" /> {n.label}
+              </button>
+            );
+          })}
         </div>
-      </div>
+
+        <div role="tabpanel" id="sec-panel" aria-labelledby={activeItem ? `sec-tab-${activeItem.id}` : undefined}>
+          {panels[activePanel] || <p className="muted">Section not found.</p>}
+        </div>
+      </main>
     </>
   );
 }

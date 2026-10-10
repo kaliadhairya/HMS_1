@@ -1,208 +1,206 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import api from '../../../api/axios';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { BedDouble, FileText, Search, RefreshCw } from 'lucide-react';
+import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+
+const VIEWS = [
+  { key: 'Active', label: 'Admitted' },
+  { key: 'Discharged', label: 'Discharged' },
+  { key: '', label: 'All' },
+];
+const STATUS_TONE = { Active: 'info', Discharged: 'success' };
+const DAY_MS = 864e5;
+
+const admissionId = (a) => a.ID || a.id;
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const stayDays = (a) => {
+  const n = Number(a.DAYS_ADMITTED);
+  if (Number.isFinite(n)) return n;
+  return a.ADMISSION_DATE ? Math.floor((Date.now() - new Date(a.ADMISSION_DATE).getTime()) / DAY_MS) : 0;
+};
+const withDr = (name) => (!name ? '—' : /^dr\.?\s/i.test(name) ? name : `Dr. ${name}`);
+const ageSex = (a) => [a.AGE ? `${a.AGE} y` : null, a.GENDER ? a.GENDER.charAt(0).toUpperCase() : null].filter(Boolean).join(' · ');
 
 export default function IPDPatientListPage() {
+  const navigate = useNavigate();
   const [admissions, setAdmissions] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('Active');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchAdmissions = async () => {
+  const fetchAdmissions = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await api.get(`/ipd/admissions?status=${statusFilter}`);
-      setAdmissions(res.data.data);
-    } catch (err) {
+      setAdmissions(res.data.data || []);
+    } catch {
       toast.error('Failed to fetch admissions');
+      setAdmissions([]);
+    } finally {
+      setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchAdmissions();
   }, [statusFilter]);
 
-  const filteredAdmissions = admissions.filter(adm => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (adm.PATIENT_NAME || adm.patientName || '').toLowerCase().includes(q) ||
-      (adm.UHID || '').toLowerCase().includes(q) ||
-      (adm.ADMISSION_ID_FORMATTED || adm.admissionIdFormatted || '').toLowerCase().includes(q) ||
-      (adm.DOCTOR_NAME || '').toLowerCase().includes(q) ||
-      (adm.DEPARTMENT || '').toLowerCase().includes(q)
-    );
-  });
+  useEffect(() => { fetchAdmissions(); }, [fetchAdmissions]);
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return admissions;
+    return admissions.filter((a) => [
+      a.PATIENT_NAME, a.UHID, a.ADMISSION_ID_FORMATTED, a.DOCTOR_NAME, a.DEPARTMENT, a.WARD_NAME, a.BED_NUMBER, a.PRIMARY_DIAGNOSIS,
+    ].some((v) => String(v || '').toLowerCase().includes(q)));
+  }, [admissions, searchQuery]);
+
+  const stats = useMemo(() => {
+    const active = admissions.filter((a) => a.STATUS === 'Active');
+    const now = Date.now();
+    const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
+    return {
+      inpatients: active.length,
+      last24h: active.filter((a) => a.ADMISSION_DATE && now - new Date(a.ADMISSION_DATE).getTime() < DAY_MS).length,
+      avgStay: active.length ? (active.reduce((s, a) => s + stayDays(a), 0) / active.length).toFixed(1) : '0',
+      dueDischarge: active.filter((a) => a.EXPECTED_DISCHARGE_DATE && new Date(a.EXPECTED_DISCHARGE_DATE) <= endOfToday).length,
+    };
+  }, [admissions]);
+
+  const openChart = (a) => navigate(`/ipd/patient/${admissionId(a)}`);
+
+  const columns = useMemo(() => [
+    {
+      id: 'patient', header: 'Patient', accessorFn: (a) => a.PATIENT_NAME || '',
+      cell: ({ row }) => {
+        const a = row.original;
+        return (
+          <span className="cell-person">
+            <span className="cell-avatar" aria-hidden="true">{(a.PATIENT_NAME || '?').charAt(0).toUpperCase()}</span>
+            <span className="cell-stack">
+              <span className="cell-primary">{a.PATIENT_NAME || '—'}</span>
+              <span className="cell-secondary"><span className="mono">{a.UHID || '—'}</span>{ageSex(a) ? ` · ${ageSex(a)}` : ''}</span>
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      id: 'admission', header: 'Admission', accessorFn: (a) => a.ADMISSION_ID_FORMATTED || '', meta: { width: 150 },
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="mono">{row.original.ADMISSION_ID_FORMATTED || `#${admissionId(row.original)}`}</span>
+          {row.original.ADMISSION_TYPE && <span className="cell-secondary">{row.original.ADMISSION_TYPE}</span>}
+        </span>
+      ),
+    },
+    {
+      id: 'bed', header: 'Ward / bed', accessorFn: (a) => `${a.WARD_NAME || ''} ${a.BED_NUMBER || ''}`.trim(), meta: { width: 170 },
+      cell: ({ row }) => {
+        const a = row.original;
+        if (!a.WARD_NAME && !a.BED_NUMBER) return <span className="cell-secondary">Not assigned</span>;
+        return (
+          <span className="cell-stack">
+            <span>{a.WARD_NAME || '—'}</span>
+            <span className="cell-secondary">Bed {a.BED_NUMBER || '—'}{a.ROOM_NUMBER ? ` · Room ${a.ROOM_NUMBER}` : ''}</span>
+          </span>
+        );
+      },
+    },
+    {
+      id: 'diagnosis', header: 'Diagnosis', accessorFn: (a) => a.PRIMARY_DIAGNOSIS || a.DEPARTMENT || '',
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span>{row.original.PRIMARY_DIAGNOSIS || '—'}</span>
+          {row.original.DEPARTMENT && <span className="cell-secondary">{row.original.DEPARTMENT}</span>}
+        </span>
+      ),
+    },
+    { id: 'doctor', header: 'Consultant', accessorFn: (a) => a.DOCTOR_NAME || '', meta: { width: 170 }, cell: ({ getValue }) => withDr(getValue()) },
+    {
+      id: 'admitted', header: 'Admitted', accessorFn: (a) => (a.ADMISSION_DATE ? new Date(a.ADMISSION_DATE).getTime() : 0), meta: { width: 140 },
+      cell: ({ row }) => {
+        const a = row.original;
+        const days = stayDays(a);
+        return (
+          <span className="cell-stack">
+            <span className="tabular">{fmtDate(a.ADMISSION_DATE)}</span>
+            {a.STATUS === 'Active' && <span className="cell-secondary tabular">Day {days + 1}</span>}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'status', header: 'Status', accessorFn: (a) => a.STATUS || '', meta: { width: 120 },
+      cell: ({ getValue }) => <span className={`status status-${STATUS_TONE[getValue()] || 'neutral'}`}>{getValue() === 'Active' ? 'Admitted' : getValue() || '—'}</span>,
+    },
+  ], []);
 
   return (
     <>
-    <Navbar />
-      <div className="container py-4" style={{ maxWidth: '100%' }}>
-        {/* Page Header */}
-        <div className="hms-page-header">
-          <div>
-            <h1>
-              <span className="header-icon">🏥</span>
-              IPD Patients Hub
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Manage currently admitted patients, view charts, and handle discharges.
-            </p>
-          </div>
-        </div>
-
-        {/* Search & Filter Premium */}
-        <div className="hms-anim-2" style={{ marginBottom: 24, display: 'flex', gap: 20 }}>
-          {/* Search Bar */}
-          <div className="card" style={{ 
-            padding: '12px 24px', 
-            borderRadius: 40,
-            boxShadow: 'var(--shadow-md)',
-            border: '2.5px solid var(--border)',
-            background: 'var(--surface)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-            transition: 'all 0.3s ease',
-            flex: 1,
-          }}
-          onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--blue)'}
-          onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}
-          >
-            <span style={{ fontSize: '1.4rem', filter: 'grayscale(0.5)' }}>🔍</span>
-            <input
-              type="text"
-              className="form-input"
-              style={{ 
-                fontSize: '1.1rem', 
-                border: 'none', 
-                boxShadow: 'none', 
-                background: 'transparent',
-                padding: '4px 0',
-                flex: 1,
-                minWidth: 0
-              }}
-              placeholder="Search by UHID, Patient Name, Doctor, or Department..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              autoFocus
-            />
-          </div>
-
-          {/* Filter Dropdown */}
-          <div className="card" style={{ 
-            padding: '12px 24px', 
-            borderRadius: 40,
-            boxShadow: 'var(--shadow-md)',
-            border: '2.5px solid var(--border)',
-            background: 'var(--surface)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            transition: 'all 0.3s ease',
-            width: 280,
-            flexShrink: 0
-          }}
-          onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--green)'}
-          onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}
-          >
-            <span style={{ fontSize: '1.3rem', filter: 'grayscale(0.5)' }}>🛏️</span>
-            <select 
-              className="form-input" 
-              value={statusFilter} 
-              onChange={e => setStatusFilter(e.target.value)}
-              style={{ 
-                border: 'none', 
-                boxShadow: 'none', 
-                background: 'transparent', 
-                fontSize: '1.05rem', 
-                fontWeight: 600, 
-                color: 'var(--text-primary)', 
-                cursor: 'pointer', 
-                padding: '4px 0',
-                flex: 1,
-                minWidth: 0
-              }}
-            >
-              <option value="Active">Active Admissions</option>
-              <option value="Discharged">Discharged</option>
-              <option value="">All Admissions</option>
-            </select>
-          </div>
-
-          {/* Discharge Summaries Hub Button */}
-          <Link to="/ipd/discharge-summaries" className="btn btn-outline" style={{
-            borderRadius: 40,
-            padding: '0 24px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            fontWeight: 700,
-            border: '2.5px solid var(--blue)',
-            color: 'var(--blue)',
-            background: 'rgba(59, 130, 246, 0.05)'
-          }}>
-            <span style={{ fontSize: '1.3rem' }}>📄</span>
-            Discharge Summaries Hub
-          </Link>
-        </div>
-
-        {/* Results Container */}
-        <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden' }}>
-          {filteredAdmissions.length === 0 ? (
-            <div className="hms-empty-state" style={{ margin: 24 }}>
-              <span className="empty-icon">🛏️</span>
-              <h3>No admissions found</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                {searchQuery ? `We couldn't find any patient matching "${searchQuery}".` : 'There are no patients currently admitted matching this status.'}
-              </p>
-            </div>
-          ) : (
-            <div className="table-wrapper hms-table-anim" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Admission ID</th>
-                    <th>Patient Name</th>
-                    <th>UHID</th>
-                    <th>Diagnosis / Dept</th>
-                    <th>Ward / Bed</th>
-                    <th>Admitting Doctor</th>
-                    <th>Admitted On</th>
-                    <th>Days</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAdmissions.map(adm => (
-                    <tr key={adm.ID || adm.id}>
-                      <td><strong>{adm.ADMISSION_ID_FORMATTED || adm.admissionIdFormatted || '-'}</strong></td>
-                      <td>{adm.PATIENT_NAME || adm.patientName}</td>
-                      <td>{adm.UHID}</td>
-                      <td>{adm.DEPARTMENT || '-'}</td>
-                      <td>{adm.WARD_NAME ? `${adm.WARD_NAME} / ${adm.BED_NUMBER}` : '-'}</td>
-                      <td>{adm.DOCTOR_NAME}</td>
-                      <td>{new Date(adm.ADMISSION_DATE).toLocaleDateString()}</td>
-                      <td>{adm.DAYS_ADMITTED} Days</td>
-                      <td>
-                        <span className={`badge ${adm.STATUS === 'Active' ? 'badge-primary' : 'badge-secondary'}`}>
-                          {adm.STATUS}
-                        </span>
-                      </td>
-                      <td>
-                        <Link to={`/ipd/patient/${adm.ID || adm.id}`} className="btn btn-sm btn-outline" style={{ display: 'inline-block' }}>
-                          View Chart
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      <Navbar />
+      <main className="app-page">
+        <PageHeader
+          title="Inpatients"
+          description="Admitted patients by ward and bed. Open a row to see the inpatient chart."
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/ipd/discharge-summaries')}>
+              <FileText size={16} aria-hidden="true" /> Discharge summaries
+            </button>
           )}
-        </div>
-      </div>
+        />
+
+        {statusFilter === 'Active' && (
+          <div className="kpi-strip">
+            <div className="panel kpi"><div className="kpi-label">Inpatients</div><div className="kpi-value">{loading ? '—' : stats.inpatients}</div></div>
+            <div className="panel kpi"><div className="kpi-label">Admitted, last 24 h</div><div className="kpi-value">{loading ? '—' : stats.last24h}</div></div>
+            <div className="panel kpi"><div className="kpi-label">Average stay so far</div><div className="kpi-value">{loading ? '—' : `${stats.avgStay} d`}</div></div>
+            <div className="panel kpi">
+              <div className="kpi-label">Due for discharge today</div>
+              <div className="kpi-value" style={{ color: stats.dueDischarge ? 'var(--amber)' : undefined }}>{loading ? '—' : stats.dueDischarge}</div>
+            </div>
+          </div>
+        )}
+
+        <section className="panel">
+          <div className="toolbar">
+            <div className="segmented" role="tablist" aria-label="Admission status">
+              {VIEWS.map((v) => (
+                <button key={v.label} type="button" role="tab" aria-selected={statusFilter === v.key} className={statusFilter === v.key ? 'is-active' : ''} onClick={() => setStatusFilter(v.key)}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search inpatients</span>
+              <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search patient, UHID, admission no., ward, doctor or diagnosis" />
+            </label>
+            <button type="button" className="btn btn-ghost btn-md" onClick={fetchAdmissions}>
+              <RefreshCw size={16} aria-hidden="true" /> Refresh
+            </button>
+          </div>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            loading={loading}
+            getRowId={(a) => String(admissionId(a))}
+            onRowClick={openChart}
+            rowLabel={(a) => `Open inpatient chart for ${a.PATIENT_NAME}`}
+            initialSorting={[{ id: 'admitted', desc: true }]}
+            empty={searchQuery ? (
+              <EmptyState icon={Search} title="No admissions match" description={`Nothing matches “${searchQuery}”.`} />
+            ) : (
+              <EmptyState
+                icon={BedDouble}
+                title={statusFilter === 'Active' ? 'No patients admitted' : 'No admissions found'}
+                description={statusFilter === 'Active' ? 'Admitted patients appear here once a bed is allocated.' : 'Try another status.'}
+              />
+            )}
+          />
+        </section>
+      </main>
     </>
   );
 }

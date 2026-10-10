@@ -1,152 +1,233 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { Megaphone, Plus, Search, Trash2 } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+import Modal from '../../../components/ui/Modal';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
+
+const DEPARTMENTS = ['All', 'OPD', 'IPD', 'Lab', 'Pharmacy', 'Nursing', 'Front Desk', 'Billing'];
+const PRIORITIES = [
+  { value: 'info', label: 'Info', tone: 'info' },
+  { value: 'normal', label: 'Normal', tone: 'neutral' },
+  { value: 'urgent', label: 'Urgent', tone: 'warning' },
+  { value: 'critical', label: 'Critical', tone: 'danger' },
+];
+const PRIORITY = Object.fromEntries(PRIORITIES.map((p) => [p.value, p]));
+const PRIORITY_RANK = { critical: 0, urgent: 1, normal: 2, info: 3 };
+const EMPTY_FORM = { title: '', message: '', department: 'All', priority: 'normal' };
+const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 
 export default function NoticesPage() {
   const [notices, setNotices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: '', message: '', department: 'All', priority: 'normal' });
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [query, setQuery] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => {
     setLoading(true);
     api.get('/admin/notices')
-      .then(r => setNotices(r.data.data))
-      .catch(() => toast.error('Failed to load'))
+      .then((r) => setNotices(r.data.data))
+      .catch(() => toast.error('Failed to load notices'))
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
   const create = async () => {
-    if (!form.title || !form.message) return toast.error('Fill all fields');
+    if (!form.title || !form.message) return toast.error('Enter a title and a message');
     try {
       await api.post('/admin/notices', form);
-      setForm({ title: '', message: '', department: 'All', priority: 'normal' });
+      setForm(EMPTY_FORM);
       setShowForm(false);
       toast.success('Notice published');
       load();
-    } catch { toast.error('Failed'); }
+    } catch { toast.error('Failed to publish notice'); }
   };
 
   const remove = async (id) => {
-    if (!confirm('Delete this notice?')) return;
-    try { await api.delete(`/admin/notices/${id}`); load(); } catch { toast.error('Failed'); }
+    setDeleting(true);
+    try {
+      await api.delete(`/admin/notices/${id}`);
+      setDeleteTarget(null);
+      toast.success('Notice deleted');
+      load();
+    } catch {
+      toast.error('Failed to delete notice');
+    } finally {
+      setDeleting(false);
+    }
   };
 
-  const priorityColor = { info: 'var(--blue)', normal: 'var(--green)', urgent: '#fbbf24', critical: '#ef4444' };
+  const list = Array.isArray(notices) ? notices : [];
+
+  const counts = useMemo(() => {
+    const c = { all: list.length };
+    PRIORITIES.forEach((p) => { c[p.value] = list.filter((n) => n.priority === p.value).length; });
+    return c;
+  }, [list]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return list.filter((n) => {
+      if (priorityFilter && n.priority !== priorityFilter) return false;
+      if (!q) return true;
+      return [n.title, n.message, n.department, n.created_by].some((v) => String(v || '').toLowerCase().includes(q));
+    });
+  }, [list, query, priorityFilter]);
+
+  const columns = useMemo(() => [
+    {
+      id: 'notice', header: 'Notice', accessorFn: (n) => n.title || '',
+      cell: ({ row }) => (
+        <span className="cell-stack" style={{ maxWidth: 640 }}>
+          <span className="cell-primary">{row.original.title}</span>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', whiteSpace: 'pre-wrap' }}>{row.original.message}</span>
+        </span>
+      ),
+    },
+    { id: 'department', header: 'Department', accessorFn: (n) => n.department || '', meta: { width: 140 }, cell: ({ getValue }) => <span className="tag">{getValue() || 'All'}</span> },
+    {
+      id: 'priority', header: 'Priority', accessorFn: (n) => PRIORITY_RANK[n.priority] ?? 9, meta: { width: 120 },
+      cell: ({ row }) => {
+        const p = PRIORITY[row.original.priority];
+        return <span className={`status status-${p?.tone || 'neutral'}`}>{p?.label || row.original.priority || '—'}</span>;
+      },
+    },
+    {
+      id: 'posted', header: 'Posted', accessorFn: (n) => (n.created_at ? new Date(n.created_at).getTime() : 0), meta: { width: 200 },
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="tabular">{fmtDateTime(row.original.created_at)}</span>
+          <span className="cell-secondary">By {row.original.created_by || '—'}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 56, align: 'right' },
+      cell: ({ row }) => (
+        <button type="button" className="icon-btn row-action" aria-label={`Delete notice ${row.original.title}`} onClick={() => setDeleteTarget(row.original)}>
+          <Trash2 size={16} aria-hidden="true" />
+        </button>
+      ),
+    },
+  ], []);
+
+  const openForm = () => setShowForm(true);
+  const newNoticeButton = (
+    <button type="button" className="btn btn-primary btn-md" onClick={openForm}>
+      <Plus size={16} aria-hidden="true" /> New notice
+    </button>
+  );
 
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        {/* Premium Header */}
-        <div className="hms-page-header hms-anim-1" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1>
-              <span className="header-icon" style={{ background: 'rgba(234,179,8,0.1)', borderColor: 'rgba(234,179,8,0.25)' }}>📢</span>
-              Notices & Communication
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Department-level announcements, internal circulars, and notice board
-            </p>
-          </div>
-          <button className="btn btn-primary" onClick={() => setShowForm(!showForm)} style={{ padding: '0 20px', height: 42 }}>
-            <span style={{ fontSize: '1.2rem', marginRight: 6 }}>+</span> New Notice
-          </button>
-        </div>
+      <main className="app-page">
+        <PageHeader
+          title="Notices"
+          description="Department announcements and internal circulars for the notice board."
+          actions={newNoticeButton}
+        />
 
-        {showForm && (
-          <div className="card hms-anim-2" style={{ marginBottom: 30, padding: 24, borderTop: '4px solid var(--blue)', boxShadow: 'var(--shadow-md)' }}>
-            <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '1.2rem' }}>📝</span> Create Notice
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>Title <span style={{ color: '#ef4444' }}>*</span></label>
-                <input className="form-input" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. OPD Timing Change" style={{ padding: '10px 14px' }} />
-              </div>
-              <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>Message <span style={{ color: '#ef4444' }}>*</span></label>
-                <textarea className="form-textarea" value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} rows={4} placeholder="Detailed message..." style={{ padding: '12px 14px' }} />
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>Target Department</label>
-                <select className="form-select" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} style={{ padding: '10px 14px' }}>
-                  <option>All</option>
-                  <option>OPD</option>
-                  <option>IPD</option>
-                  <option>Lab</option>
-                  <option>Pharmacy</option>
-                  <option>Nursing</option>
-                  <option>Front Desk</option>
-                  <option>Billing</option>
-                </select>
-              </div>
-              <div className="form-group" style={{ margin: 0 }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>Priority Level</label>
-                <select className="form-select" value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} style={{ padding: '10px 14px' }}>
-                  <option value="info">Info (Blue)</option>
-                  <option value="normal">Normal (Green)</option>
-                  <option value="urgent">Urgent (Yellow)</option>
-                  <option value="critical">Critical (Red)</option>
-                </select>
-              </div>
-            </div>
-            <div style={{ marginTop: 24, display: 'flex', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-              <button className="btn btn-primary" onClick={create} style={{ padding: '0 24px' }}>📤 Publish Notice</button>
-              <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
-            </div>
-          </div>
-        )}
-
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>
-        ) : notices.length === 0 ? (
-          <div className="card hms-anim-3" style={{ textAlign: 'center', padding: 60, background: 'var(--surface-2)', border: '1px dashed var(--border)', borderRadius: 16 }}>
-            <div style={{ fontSize: '4rem', marginBottom: 16, filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.1))' }}>📭</div>
-            <h3 style={{ fontSize: '1.4rem', color: 'var(--text-primary)', marginBottom: 8 }}>No Notices</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Create your first notice to communicate with departments across the hospital.</p>
-          </div>
-        ) : (
-          <div className="hms-anim-3" style={{ display: 'grid', gap: 16 }}>
-            {notices.map((n, i) => (
-              <div key={n.id} className="card hms-table-anim" style={{
-                borderLeft: `5px solid ${priorityColor[n.priority] || 'var(--border)'}`,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-                padding: 20, transition: 'transform 0.2s, box-shadow 0.2s',
-                animationDelay: `${i * 0.05}s`
-              }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
-              >
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                    <span style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)' }}>{n.title}</span>
-                    <span className="badge" style={{ background: 'var(--surface-3)', fontSize: '0.75rem', padding: '4px 10px', color: 'var(--text-secondary)' }}>{n.department}</span>
-                    {n.priority === 'urgent' && <span className="badge badge-amber" style={{ padding: '4px 10px' }}>Urgent</span>}
-                    {n.priority === 'critical' && <span className="badge badge-red" style={{ padding: '4px 10px' }}>Critical</span>}
-                  </div>
-                  <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.6 }}>{n.message}</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                    <span style={{ background: 'var(--surface-2)', padding: '4px 8px', borderRadius: 4 }}>👤 By {n.created_by}</span>
-                    <span>•</span>
-                    <span>🕒 {new Date(n.created_at).toLocaleString('en-IN')}</span>
-                  </div>
-                </div>
-                <button 
-                  className="btn btn-ghost" 
-                  onClick={() => remove(n.id)} 
-                  style={{ color: '#ef4444', flexShrink: 0, padding: 8, height: 'auto', background: 'rgba(239,68,68,0.1)' }}
-                  title="Delete Notice"
-                >
-                  🗑
+        <section className="panel">
+          <div className="toolbar">
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search notices</span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search title, message or department" />
+            </label>
+            <div className="segmented" role="tablist" aria-label="Filter by priority">
+              <button type="button" role="tab" aria-selected={!priorityFilter} className={!priorityFilter ? 'is-active' : ''} onClick={() => setPriorityFilter('')}>
+                All <span className="seg-count">{counts.all}</span>
+              </button>
+              {PRIORITIES.map((p) => (
+                <button key={p.value} type="button" role="tab" aria-selected={priorityFilter === p.value} className={priorityFilter === p.value ? 'is-active' : ''} onClick={() => setPriorityFilter(p.value)}>
+                  {p.label} <span className="seg-count">{counts[p.value]}</span>
                 </button>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            loading={loading}
+            getRowId={(n) => String(n.id)}
+            initialSorting={[{ id: 'posted', desc: true }]}
+            empty={list.length > 0 ? (
+              <EmptyState icon={Search} title="No notices match" description="Clear the search or pick another priority." />
+            ) : (
+              <EmptyState
+                icon={Megaphone}
+                title="No notices yet"
+                description="Publish a notice to share announcements with departments across the hospital."
+                action={newNoticeButton}
+              />
+            )}
+          />
+        </section>
+      </main>
+
+      <Modal
+        open={showForm}
+        onOpenChange={setShowForm}
+        title="New notice"
+        description="Published notices are visible to the selected department."
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setShowForm(false)}>Cancel</button>
+            <button type="submit" form="notice-form" className="btn btn-primary btn-md">Publish notice</button>
+          </>
         )}
-      </div>
+      >
+        <form id="notice-form" onSubmit={(e) => { e.preventDefault(); create(); }} style={{ display: 'grid', gap: 14 }}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="notice-title">Title</label>
+            <input id="notice-title" className="form-input" aria-required="true" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. OPD timing change" />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="notice-message">Message</label>
+            <textarea id="notice-message" className="form-textarea" aria-required="true" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={4} />
+          </div>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="notice-dept">Department</label>
+              <select id="notice-dept" className="form-select" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })}>
+                {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="notice-priority">Priority</label>
+              <select id="notice-priority" className="form-select" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+                {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+              </select>
+            </div>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete this notice?"
+        description={deleteTarget ? `"${deleteTarget.title}" will be removed from the notice board.` : ''}
+        size="sm"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setDeleteTarget(null)}>Keep notice</button>
+            <button type="button" className="btn btn-danger btn-md" disabled={deleting} onClick={() => remove(deleteTarget.id)}>
+              {deleting ? 'Deleting…' : 'Delete notice'}
+            </button>
+          </>
+        )}
+      >
+        <p className="muted">This cannot be undone.</p>
+      </Modal>
     </>
   );
 }

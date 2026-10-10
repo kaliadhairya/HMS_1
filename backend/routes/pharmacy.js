@@ -596,12 +596,26 @@ router.post('/dispense', checkPermission('pharmacy', 'write'), async (req, res) 
 
 // ─── POST /api/pharmacy/otc ────────────────────────────────────
 router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
+  const { items, paymentMode } = req.body;
+  if (!items || items.length === 0) {
+    return res.status(400).json({ success: false, message: 'No items provided.' });
+  }
+
+  // The counter enters a UHID; a numeric patient ID is still accepted.
+  let patientId = null;
+  const patientRef = String(req.body.patientId ?? '').trim();
+  if (patientRef) {
+    if (/^\d+$/.test(patientRef)) {
+      patientId = Number(patientRef);
+    } else {
+      const [rows] = await sequelize.query('SELECT ID FROM HMS_PATIENTS WHERE UPPER(UHID) = UPPER(:uhid)', { replacements: { uhid: patientRef } });
+      if (!rows.length) return res.status(400).json({ success: false, message: `No patient found with UHID ${patientRef}.` });
+      patientId = rows[0].ID;
+    }
+  }
+
   const t = await sequelize.transaction();
   try {
-    const { patientId, items, paymentMode } = req.body;
-    if (!items || items.length === 0) {
-      return res.status(400).json({ success: false, message: 'No items provided.' });
-    }
 
     // Generate bill number
     const billNumber = `OTC-${Date.now()}`;

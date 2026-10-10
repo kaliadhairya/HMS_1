@@ -1,44 +1,57 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { CalendarCheck, CalendarDays, CircleAlert, List, Search, Stethoscope, UserRound, X } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+
+// Local calendar date (not UTC), so "today" matches the hospital's day.
+const localYmd = (d = new Date()) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+// /patients/hms/search returns raw SQL aliases (patient_name, phone_number); map them to the
+// field names the rest of this page uses.
+const normalizePatient = (p) => ({ ...p, name: p.name || p.patient_name, phoneNumber: p.phoneNumber || p.phone_number });
 
 export default function AppointmentBookingPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const initialPatient = location.state?.patient;
-  
+
   const [patient, setPatient] = useState(initialPatient || null);
   const [doctors, setDoctors] = useState([]);
-  
+
   const [selectedDoctor, setSelectedDoctor] = useState('');
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(localYmd());
   const [selectedSlot, setSelectedSlot] = useState('');
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   // Quick Search
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
 
-  // Mock slots for UI 
+  // Mock slots for UI
   const availableSlots = [
     '09:00', '09:15', '09:30', '09:45',
     '10:00', '10:15', '10:30', '10:45',
     '11:00', '11:15', '11:30', '11:45',
     '12:00', '12:15', '12:30', '12:45',
     '14:00', '14:15', '14:30', '14:45',
-    '15:00', '15:15', '15:30', '15:45'
+    '15:00', '15:15', '15:30', '15:45',
   ];
 
   // In a real app we would fetch the doctor's booked slots from backend
   const [bookedSlots, setBookedSlots] = useState([]);
 
   useEffect(() => { fetchDoctors(); }, []);
-  
-  // Refresh booked slots when doctor/date changes
+
+  // Refresh booked slots when doctor/date changes; a slot picked for another doctor or day no longer applies.
   useEffect(() => {
+    setSelectedSlot('');
     if (selectedDoctor && selectedDate) {
       fetchBookedSlots(selectedDoctor, selectedDate);
     } else {
@@ -50,7 +63,7 @@ export default function AppointmentBookingPage() {
     try {
       const res = await api.get(`/hms/doctors`);
       setDoctors(res.data.data);
-    } catch(err) {} 
+    } catch (err) { /* doctor list stays empty */ }
   };
 
   const fetchBookedSlots = async (doctorId, date) => {
@@ -71,9 +84,9 @@ export default function AppointmentBookingPage() {
     const handler = setTimeout(async () => {
       if (searchQuery.length > 2 && !patient && !initialPatient) {
         try {
-          const res = await api.get(`/patients/hms/search?q=${searchQuery}`);
+          const res = await api.get(`/patients/hms/search?q=${encodeURIComponent(searchQuery)}`);
           setSearchResults(res.data.data);
-        } catch(err) {} 
+        } catch (err) { /* ignore search errors */ }
       } else { setSearchResults([]); }
     }, 400);
     return () => clearTimeout(handler);
@@ -86,7 +99,7 @@ export default function AppointmentBookingPage() {
     }
     setLoading(true);
     setError('');
-    
+
     // Auto-calculate 15 min end slot
     const [h, m] = selectedSlot.split(':').map(Number);
     const endTotalMins = h * 60 + m + 15;
@@ -101,7 +114,7 @@ export default function AppointmentBookingPage() {
         doctor_id: selectedDoctor,
         appointment_date: selectedDate,
         slot_start: selectedSlot,
-        slot_end
+        slot_end,
       });
       navigate('/hms/appointments'); // List view
     } catch (err) {
@@ -111,116 +124,147 @@ export default function AppointmentBookingPage() {
     }
   };
 
+  const results = (Array.isArray(searchResults) ? searchResults : []).map(normalizePatient);
+  const doctorList = Array.isArray(doctors) ? doctors : [];
+
   return (
     <>
-    <Navbar />
-    <div className="page-wrapper fade-up">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1>Book Appointment</h1>
-          <p>Schedule a future consultation slot.</p>
-        </div>
-        <button className="btn btn-outline" onClick={() => navigate('/hms/appointments')}>
-          View All Appointments
-        </button>
-      </div>
+      <Navbar />
+      <main className="app-page">
+        <div style={{ maxWidth: 820, margin: '0 auto' }}>
+          <PageHeader
+            title="Book appointment"
+            description="Schedule a consultation slot with a doctor."
+            actions={(
+              <button type="button" className="btn btn-secondary btn-md" onClick={() => navigate('/hms/appointments')}>
+                <List size={16} aria-hidden="true" /> View appointments
+              </button>
+            )}
+          />
 
-      <div className="card" style={{ maxWidth: 800, margin: '0 auto' }}>
-        {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
-
-        {/* 1. Patient */}
-        <div className="card-section">
-          <div className="card-section-title">1. Patient Selection</div>
-          {patient ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <div><strong>{patient.name}</strong> • UHID: {patient.uhid || 'Legacy'} • {patient.phoneNumber}</div>
-              {!initialPatient && <button className="btn btn-ghost btn-sm" onClick={() => setPatient(null)}>Change</button>}
+          {error && (
+            <div className="alert-strip alert-danger" role="alert">
+              <CircleAlert size={16} aria-hidden="true" /> {error}
             </div>
-          ) : (
-            <div style={{ position: 'relative' }}>
-                <input 
-                  type="text" className="form-input" 
-                  placeholder="Search Patient Name or UHID..." 
-                  value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                />
-                {searchResults.length > 0 && (
-                  <div className="card" style={{ position: 'absolute', top: 45, left: 0, right: 0, zIndex: 10, padding: 0 }}>
-                    {searchResults.map(p => (
-                      <div key={p.id} style={{ padding: '12px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => { setPatient(p); setSearchQuery(''); }}>
-                        <strong>{p.name}</strong> ({p.uhid || 'Old'})
-                      </div>
-                    ))}
+          )}
+
+          <div className="stack">
+            <section className="panel">
+              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><UserRound size={16} aria-hidden="true" /> 1. Patient</h2></div>
+              <div className="panel-pad">
+                {patient ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <span className="cell-person">
+                      <span className="cell-avatar" aria-hidden="true">{(patient.name || '?').charAt(0).toUpperCase()}</span>
+                      <span className="cell-stack">
+                        <span className="cell-primary">{patient.name}</span>
+                        <span className="cell-secondary"><span className="mono">{patient.uhid || 'Legacy'}</span>{patient.phoneNumber ? ` · ${patient.phoneNumber}` : ''}</span>
+                      </span>
+                    </span>
+                    {!initialPatient && (
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPatient(null)}>
+                        <X size={14} aria-hidden="true" /> Change
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="stack-sm">
+                    <label className="search-field">
+                      <Search size={17} aria-hidden="true" />
+                      <span className="sr-only">Search patient by name or UHID</span>
+                      <input type="text" placeholder="Search patient name or UHID" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                    </label>
+                    {results.length > 0 && (
+                      <ul className="list-rows" aria-label="Matching patients" style={{ maxHeight: 240, overflowY: 'auto' }}>
+                        {results.map((p) => (
+                          <li key={p.id}>
+                            <button type="button" className="list-row" onClick={() => { setPatient(p); setSearchQuery(''); }}>
+                              <span className="cell-stack">
+                                <span className="cell-primary">{p.name}</span>
+                                <span className="cell-secondary mono">{p.uhid || 'Old record'}</span>
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {!searchQuery && <p className="form-hint" style={{ marginTop: 0 }}>Type at least 3 characters to search.</p>}
                   </div>
                 )}
-            </div>
-          )}
-        </div>
-
-        {/* 2. Provider */}
-        <div className="card-section">
-          <div className="card-section-title">2. Select Provider</div>
-          <div className="form-group">
-            <label className="form-label">Doctor</label>
-            <select className="form-select" value={selectedDoctor} onChange={e => setSelectedDoctor(e.target.value)}>
-              <option value="">-- Choose --</option>
-              {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.user?.name} ({d.speciality})</option>)}
-            </select>
-          </div>
-        </div>
-
-        {/* 3. Slot */}
-        <div className="card-section">
-          <div className="card-section-title">3. Select Date & Slot</div>
-          <div style={{ display: 'flex', gap: 24 }}>
-            <div className="form-group" style={{ flex: 1 }}>
-              <label className="form-label">Date</label>
-              <input type="date" className="form-input" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} min={new Date().toISOString().split('T')[0]} />
-            </div>
-          </div>
-
-          {selectedDoctor && selectedDate && (
-            <div style={{ marginTop: 24 }}>
-              <label className="form-label">Available Slots</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 12, marginTop: 8 }}>
-                {availableSlots.map(slot => {
-                  const isBooked = bookedSlots.includes(slot);
-                  const isSelected = selectedSlot === slot;
-                  let bg = 'var(--surface-3)';
-                  let color = 'var(--text-primary)';
-                  let border = '1px solid transparent';
-                  
-                  if (isBooked) {
-                    bg = 'var(--red-light)'; color = 'var(--red)'; border = '1px solid var(--red-border)';
-                  } else if (isSelected) {
-                    bg = 'var(--green)'; color = 'white'; border = '1px solid var(--green)';
-                  }
-
-                  return (
-                    <button 
-                      key={slot} 
-                      className="btn" 
-                      style={{ background: bg, color, border, padding: '8px', fontSize: '0.8rem', justifyContent: 'center' }}
-                      disabled={isBooked}
-                      onClick={(e) => { e.preventDefault(); setSelectedSlot(slot); }}
-                    >
-                      {slot}
-                    </button>
-                  );
-                })}
               </div>
-            </div>
-          )}
-        </div>
+            </section>
 
-        <button 
-          className="btn btn-primary btn-lg btn-full" 
-          onClick={handleBook}
-          disabled={loading || !patient || !selectedDoctor || !selectedSlot}
-        >
-          {loading ? <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> : 'Confirm Appointment'}
-        </button>
-      </div>
-    </div>
+            <section className="panel">
+              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><Stethoscope size={16} aria-hidden="true" /> 2. Doctor</h2></div>
+              <div className="panel-pad">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="book-doctor">Doctor</label>
+                  <select id="book-doctor" className="form-select" value={selectedDoctor} onChange={(e) => setSelectedDoctor(e.target.value)}>
+                    <option value="">Choose a doctor</option>
+                    {doctorList.map((d) => <option key={d.id} value={d.id}>Dr. {d.user?.name} ({d.speciality})</option>)}
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><CalendarDays size={16} aria-hidden="true" /> 3. Date and slot</h2></div>
+              <div className="panel-pad stack">
+                <div className="form-group" style={{ maxWidth: 240 }}>
+                  <label className="form-label" htmlFor="book-date">Date</label>
+                  <input id="book-date" type="date" className="form-input" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} min={localYmd()} />
+                </div>
+
+                {selectedDoctor && selectedDate ? (
+                  <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+                    <legend className="form-label" style={{ marginBottom: 8 }}>Available slots</legend>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 8 }}>
+                      {availableSlots.map((slot) => {
+                        const isBooked = bookedSlots.includes(slot);
+                        const isSelected = selectedSlot === slot;
+                        let style = { background: 'var(--surface)', color: 'var(--text-primary)', borderColor: 'var(--border-dark)' };
+                        if (isBooked) {
+                          style = { background: 'var(--surface-3)', color: 'var(--text-muted)', borderColor: 'var(--border)', textDecoration: 'line-through', cursor: 'not-allowed' };
+                        } else if (isSelected) {
+                          style = { background: 'var(--primary)', color: 'var(--text-inverse)', borderColor: 'var(--primary)' };
+                        }
+
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            className="btn btn-sm tabular"
+                            style={{ ...style, justifyContent: 'center', height: 34 }}
+                            disabled={isBooked}
+                            aria-pressed={isSelected}
+                            aria-label={isBooked ? `${slot}, booked` : slot}
+                            onClick={(e) => { e.preventDefault(); setSelectedSlot(slot); }}
+                          >
+                            {slot}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="form-hint">Crossed-out slots are already booked. Each slot is 15 minutes.</p>
+                  </fieldset>
+                ) : (
+                  <p className="muted">Choose a doctor to see available slots.</p>
+                )}
+              </div>
+            </section>
+
+            <button
+              type="button"
+              className="btn btn-primary btn-md"
+              style={{ justifyContent: 'center', height: 42 }}
+              onClick={handleBook}
+              disabled={loading || !patient || !selectedDoctor || !selectedSlot}
+            >
+              <CalendarCheck size={16} aria-hidden="true" /> {loading ? 'Booking…' : 'Confirm appointment'}
+            </button>
+          </div>
+        </div>
+      </main>
     </>
   );
 }

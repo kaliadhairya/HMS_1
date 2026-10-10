@@ -1,253 +1,291 @@
-import { useState, useEffect } from 'react';
-import Navbar from '../../components/Navbar';
-import api from '../../api/axios';
+import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
+import { UserPlus, Search, Pencil, Trash2, Users } from 'lucide-react';
+import Navbar from '../../components/Navbar';
+import PageHeader from '../../components/ui/PageHeader';
+import DataTable from '../../components/ui/DataTable';
+import EmptyState from '../../components/ui/EmptyState';
+import Modal from '../../components/ui/Modal';
+import RowMenu from '../../components/ui/RowMenu';
+import api from '../../api/axios';
 
-const ROLE_COLORS = {
-  doctor: '#60a5fa', nurse: '#f472b6', receptionist: '#a855f7',
-  pharmacist: '#2dd4bf', lab_technician: '#34d399',
+const STAFF_ROLES = ['doctor', 'nurse', 'receptionist', 'pharmacist', 'lab_technician'];
+const ROLE_LABEL = {
+  doctor: 'Doctor', nurse: 'Nurse', receptionist: 'Receptionist', pharmacist: 'Pharmacist', lab_technician: 'Lab technician',
 };
+const EMPTY_FORM = { username: '', password: '', name: '', phone: '', role: 'doctor', isActive: true };
+const ON_SHIFT_MS = 8 * 3600000;
+
+const isActive = (s) => Number(s.IS_ACTIVE) === 1 || s.IS_ACTIVE === true;
+const isLocked = (s) => s.LOCKED_UNTIL && new Date(s.LOCKED_UNTIL) > new Date();
+const statusOf = (s) => (isLocked(s) ? 'Locked' : isActive(s) ? 'Active' : 'Inactive');
+const STATUS_TONE = { Locked: 'danger', Active: 'success', Inactive: 'neutral' };
+const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Never');
 
 export default function StaffManagementPage() {
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('');
+  const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [editStaffId, setEditStaffId] = useState(null);
-  const [form, setForm] = useState({ username: '', password: '', name: '', phone: '', email: '', role: 'doctor', isActive: true });
+  const [editing, setEditing] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
 
   const load = () => {
     setLoading(true);
     api.get('/admin/staff')
-      .then(r => setStaff(r.data.data))
+      .then((r) => setStaff(r.data.data || []))
       .catch(() => toast.error('Failed to load staff'))
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
-  const filtered = staff.filter(s => {
-    const matchName = !filter || s.NAME?.toLowerCase().includes(filter.toLowerCase()) || s.USERNAME?.toLowerCase().includes(filter.toLowerCase());
-    const matchRole = !roleFilter || s.ROLE === roleFilter;
-    return matchName && matchRole;
-  });
+  const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
   const openAddModal = () => {
-    setEditStaffId(null);
-    setForm({ username: '', password: '', name: '', phone: '', email: '', role: 'doctor', isActive: true });
+    setEditing(null);
+    setForm(EMPTY_FORM);
     setShowModal(true);
   };
 
   const openEditModal = (s) => {
-    setEditStaffId(s.ID);
-    setForm({ username: s.USERNAME, password: '', name: s.NAME, phone: s.PHONE, email: s.EMAIL, role: s.ROLE, isActive: s.IS_ACTIVE === 1 });
+    setEditing(s);
+    setForm({ username: s.USERNAME, password: '', name: s.NAME, phone: s.PHONE || '', role: s.ROLE, isActive: isActive(s) });
     setShowModal(true);
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
+    setSaving(true);
     try {
-      if (editStaffId) {
-        const payload = { ...form, isActive: form.isActive ? 1 : 0 };
-        if (!payload.password) delete payload.password; // Don't override hash with blank
-        await api.put(`/users/${editStaffId}`, payload);
-        toast.success('Staff updated successfully');
+      const payload = { ...form, isActive: form.isActive ? 1 : 0 };
+      if (editing) {
+        if (!payload.password) delete payload.password;
+        await api.put(`/users/${editing.ID}`, payload);
+        toast.success('Staff member updated');
       } else {
-        if (!form.username || !form.password || !form.name || !form.role) {
-          return toast.error('Please fill required fields.');
-        }
-        await api.post('/users', { ...form, isActive: form.isActive ? 1 : 0 });
-        toast.success('Staff added successfully');
+        await api.post('/users', payload);
+        toast.success('Staff member added');
       }
       setShowModal(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save staff');
+      toast.error(err.response?.data?.message || 'Failed to save staff member');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!window.confirm('Are you absolutely sure you want to delete this staff member? This cannot be undone.')) return;
+    const target = confirmDelete;
     try {
-      await api.delete(`/users/${editStaffId}`);
-      toast.success('Staff deleted successfully');
+      await api.delete(`/users/${target.ID}`);
+      toast.success(`${target.NAME} removed`);
+      setConfirmDelete(null);
       setShowModal(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Cannot delete staff. Deactivate them instead.');
+      toast.error(err.response?.data?.message || 'Cannot delete this account. Deactivate it instead.');
     }
   };
 
-  const roles = [...new Set(staff.map(s => s.ROLE))];
-  const now = new Date();
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return staff.filter((s) => {
+      if (roleFilter && s.ROLE !== roleFilter) return false;
+      if (!q) return true;
+      return [s.NAME, s.USERNAME, s.PHONE].some((v) => String(v || '').toLowerCase().includes(q));
+    });
+  }, [staff, query, roleFilter]);
+
+  const counts = useMemo(() => {
+    const now = Date.now();
+    return {
+      active: staff.filter(isActive).length,
+      onShift: staff.filter((s) => s.LAST_LOGIN && now - new Date(s.LAST_LOGIN).getTime() < ON_SHIFT_MS).length,
+      locked: staff.filter(isLocked).length,
+      doctors: staff.filter((s) => s.ROLE === 'doctor' && isActive(s)).length,
+    };
+  }, [staff]);
+
+  const columns = useMemo(() => [
+    {
+      id: 'name', header: 'Staff member', accessorFn: (s) => s.NAME || '',
+      cell: ({ row }) => {
+        const s = row.original;
+        return (
+          <span className="cell-person">
+            <span className="cell-avatar" aria-hidden="true">{(s.NAME || '?').replace(/^Dr\.?\s*/i, '').charAt(0).toUpperCase()}</span>
+            <span className="cell-stack">
+              <span className="cell-primary">{s.NAME}</span>
+              <span className="cell-secondary mono">{s.USERNAME}</span>
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      id: 'role', header: 'Role', accessorFn: (s) => ROLE_LABEL[s.ROLE] || s.ROLE, meta: { width: 160 },
+      cell: ({ getValue }) => <span className="status status-neutral">{getValue()}</span>,
+    },
+    { id: 'phone', header: 'Phone', accessorFn: (s) => s.PHONE || '', meta: { width: 150 }, cell: ({ getValue }) => <span className="tabular">{getValue() || '—'}</span> },
+    {
+      id: 'status', header: 'Status', accessorFn: statusOf, meta: { width: 120 },
+      cell: ({ getValue }) => <span className={`status status-${STATUS_TONE[getValue()]}`}>{getValue()}</span>,
+    },
+    {
+      id: 'lastLogin', header: 'Last sign-in', accessorFn: (s) => (s.LAST_LOGIN ? new Date(s.LAST_LOGIN).getTime() : 0), meta: { width: 170 },
+      cell: ({ row }) => <span className="tabular cell-secondary">{fmtDateTime(row.original.LAST_LOGIN)}</span>,
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 56, align: 'right' },
+      cell: ({ row }) => (
+        <RowMenu
+          label={`Actions for ${row.original.NAME}`}
+          items={[
+            { label: 'Edit', icon: Pencil, onSelect: () => openEditModal(row.original) },
+            { label: 'Delete account', icon: Trash2, onSelect: () => setConfirmDelete(row.original), danger: true, separator: true },
+          ]}
+        />
+      ),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
 
   return (
     <>
       <Navbar />
-      <div className="page-wrapper fade-up">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h2 style={{ marginBottom: 4 }}>👥 Staff Management</h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              View and manage operational staff — doctors, nurses, receptionists, pharmacists, lab technicians
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-primary" onClick={openAddModal}>➕ Add New Staff</button>
-            <span className="badge badge-blue" style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
-              {staff.length} Total Staff
-            </span>
+      <main className="app-page">
+        <PageHeader
+          title="Staff"
+          description="Clinical and operational staff: doctors, nurses, front desk, pharmacy and laboratory."
+          actions={(
+            <button type="button" className="btn btn-primary btn-md" onClick={openAddModal}>
+              <UserPlus size={16} aria-hidden="true" /> Add staff member
+            </button>
+          )}
+        />
+
+        <div className="kpi-strip">
+          <div className="panel kpi"><div className="kpi-label">Active staff</div><div className="kpi-value">{loading ? '—' : counts.active}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Active doctors</div><div className="kpi-value">{loading ? '—' : counts.doctors}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Signed in, last 8 h</div><div className="kpi-value">{loading ? '—' : counts.onShift}</div></div>
+          <div className="panel kpi">
+            <div className="kpi-label">Locked accounts</div>
+            <div className="kpi-value" style={{ color: counts.locked ? 'var(--red)' : undefined }}>{loading ? '—' : counts.locked}</div>
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="card" style={{ padding: 16, marginBottom: 20, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div className="form-group" style={{ margin: 0, flex: 1, minWidth: 200 }}>
-            <label className="form-label" style={{ fontSize: '0.7rem' }}>Search</label>
-            <input className="form-input" placeholder="Search by name or username..." value={filter} onChange={e => setFilter(e.target.value)} />
-          </div>
-          <div className="form-group" style={{ margin: 0, minWidth: 160 }}>
-            <label className="form-label" style={{ fontSize: '0.7rem' }}>Role</label>
-            <select className="form-select" value={roleFilter} onChange={e => setRoleFilter(e.target.value)}>
-              <option value="">All Roles</option>
-              {roles.map(r => <option key={r} value={r}>{r?.replace(/_/g, ' ')}</option>)}
+        <section className="panel">
+          <div className="toolbar">
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search staff</span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, username or phone" />
+            </label>
+            <label className="sr-only" htmlFor="staff-role">Filter by role</label>
+            <select id="staff-role" className="form-select" style={{ width: 190 }} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+              <option value="">All roles</option>
+              {STAFF_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </select>
           </div>
-          <button className="btn btn-outline" onClick={() => { setFilter(''); setRoleFilter(''); }}>Clear</button>
-        </div>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            loading={loading}
+            getRowId={(s) => String(s.ID)}
+            onRowClick={openEditModal}
+            rowLabel={(s) => `Edit ${s.NAME}`}
+            initialSorting={[{ id: 'name', desc: false }]}
+            empty={staff.length > 0 ? (
+              <EmptyState icon={Search} title="No staff match" description="Try another name, or clear the role filter." />
+            ) : (
+              <EmptyState
+                icon={Users}
+                title="No staff yet"
+                description="Add doctors, nurses and other staff so they can sign in."
+                action={<button type="button" className="btn btn-primary btn-md" onClick={openAddModal}><UserPlus size={16} aria-hidden="true" /> Add staff member</button>}
+              />
+            )}
+          />
+        </section>
+      </main>
 
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>
-        ) : (
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Role</th>
-                  <th>Contact</th>
-                  <th>Status</th>
-                  <th>Last Login</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(s => {
-                  const isLocked = s.LOCKED_UNTIL && new Date(s.LOCKED_UNTIL) > now;
-                  const lastLogin = s.LAST_LOGIN ? new Date(s.LAST_LOGIN) : null;
-                  const isRecent = lastLogin && (now - lastLogin < 8 * 3600000);
-
-                  return (
-                    <tr key={s.ID} style={{ opacity: s.IS_ACTIVE ? 1 : 0.5 }}>
-                      <td>
-                        <div style={{ fontWeight: 600 }}>{s.NAME}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{s.USERNAME}</div>
-                      </td>
-                      <td>
-                        <span className="badge" style={{
-                          background: `${ROLE_COLORS[s.ROLE] || '#94a3b8'}20`,
-                          color: ROLE_COLORS[s.ROLE] || '#94a3b8',
-                          border: `1px solid ${ROLE_COLORS[s.ROLE] || '#94a3b8'}40`,
-                          textTransform: 'capitalize',
-                        }}>{s.ROLE?.replace(/_/g, ' ')}</span>
-                      </td>
-                      <td>
-                        <div style={{ fontSize: '0.82rem' }}>{s.PHONE || '—'}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{s.EMAIL || '—'}</div>
-                      </td>
-                      <td>
-                        {isLocked
-                          ? <span className="badge badge-red">Locked</span>
-                          : s.IS_ACTIVE
-                            ? <span className="badge badge-green">Active</span>
-                            : <span className="badge" style={{ background: 'var(--surface-3)' }}>Inactive</span>}
-                      </td>
-                      <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                        {lastLogin ? (
-                          <>
-                            {isRecent && <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--green)', marginRight: 6 }} />}
-                            {lastLogin.toLocaleString('en-IN')}
-                          </>
-                        ) : 'Never'}
-                      </td>
-                      <td>
-                        <button className="btn btn-outline btn-sm" onClick={() => openEditModal(s)}>✏️ Edit</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 40 }}>No staff found</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+      <Modal
+        open={showModal}
+        onOpenChange={setShowModal}
+        title={editing ? `Edit ${editing.NAME}` : 'Add staff member'}
+        description={editing ? 'Leave the password blank to keep the current one.' : 'Give them a temporary password and ask them to change it after first sign-in.'}
+        footer={(
+          <>
+            {editing && (
+              <button type="button" className="btn btn-ghost btn-md" style={{ color: 'var(--red)', marginRight: 'auto' }} onClick={() => setConfirmDelete(editing)}>
+                <Trash2 size={16} aria-hidden="true" /> Delete
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setShowModal(false)}>Cancel</button>
+            <button type="submit" form="staff-form" className="btn btn-primary btn-md" disabled={saving}>
+              {saving ? 'Saving…' : editing ? 'Save changes' : 'Add staff member'}
+            </button>
+          </>
         )}
-      </div>
-
-      {showModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
-        }} onClick={() => setShowModal(false)}>
-          <div className="card" style={{ width: 440, maxHeight: '90vh', overflowY: 'auto', padding: 28 }}
-            onClick={e => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 20 }}>{editStaffId ? '✏️ Edit Staff' : '➕ Create New Staff'}</h2>
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div className="form-group">
-                <label className="form-label">Username *</label>
-                <input className="form-input" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} required />
-              </div>
-              <div className="form-group">
-                <label className="form-label">{editStaffId ? 'New Password (leave blank to keep current)' : 'Temporary Password *'}</label>
-                <input className="form-input" type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} {...(!editStaffId && { required: true })} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Full Name *</label>
-                <input className="form-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Role *</label>
-                <select className="form-select" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} required>
-                  <option value="doctor">Doctor</option>
-                  <option value="nurse">Nurse</option>
-                  <option value="receptionist">Receptionist</option>
-                  <option value="pharmacist">Pharmacist</option>
-                  <option value="lab_technician">Lab Technician</option>
-                </select>
-              </div>
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Phone</label>
-                  <input className="form-input" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Email</label>
-                  <input className="form-input" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
-                </div>
-              </div>
-              {editStaffId && (
-                <div className="form-group" style={{ marginBottom: 4 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.9rem' }}>
-                    <input type="checkbox" checked={form.isActive} onChange={e => setForm(f => ({ ...f, isActive: e.target.checked }))} /> Account is Active
-                  </label>
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>{editStaffId ? 'Save Changes' : 'Create Staff'}</button>
-                <button type="button" className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
-              </div>
-              {editStaffId && (
-                 <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-                   <button type="button" className="btn btn-outline" style={{ color: 'var(--red)', borderColor: 'var(--red)', width: '100%' }} onClick={handleDelete}>
-                     🗑️ Delete Staff
-                   </button>
-                 </div>
-              )}
-            </form>
+      >
+        <form id="staff-form" onSubmit={handleSave} style={{ display: 'grid', gap: 14 }}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="s-name">Full name</label>
+            <input id="s-name" className="form-input" value={form.name} onChange={(e) => setField('name', e.target.value)} required />
           </div>
-        </div>
-      )}
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="s-role">Role</label>
+              <select id="s-role" className="form-select" value={form.role} onChange={(e) => setField('role', e.target.value)} required>
+                {STAFF_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="s-phone">Phone</label>
+              <input id="s-phone" className="form-input" inputMode="tel" value={form.phone} onChange={(e) => setField('phone', e.target.value)} />
+            </div>
+          </div>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="s-username">Username</label>
+              <input id="s-username" className="form-input" autoComplete="off" value={form.username} onChange={(e) => setField('username', e.target.value)} required />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="s-password">{editing ? 'New password' : 'Temporary password'}</label>
+              <input
+                id="s-password" className="form-input" type="password" autoComplete="new-password"
+                value={form.password} onChange={(e) => setField('password', e.target.value)} required={!editing}
+              />
+            </div>
+          </div>
+          {editing && (
+            <label className="check-row">
+              <input type="checkbox" checked={form.isActive} onChange={(e) => setField('isActive', e.target.checked)} />
+              <span>Account is active <span className="form-hint" style={{ display: 'block', marginTop: 0 }}>Inactive accounts cannot sign in.</span></span>
+            </label>
+          )}
+        </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(confirmDelete)}
+        onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}
+        title="Delete this account?"
+        description={confirmDelete ? `${confirmDelete.NAME} (${confirmDelete.USERNAME}) will no longer be able to sign in. This cannot be undone.` : ''}
+        size="sm"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setConfirmDelete(null)}>Cancel</button>
+            <button type="button" className="btn btn-danger btn-md" onClick={handleDelete}>Delete account</button>
+          </>
+        )}
+      >
+        <p className="muted">If this person has clinical records, deletion is blocked. Deactivate the account instead.</p>
+      </Modal>
     </>
   );
 }

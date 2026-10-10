@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Barcode from 'react-barcode';
 import api from '../../../api/axios';
+import { ArrowLeft, ArrowRight, BadgeIndianRupee, CircleCheck, IdCard, Phone, Printer, ShieldAlert, UserPlus, UserRound, Users } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
 
 const INITIAL_FORM_STATE = {
   patientType: 'other',
@@ -52,10 +54,10 @@ export default function NewPatientPage() {
     try {
       const res = await api.post('/patients/hms', formData);
       setRegisteredPatient(res.data.data);
-      toast.success('Patient registered successfully!');
+      toast.success('Patient registered');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to register patient');
-      toast.error('Registration failed.');
+      toast.error('Registration failed');
     } finally {
       setLoading(false);
     }
@@ -76,14 +78,17 @@ export default function NewPatientPage() {
     return (
       <>
         <Navbar />
-        <div className="container py-4">
-          <div className="card hms-anim-1" style={{ maxWidth: 650, margin: '40px auto', textAlign: 'center', padding: 40 }}>
-            <div style={{ fontSize: '4rem', marginBottom: 20, animation: 'hmsCountPop 0.6s ease both' }}>🎉</div>
-            <h2 style={{ fontSize: '2rem', marginBottom: 12 }}>Registration Complete</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: 32 }}>
-              The patient has been added to the master directory and a unique UHID has been issued.
-            </p>
+        <main className="app-page">
+          <PageHeader
+            title="Registration complete"
+            description="The patient has been added to the master directory and a unique UHID has been issued."
+          />
+          <section className="panel panel-pad" style={{ maxWidth: 650, margin: '0 auto', textAlign: 'center' }}>
+            <div className="alert-strip alert-info" role="status" style={{ justifyContent: 'center' }}>
+              <CircleCheck size={16} aria-hidden="true" /> Registered as {registeredPatient.uhid}
+            </div>
 
+            {/* Printed via handlePrint: markup inside printRef is copied into the print window unchanged. */}
             <div ref={printRef} className="registration-slip" style={{
               marginBottom: 32,
               background: 'var(--surface-2)',
@@ -109,29 +114,33 @@ export default function NewPatientPage() {
               <p style={{ margin: 0, color: 'var(--text-secondary)', fontWeight: 500 }}>
                 {registeredPatient.age} Yrs • {registeredPatient.gender} • {registeredPatient.blood_group || 'N/A'}
               </p>
+              {/* Barcode keeps a white background so it stays scannable in dark mode and on paper. */}
               <div style={{ marginTop: 15, background: '#fff', padding: 10, borderRadius: 8 }}>
                 <Barcode value={registeredPatient.uhid} height={60} width={2} displayValue={false} />
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 14, justifyContent: 'center' }}>
-              <button className="btn btn-primary btn-lg" onClick={handlePrint}>🖨️ Print Slip</button>
-              <button className="btn btn-outline btn-lg" onClick={() => navigate(`/hms/patients/${registeredPatient.id}`)}>
-                👤 View Profile
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-primary btn-md" onClick={handlePrint}>
+                <Printer size={16} aria-hidden="true" /> Print slip
+              </button>
+              <button type="button" className="btn btn-secondary btn-md" onClick={() => navigate(`/hms/patients/${registeredPatient.id}`)}>
+                <UserRound size={16} aria-hidden="true" /> View profile
               </button>
               <button
-                className="btn btn-ghost btn-lg"
+                type="button"
+                className="btn btn-ghost btn-md"
                 onClick={() => {
                   setRegisteredPatient(null);
                   setFormData(INITIAL_FORM_STATE);
                   setStep('selection');
                 }}
               >
-                + Register Another Patient
+                <UserPlus size={16} aria-hidden="true" /> Register another patient
               </button>
             </div>
-          </div>
-        </div>
+          </section>
+        </main>
       </>
     );
   }
@@ -140,84 +149,35 @@ export default function NewPatientPage() {
     return (
       <>
         <Navbar />
-        <div className="container py-4">
-          <div className="hms-page-header">
-            <div>
-              <h1>
-                <span
-                  className="header-icon"
-                  style={{
-                    background: 'var(--blue-light)',
-                    borderColor: 'var(--blue-border)',
-                    color: 'var(--blue)',
-                  }}
-                >
-                  📝
-                </span>
-                New Patient Intake
-              </h1>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-                Select the patient category to begin the registration process.
-              </p>
-            </div>
-            <div className="header-actions">
-              <button className="btn btn-ghost" onClick={() => navigate(-1)}>
-                ← Back
+        <main className="app-page">
+          <PageHeader
+            title="New patient intake"
+            description="Choose the patient category to start registration."
+            actions={(
+              <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate(-1)}>
+                <ArrowLeft size={16} aria-hidden="true" /> Back
               </button>
-            </div>
-          </div>
+            )}
+          />
 
-          <div style={{ maxWidth: 460, margin: '30px auto' }}>
-            {/* General Patient (External) Card */}
-            <div
-              className="hms-stat-card hms-anim-1"
-              style={{
-                padding: '40px 32px',
-                borderTop: '6px solid var(--blue)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                textAlign: 'center',
-                cursor: 'pointer',
-                borderRadius: 16,
-              }}
-              onClick={() => {
-                setFormData(p => ({ ...p, patientType: 'other' }));
-                setStep('form');
-              }}
-            >
-              <div
-                style={{
-                  fontSize: '3rem',
-                  marginBottom: 24,
-                  background: 'var(--blue-light)',
-                  width: 100,
-                  height: 100,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: '50%',
-                  border: '1px solid var(--blue-border)',
-                }}
-              >
-                👨‍👩‍👧‍👦
-              </div>
-              <h3 style={{ fontSize: '1.6rem', marginBottom: 12, fontWeight: 800, color: 'var(--text-primary)' }}>
-                General Patient (External)
-              </h3>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: 30, fontSize: '1rem', lineHeight: 1.6 }}>
-                Walk-in patients or external referrals. Requires basic contact information for registration.
-              </p>
-              <button
-                type="button"
-                className="btn btn-blue btn-full"
-                style={{ height: 48, fontSize: '1rem', fontWeight: 700 }}
-              >
-                Begin General Registration →
-              </button>
-            </div>
-          </div>
-        </div>
+          <section
+            className="panel panel-pad"
+            style={{ maxWidth: 460, margin: '0 auto', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, cursor: 'pointer' }}
+            onClick={() => {
+              setFormData(p => ({ ...p, patientType: 'other' }));
+              setStep('form');
+            }}
+          >
+            <span className="empty-state-icon" aria-hidden="true"><Users size={22} strokeWidth={1.75} /></span>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 650 }}>General patient (external)</h2>
+            <p className="muted" style={{ maxWidth: 360 }}>
+              Walk-in patients or external referrals. Needs basic contact information to register.
+            </p>
+            <button type="button" className="btn btn-primary btn-md btn-full">
+              Begin general registration <ArrowRight size={16} aria-hidden="true" />
+            </button>
+          </section>
+        </main>
       </>
     );
   }
@@ -225,46 +185,30 @@ export default function NewPatientPage() {
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        <div className="hms-page-header">
-          <div>
-            <h1>
-              <span
-                className="header-icon"
-                style={{
-                  background: 'var(--blue-light)',
-                  borderColor: 'var(--blue-border)',
-                  color: 'var(--blue)',
-                }}
-              >
-                👨‍👩‍👧‍👦
-              </span>
-              New Patient Intake
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Provide demographic and contact details for patient intake and medical record creation.
-            </p>
-          </div>
-          <div className="header-actions">
-            <button className="btn btn-ghost" onClick={() => setStep('selection')}>
-              ← Change Category
+      <main className="app-page">
+        <PageHeader
+          title="New patient intake"
+          description="Demographic and contact details for intake and medical record creation."
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setStep('selection')}>
+              <ArrowLeft size={16} aria-hidden="true" /> Change category
             </button>
-          </div>
-        </div>
+          )}
+        />
 
-        {error && <div className="alert alert-error hms-anim-1" style={{ marginBottom: 24 }}>{error}</div>}
+        {error && <div className="alert-strip alert-danger" role="alert">{error}</div>}
 
-        <form onSubmit={handleSubmit} className="hms-anim-2">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', gap: 24, alignItems: 'start' }}>
-            {/* Left Column: Demographics & Contact */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              {/* Demographics */}
-              <div className="card" style={{ padding: 28 }}>
-                <div className="card-section-title">Demographics & Identity</div>
-                <div className="form-grid-2" style={{ marginBottom: 20 }}>
+        <form onSubmit={handleSubmit}>
+          <div className="split-2" style={{ alignItems: 'start' }}>
+            {/* Left column: demographics and contact */}
+            <div className="stack">
+              <section className="panel panel-pad">
+                <h2 className="panel-title"><IdCard size={16} aria-hidden="true" /> Demographics and identity</h2>
+                <div className="form-row-2" style={{ marginBottom: 14 }}>
                   <div className="form-group">
-                    <label className="form-label">First Name *</label>
+                    <label className="form-label" htmlFor="np-first-name">First name *</label>
                     <input
+                      id="np-first-name"
                       type="text"
                       className="form-input"
                       name="first_name"
@@ -275,8 +219,9 @@ export default function NewPatientPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Last Name</label>
+                    <label className="form-label" htmlFor="np-last-name">Last name</label>
                     <input
+                      id="np-last-name"
                       type="text"
                       className="form-input"
                       name="last_name"
@@ -286,10 +231,11 @@ export default function NewPatientPage() {
                     />
                   </div>
                 </div>
-                <div className="form-grid">
+                <div className="form-grid-3">
                   <div className="form-group">
-                    <label className="form-label">Age *</label>
+                    <label className="form-label" htmlFor="np-age">Age *</label>
                     <input
+                      id="np-age"
                       type="number"
                       className="form-input"
                       name="age"
@@ -302,16 +248,16 @@ export default function NewPatientPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Gender *</label>
-                    <select className="form-input" name="gender" required value={formData.gender} onChange={handleChange}>
+                    <label className="form-label" htmlFor="np-gender">Gender *</label>
+                    <select id="np-gender" className="form-select" name="gender" required value={formData.gender} onChange={handleChange}>
                       <option value="Male">Male</option>
                       <option value="Female">Female</option>
                       <option value="Other">Other</option>
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Blood Group</label>
-                    <select className="form-input" name="blood_group" value={formData.blood_group} onChange={handleChange}>
+                    <label className="form-label" htmlFor="np-blood-group">Blood group</label>
+                    <select id="np-blood-group" className="form-select" name="blood_group" value={formData.blood_group} onChange={handleChange}>
                       <option value="">Unknown</option>
                       {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bg) => (
                         <option key={bg} value={bg}>
@@ -321,15 +267,15 @@ export default function NewPatientPage() {
                     </select>
                   </div>
                 </div>
-              </div>
+              </section>
 
-              {/* Contact Information */}
-              <div className="card" style={{ padding: 28 }}>
-                <div className="card-section-title">Communication Details</div>
-                <div className="form-grid">
+              <section className="panel panel-pad">
+                <h2 className="panel-title"><Phone size={16} aria-hidden="true" /> Contact details</h2>
+                <div className="form-grid-3">
                   <div className="form-group">
-                    <label className="form-label">Primary Mobile *</label>
+                    <label className="form-label" htmlFor="np-phone">Primary mobile *</label>
                     <input
+                      id="np-phone"
                       type="tel"
                       className="form-input"
                       name="phoneNumber"
@@ -341,19 +287,21 @@ export default function NewPatientPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Alternate Mobile</label>
+                    <label className="form-label" htmlFor="np-alt-phone">Alternate mobile</label>
                     <input
+                      id="np-alt-phone"
                       type="tel"
                       className="form-input"
                       name="alt_phone"
                       value={formData.alt_phone}
                       onChange={handleChange}
-                      placeholder="Optional number"
+                      placeholder="Optional"
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Email Address</label>
+                    <label className="form-label" htmlFor="np-email">Email address</label>
                     <input
+                      id="np-email"
                       type="email"
                       className="form-input"
                       name="email"
@@ -363,97 +311,83 @@ export default function NewPatientPage() {
                     />
                   </div>
                 </div>
-              </div>
+              </section>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              {/* Emergency Contact */}
-              <div className="card" style={{ padding: 30, borderLeft: '4px solid #ef4444' }}>
-                <div className="card-section-title" style={{ color: '#ef4444' }}>Emergency Contact</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="stack">
+              <section className="panel panel-pad">
+                <h2 className="panel-title"><ShieldAlert size={16} aria-hidden="true" /> Emergency contact</h2>
+                <div className="stack-sm">
                   <div className="form-group">
-                    <label className="form-label">Guardian/Kin Name</label>
-                    <input type="text" className="form-input" name="emergency_contact_name" value={formData.emergency_contact_name} onChange={handleChange} />
+                    <label className="form-label" htmlFor="np-ec-name">Guardian or next of kin</label>
+                    <input id="np-ec-name" type="text" className="form-input" name="emergency_contact_name" value={formData.emergency_contact_name} onChange={handleChange} />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Relationship</label>
-                    <input type="text" className="form-input" name="emergency_contact_relation" value={formData.emergency_contact_relation} onChange={handleChange} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Emergency Phone</label>
-                    <input type="tel" className="form-input" name="emergency_contact_phone" value={formData.emergency_contact_phone} onChange={handleChange} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Registration Fee */}
-              <div className="card" style={{ padding: 30, borderLeft: '4px solid #f59e0b' }}>
-                <div className="card-section-title" style={{ color: '#f59e0b' }}>Registration Fee</div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>₹ 150</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>One-time registration charge</div>
-                  </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
-                    <div
-                      onClick={() => setFormData(p => ({ ...p, registration_fee_paid: !p.registration_fee_paid }))}
-                      style={{
-                        width: 48, height: 26, borderRadius: 13,
-                        background: formData.registration_fee_paid ? '#10b981' : '#cbd5e0',
-                        position: 'relative', transition: 'background 0.25s', cursor: 'pointer',
-                      }}
-                    >
-                      <div style={{
-                        width: 22, height: 22, borderRadius: '50%', background: '#fff',
-                        position: 'absolute', top: 2,
-                        left: formData.registration_fee_paid ? 24 : 2,
-                        transition: 'left 0.25s',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                      }} />
+                  <div className="form-row-2">
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="np-ec-relation">Relationship</label>
+                      <input id="np-ec-relation" type="text" className="form-input" name="emergency_contact_relation" value={formData.emergency_contact_relation} onChange={handleChange} />
                     </div>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: formData.registration_fee_paid ? '#10b981' : 'var(--text-muted)' }}>
-                      {formData.registration_fee_paid ? 'Paid' : 'Not Paid'}
-                    </span>
-                  </label>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="np-ec-phone">Emergency phone</label>
+                      <input id="np-ec-phone" type="tel" className="form-input" name="emergency_contact_phone" value={formData.emergency_contact_phone} onChange={handleChange} />
+                    </div>
+                  </div>
                 </div>
+              </section>
+
+              <section className="panel panel-pad">
+                <h2 className="panel-title"><BadgeIndianRupee size={16} aria-hidden="true" /> Registration fee</h2>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+                  <div>
+                    <div className="kpi-value" style={{ marginTop: 0 }}>₹ 150</div>
+                    <div className="kpi-sub">One-time registration charge</div>
+                  </div>
+                  <span className={`status ${formData.registration_fee_paid ? 'status-success' : 'status-neutral'}`}>
+                    {formData.registration_fee_paid ? 'Paid' : 'Not paid'}
+                  </span>
+                </div>
+                <label className="check-row" htmlFor="np-fee-paid">
+                  <input
+                    id="np-fee-paid"
+                    type="checkbox"
+                    checked={formData.registration_fee_paid}
+                    onChange={() => setFormData(p => ({ ...p, registration_fee_paid: !p.registration_fee_paid }))}
+                  />
+                  <span>Registration fee collected</span>
+                </label>
                 {formData.registration_fee_paid && (
-                  <div style={{ animation: 'hmsSlideDown 0.25s ease' }}>
-                    <label className="form-label" style={{ marginBottom: 8 }}>Payment Mode</label>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="form-group" style={{ marginTop: 14 }}>
+                    <span className="form-label" id="np-payment-mode-label">Payment mode</span>
+                    <div className="segmented" role="radiogroup" aria-labelledby="np-payment-mode-label">
                       {['Cash', 'UPI', 'Card'].map(mode => (
                         <button
                           key={mode}
                           type="button"
+                          role="radio"
+                          aria-checked={formData.payment_mode === mode}
+                          className={formData.payment_mode === mode ? 'is-active' : ''}
                           onClick={() => setFormData(p => ({ ...p, payment_mode: mode }))}
-                          style={{
-                            flex: 1, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: '0.85rem',
-                            cursor: 'pointer', transition: 'all 0.2s', border: '2px solid',
-                            background: formData.payment_mode === mode ? (mode === 'Cash' ? 'rgba(16,185,129,0.08)' : mode === 'UPI' ? 'rgba(99,102,241,0.08)' : 'rgba(59,130,246,0.08)') : 'var(--surface-2)',
-                            borderColor: formData.payment_mode === mode ? (mode === 'Cash' ? '#10b981' : mode === 'UPI' ? '#6366f1' : '#3b82f6') : 'var(--border)',
-                            color: formData.payment_mode === mode ? (mode === 'Cash' ? '#10b981' : mode === 'UPI' ? '#6366f1' : '#3b82f6') : 'var(--text-muted)',
-                          }}
                         >
-                          {mode === 'Cash' ? '💵' : mode === 'UPI' ? '📱' : '💳'} {mode}
+                          {mode}
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
-              </div>
+              </section>
 
-              {/* Submit Section */}
-              <div className="card" style={{ padding: 30, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-                <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginBottom: 20, textAlign: 'center' }}>
-                  By clicking Register, you confirm that all provided information is accurate to the best of your knowledge.
+              <section className="panel panel-pad" style={{ background: 'var(--surface-2)' }}>
+                <p className="muted" style={{ marginBottom: 14 }}>
+                  By registering, you confirm the information provided is accurate to the best of your knowledge.
                 </p>
-                <button type="submit" className="btn btn-primary btn-full btn-lg" disabled={loading} style={{ height: 60, fontSize: '1.1rem' }}>
-                  {loading ? <span className="spinner" /> : 'Complete Registration'}
+                <button type="submit" className="btn btn-primary btn-md btn-full" disabled={loading}>
+                  {loading ? 'Registering…' : 'Complete registration'}
                 </button>
-              </div>
+              </section>
             </div>
           </div>
         </form>
-      </div>
+      </main>
     </>
   );
 }

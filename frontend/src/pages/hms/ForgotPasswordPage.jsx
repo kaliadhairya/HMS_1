@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { KeyRound, CircleAlert, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
@@ -97,24 +98,24 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div style={{
+    <main style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'var(--bg-gradient)', padding: 20,
+      background: 'var(--bg)', padding: 16,
     }}>
-      <div className="fade-up" style={{ width: '100%', maxWidth: 420 }}>
-        <div className="card" style={{ padding: 32 }}>
+      <div style={{ width: '100%', maxWidth: 420 }}>
+        <section className="panel" style={{ padding: 32 }}>
           {/* Progress */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 24 }} role="progressbar" aria-label="Reset progress" aria-valuemin={1} aria-valuemax={3} aria-valuenow={step}>
             {[1, 2, 3].map(s => (
               <div key={s} style={{
                 flex: 1, height: 4, borderRadius: 4,
-                background: step >= s ? 'var(--green)' : 'var(--surface-3)',
+                background: step >= s ? 'var(--primary)' : 'var(--surface-3)',
                 transition: 'all 0.3s',
               }} />
             ))}
           </div>
 
-          <h2 style={{ marginBottom: 8 }}>🔑 Reset Password</h2>
+          <h1 style={{ marginBottom: 8, fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: 8 }}><KeyRound size={20} aria-hidden="true" /> Reset password</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: 24 }}>
             {step === 1 && 'Enter your username or registered phone number.'}
             {step === 2 && 'Enter the 6-digit OTP sent to your contact.'}
@@ -122,8 +123,8 @@ export default function ForgotPasswordPage() {
           </p>
 
           {err && (
-            <div className="alert alert-error" style={{ marginBottom: 16 }}>
-              <span>⚠️</span> {err}
+            <div className="alert-strip alert-danger" role="alert">
+              <CircleAlert size={16} aria-hidden="true" /> {err}
             </div>
           )}
 
@@ -131,8 +132,9 @@ export default function ForgotPasswordPage() {
           {step === 1 && (
             <form onSubmit={handleStep1} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="form-group">
-                <label className="form-label">Username or Phone</label>
+                <label className="form-label" htmlFor="fp-user">Username or phone</label>
                 <input
+                  id="fp-user"
                   className="form-input"
                   type="text"
                   placeholder="e.g. labtech1 or 9876543210"
@@ -142,7 +144,7 @@ export default function ForgotPasswordPage() {
                 />
               </div>
               <button type="submit" className="btn btn-primary btn-lg btn-full" disabled={loading}>
-                {loading ? 'Sending…' : 'Send OTP →'}
+                {loading ? 'Sending…' : 'Send OTP'}
               </button>
             </form>
           )}
@@ -151,8 +153,11 @@ export default function ForgotPasswordPage() {
           {step === 2 && (
             <form onSubmit={handleStep2} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="form-group">
-                <label className="form-label">6-Digit OTP</label>
+                <label className="form-label" htmlFor="fp-otp">6-digit OTP</label>
                 <input
+                  id="fp-otp"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
                   className="form-input"
                   type="text"
                   maxLength={6}
@@ -168,17 +173,17 @@ export default function ForgotPasswordPage() {
                 color: countdown > 60 ? 'var(--text-secondary)' : 'var(--red)',
                 fontWeight: 600,
               }}>
-                ⏱️ OTP expires in {formatTime(countdown)}
+                <span role="timer" aria-live="off">OTP expires in {formatTime(countdown)}</span>
               </div>
               <button type="submit" className="btn btn-primary btn-lg btn-full" disabled={loading || countdown <= 0}>
-                {loading ? 'Verifying…' : 'Verify OTP →'}
+                {loading ? 'Verifying…' : 'Verify OTP'}
               </button>
               <button
                 type="button"
                 className="btn btn-ghost btn-full"
                 onClick={() => { setStep(1); setErr(''); }}
               >
-                ← Back
+                <ArrowLeft size={16} aria-hidden="true" /> Back
               </button>
             </form>
           )}
@@ -187,9 +192,11 @@ export default function ForgotPasswordPage() {
           {step === 3 && (
             <form onSubmit={handleStep3} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="form-group">
-                <label className="form-label">New Password</label>
+                <label className="form-label" htmlFor="fp-new">New password</label>
                 <div style={{ position: 'relative' }}>
                   <input
+                    id="fp-new"
+                    autoComplete="new-password"
                     className="form-input"
                     type={showPass ? 'text' : 'password'}
                     placeholder="Enter new password"
@@ -201,17 +208,21 @@ export default function ForgotPasswordPage() {
                   <button
                     type="button"
                     onClick={() => setShowPass(s => !s)}
+                    aria-label={showPass ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPass}
                     style={{
                       position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
                       background: 'none', border: 'none', cursor: 'pointer',
                       color: 'var(--text-muted)', fontSize: '1rem',
                     }}
-                  >{showPass ? '🙈' : '👁️'}</button>
+                  >{showPass ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}</button>
                 </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Confirm New Password</label>
+                <label className="form-label" htmlFor="fp-confirm">Confirm new password</label>
                 <input
+                  id="fp-confirm"
+                  autoComplete="new-password"
                   className="form-input"
                   type="password"
                   placeholder="Confirm new password"
@@ -221,16 +232,18 @@ export default function ForgotPasswordPage() {
                 />
               </div>
               <button type="submit" className="btn btn-primary btn-lg btn-full" disabled={loading}>
-                {loading ? 'Resetting…' : 'Reset Password →'}
+                {loading ? 'Resetting…' : 'Reset password'}
               </button>
             </form>
           )}
 
           <div style={{ textAlign: 'center', marginTop: 20 }}>
-            <a href="/login" style={{ fontSize: '0.85rem', color: 'var(--blue)' }}>← Back to Login</a>
+            <Link to="/login" style={{ fontSize: '0.88rem', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <ArrowLeft size={14} aria-hidden="true" /> Back to sign in
+            </Link>
           </div>
-        </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

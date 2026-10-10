@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 
 import api from '../api/axios';
+import Glyph from '../components/ui/Glyph';
 
 export default function AdminDashboardPage() {
   const { user } = useAuth();
@@ -182,10 +183,10 @@ export default function AdminDashboardPage() {
                           {u.isActive ? '🚫 Deactivate' : '✅ Activate'}
                         </button>
                         <button className="btn btn-secondary btn-sm" onClick={() => openEditModal(u)}>
-                          ✏️ Edit
+                          <Glyph icon="✏️" /> Edit
                         </button>
                         <button className="btn btn-danger btn-sm" onClick={() => handleDelete(u.id)} style={{ padding: '4px 8px' }} title="Hard Delete">
-                          🗑️
+                          <Glyph icon="🗑️" />
                         </button>
                       </div>
                     </td>

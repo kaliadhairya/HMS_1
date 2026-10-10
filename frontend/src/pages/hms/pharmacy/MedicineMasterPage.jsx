@@ -1,7 +1,13 @@
-import { useState, useEffect } from 'react';
-import api from '../../../api/axios';
+import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
+import { Pencil, Pill, Plus, Power, PowerOff, Search, X } from 'lucide-react';
+import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+import Modal from '../../../components/ui/Modal';
+import RowMenu from '../../../components/ui/RowMenu';
 
 function parseBrandNames(val) {
   if (!val) return [];
@@ -24,14 +30,35 @@ function parseBrandNames(val) {
   return [];
 }
 
+const LOW_STOCK = 50;
+const categories = ['Analgesic', 'Antibiotic', 'Antacid', 'Antidiabetic', 'IV Fluid', 'Vitamins', 'Other'];
+const formulations = ['Tablet', 'Capsule', 'Injection', 'Syrup', 'Ointment', 'Drops', 'Other'];
+const strengthUnits = ['mg', 'ml', 'g', 'mcg', 'IU', '%'];
+const unitsOfSale = ['Strip', 'Bottle', 'Vial', 'Tube', 'Box'];
+
+const suggestionBox = {
+  position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20, maxHeight: 220, overflowY: 'auto',
+  background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)',
+};
+const suggestionItem = {
+  width: '100%', textAlign: 'left', padding: '9px 12px', border: 0, borderBottom: '1px solid var(--border)',
+  background: 'transparent', color: 'var(--text-primary)', font: 'inherit', cursor: 'pointer', display: 'grid', gap: 2,
+};
+const chipRemove = {
+  border: 0, background: 'none', padding: 0, marginLeft: 6, display: 'inline-flex', color: 'var(--text-muted)', cursor: 'pointer',
+};
+
 export default function MedicineMasterPage() {
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [loadedQty, setLoadedQty] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     genericName: '', brandNames: [], category: 'Analgesic',
     formulation: 'Tablet', strength: '', strengthUnit: 'mg',
@@ -41,11 +68,6 @@ export default function MedicineMasterPage() {
   const [brandInput, setBrandInput] = useState('');
   const [rxNavSuggestions, setRxNavSuggestions] = useState([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-
-  const categories = ['Analgesic', 'Antibiotic', 'Antacid', 'Antidiabetic', 'IV Fluid', 'Vitamins', 'Other'];
-  const formulations = ['Tablet', 'Capsule', 'Injection', 'Syrup', 'Ointment', 'Drops', 'Other'];
-  const strengthUnits = ['mg', 'ml', 'g', 'mcg', 'IU', '%'];
-  const unitsOfSale = ['Strip', 'Bottle', 'Vial', 'Tube', 'Box'];
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 500);
@@ -82,11 +104,11 @@ export default function MedicineMasterPage() {
   const fetchMedicines = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/medicines?search=${debouncedSearch}`);
-      setMedicines(res.data.data);
+      const res = await api.get(`/medicines?search=${encodeURIComponent(debouncedSearch)}`);
+      setMedicines(res.data.data || []);
     } catch (err) {
       console.error(err);
-      toast.error('Failed to load medicines.');
+      toast.error('Could not load medicines');
     } finally {
       setLoading(false);
     }
@@ -94,6 +116,7 @@ export default function MedicineMasterPage() {
 
   const handleEdit = (med) => {
     setEditingId(med.id);
+    setLoadedQty(Number(med.totalStock || 0));
     setFormData({
       genericName: med.genericName,
       brandNames: parseBrandNames(med.brandNames),
@@ -115,10 +138,10 @@ export default function MedicineMasterPage() {
   const handleToggleActive = async (id) => {
     try {
       await api.patch(`/medicines/${id}/toggle`);
-      toast.success('Medicine status updated.');
+      toast.success('Medicine status updated');
       fetchMedicines();
     } catch (err) {
-      toast.error('Failed to update status.');
+      toast.error('Could not update the status');
     }
   };
 
@@ -143,7 +166,7 @@ export default function MedicineMasterPage() {
       }
     }
   };
-  
+
   const removeBrand = (bToRemove) => {
     setFormData(prev => ({ ...prev, brandNames: prev.brandNames.filter(b => b !== bToRemove) }));
   };
@@ -167,369 +190,302 @@ export default function MedicineMasterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      setSaving(true);
       const payload = { ...formData, brandNames: formData.brandNames };
+      // The quantity field is prefilled with the total across all batches, but the API writes it onto the
+      // latest batch only. Sending it back unchanged would inflate stock when a medicine has several batches,
+      // so it is sent only when the user actually changed it.
+      if (editingId && payload.initialQuantity === loadedQty) delete payload.initialQuantity;
       if (editingId) {
         await api.put(`/medicines/${editingId}`, payload);
-        toast.success('Medicine updated successfully.');
+        toast.success('Medicine updated');
       } else {
         await api.post('/medicines', payload);
-        toast.success('Medicine created successfully.');
+        toast.success('Medicine added');
       }
       setIsModalOpen(false);
       fetchMedicines();
     } catch (err) {
       console.error(err);
-      let errMsg = err.response?.data?.message || err.response?.data?.error || 'Failed to save medicine.';
+      let errMsg = err.response?.data?.message || err.response?.data?.error || 'Could not save the medicine';
       if (err.response?.data?.errors) {
         errMsg = err.response.data.errors.map(e => e.msg).join(', ');
       }
       toast.error(errMsg);
+    } finally {
+      setSaving(false);
     }
   };
+
+  const setField = (key, value) => setFormData((prev) => ({ ...prev, [key]: value }));
+
+  const activeCount = medicines.filter((m) => m.isActive).length;
+  const filtered = useMemo(() => medicines.filter((m) => {
+    if (statusFilter === 'active') return Boolean(m.isActive);
+    if (statusFilter === 'disabled') return !m.isActive;
+    return true;
+  }), [medicines, statusFilter]);
+
+  const columns = useMemo(() => [
+    {
+      id: 'name', header: 'Medicine', accessorFn: (m) => m.genericName || '',
+      cell: ({ row }) => {
+        const m = row.original;
+        return (
+          <span className="cell-stack">
+            <span className="cell-primary">{m.genericName}</span>
+            <span className="cell-secondary" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+              <span className="mono">ID {m.id}</span>
+              {m.isControlled === 1 && <span className="status status-danger" title="Controlled substance, prescription required">Rx</span>}
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      id: 'brands', header: 'Brands', enableSorting: false, accessorFn: (m) => parseBrandNames(m.brandNames).join(', '),
+      cell: ({ row }) => {
+        const brands = parseBrandNames(row.original.brandNames);
+        if (brands.length === 0) return <span className="cell-secondary">—</span>;
+        return (
+          <span className="chip-row" style={{ gap: 4, maxWidth: 240 }}>
+            {brands.slice(0, 3).map((b) => <span key={b} className="tag">{b}</span>)}
+            {brands.length > 3 && <span className="tag tag-more">+{brands.length - 3}</span>}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'form', header: 'Form and strength', accessorFn: (m) => m.formulation || '', meta: { width: 160 },
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span>{row.original.formulation || '—'}</span>
+          <span className="cell-secondary">{[row.original.strength, row.original.strengthUnit].filter(Boolean).join(' ') || '—'}</span>
+        </span>
+      ),
+    },
+    { id: 'category', header: 'Category', accessorFn: (m) => m.category || '', meta: { width: 140 }, cell: ({ getValue }) => getValue() || '—' },
+    {
+      id: 'stock', header: 'Stock', accessorFn: (m) => Number(m.totalStock || 0), meta: { width: 110, align: 'right' },
+      cell: ({ row, getValue }) => (
+        <span className="cell-stack" style={{ alignItems: 'flex-end' }}>
+          <span className="tabular" style={{ fontWeight: 600, color: getValue() < LOW_STOCK ? 'var(--red)' : undefined }}>{getValue()}</span>
+          <span className="cell-secondary">{row.original.unitOfSale ? `${row.original.unitOfSale}s` : ''}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'price', header: 'Unit price', accessorFn: (m) => Number(m.mrp || 0), meta: { width: 120, align: 'right' },
+      cell: ({ row, getValue }) => (
+        <span className="cell-stack" style={{ alignItems: 'flex-end' }}>
+          <span className="tabular">₹{getValue().toFixed(2)}</span>
+          <span className="cell-secondary">{row.original.unitOfSale ? `per ${row.original.unitOfSale}` : ''}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'status', header: 'Status', accessorFn: (m) => (m.isActive ? 'Active' : 'Disabled'), meta: { width: 110 },
+      cell: ({ getValue }) => <span className={`status ${getValue() === 'Active' ? 'status-success' : 'status-neutral'}`}>{getValue()}</span>,
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 56, align: 'right' },
+      cell: ({ row }) => {
+        const m = row.original;
+        return (
+          <RowMenu
+            label={`Actions for ${m.genericName}`}
+            items={[
+              { label: 'Edit medicine', icon: Pencil, onSelect: () => handleEdit(m) },
+              { label: m.isActive ? 'Disable' : 'Enable', icon: m.isActive ? PowerOff : Power, onSelect: () => handleToggleActive(m.id), danger: Boolean(m.isActive), separator: true },
+            ]}
+          />
+        );
+      },
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const addButton = (
+    <button type="button" className="btn btn-primary btn-md" onClick={openForm}>
+      <Plus size={16} aria-hidden="true" /> Add medicine
+    </button>
+  );
+
+  const showSuggestions = suggestionsLoading || rxNavSuggestions.length > 0;
 
   return (
     <>
       <Navbar />
-      <div className="container py-4" style={{ maxWidth: '100%' }}>
-        {/* Page Header */}
-        <div className="hms-page-header" style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1>
-              <span className="header-icon" style={{ background: 'rgba(13,148,136,0.1)', borderColor: 'rgba(13,148,136,0.2)' }}>💊</span>
-              Medicine Master
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Central repository for clinical medicines, formulations, and real-time inventory levels.
-            </p>
-          </div>
-          <button 
-            className="btn btn-primary" 
-            onClick={openForm}
-            style={{ 
-              fontWeight: 700, padding: '12px 28px', borderRadius: 14, 
-              display: 'flex', alignItems: 'center', gap: 10, 
-              background: 'linear-gradient(135deg, #0d9488, #0f766e)', border: 'none',
-              boxShadow: '0 4px 14px rgba(13,148,136,0.3)' 
-            }}
-          >
-            <span>+</span> Add New Medicine
-          </button>
-        </div>
+      <main className="app-page">
+        <PageHeader
+          title="Medicines"
+          description="The medicine catalogue: formulations, pricing and current stock."
+          meta={!loading && <span className="muted">{medicines.length} medicines · {activeCount} active</span>}
+          actions={addButton}
+        />
 
-        {/* Search Bar - Premium Style */}
-        <div className="hms-anim-1" style={{ marginBottom: 24 }}>
-          <div className="card" style={{ 
-            padding: '12px 24px', 
-            borderRadius: 40,
-            boxShadow: 'var(--shadow-md)',
-            border: '2.5px solid var(--border)',
-            background: 'var(--surface)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-            transition: 'all 0.3s ease',
-          }}
-          onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--green)'}
-          onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}
-          >
-            <span style={{ fontSize: '1.4rem', opacity: 0.6 }}>🔍</span>
-            <input
-              type="text"
-              className="form-input"
-              style={{ 
-                fontSize: '1.1rem', 
-                border: 'none', 
-                boxShadow: 'none', 
-                background: 'transparent',
-                padding: '4px 0',
-                flex: 1,
-              }}
-              placeholder="Search by Generic Name, Brand, or Category..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            {loading && <div className="spinner" style={{ width: 20, height: 20 }} />}
+        <section className="panel">
+          <div className="toolbar">
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search medicines</span>
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search generic or brand name" />
+            </label>
+            <div className="segmented" role="tablist" aria-label="Filter by status">
+              {[['all', 'All'], ['active', 'Active'], ['disabled', 'Disabled']].map(([key, label]) => (
+                <button key={key} type="button" role="tab" aria-selected={statusFilter === key} className={statusFilter === key ? 'is-active' : ''} onClick={() => setStatusFilter(key)}>
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            loading={loading}
+            getRowId={(m) => String(m.id)}
+            onRowClick={handleEdit}
+            rowLabel={(m) => `Edit ${m.genericName}`}
+            initialSorting={[{ id: 'name', desc: false }]}
+            empty={debouncedSearch || medicines.length > 0 ? (
+              <EmptyState icon={Search} title="No medicines match" description="Try another generic or brand name, or show all statuses." />
+            ) : (
+              <EmptyState icon={Pill} title="No medicines yet" description="Add the medicines the pharmacy stocks so they can be prescribed and dispensed." action={addButton} />
+            )}
+          />
+        </section>
+      </main>
 
-        {/* Results Table */}
-        <div className="card hms-anim-2" style={{ padding: 0, overflow: 'hidden', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', borderRadius: 16 }}>
-          <div className="table-wrapper" style={{ border: 'none' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ background: 'var(--surface-2)' }}>
-                  <th style={{ ...thS, paddingLeft: 24 }}>MEDICINE IDENTITY</th>
-                  <th style={thS}>BRANDS</th>
-                  <th style={thS}>FORM / STRENGTH</th>
-                  <th style={thS}>CATEGORY</th>
-                  <th style={{ ...thS, textAlign: 'right' }}>STOCK LEVEL</th>
-                  <th style={{ ...thS, textAlign: 'right' }}>UNIT PRICE</th>
-                  <th style={{ ...thS, textAlign: 'center', paddingRight: 24 }}>ACTIONS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {medicines.length === 0 && !loading ? (
-                  <tr>
-                    <td colSpan="7" style={{ padding: 80, textAlign: 'center' }}>
-                      <div style={{ fontSize: '3.5rem', marginBottom: 16, opacity: 0.2 }}>💊</div>
-                      <h3 style={{ color: 'var(--text-secondary)' }}>No medicines found</h3>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Try adjusting your search or add a new entry.</p>
-                    </td>
-                  </tr>
-                ) : (
-                  medicines.map((med, i) => (
-                    <tr key={med.id} style={{ 
-                      borderBottom: '1px solid var(--border)', 
-                      background: i % 2 === 0 ? 'var(--surface)' : 'var(--surface-2)',
-                      opacity: med.isActive ? 1 : 0.6
-                    }}>
-                      <td style={{ ...tdS, paddingLeft: 24 }}>
-                        <div style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: '1rem' }}>{med.genericName}</div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                          <span style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-muted)' }}>ID: {med.id}</span>
-                          {med.isControlled === 1 && <span className="badge badge-red" style={{ fontSize: '0.6rem', padding: '1px 6px' }}>Rx</span>}
-                        </div>
-                      </td>
-                      <td style={tdS}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: 220 }}>
-                          {parseBrandNames(med.brandNames).slice(0, 3).map((b, idx) => (
-                            <span key={idx} className="badge" style={{ background: 'rgba(13,148,136,0.06)', color: '#0d9488', fontSize: '0.72rem', border: '1px solid rgba(13,148,136,0.1)' }}>{b}</span>
-                          ))}
-                          {parseBrandNames(med.brandNames).length > 3 && 
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>+{parseBrandNames(med.brandNames).length - 3} more</span>
-                          }
-                        </div>
-                      </td>
-                      <td style={tdS}>
-                        <div style={{ fontWeight: 700 }}>{med.formulation}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2 }}>{med.strength} {med.strengthUnit}</div>
-                      </td>
-                      <td style={tdS}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600, opacity: 0.8 }}>{med.category}</span>
-                      </td>
-                      <td style={{ ...tdS, textAlign: 'right' }}>
-                        <div style={{ 
-                          display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end'
-                        }}>
-                          <div style={{ 
-                            padding: '4px 12px', borderRadius: 8, 
-                            background: (Number(med.totalStock || 0)) < 50 ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)',
-                            color: (Number(med.totalStock || 0)) < 50 ? '#ef4444' : '#10b981',
-                            fontWeight: 900, fontSize: '1rem'
-                          }}>
-                            {Number(med.totalStock || 0)}
-                          </div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4 }}>{med.unitOfSale}s</div>
-                        </div>
-                      </td>
-                      <td style={{ ...tdS, textAlign: 'right' }}>
-                        <div style={{ fontWeight: 900, color: 'var(--text-primary)', fontSize: '1rem' }}>₹{Number(med.mrp || 0).toFixed(2)}</div>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>per {med.unitOfSale}</div>
-                      </td>
-                      <td style={{ ...tdS, textAlign: 'center', paddingRight: 24 }}>
-                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                          <button className="btn btn-sm btn-outline" onClick={() => handleEdit(med)} style={{ fontWeight: 700, borderRadius: 10, padding: '6px 14px' }}>Edit</button>
-                          <button 
-                            className="btn btn-sm" 
-                            onClick={() => handleToggleActive(med.id)}
-                            style={{ 
-                              borderRadius: 10, padding: '6px 14px', fontWeight: 700,
-                              background: med.isActive ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)',
-                              color: med.isActive ? '#ef4444' : '#10b981',
-                              border: 'none'
-                            }}
-                          >
-                            {med.isActive ? 'Disable' : 'Enable'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-    {isModalOpen && (
-      <div style={{
-        position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 9999,
-        background: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(6px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-        onClick={() => setIsModalOpen(false)}
+      <Modal
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        size="lg"
+        title={editingId ? `Edit ${formData.genericName || 'medicine'}` : 'Add medicine'}
+        description={editingId ? 'Update the details, stock and price for this medicine.' : 'Register a new medicine. Opening stock is optional.'}
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setIsModalOpen(false)}>Cancel</button>
+            <button type="submit" form="medicine-form" className="btn btn-primary btn-md" disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add medicine'}
+            </button>
+          </>
+        )}
       >
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            width: 680, maxHeight: '80vh', display: 'flex', flexDirection: 'column',
-            borderRadius: 16, overflow: 'hidden',
-            background: 'var(--surface-1, #fff)',
-            boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
-          }}
-        >
-          <div style={{
-            padding: '20px 28px', display: 'flex', alignItems: 'center', gap: 14,
-            background: 'linear-gradient(135deg, #0f766e 0%, #0d9488 100%)',
-            color: '#fff', flexShrink: 0,
-          }}>
-            <div style={{ width: 42, height: 42, borderRadius: 12, background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' }}>
-              {editingId ? '✏️' : '💊'}
+        <form id="medicine-form" onSubmit={handleSubmit} style={{ display: 'grid', gap: 14 }}>
+          <h3 className="panel-subtitle" style={{ marginTop: 0, marginBottom: 0 }}>Identity</h3>
+          <div className="form-group">
+            <label className="form-label" htmlFor="med-generic">Generic name</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                id="med-generic" className="form-input" required type="text" autoComplete="off"
+                value={formData.genericName} onChange={e => setField('genericName', e.target.value)}
+                placeholder="For example, Paracetamol"
+                aria-describedby="med-generic-hint"
+              />
+              {showSuggestions && (
+                <div style={suggestionBox} role="listbox" aria-label="RxNav suggestions">
+                  {suggestionsLoading && <p className="muted" style={{ padding: '10px 12px' }}>Searching RxNav…</p>}
+                  {!suggestionsLoading && rxNavSuggestions.map((s) => (
+                    <button key={`${s.rxnormId || s.name}-${s.rxnormTty || 'na'}`} type="button" role="option" aria-selected="false" onClick={() => applySuggestion(s)} style={suggestionItem}>
+                      <span className="cell-primary">{s.name}</span>
+                      <span className="cell-secondary">{s.rxnormTty || 'RxNorm'}{s.synonym ? ` · ${s.synonym}` : ''}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <div style={{ flex: 1 }}>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700 }}>{editingId ? 'Edit Medicine' : 'Add New Medicine'}</h3>
-              <p style={{ margin: '2px 0 0', fontSize: '0.8rem', opacity: 0.85 }}>{editingId ? 'Update details for this medicine entry.' : 'Fill in the details to register a new medicine in inventory.'}</p>
-            </div>
-            <button type="button" onClick={() => setIsModalOpen(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>✕</button>
+            <p className="form-hint" id="med-generic-hint">Type 2 or more characters to see RxNav suggestions.</p>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="med-brand">Brand names</label>
+            {formData.brandNames.length > 0 && (
+              <div className="chip-row" style={{ gap: 6 }}>
+                {formData.brandNames.map(b => (
+                  <span key={b} className="tag">
+                    {b}
+                    <button type="button" style={chipRemove} onClick={() => removeBrand(b)} aria-label={`Remove ${b}`}>
+                      <X size={12} aria-hidden="true" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <input
+              id="med-brand" className="form-input" type="text" value={brandInput}
+              onChange={e => setBrandInput(e.target.value)} onKeyDown={addBrand}
+              placeholder="Type a brand name and press Enter"
+            />
           </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px 16px' }}>
-
-              <div style={{ marginBottom: 22 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(13,148,136,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>🧬</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#0d9488' }}>Medicine Identity</span>
-                </div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>Generic Name <span style={{ color: '#ef4444' }}>*</span></label>
-                  <div style={{ position: 'relative' }}>
-                    <input required type="text" value={formData.genericName} onChange={e => setFormData({ ...formData, genericName: e.target.value })} placeholder="e.g. Aspirin, Metformin..." className="form-input" style={{ paddingLeft: 38 }} />
-                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.95rem', pointerEvents: 'none' }}>🔍</span>
-                    {(suggestionsLoading || rxNavSuggestions.length > 0) && (
-                      <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20, background: '#fff', border: '1.5px solid #0d9488', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.15)', maxHeight: 200, overflowY: 'auto' }}>
-                        {suggestionsLoading && <div style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Searching RxNav...</div>}
-                        {!suggestionsLoading && rxNavSuggestions.map((s) => (
-                          <button key={`${s.rxnormId || s.name}-${s.rxnormTty || 'na'}`} type="button" onClick={() => applySuggestion(s)} style={{ width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderBottom: '1px solid #eee', background: 'transparent', cursor: 'pointer' }}>
-                            <div style={{ fontWeight: 600 }}>{s.name}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{s.rxnormTty || 'RxNorm'}{s.synonym ? ` • ${s.synonym}` : ''}</div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ marginTop: 5, fontSize: '0.74rem', color: 'var(--text-muted)' }}>💡 Type 2+ characters to get RxNav suggestions</div>
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>Brand Names <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.75rem' }}>(press Enter to add)</span></label>
-                  {formData.brandNames.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                      {formData.brandNames.map(b => (
-                        <span key={b} style={{ background: 'linear-gradient(135deg, #0d9488, #0f766e)', color: '#fff', padding: '5px 12px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                          {b} <span onClick={() => removeBrand(b)} style={{ cursor: 'pointer', width: 18, height: 18, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>✕</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <input type="text" value={brandInput} onChange={e => setBrandInput(e.target.value)} onKeyDown={addBrand} placeholder="Type a brand name and press Enter..." className="form-input" />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 22 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(99,102,241,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>📋</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6366f1' }}>Classification & Form</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>Category</label>
-                    <select className="form-input" value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })}>{categories.map(c => <option key={c} value={c}>{c}</option>)}</select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>Formulation <span style={{ color: '#ef4444' }}>*</span></label>
-                    <select className="form-input" required value={formData.formulation} onChange={e => setFormData({ ...formData, formulation: e.target.value })}>{formulations.map(c => <option key={c} value={c}>{c}</option>)}</select>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 22 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(245,158,11,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>⚖️</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#d97706' }}>Dosage & Packaging</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14 }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>Strength</label>
-                    <input className="form-input" type="text" value={formData.strength} onChange={e => setFormData({ ...formData, strength: e.target.value })} placeholder="e.g. 500" />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>Unit</label>
-                    <select className="form-input" value={formData.strengthUnit} onChange={e => setFormData({ ...formData, strengthUnit: e.target.value })}>{strengthUnits.map(c => <option key={c} value={c}>{c}</option>)}</select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>Sale Unit</label>
-                    <select className="form-input" value={formData.unitOfSale} onChange={e => setFormData({ ...formData, unitOfSale: e.target.value })}>{unitsOfSale.map(c => <option key={c} value={c}>{c}</option>)}</select>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(239,68,68,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>🏷️</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#dc2626' }}>Tax & Compliance</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>HSN Code</label>
-                    <input className="form-input" type="text" value={formData.hsnCode} onChange={e => setFormData({ ...formData, hsnCode: e.target.value })} placeholder="e.g. 30049099" />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>GST Rate (%)</label>
-                    <input className="form-input" type="number" step="0.01" value={formData.gstRate} onChange={e => setFormData({ ...formData, gstRate: parseFloat(e.target.value) || 0 })} placeholder="e.g. 12" />
-                  </div>
-                </div>
-                <label htmlFor="isControlled" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, cursor: 'pointer', border: `1.5px solid ${formData.isControlled ? 'rgba(239,68,68,0.4)' : 'var(--border, #e2e8f0)'}`, background: formData.isControlled ? 'rgba(239,68,68,0.05)' : 'transparent', transition: 'all 0.2s' }}>
-                  <div style={{ width: 40, height: 22, borderRadius: 12, position: 'relative', background: formData.isControlled ? '#ef4444' : 'var(--border, #cbd5e1)', transition: 'background 0.25s', flexShrink: 0 }}>
-                    <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: formData.isControlled ? 20 : 2, transition: 'left 0.25s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-                  </div>
-                  <input type="checkbox" id="isControlled" checked={formData.isControlled} onChange={e => setFormData({ ...formData, isControlled: e.target.checked })} style={{ display: 'none' }} />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: formData.isControlled ? '#dc2626' : 'var(--text-primary)' }}>Controlled Substance (Rx)</div>
-                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 1 }}>Mark if this medicine requires a prescription to dispense</div>
-                  </div>
-                </label>
-              </div>
-
-              <div style={{ marginBottom: 22, marginTop: 10, padding: '16px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(16, 185, 129, 0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>📦</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#10b981' }}>{editingId ? 'Update Inventory & Pricing' : 'Initial Inventory (Optional)'}</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>{editingId ? 'Total Quantity' : 'Quantity to Add'}</label>
-                    <input className="form-input" type="number" min="0" value={formData.initialQuantity} onChange={e => setFormData({ ...formData, initialQuantity: parseInt(e.target.value) || 0 })} placeholder="e.g. 100" />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>Per Unit Price (MRP) ₹</label>
-                    <input className="form-input" type="number" min="0" step="0.01" value={formData.perUnitPrice} onChange={e => setFormData({ ...formData, perUnitPrice: parseFloat(e.target.value) || 0 })} placeholder="e.g. 5.50" />
-                  </div>
-                </div>
-              </div>
-
+          <h3 className="panel-subtitle" style={{ marginBottom: 0 }}>Classification</h3>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="med-category">Category</label>
+              <select id="med-category" className="form-select" value={formData.category} onChange={e => setField('category', e.target.value)}>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
-
-            <div style={{ padding: '16px 28px', borderTop: '1px solid var(--border, #e2e8f0)', background: 'var(--surface-2, #f8fafc)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
-              <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-ghost" style={{ minWidth: 100 }}>Cancel</button>
-              <button type="submit" className="btn btn-primary" style={{ minWidth: 160, background: 'linear-gradient(135deg, #0d9488, #0f766e)', border: 'none' }}>
-                {editingId ? '💾 Update Medicine' : '💊 Save Medicine'}
-              </button>
+            <div className="form-group">
+              <label className="form-label" htmlFor="med-formulation">Formulation</label>
+              <select id="med-formulation" className="form-select" required value={formData.formulation} onChange={e => setField('formulation', e.target.value)}>
+                {formulations.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
-          </form>
-        </div>
-      </div>
-    )}
+          </div>
+
+          <h3 className="panel-subtitle" style={{ marginBottom: 0 }}>Dosage and packaging</h3>
+          <div className="form-grid-3">
+            <div className="form-group">
+              <label className="form-label" htmlFor="med-strength">Strength</label>
+              <input id="med-strength" className="form-input" type="text" value={formData.strength} onChange={e => setField('strength', e.target.value)} placeholder="For example, 500" />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="med-unit">Unit</label>
+              <select id="med-unit" className="form-select" value={formData.strengthUnit} onChange={e => setField('strengthUnit', e.target.value)}>
+                {strengthUnits.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="med-sale-unit">Sale unit</label>
+              <select id="med-sale-unit" className="form-select" value={formData.unitOfSale} onChange={e => setField('unitOfSale', e.target.value)}>
+                {unitsOfSale.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <h3 className="panel-subtitle" style={{ marginBottom: 0 }}>Tax and compliance</h3>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="med-hsn">HSN code</label>
+              <input id="med-hsn" className="form-input" type="text" value={formData.hsnCode} onChange={e => setField('hsnCode', e.target.value)} placeholder="For example, 30049099" />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="med-gst">GST rate (%)</label>
+              <input id="med-gst" className="form-input" type="number" step="0.01" value={formData.gstRate} onChange={e => setField('gstRate', parseFloat(e.target.value) || 0)} placeholder="For example, 12" />
+            </div>
+          </div>
+          <label className="check-row" htmlFor="isControlled">
+            <input type="checkbox" id="isControlled" checked={formData.isControlled} onChange={e => setField('isControlled', e.target.checked)} />
+            <span>
+              <span style={{ fontWeight: 600 }}>Controlled substance (Rx)</span>
+              <span className="form-hint" style={{ display: 'block', marginTop: 2 }}>Tick if this medicine can only be dispensed against a prescription.</span>
+            </span>
+          </label>
+
+          <h3 className="panel-subtitle" style={{ marginBottom: 0 }}>{editingId ? 'Inventory and pricing' : 'Opening stock (optional)'}</h3>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="med-qty">{editingId ? 'Total quantity' : 'Quantity to add'}</label>
+              <input id="med-qty" className="form-input" type="number" min="0" value={formData.initialQuantity} onChange={e => setField('initialQuantity', parseInt(e.target.value) || 0)} placeholder="For example, 100" />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="med-mrp">MRP per unit (₹)</label>
+              <input id="med-mrp" className="form-input" type="number" min="0" step="0.01" value={formData.perUnitPrice} onChange={e => setField('perUnitPrice', parseFloat(e.target.value) || 0)} placeholder="For example, 5.50" />
+            </div>
+          </div>
+          {editingId && <p className="form-hint" style={{ marginTop: -6 }}>A changed quantity or MRP is applied to the latest batch only.</p>}
+        </form>
+      </Modal>
     </>
   );
 }
-
-const thS = {
-  padding: '14px 20px', textAlign: 'left', color: 'var(--text-muted)', 
-  fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em',
-  fontWeight: 700
-};
-
-const tdS = {
-  padding: '16px 20px', verticalAlign: 'middle'
-};

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, CalendarPlus, ClipboardList, Plus, Save, TriangleAlert, UserRound, X } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 
-const Field = ({ label, children, span }) => (
-  <div className="form-group" style={span ? { gridColumn: `span ${span}` } : {}}>
-    <label className="form-label">{label}</label>
+const Field = ({ label, htmlFor, children }) => (
+  <div className="form-group">
+    <label className="form-label" htmlFor={htmlFor}>{label}</label>
     {children}
   </div>
 );
@@ -103,188 +105,132 @@ export default function RestFormEditorPage() {
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        <div className="hms-page-header">
-          <div>
-            <h1>
-              <span className="header-icon" style={{ background: 'rgba(139,92,246,0.1)', borderColor: 'rgba(139,92,246,0.25)' }}>🛏️</span>
-              {isEditing ? 'Edit Rest Form' : 'New Rest & Light Duty Form'}
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Generate a medical certificate for rest or light duty advisory.
-            </p>
-          </div>
-          <div className="header-actions">
-            <button className="btn btn-ghost" onClick={() => navigate('/doctor/rest-forms')}>← Back to Hub</button>
-          </div>
-        </div>
+      <main className="app-page">
+        <PageHeader
+          title={isEditing ? 'Edit rest form' : 'New rest and light duty form'}
+          description="Issue a medical certificate advising rest or light duty."
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/doctor/rest-forms')}>
+              <ArrowLeft size={16} aria-hidden="true" /> Back to rest forms
+            </button>
+          )}
+        />
 
         {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 80, gap: 12 }}>
-            <div className="spinner" style={{ width: 32, height: 32 }} />
-          </div>
+          <p className="muted">Loading…</p>
         ) : (
-          <form onSubmit={handleSubmit} className="hms-anim-2">
-            {/* Patient Card */}
-            <div className="card" style={{ marginBottom: 24, padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(16,185,129,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>👤</span>
-                <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Patient Identification</h3>
+          <form onSubmit={handleSubmit} className="stack">
+            <section className="panel">
+              <div className="panel-head">
+                <h2 className="panel-title" style={{ margin: 0 }}><UserRound size={16} aria-hidden="true" /> Patient</h2>
               </div>
-              <div style={{ padding: '18px 24px' }}>
+              <div className="panel-pad">
                 {patientInfo ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16 }}>
+                  <div className="facts">
                     {[
-                      { label: 'Patient Name', value: patientInfo.name },
-                      { label: 'Employee No', value: patientInfo.empNumber || 'N/A' },
+                      { label: 'Patient name', value: patientInfo.name },
+                      { label: 'Employee no.', value: patientInfo.empNumber || 'N/A' },
                       { label: 'Relationship', value: patientInfo.relationship || 'Self' },
-                      { label: 'Gender / Age', value: `${patientInfo.gender}, ${patientInfo.age} yrs` },
+                      { label: 'Gender / age', value: `${patientInfo.gender}, ${patientInfo.age} yrs` },
                     ].map(item => (
                       <div key={item.label}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>{item.label}</div>
-                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{item.value}</div>
+                        <div className="fact-label">{item.label}</div>
+                        <div className="fact-value">{item.value}</div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--red)', fontSize: '0.85rem' }}>
-                    ⚠️ No patient selected. Please initiate from the Doctor Dashboard queue.
+                  <div className="alert-strip alert-danger" role="alert" style={{ marginBottom: 0 }}>
+                    <TriangleAlert size={16} aria-hidden="true" /> No patient selected. Start the rest form from the doctor dashboard queue.
                   </div>
                 )}
               </div>
-            </div>
+            </section>
 
-            {/* Form Fields */}
-            <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(139,92,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>📋</span>
-                <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Certificate Details</h3>
+            <section className="panel">
+              <div className="panel-head">
+                <h2 className="panel-title" style={{ margin: 0 }}><ClipboardList size={16} aria-hidden="true" /> Certificate details</h2>
               </div>
-              <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '18px 20px' }}>
-                <Field label="Working As (Designation)">
-                  <input type="text" className="form-input" value={form.working_as} onChange={e => setForm({...form, working_as: e.target.value})} placeholder="e.g. C.M." />
-                </Field>
-                <Field label="In (Department)">
-                  <input type="text" className="form-input" value={form.department} onChange={e => setForm({...form, department: e.target.value})} placeholder="e.g. IT" />
-                </Field>
-                <Field label="Rest/Light Duty For">
-                  <input type="text" className="form-input" value={form.advised_days} onChange={e => setForm({...form, advised_days: e.target.value})} placeholder="e.g. 2 days" required />
-                </Field>
+              <div className="panel-pad stack">
+                <div className="form-grid-3">
+                  <Field label="Working as (designation)" htmlFor="rf-working-as">
+                    <input id="rf-working-as" type="text" className="form-input" value={form.working_as} onChange={e => setForm({...form, working_as: e.target.value})} placeholder="e.g. C.M." />
+                  </Field>
+                  <Field label="Department" htmlFor="rf-department">
+                    <input id="rf-department" type="text" className="form-input" value={form.department} onChange={e => setForm({...form, department: e.target.value})} placeholder="e.g. IT" />
+                  </Field>
+                  <Field label="Rest or light duty for" htmlFor="rf-advised-days">
+                    <input id="rf-advised-days" type="text" className="form-input" value={form.advised_days} onChange={e => setForm({...form, advised_days: e.target.value})} placeholder="e.g. 2 days" required />
+                  </Field>
+                </div>
+                <div className="form-row-2">
+                  <Field label="Disease / suffering from" htmlFor="rf-disease">
+                    <input id="rf-disease" type="text" className="form-input" value={form.disease} onChange={e => setForm({...form, disease: e.target.value})} required placeholder="e.g. Viral fever" />
+                  </Field>
+                  <Field label="Attended on" htmlFor="rf-attended">
+                    <input id="rf-attended" type="datetime-local" className="form-input" value={form.attended_date} onChange={e => setForm({...form, attended_date: e.target.value})} required />
+                  </Field>
+                </div>
+                <div className="form-grid-3">
+                  <Field label="From date (w.e.f.)" htmlFor="rf-from">
+                    <input id="rf-from" type="date" className="form-input" value={form.from_date} onChange={e => setForm({...form, from_date: e.target.value})} required />
+                  </Field>
+                  <Field label="To date (optional)" htmlFor="rf-to">
+                    <input id="rf-to" type="date" className="form-input" value={form.to_date} onChange={e => setForm({...form, to_date: e.target.value})} />
+                  </Field>
+                  <Field label="Fit to join on (optional)" htmlFor="rf-fit">
+                    <input id="rf-fit" type="date" className="form-input" value={form.fit_date} onChange={e => setForm({...form, fit_date: e.target.value})} />
+                  </Field>
+                </div>
 
-                <Field label="Disease / Suffering From" span={2}>
-                  <input type="text" className="form-input" value={form.disease} onChange={e => setForm({...form, disease: e.target.value})} required placeholder="e.g. Viral Fever" />
-                </Field>
-                <Field label="Attended On">
-                  <input type="datetime-local" className="form-input" value={form.attended_date} onChange={e => setForm({...form, attended_date: e.target.value})} required />
-                </Field>
-
-                <Field label="From Date (w.e.f)">
-                  <input type="date" className="form-input" value={form.from_date} onChange={e => setForm({...form, from_date: e.target.value})} required />
-                </Field>
-                <Field label="To Date (Optional)">
-                  <input type="date" className="form-input" value={form.to_date} onChange={e => setForm({...form, to_date: e.target.value})} />
-                </Field>
-                <Field label="Fit to Join On (Optional)">
-                  <input type="date" className="form-input" value={form.fit_date} onChange={e => setForm({...form, fit_date: e.target.value})} />
-                </Field>
-              </div>
-
-              {/* ── Further Extend Section (Edit Mode Only) ── */}
-              {isEditing && (
-                <div style={{ padding: '0 24px 24px' }}>
-                  {!showExtend ? (
-                    <button
-                      type="button"
-                      onClick={handleExtendToggle}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 8,
-                        padding: '10px 22px', borderRadius: 10,
-                        border: '2px dashed rgba(245,158,11,0.4)',
-                        background: 'rgba(245,158,11,0.06)',
-                        color: '#d97706', fontSize: '0.86rem', fontWeight: 700,
-                        cursor: 'pointer', transition: 'all 0.25s',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.12)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.6)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.06)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.4)'; }}
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="12" y1="8" x2="12" y2="16" />
-                        <line x1="8" y1="12" x2="16" y2="12" />
-                      </svg>
-                      Further Extend Rest
-                    </button>
+                {/* Further extension (edit mode only) */}
+                {isEditing && (
+                  !showExtend ? (
+                    <div>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={handleExtendToggle}>
+                        <Plus size={14} aria-hidden="true" /> Extend rest further
+                      </button>
+                    </div>
                   ) : (
-                    <div style={{
-                      padding: '18px 22px', borderRadius: 12,
-                      border: '2px solid rgba(245,158,11,0.3)',
-                      background: 'rgba(245,158,11,0.04)',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{
-                            width: 26, height: 26, borderRadius: 7,
-                            background: 'rgba(245,158,11,0.15)', color: '#d97706',
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.8rem',
-                          }}>📅</span>
-                          <span style={{
-                            fontSize: '0.72rem', fontWeight: 800,
-                            textTransform: 'uppercase', letterSpacing: '0.1em',
-                            color: '#d97706',
-                          }}>
-                            Further Extension
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleExtendToggle}
-                          style={{
-                            background: 'none', border: 'none', cursor: 'pointer',
-                            color: 'var(--text-muted)', fontSize: '1rem', padding: '2px 6px',
-                            borderRadius: 6, transition: 'all 0.2s',
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
-                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'none'; }}
-                          title="Remove Extension"
-                        >
-                          ✕
+                    <div style={{ padding: 16, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--amber-light)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                        <h3 className="toolbar-caption" style={{ color: 'var(--amber)' }}>
+                          <CalendarPlus size={16} aria-hidden="true" /> Further extension
+                        </h3>
+                        <button type="button" className="icon-btn" onClick={handleExtendToggle} aria-label="Remove extension" title="Remove extension">
+                          <X size={16} aria-hidden="true" />
                         </button>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                        <Field label="Extended Till Date">
+                      <div className="form-row-2">
+                        <Field label="Extended till" htmlFor="rf-extended">
                           <input
+                            id="rf-extended"
                             type="date"
                             className="form-input"
                             value={form.extended_date}
                             onChange={e => setForm({ ...form, extended_date: e.target.value })}
                             min={form.to_date || form.from_date || undefined}
-                            style={{ borderColor: 'rgba(245,158,11,0.3)' }}
                           />
                         </Field>
-                        <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 2 }}>
-                          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: 0 }}>
-                            The rest form serial number will remain the same.<br />
-                            Extension date will appear on the printed form.
-                          </p>
-                        </div>
+                        <p className="form-hint" style={{ alignSelf: 'end', margin: 0 }}>
+                          The serial number stays the same. The extension date appears on the printed form.
+                        </p>
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
+                  )
+                )}
+              </div>
 
-              {/* Actions */}
-              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-                <button type="button" className="btn btn-ghost" onClick={() => navigate('/doctor/rest-forms')}>Cancel</button>
-                <button type="submit" className="btn btn-primary btn-lg" disabled={!form.patient_id} style={{ minWidth: 180 }}>
-                  {isEditing ? '💾 Update Rest Form' : '💾 Save & Generate'}
+              <div className="panel-pad" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/doctor/rest-forms')}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-md" disabled={!form.patient_id}>
+                  <Save size={16} aria-hidden="true" /> {isEditing ? 'Update rest form' : 'Save and generate'}
                 </button>
               </div>
-            </div>
+            </section>
           </form>
         )}
-      </div>
+      </main>
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -8,104 +9,114 @@ import AdminRoute from './components/AdminRoute';
 import HMSProtectedRoute from './components/HMSProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import AdminDashboardPage from './pages/AdminDashboardPage';
-import RegisterPatientPage from './pages/RegisterPatientPage';
-import ReportPage from './pages/ReportPage';
-import SearchPage from './pages/SearchPage';
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+const RegisterPatientPage = lazy(() => import('./pages/RegisterPatientPage'));
+const ReportPage = lazy(() => import('./pages/ReportPage'));
+const SearchPage = lazy(() => import('./pages/SearchPage'));
 
 // HMS Pages
-import RoleDashboard from './pages/hms/RoleDashboard';
-import ChangePasswordPage from './pages/hms/ChangePasswordPage';
-import ForgotPasswordPage from './pages/hms/ForgotPasswordPage';
-import UserManagementPage from './pages/hms/UserManagementPage';
-import PermissionMatrixPage from './pages/hms/PermissionMatrixPage';
-import SecurityPage from './pages/hms/SecurityPage';
-import MaintenancePage from './pages/MaintenancePage';
+const RoleDashboard = lazy(() => import('./pages/hms/RoleDashboard'));
+const ChangePasswordPage = lazy(() => import('./pages/hms/ChangePasswordPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/hms/ForgotPasswordPage'));
+const UserManagementPage = lazy(() => import('./pages/hms/UserManagementPage'));
+const PermissionMatrixPage = lazy(() => import('./pages/hms/PermissionMatrixPage'));
+const SecurityPage = lazy(() => import('./pages/hms/SecurityPage'));
+const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
 
 // Sprint 2 Pages
-import NewPatientPage from './pages/hms/patients/NewPatientPage';
-import PatientSearchPage from './pages/hms/patients/PatientSearchPage';
-import PatientProfilePage from './pages/hms/patients/PatientProfilePage';
-import OPDTokenPage from './pages/hms/opd/OPDTokenPage';
-import AppointmentBookingPage from './pages/hms/opd/AppointmentBookingPage';
-import AppointmentListPage from './pages/hms/opd/AppointmentListPage';
-import VitalsEntryPage from './pages/hms/opd/VitalsEntryPage';
+const NewPatientPage = lazy(() => import('./pages/hms/patients/NewPatientPage'));
+const PatientSearchPage = lazy(() => import('./pages/hms/patients/PatientSearchPage'));
+const PatientProfilePage = lazy(() => import('./pages/hms/patients/PatientProfilePage'));
+const OPDTokenPage = lazy(() => import('./pages/hms/opd/OPDTokenPage'));
+const AppointmentBookingPage = lazy(() => import('./pages/hms/opd/AppointmentBookingPage'));
+const AppointmentListPage = lazy(() => import('./pages/hms/opd/AppointmentListPage'));
+const VitalsEntryPage = lazy(() => import('./pages/hms/opd/VitalsEntryPage'));
 
 // Sprint 3 Pages
-import ConsultationPage from './pages/hms/consultation/ConsultationPage';
-import PrescriptionSlipPage from './pages/hms/consultation/PrescriptionSlipPage';
+const ConsultationPage = lazy(() => import('./pages/hms/consultation/ConsultationPage'));
+const PrescriptionSlipPage = lazy(() => import('./pages/hms/consultation/PrescriptionSlipPage'));
 
-import PrescriptionPreviewPage from './pages/hms/pharmacy/PrescriptionPreviewPage';
-import InvestigationQueuePage from './pages/hms/lab/InvestigationQueuePage';
-import RestFormHubPage from './pages/hms/doctor/RestFormHubPage';
-import RestFormEditorPage from './pages/hms/doctor/RestFormEditorPage';
-import RestFormPrintPage from './pages/hms/doctor/RestFormPrintPage';
+const PrescriptionPreviewPage = lazy(() => import('./pages/hms/pharmacy/PrescriptionPreviewPage'));
+const InvestigationQueuePage = lazy(() => import('./pages/hms/lab/InvestigationQueuePage'));
+const RestFormHubPage = lazy(() => import('./pages/hms/doctor/RestFormHubPage'));
+const RestFormEditorPage = lazy(() => import('./pages/hms/doctor/RestFormEditorPage'));
+const RestFormPrintPage = lazy(() => import('./pages/hms/doctor/RestFormPrintPage'));
 
 // Sprint 4 — Pharmacy Pages
-import MedicineMasterPage from './pages/hms/pharmacy/MedicineMasterPage';
-import PharmacyStockPage from './pages/hms/pharmacy/PharmacyStockPage';
-import GRNPage from './pages/hms/pharmacy/GRNPage';
-import DispensePage from './pages/hms/pharmacy/DispensePage';
-import OTCSalePage from './pages/hms/pharmacy/OTCSalePage';
-import ExpiryAlertsPage from './pages/hms/pharmacy/ExpiryAlertsPage';
-import SupplierMasterPage from './pages/hms/pharmacy/SupplierMasterPage';
-import PurchaseOrdersPage from './pages/hms/pharmacy/PurchaseOrdersPage';
-import RaiseIndentPage from './pages/hms/pharmacy/RaiseIndentPage';
-import PharmacyReturnsPage from './pages/hms/pharmacy/PharmacyReturnsPage';
-import PharmacyReportsPage from './pages/hms/pharmacy/PharmacyReportsPage';
+const MedicineMasterPage = lazy(() => import('./pages/hms/pharmacy/MedicineMasterPage'));
+const PharmacyStockPage = lazy(() => import('./pages/hms/pharmacy/PharmacyStockPage'));
+const GRNPage = lazy(() => import('./pages/hms/pharmacy/GRNPage'));
+const DispensePage = lazy(() => import('./pages/hms/pharmacy/DispensePage'));
+const OTCSalePage = lazy(() => import('./pages/hms/pharmacy/OTCSalePage'));
+const ExpiryAlertsPage = lazy(() => import('./pages/hms/pharmacy/ExpiryAlertsPage'));
+const SupplierMasterPage = lazy(() => import('./pages/hms/pharmacy/SupplierMasterPage'));
+const PurchaseOrdersPage = lazy(() => import('./pages/hms/pharmacy/PurchaseOrdersPage'));
+const RaiseIndentPage = lazy(() => import('./pages/hms/pharmacy/RaiseIndentPage'));
+const PharmacyReturnsPage = lazy(() => import('./pages/hms/pharmacy/PharmacyReturnsPage'));
+const PharmacyReportsPage = lazy(() => import('./pages/hms/pharmacy/PharmacyReportsPage'));
 
 // Part B - IPD & Billing Pages
-import BedManagementPage from './pages/hms/ipd/BedManagementPage';
-import IPDPatientListPage from './pages/hms/ipd/IPDPatientListPage';
-import IPDDischargeSummariesPage from './pages/hms/ipd/IPDDischargeSummariesPage';
-import IPDPatientChartPage from './pages/hms/ipd/IPDPatientChartPage';
-import IPDRequestsPage from './pages/hms/ipd/IPDRequestsPage';
-import IPDAdmissionFormPage from './pages/hms/ipd/IPDAdmissionFormPage';
-import IPDBillingListPage from './pages/hms/ipd/IPDBillingListPage';
-import IPDBillingPage from './pages/hms/ipd/IPDBillingPage';
-import IPDSavedBillsPage from './pages/hms/ipd/IPDSavedBillsPage';
-import OPDBillingPage from './pages/hms/billing/OPDBillingPage';
-import BillingHistoryPage from './pages/hms/billing/BillingHistoryPage';
+const BedManagementPage = lazy(() => import('./pages/hms/ipd/BedManagementPage'));
+const IPDPatientListPage = lazy(() => import('./pages/hms/ipd/IPDPatientListPage'));
+const IPDDischargeSummariesPage = lazy(() => import('./pages/hms/ipd/IPDDischargeSummariesPage'));
+const IPDPatientChartPage = lazy(() => import('./pages/hms/ipd/IPDPatientChartPage'));
+const IPDRequestsPage = lazy(() => import('./pages/hms/ipd/IPDRequestsPage'));
+const IPDAdmissionFormPage = lazy(() => import('./pages/hms/ipd/IPDAdmissionFormPage'));
+const IPDBillingListPage = lazy(() => import('./pages/hms/ipd/IPDBillingListPage'));
+const IPDBillingPage = lazy(() => import('./pages/hms/ipd/IPDBillingPage'));
+const IPDSavedBillsPage = lazy(() => import('./pages/hms/ipd/IPDSavedBillsPage'));
+const OPDBillingPage = lazy(() => import('./pages/hms/billing/OPDBillingPage'));
+const BillingHistoryPage = lazy(() => import('./pages/hms/billing/BillingHistoryPage'));
 
 // Part C - Reports & Admin Settings Pages
-import AdminSettingsPage from './pages/AdminSettingsPage';
-import ReportsPage from './pages/ReportsPage';
+const AdminSettingsPage = lazy(() => import('./pages/AdminSettingsPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 
 // Part D - Patient Journey
-import PatientJourneyPage from './pages/PatientJourneyPage';
+const PatientJourneyPage = lazy(() => import('./pages/PatientJourneyPage'));
 
 // Admin-Ops Pages
-import StaffManagementPage from './pages/hms/StaffManagementPage';
-import AdminPatientsPage from './pages/hms/admin/AdminPatientsPage';
-import AdminBillingPage from './pages/hms/admin/AdminBillingPage';
-import AdminPharmacyPage from './pages/hms/admin/AdminPharmacyPage';
-import AttendanceLeavePage from './pages/hms/admin/AttendanceLeavePage';
-import NoticesPage from './pages/hms/admin/NoticesPage';
-import AdminBedManagementPage from './pages/hms/admin/AdminBedManagementPage';
+const StaffManagementPage = lazy(() => import('./pages/hms/StaffManagementPage'));
+const AdminPatientsPage = lazy(() => import('./pages/hms/admin/AdminPatientsPage'));
+const AdminBillingPage = lazy(() => import('./pages/hms/admin/AdminBillingPage'));
+const AdminPharmacyPage = lazy(() => import('./pages/hms/admin/AdminPharmacyPage'));
+const AttendanceLeavePage = lazy(() => import('./pages/hms/admin/AttendanceLeavePage'));
+const NoticesPage = lazy(() => import('./pages/hms/admin/NoticesPage'));
+const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
+const AdminBedManagementPage = lazy(() => import('./pages/hms/admin/AdminBedManagementPage'));
 
 // Doctor Module Pages
-import DoctorPrescriptionsPage from './pages/hms/doctor/DoctorPrescriptionsPage.jsx';
-import DoctorLabsPage from './pages/hms/doctor/DoctorLabsPage.jsx';
-import DoctorSchedulePage from './pages/hms/doctor/DoctorSchedulePage.jsx';
-import DoctorReportsPage from './pages/hms/doctor/DoctorReportsPage.jsx';
-import DoctorReferralsPage from './pages/hms/doctor/DoctorReferralsPage.jsx';
-import DoctorClinicalNotesPage from './pages/hms/doctor/DoctorClinicalNotesPage.jsx';
-import DoctorQuickConsultPage from './pages/hms/doctor/DoctorQuickConsultPage.jsx';
+const DoctorPrescriptionsPage = lazy(() => import('./pages/hms/doctor/DoctorPrescriptionsPage.jsx'));
+const DoctorLabsPage = lazy(() => import('./pages/hms/doctor/DoctorLabsPage.jsx'));
+const DoctorSchedulePage = lazy(() => import('./pages/hms/doctor/DoctorSchedulePage.jsx'));
+const DoctorReportsPage = lazy(() => import('./pages/hms/doctor/DoctorReportsPage.jsx'));
+const DoctorReferralsPage = lazy(() => import('./pages/hms/doctor/DoctorReferralsPage.jsx'));
+const DoctorClinicalNotesPage = lazy(() => import('./pages/hms/doctor/DoctorClinicalNotesPage.jsx'));
+const DoctorQuickConsultPage = lazy(() => import('./pages/hms/doctor/DoctorQuickConsultPage.jsx'));
 
 // Receptionist Module Pages
-import ReceptionistAppointmentsPage from './pages/hms/receptionist/ReceptionistAppointmentsPage.jsx';
-import ReceptionistBillingPage from './pages/hms/receptionist/ReceptionistBillingPage.jsx';
-import ReceptionistIPDPage from './pages/hms/receptionist/ReceptionistIPDPage.jsx';
-import VisitorManagementPage from './pages/hms/receptionist/VisitorManagementPage.jsx';
-import ReceptionistNotificationsPage from './pages/hms/receptionist/ReceptionistNotificationsPage.jsx';
+const ReceptionistAppointmentsPage = lazy(() => import('./pages/hms/receptionist/ReceptionistAppointmentsPage.jsx'));
+const ReceptionistBillingPage = lazy(() => import('./pages/hms/receptionist/ReceptionistBillingPage.jsx'));
+const ReceptionistIPDPage = lazy(() => import('./pages/hms/receptionist/ReceptionistIPDPage.jsx'));
+const VisitorManagementPage = lazy(() => import('./pages/hms/receptionist/VisitorManagementPage.jsx'));
+const ReceptionistNotificationsPage = lazy(() => import('./pages/hms/receptionist/ReceptionistNotificationsPage.jsx'));
 
 // Lab Technician LIMS Pages
-import LabTestQueuePage from './pages/hms/lab/LabTestQueuePage.jsx';
-import LabSampleCollectionPage from './pages/hms/lab/LabSampleCollectionPage.jsx';
-import LabResultsEntryPage from './pages/hms/lab/LabResultsEntryPage.jsx';
-import LabReportsPage from './pages/hms/lab/LabReportsPage.jsx';
-import LabWorkloadPage from './pages/hms/lab/LabWorkloadPage.jsx';
+const LabTestQueuePage = lazy(() => import('./pages/hms/lab/LabTestQueuePage.jsx'));
+const LabSampleCollectionPage = lazy(() => import('./pages/hms/lab/LabSampleCollectionPage.jsx'));
+const LabResultsEntryPage = lazy(() => import('./pages/hms/lab/LabResultsEntryPage.jsx'));
+const LabReportsPage = lazy(() => import('./pages/hms/lab/LabReportsPage.jsx'));
+const LabWorkloadPage = lazy(() => import('./pages/hms/lab/LabWorkloadPage.jsx'));
+
+function PageLoader() {
+  return (
+    <div className="page-loader" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      <span className="sr-only">Loading…</span>
+    </div>
+  );
+}
 
 function DashboardRedirect() {
   const { user } = useAuth();
@@ -143,6 +154,7 @@ export default function App() {
             }}
           />
           <ErrorBoundary>
+            <Suspense fallback={<PageLoader />}>
             <Routes>
               {/* Existing routes — fully preserved */}
               <Route path="/login" element={<LoginPage />} />
@@ -456,22 +468,13 @@ export default function App() {
             } />
 
             {/* Unauthorized */}
-            <Route path="/unauthorized" element={
-              <div style={{
-                minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'var(--bg)', flexDirection: 'column', gap: 16,
-              }}>
-                <div style={{ fontSize: '3rem' }}>🚫</div>
-                <h2>Access Denied</h2>
-                <p style={{ color: 'var(--text-secondary)' }}>You don't have permission to view this page.</p>
-                <a href="/login" className="btn btn-primary">← Back to Login</a>
-              </div>
-            } />
+            <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
             {/* Default redirects */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+            </Suspense>
           </ErrorBoundary>
         </BrowserRouter>
         </SocketProvider>

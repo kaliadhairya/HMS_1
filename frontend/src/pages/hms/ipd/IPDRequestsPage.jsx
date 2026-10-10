@@ -1,9 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { BedDouble, CircleCheck, Inbox, RefreshCw, Stethoscope, Trash2, TriangleAlert, X } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+import Modal from '../../../components/ui/Modal';
+import RowMenu from '../../../components/ui/RowMenu';
 import api from '../../../api/axios';
 import { useAuth } from '../../../context/AuthContext';
-import toast from 'react-hot-toast';
+
+const STATUS_OPTIONS = [
+  { value: '', label: 'All' },
+  { value: 'Pending', label: 'Pending' },
+  { value: 'Admitted', label: 'Admitted' },
+  { value: 'Cancelled', label: 'Cancelled' },
+];
+const STATUS_TONE = { Pending: 'warning', Admitted: 'success', Cancelled: 'neutral' };
+const URGENCY_TONE = { Emergency: 'danger', Urgent: 'warning', Routine: 'neutral' };
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const fmtTime = (v) => (v ? new Date(v).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '');
+const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 
 export default function IPDRequestsPage() {
   const { user } = useAuth();
@@ -27,6 +45,7 @@ export default function IPDRequestsPage() {
   // Multi-select State
   const [selectedIds, setSelectedIds] = useState([]);
   const [deletingSelected, setDeletingSelected] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   const fetchRequests = async () => {
     setLoading(true);
@@ -37,7 +56,7 @@ export default function IPDRequestsPage() {
       }
     } catch (err) {
       console.error(err);
-      toast.error('Failed to load IPD requests');
+      toast.error('Could not load IPD requests');
     } finally {
       setLoading(false);
     }
@@ -120,7 +139,7 @@ export default function IPDRequestsPage() {
   };
 
   const handleAdmitSubmit = async () => {
-    if (!selectedBed) return toast.error('Please select an available bed.');
+    if (!selectedBed) return toast.error('Select an available bed');
     setAdmitting(true);
     try {
       // 1. Create admission
@@ -151,7 +170,7 @@ export default function IPDRequestsPage() {
           return r;
         }));
 
-        toast.success('Patient admitted successfully!');
+        toast.success('Patient admitted');
         setAdmitModal(null);
         setSelectedWard('');
         setSelectedBed('');
@@ -162,7 +181,7 @@ export default function IPDRequestsPage() {
       }
     } catch (err) {
       console.error(err);
-      toast.error('Failed to admit patient');
+      toast.error('Could not admit patient');
     } finally {
       setAdmitting(false);
     }
@@ -178,588 +197,378 @@ export default function IPDRequestsPage() {
       const reqId = deleteTarget.ID || deleteTarget.id;
       await api.delete(`/ipd/requests/${reqId}`);
       setRequests(prev => prev.filter(r => String(r.ID || r.id) !== String(reqId)));
-      toast.success('IPD request deleted successfully');
+      toast.success('IPD request deleted');
       setDeleteTarget(null);
     } catch (err) {
       console.error(err);
-      toast.error('Failed to delete request');
+      toast.error('Could not delete request');
     } finally {
       setDeleting(false);
     }
   };
 
+  // Confirmation happens in the bulk-delete Modal before this runs.
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0 || deletingSelected) return;
-
-    const confirmed = window.confirm(
-      `⚠️ WARNING: Are you sure you want to permanently DELETE ${selectedIds.length} selected IPD request${selectedIds.length > 1 ? 's' : ''}?\n\nOnly the admission requests will be deleted. Patient registrations will remain intact.\n\nThis action cannot be undone.`
-    );
-    if (!confirmed) return;
 
     setDeletingSelected(true);
     try {
       await api.post('/ipd/requests/bulk-delete', { ids: selectedIds });
       setRequests(prev => prev.filter(r => !selectedIds.includes(getReqId(r))));
-      toast.success(`Deleted ${selectedIds.length} request(s) successfully`);
+      toast.success(`Deleted ${selectedIds.length} ${selectedIds.length === 1 ? 'request' : 'requests'}`);
       setSelectedIds([]);
+      setConfirmBulkDelete(false);
     } catch (err) {
       console.error(err);
-      toast.error('Failed to delete selected requests');
+      toast.error('Could not delete the selected requests');
     } finally {
       setDeletingSelected(false);
     }
   };
 
+  const recordVitals = (req) => navigate('/hms/vitals/entry', {
+    state: {
+      patient: {
+        id: req.PATIENT_ID || req.patientId,
+        name: req.PATIENT_NAME || req.patientName,
+        uhid: req.UHID || req.uhid,
+        age: req.AGE || req.age || '',
+      }
+    }
+  });
+
+  const columns = useMemo(() => {
+    const cols = [];
+    if (canDelete) {
+      cols.push({
+        id: 'select', enableSorting: false, meta: { width: 44 },
+        header: () => (
+          <input
+            type="checkbox"
+            aria-label="Select all requests"
+            checked={allSelected}
+            disabled={visibleIds.length === 0}
+            onChange={toggleSelectAll}
+          />
+        ),
+        cell: ({ row }) => {
+          const reqId = getReqId(row.original);
+          return (
+            <input
+              type="checkbox"
+              aria-label={`Select request for ${row.original.PATIENT_NAME || row.original.patientName || 'patient'}`}
+              checked={selectedIds.includes(reqId)}
+              onChange={() => toggleSelect(reqId)}
+            />
+          );
+        },
+      });
+    }
+    cols.push(
+      {
+        id: 'requested', header: 'Requested', meta: { width: 140 },
+        accessorFn: (r) => { const d = r.REQUEST_DATE || r.requestDate; return d ? new Date(d).getTime() : 0; },
+        cell: ({ row }) => {
+          const d = row.original.REQUEST_DATE || row.original.requestDate;
+          return (
+            <span className="cell-stack">
+              <span className="tabular" style={{ fontWeight: 600 }}>{fmtDate(d)}</span>
+              <span className="cell-secondary">{fmtTime(d)}</span>
+            </span>
+          );
+        },
+      },
+      {
+        id: 'patient', header: 'Patient', accessorFn: (r) => r.PATIENT_NAME || r.patientName || '',
+        cell: ({ row }) => (
+          <span className="cell-stack">
+            <span className="cell-primary">{row.original.PATIENT_NAME || row.original.patientName || '—'}</span>
+            <span className="cell-secondary mono">{row.original.UHID || row.original.uhid || 'No UHID'}</span>
+          </span>
+        ),
+      },
+      { id: 'doctor', header: 'Requesting doctor', accessorFn: (r) => r.DOCTOR_NAME || r.doctorName || '', cell: ({ getValue }) => getValue() || '—' },
+      {
+        id: 'diagnosis', header: 'Diagnosis and reason', accessorFn: (r) => r.PRIMARY_DIAGNOSIS || r.primaryDiagnosis || '',
+        cell: ({ row }) => {
+          const reason = row.original.REASON_FOR_ADMISSION || row.original.reasonForAdmission;
+          return (
+            <span className="cell-stack" style={{ maxWidth: 260 }}>
+              <span style={{ fontWeight: 600 }}>{row.original.PRIMARY_DIAGNOSIS || row.original.primaryDiagnosis || '—'}</span>
+              {reason && <span className="cell-secondary" title={reason} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reason}</span>}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'ward', header: 'Ward and urgency', accessorFn: (r) => r.WARD_PREFERENCE || r.wardPreference || '', meta: { width: 170 },
+        cell: ({ row }) => {
+          const urgency = row.original.URGENCY_LEVEL || row.original.urgencyLevel;
+          return (
+            <span className="cell-stack" style={{ gap: 4, alignItems: 'flex-start' }}>
+              <span>{row.original.WARD_PREFERENCE || row.original.wardPreference || '—'}</span>
+              {urgency && <span className={`status status-${URGENCY_TONE[urgency] || 'neutral'}`}>{urgency}</span>}
+            </span>
+          );
+        },
+      },
+      {
+        id: 'status', header: 'Status', accessorFn: (r) => r.STATUS || r.status || '', meta: { width: 120 },
+        cell: ({ getValue }) => <span className={`status status-${STATUS_TONE[getValue()] || 'neutral'}`}>{getValue() || '—'}</span>,
+      },
+      {
+        id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 200, align: 'right' },
+        cell: ({ row }) => {
+          const req = row.original;
+          const status = req.STATUS || req.status;
+          return (
+            <span className="inline-actions">
+              {status === 'Pending' && canAdmit && (
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => handleOpenAdmit(req)}>
+                  <BedDouble size={14} aria-hidden="true" /> Admit
+                </button>
+              )}
+              {status === 'Pending' && !canAdmit && <span className="cell-secondary">Awaiting admission</span>}
+              {status === 'Admitted' && canAdmit && (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => recordVitals(req)}>
+                  <Stethoscope size={14} aria-hidden="true" /> Record vitals
+                </button>
+              )}
+              {canDelete && (
+                <RowMenu
+                  label={`Actions for ${req.PATIENT_NAME || req.patientName || 'request'}`}
+                  items={[{ label: 'Delete request', icon: Trash2, danger: true, onSelect: () => setDeleteTarget(req) }]}
+                />
+              )}
+            </span>
+          );
+        },
+      },
+    );
+    return cols;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canDelete, canAdmit, selectedIds, allSelected, requests]);
+
   return (
     <>
       <Navbar />
-      <div className="container py-4" style={{ maxWidth: '100%' }}>
-        <div className="hms-page-header">
-          <div>
-            <h1><span className="header-icon">📥</span>IPD Admission Requests</h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Review and manage pending patient admissions requested by doctors.
-            </p>
-          </div>
-        </div>
+      <main className="app-page">
+        <PageHeader
+          title="IPD admission requests"
+          description="Review admission requests from doctors, assign a bed and complete the admission."
+          meta={!loading && <span className="muted">{requests.length} {requests.length === 1 ? 'request' : 'requests'}</span>}
+        />
 
-        <div className="hms-anim-2" style={{ marginBottom: 0 }}>
-          <div className="card" style={{ padding: '12px 24px', borderRadius: 40, display: 'flex', alignItems: 'center', gap: 16 }}>
-            <span style={{ fontSize: '1.2rem' }}>🚦</span>
-            <select 
-              className="form-input" 
-              value={statusFilter} 
-              onChange={e => setStatusFilter(e.target.value)}
-              style={{ border: 'none', background: 'transparent', fontSize: '1.05rem', fontWeight: 600, flex: 1 }}
-            >
-              <option value="">All Requests</option>
-              <option value="Pending">Pending Requests</option>
-              <option value="Admitted">Admitted</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-            <button className="btn btn-sm btn-outline" onClick={fetchRequests}>↻ Refresh</button>
-          </div>
-        </div>
-
-        {/* Results count bar */}
-        {requests.length > 0 && (
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 4px', marginTop: 16,
-          }}>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-              Showing <strong style={{ color: 'var(--text-primary)' }}>{requests.length}</strong> request{requests.length !== 1 ? 's' : ''}
-              {canDelete && selectedIds.length > 0 && (
-                <span style={{
-                  marginLeft: 10, padding: '2px 10px', borderRadius: 10,
-                  background: 'rgba(239,68,68,0.1)', color: 'var(--red)',
-                  fontSize: '0.72rem', fontWeight: 700,
-                  border: '1px solid rgba(239,68,68,0.2)',
-                }}>
-                  {selectedIds.length} selected
-                </span>
-              )}
-            </span>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {canDelete && selectedIds.length > 0 && (
+        <section className="panel">
+          <div className="toolbar">
+            <div className="segmented" role="tablist" aria-label="Request status">
+              {STATUS_OPTIONS.map(o => (
                 <button
-                  onClick={handleBulkDelete}
-                  disabled={deletingSelected}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 8,
-                    padding: '7px 18px', borderRadius: 10,
-                    border: '2px solid rgba(239,68,68,0.28)',
-                    background: deletingSelected ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.1)',
-                    color: 'var(--red)',
-                    fontSize: '0.82rem', fontWeight: 800,
-                    cursor: deletingSelected ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.2s',
-                    opacity: deletingSelected ? 0.72 : 1,
-                  }}
+                  key={o.value || 'all'}
+                  type="button"
+                  role="tab"
+                  aria-selected={statusFilter === o.value}
+                  className={statusFilter === o.value ? 'is-active' : ''}
+                  onClick={() => setStatusFilter(o.value)}
                 >
-                  {deletingSelected ? 'Deleting...' : `🗑️ Delete Selected (${selectedIds.length})`}
+                  {o.label}
                 </button>
-              )}
+              ))}
             </div>
+            <button type="button" className="btn btn-ghost btn-md" onClick={fetchRequests} style={{ marginLeft: 'auto' }}>
+              <RefreshCw size={16} aria-hidden="true" /> Refresh
+            </button>
+          </div>
+
+          {canDelete && selectedIds.length > 0 && (
+            <div className="selection-bar" role="status">
+              <strong>{selectedIds.length} selected</strong>
+              <button type="button" className="btn btn-danger btn-sm" onClick={() => setConfirmBulkDelete(true)} disabled={deletingSelected}>
+                <Trash2 size={14} aria-hidden="true" /> {deletingSelected ? 'Deleting…' : 'Delete selected'}
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedIds([])}>
+                <X size={14} aria-hidden="true" /> Clear selection
+              </button>
+            </div>
+          )}
+
+          <DataTable
+            columns={columns}
+            data={requests}
+            loading={loading}
+            getRowId={getReqId}
+            initialSorting={[{ id: 'requested', desc: true }]}
+            empty={statusFilter ? (
+              <EmptyState icon={Inbox} title={`No ${statusFilter.toLowerCase()} requests`} description="Try another status, or show all requests." />
+            ) : (
+              <EmptyState icon={Inbox} title="No admission requests yet" description="Requests appear here when a doctor asks for a patient to be admitted." />
+            )}
+          />
+        </section>
+      </main>
+
+      {/* Delete confirmation */}
+      <Modal
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}
+        title="Delete IPD request"
+        description="This permanently deletes the admission request. It cannot be undone."
+        size="sm"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</button>
+            <button type="button" className="btn btn-danger btn-md" onClick={handleDelete} disabled={deleting}>
+              <Trash2 size={16} aria-hidden="true" /> {deleting ? 'Deleting…' : 'Delete request'}
+            </button>
+          </>
+        )}
+      >
+        {deleteTarget && (
+          <div className="facts">
+            <div><div className="fact-label">Patient</div><div className="fact-value">{deleteTarget.PATIENT_NAME || deleteTarget.patientName || 'Unknown'}</div></div>
+            <div><div className="fact-label">UHID</div><div className="fact-value mono">{deleteTarget.UHID || deleteTarget.uhid || 'N/A'}</div></div>
+            <div><div className="fact-label">Diagnosis</div><div className="fact-value">{deleteTarget.PRIMARY_DIAGNOSIS || deleteTarget.primaryDiagnosis || '—'}</div></div>
+            <div><div className="fact-label">Requested</div><div className="fact-value tabular">{fmtDate(deleteTarget.REQUEST_DATE || deleteTarget.requestDate)}</div></div>
           </div>
         )}
+      </Modal>
 
-        <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden', marginTop: requests.length > 0 ? 0 : 24 }}>
-          <div className="table-wrapper hms-table-anim" style={{ border: 'none', borderRadius: 0 }}>
-            <table>
-              <thead>
-                <tr>
-                  {canDelete && (
-                    <th style={{ width: 44 }}>
-                      <label
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 6,
-                          cursor: visibleIds.length ? 'pointer' : 'not-allowed',
-                          fontSize: '0.72rem', color: 'var(--text-secondary)',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={allSelected}
-                          disabled={visibleIds.length === 0}
-                          onChange={toggleSelectAll}
-                          style={{ width: 16, height: 16, accentColor: 'var(--green)', cursor: 'pointer' }}
-                        />
-                        All
-                      </label>
-                    </th>
-                  )}
-                  <th>Request Date</th>
-                  <th>Patient Info</th>
-                  <th>Requesting Doctor</th>
-                  <th>Diagnosis / Reason</th>
-                  <th>Ward Pref. / Urgency</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={canDelete ? 8 : 7} style={{ textAlign: 'center', padding: 40 }}><div className="spinner" /></td></tr>
-                ) : requests.length === 0 ? (
-                  <tr><td colSpan={canDelete ? 8 : 7} style={{ textAlign: 'center', padding: 40 }}>No requests found.</td></tr>
-                ) : (
-                  requests.map(req => {
-                    const reqId = getReqId(req);
-                    const selected = selectedIds.includes(reqId);
-                    return (
-                    <tr key={reqId}>
-                      {canDelete && (
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() => toggleSelect(reqId)}
-                            style={{ width: 16, height: 16, accentColor: 'var(--green)', cursor: 'pointer' }}
-                          />
-                        </td>
-                      )}
-                      <td>
-                        <div style={{ fontWeight: 600 }}>{new Date(req.REQUEST_DATE || req.requestDate).toLocaleDateString()}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(req.REQUEST_DATE || req.requestDate).toLocaleTimeString()}</div>
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 'bold' }}>{req.PATIENT_NAME || req.patientName}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--blue)' }}>{req.UHID || req.uhid}</div>
-                      </td>
-                      <td>{req.DOCTOR_NAME || req.doctorName}</td>
-                      <td style={{ maxWidth: 250 }}>
-                        <div style={{ fontWeight: 600 }}>{req.PRIMARY_DIAGNOSIS || req.primaryDiagnosis}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {req.REASON_FOR_ADMISSION || req.reasonForAdmission}
-                        </div>
-                      </td>
-                      <td>
-                        <div>{req.WARD_PREFERENCE || req.wardPreference}</div>
-                        <span className={`badge ${req.URGENCY_LEVEL === 'Emergency' ? 'badge-danger' : 'badge-secondary'}`}>{req.URGENCY_LEVEL || req.urgencyLevel}</span>
-                      </td>
-                      <td>
-                        <span className={`badge ${req.STATUS === 'Pending' ? 'badge-warning' : req.STATUS === 'Admitted' ? 'badge-success' : 'badge-secondary'}`}>
-                          {req.STATUS || req.status}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          {(req.STATUS || req.status) === 'Pending' && canAdmit && (
-                            <button className="btn btn-sm btn-primary" onClick={() => handleOpenAdmit(req)}>
-                              🏥 Admit Patient
-                            </button>
-                          )}
-                          {(req.STATUS || req.status) === 'Pending' && !canAdmit && (
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 6,
-                              fontSize: '0.78rem', color: '#f59e0b', fontWeight: 600,
-                            }}>⏳ Awaiting Admission</span>
-                          )}
-                          {canDelete && (
-                            <button
-                              className="btn btn-sm"
-                              style={{
-                                background: 'rgba(239,68,68,0.08)', color: '#ef4444',
-                                border: '1px solid rgba(239,68,68,0.2)', fontWeight: 600,
-                                fontSize: '0.78rem',
-                              }}
-                              onClick={() => setDeleteTarget(req)}
-                            >🗑️ Delete Request</button>
-                          )}
-                          {(req.STATUS || req.status) === 'Admitted' && (
-                            <>
-                              <span style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 5,
-                                fontSize: '0.78rem', color: '#10b981', fontWeight: 700,
-                              }}>✅ Admitted</span>
-                              {canAdmit && (
-                                <button
-                                  className="btn btn-sm"
-                                  style={{
-                                    background: 'rgba(59,130,246,0.1)', color: '#3b82f6',
-                                    border: '1px solid rgba(59,130,246,0.2)', fontWeight: 600,
-                                  }}
-                                  onClick={() => navigate('/hms/vitals/entry', {
-                                    state: {
-                                      patient: {
-                                        id: req.PATIENT_ID || req.patientId,
-                                        name: req.PATIENT_NAME || req.patientName,
-                                        uhid: req.UHID || req.uhid,
-                                        age: req.AGE || req.age || '',
-                                      }
-                                    }
-                                  })}
-                                >🩺 Record Vitals</button>
-                              )}
-                            </>
-                          )}
-                          {(req.STATUS || req.status) === 'Cancelled' && (
-                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>— Cancelled</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+      {/* Bulk delete confirmation */}
+      <Modal
+        open={confirmBulkDelete}
+        onOpenChange={(open) => { if (!open && !deletingSelected) setConfirmBulkDelete(false); }}
+        title={`Delete ${selectedIds.length} ${selectedIds.length === 1 ? 'request' : 'requests'}`}
+        size="sm"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setConfirmBulkDelete(false)} disabled={deletingSelected}>Cancel</button>
+            <button type="button" className="btn btn-danger btn-md" onClick={handleBulkDelete} disabled={deletingSelected}>
+              <Trash2 size={16} aria-hidden="true" /> {deletingSelected ? 'Deleting…' : 'Delete requests'}
+            </button>
+          </>
+        )}
+      >
+        <p>Only the admission requests are deleted. Patient registrations stay as they are.</p>
+        <div className="alert-strip alert-danger" style={{ margin: 0 }}>
+          <TriangleAlert size={16} aria-hidden="true" /> This cannot be undone.
         </div>
-      </div>
+      </Modal>
 
-      {/* ── Delete Confirmation Modal ── */}
-      {deleteTarget && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 10000,
-          background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          animation: 'hmsSlideUp 0.25s cubic-bezier(0.16,1,0.3,1) both',
-        }} onClick={() => !deleting && setDeleteTarget(null)}>
-          <div style={{
-            width: '100%', maxWidth: 480,
-            background: 'var(--surface)', borderRadius: 20,
-            border: '1px solid var(--border)',
-            boxShadow: '0 24px 48px rgba(0,0,0,0.2)',
-            overflow: 'hidden',
-          }} onClick={e => e.stopPropagation()}>
-
-            {/* Header */}
-            <div style={{
-              padding: '20px 28px',
-              background: 'rgba(239,68,68,0.04)',
-              borderBottom: '1px solid rgba(239,68,68,0.15)',
-              display: 'flex', alignItems: 'center', gap: 14,
-            }}>
-              <div style={{
-                width: 44, height: 44, borderRadius: 14,
-                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.3rem',
-              }}>⚠️</div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#ef4444' }}>Delete IPD Request</h3>
-                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 2 }}>This action cannot be undone</p>
+      {/* Admit patient */}
+      <Modal
+        open={Boolean(admitModal)}
+        onOpenChange={(open) => { if (!open) setAdmitModal(null); }}
+        title="Admit patient"
+        description="Assign a ward and bed to complete the admission."
+        size="lg"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setAdmitModal(null)}>Cancel</button>
+            <button type="button" className="btn btn-primary btn-md" onClick={handleAdmitSubmit} disabled={admitting || !selectedBed}>
+              <CircleCheck size={16} aria-hidden="true" /> {admitting ? 'Admitting…' : 'Confirm admission'}
+            </button>
+          </>
+        )}
+      >
+        {admitModal && (
+          <>
+            <section>
+              <h3 className="panel-subtitle" style={{ marginTop: 0 }}>Patient</h3>
+              <div className="facts">
+                {[
+                  { label: 'Patient name', value: admitModal.PATIENT_NAME || admitModal.patientName },
+                  { label: 'UHID', value: admitModal.UHID || admitModal.uhid, mono: true },
+                  { label: 'Requesting doctor', value: admitModal.DOCTOR_NAME || admitModal.doctorName },
+                  { label: 'Requested', value: fmtDateTime(admitModal.REQUEST_DATE || admitModal.requestDate) },
+                ].map(item => (
+                  <div key={item.label}>
+                    <div className="fact-label">{item.label}</div>
+                    <div className={`fact-value${item.mono ? ' mono' : ''}`}>{item.value || 'N/A'}</div>
+                  </div>
+                ))}
               </div>
-              <button onClick={() => setDeleteTarget(null)} style={{
-                marginLeft: 'auto', background: 'none', border: 'none',
-                fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-muted)',
-                padding: 4, lineHeight: 1,
-              }}>✕</button>
-            </div>
+            </section>
 
-            {/* Body */}
-            <div style={{ padding: '24px 28px' }}>
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: 16, lineHeight: 1.6 }}>
-                Are you sure you want to <strong style={{ color: '#ef4444' }}>permanently delete</strong> this IPD admission request?
-              </p>
-
-              <div style={{
-                padding: '16px 18px', borderRadius: 14,
-                background: 'var(--surface-2)', border: '1px solid var(--border)',
-              }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px', fontSize: '0.85rem' }}>
-                  <div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Patient</div>
-                    <div style={{ fontWeight: 700 }}>{deleteTarget.PATIENT_NAME || deleteTarget.patientName || 'Unknown'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>UHID</div>
-                    <div style={{ fontWeight: 600 }}>{deleteTarget.UHID || deleteTarget.uhid || 'N/A'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Diagnosis</div>
-                    <div style={{ fontWeight: 600 }}>{deleteTarget.PRIMARY_DIAGNOSIS || deleteTarget.primaryDiagnosis || '—'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Request Date</div>
-                    <div style={{ fontWeight: 600 }}>{new Date(deleteTarget.REQUEST_DATE || deleteTarget.requestDate).toLocaleDateString()}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div style={{
-              padding: '16px 28px',
-              borderTop: '1px solid var(--border)',
-              background: 'var(--surface-2)',
-              display: 'flex', justifyContent: 'flex-end', gap: 12,
-            }}>
-              <button
-                className="btn btn-ghost"
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleting}
-                style={{ fontWeight: 600 }}
-              >Cancel</button>
-              <button
-                className="btn"
-                onClick={handleDelete}
-                disabled={deleting}
-                style={{
-                  background: '#ef4444', color: '#fff', fontWeight: 700,
-                  border: 'none', padding: '10px 24px', borderRadius: 10,
-                  fontSize: '0.88rem',
-                }}
-              >
-                {deleting ? (
-                  <><div className="spinner" style={{ width: 14, height: 14, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }} /> Deleting...</>
-                ) : '🗑️ Yes, Delete Request'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Professional Admit Modal ── */}
-      {admitModal && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          animation: 'hmsSlideUp 0.25s cubic-bezier(0.16,1,0.3,1) both',
-        }} onClick={() => setAdmitModal(null)}>
-          <div style={{
-            width: '100%', maxWidth: 640, maxHeight: '90vh', overflow: 'auto',
-            background: 'var(--surface)', borderRadius: 20,
-            border: '1px solid var(--border)',
-            boxShadow: '0 24px 48px rgba(0,0,0,0.15)',
-          }} onClick={e => e.stopPropagation()}>
-
-            {/* Header */}
-            <div style={{
-              padding: '20px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              borderBottom: '1px solid var(--border)', background: 'var(--surface-2)',
-              borderRadius: '20px 20px 0 0',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: 12,
-                  background: 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(59,130,246,0.12))',
-                  border: '1px solid rgba(16,185,129,0.2)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem',
-                }}>🏥</div>
+            <section>
+              <h3 className="panel-subtitle" style={{ marginTop: 0 }}>Clinical summary</h3>
+              <div className="facts">
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Admit Patient</h3>
-                  <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)' }}>Assign ward & bed to complete admission</p>
+                  <div className="fact-label">Primary diagnosis</div>
+                  <div className="fact-value">{admitModal.PRIMARY_DIAGNOSIS || admitModal.primaryDiagnosis || 'N/A'}</div>
                 </div>
-              </div>
-              <button onClick={() => setAdmitModal(null)} style={{
-                width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)',
-                background: 'var(--surface)', cursor: 'pointer', fontSize: '1rem',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'var(--text-muted)',
-              }}>✕</button>
-            </div>
-
-            <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-
-              {/* Patient Info Card */}
-              <div style={{
-                padding: 0, borderRadius: 14, overflow: 'hidden',
-                border: '1px solid var(--border)',
-              }}>
-                <div style={{
-                  padding: '10px 18px', background: 'var(--surface-2)',
-                  borderBottom: '1px solid var(--border)',
-                  display: 'flex', alignItems: 'center', gap: 8,
-                }}>
-                  <span style={{
-                    width: 24, height: 24, borderRadius: 6,
-                    background: 'rgba(59,130,246,0.1)', fontSize: '0.75rem',
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  }}>👤</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Patient Details</span>
+                <div>
+                  <div className="fact-label">Ward preference</div>
+                  <div className="fact-value">{admitModal.WARD_PREFERENCE || admitModal.wardPreference || 'General'}</div>
                 </div>
-                <div style={{ padding: '16px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }}>
-                  {[
-                    { label: 'Patient Name', value: admitModal.PATIENT_NAME || admitModal.patientName },
-                    { label: 'UHID', value: admitModal.UHID || admitModal.uhid },
-                    { label: 'Requesting Doctor', value: admitModal.DOCTOR_NAME || admitModal.doctorName },
-                    { label: 'Request Date', value: new Date(admitModal.REQUEST_DATE || admitModal.requestDate).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) },
-                  ].map(item => (
-                    <div key={item.label}>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{item.label}</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{item.value || 'N/A'}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Diagnosis & Clinical Info */}
-              <div style={{
-                padding: 0, borderRadius: 14, overflow: 'hidden',
-                border: '1px solid var(--border)',
-              }}>
-                <div style={{
-                  padding: '10px 18px', background: 'var(--surface-2)',
-                  borderBottom: '1px solid var(--border)',
-                  display: 'flex', alignItems: 'center', gap: 8,
-                }}>
-                  <span style={{
-                    width: 24, height: 24, borderRadius: 6,
-                    background: 'rgba(236,72,153,0.1)', fontSize: '0.75rem',
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  }}>📋</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Clinical Summary</span>
-                </div>
-                <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }}>
-                    <div>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Primary Diagnosis</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{admitModal.PRIMARY_DIAGNOSIS || admitModal.primaryDiagnosis || 'N/A'}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Ward Preference</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{admitModal.WARD_PREFERENCE || admitModal.wardPreference || 'General'}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Urgency Level</div>
-                      <span style={{
-                        display: 'inline-block', padding: '3px 12px', borderRadius: 8, fontSize: '0.72rem', fontWeight: 700,
-                        background: (admitModal.URGENCY_LEVEL || '') === 'Emergency' ? 'rgba(239,68,68,0.1)' : (admitModal.URGENCY_LEVEL || '') === 'Urgent' ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)',
-                        color: (admitModal.URGENCY_LEVEL || '') === 'Emergency' ? '#ef4444' : (admitModal.URGENCY_LEVEL || '') === 'Urgent' ? '#f59e0b' : '#10b981',
-                        border: `1px solid ${(admitModal.URGENCY_LEVEL || '') === 'Emergency' ? 'rgba(239,68,68,0.2)' : (admitModal.URGENCY_LEVEL || '') === 'Urgent' ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)'}`,
-                      }}>{admitModal.URGENCY_LEVEL || admitModal.urgencyLevel || 'Routine'}</span>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Est. Duration</div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>{admitModal.ESTIMATED_DURATION || admitModal.estimatedDuration || '—'} {admitModal.DURATION_UNIT || admitModal.durationUnit || ''}</div>
-                    </div>
+                <div>
+                  <div className="fact-label">Urgency</div>
+                  <div className="fact-value">
+                    <span className={`status status-${URGENCY_TONE[admitModal.URGENCY_LEVEL || ''] || 'success'}`}>{admitModal.URGENCY_LEVEL || admitModal.urgencyLevel || 'Routine'}</span>
                   </div>
-                  {(admitModal.REASON_FOR_ADMISSION || admitModal.reasonForAdmission) && (
-                    <div style={{
-                      padding: '10px 14px', borderRadius: 10,
-                      background: 'rgba(59,130,246,0.04)', border: '1px solid rgba(59,130,246,0.1)',
-                    }}>
-                      <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Reason for Admission</div>
-                      <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{admitModal.REASON_FOR_ADMISSION || admitModal.reasonForAdmission}</div>
-                    </div>
+                </div>
+                <div>
+                  <div className="fact-label">Estimated duration</div>
+                  <div className="fact-value">{admitModal.ESTIMATED_DURATION || admitModal.estimatedDuration || '—'} {admitModal.DURATION_UNIT || admitModal.durationUnit || ''}</div>
+                </div>
+              </div>
+              {(admitModal.REASON_FOR_ADMISSION || admitModal.reasonForAdmission) && (
+                <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                  <div className="fact-label">Reason for admission</div>
+                  <div className="fact-value" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>{admitModal.REASON_FOR_ADMISSION || admitModal.reasonForAdmission}</div>
+                </div>
+              )}
+            </section>
+
+            <section>
+              <h3 className="panel-subtitle" style={{ marginTop: 0 }}>Ward and bed</h3>
+              <div className="form-row-2">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="admit-ward">Ward</label>
+                  <select id="admit-ward" className="form-select" value={selectedWard} onChange={handleWardChange}>
+                    <option value="">Choose ward</option>
+                    {wards.map(w => (
+                      <option key={w.ID || w.id} value={w.ID || w.id}>{w.NAME || w.name} ({w.TYPE || w.type})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="admit-bed">
+                    Bed
+                    {selectedWard && beds.length > 0 && <span className="cell-secondary" style={{ marginLeft: 6 }}>{beds.length} available</span>}
+                  </label>
+                  <select id="admit-bed" className="form-select" value={selectedBed} onChange={e => setSelectedBed(e.target.value)} disabled={!selectedWard}>
+                    <option value="">Choose bed</option>
+                    {beds.map(b => (
+                      <option key={b.ID || b.id} value={b.ID || b.id}>
+                        Room {b.ROOM_NUMBER}, bed {b.BED_NUMBER}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedWard && beds.length === 0 && (
+                    <p className="form-hint" style={{ color: 'var(--red)' }}>No beds available in this ward.</p>
                   )}
                 </div>
               </div>
 
-              {/* Bed Assignment Card */}
-              <div style={{
-                padding: 0, borderRadius: 14, overflow: 'hidden',
-                border: '1px solid rgba(16,185,129,0.3)',
-              }}>
-                <div style={{
-                  padding: '10px 18px',
-                  background: 'rgba(16,185,129,0.06)',
-                  borderBottom: '1px solid rgba(16,185,129,0.15)',
-                  display: 'flex', alignItems: 'center', gap: 8,
-                }}>
-                  <span style={{
-                    width: 24, height: 24, borderRadius: 6,
-                    background: 'rgba(16,185,129,0.1)', fontSize: '0.75rem',
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  }}>🛏️</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#10b981' }}>Assign Ward & Bed</span>
-                </div>
-                <div style={{ padding: '18px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label" style={{ fontSize: '0.78rem' }}>Select Ward</label>
-                      <select className="form-input" value={selectedWard} onChange={handleWardChange}>
-                        <option value="">— Choose Ward —</option>
-                        {wards.map(w => (
-                          <option key={w.ID || w.id} value={w.ID || w.id}>{w.NAME || w.name} ({w.TYPE || w.type})</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label" style={{ fontSize: '0.78rem' }}>
-                        Select Bed
-                        {selectedWard && beds.length > 0 && (
-                          <span style={{ marginLeft: 6, fontSize: '0.68rem', color: '#10b981', fontWeight: 600 }}>
-                            ({beds.length} available)
-                          </span>
-                        )}
-                      </label>
-                      <select className="form-input" value={selectedBed} onChange={e => setSelectedBed(e.target.value)} disabled={!selectedWard}>
-                        <option value="">— Choose Bed —</option>
-                        {beds.map(b => (
-                          <option key={b.ID || b.id} value={b.ID || b.id}>
-                            Room {b.ROOM_NUMBER} → Bed {b.BED_NUMBER}
-                          </option>
-                        ))}
-                      </select>
-                      {selectedWard && beds.length === 0 && (
-                        <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#ef4444', fontWeight: 600 }}>⚠️ No beds available in this ward.</div>
-                      )}
-                    </div>
+              {/* Selected bed summary */}
+              {selectedBed && (() => {
+                const bed = beds.find(b => String(b.ID || b.id) === String(selectedBed));
+                const ward = wards.find(w => String(w.ID || w.id) === String(selectedWard));
+                if (!bed) return null;
+                return (
+                  <div className="alert-strip alert-info" style={{ margin: '12px 0 0' }}>
+                    <CircleCheck size={16} aria-hidden="true" />
+                    <span>
+                      <strong>{ward?.NAME || 'Ward'}, room {bed.ROOM_NUMBER}, bed {bed.BED_NUMBER}.</strong>{' '}
+                      The patient is assigned to this bed when you confirm.
+                    </span>
                   </div>
-
-                  {/* Selected Bed Summary */}
-                  {selectedBed && (() => {
-                    const bed = beds.find(b => String(b.ID || b.id) === String(selectedBed));
-                    const ward = wards.find(w => String(w.ID || w.id) === String(selectedWard));
-                    if (!bed) return null;
-                    return (
-                      <div style={{
-                        marginTop: 14, padding: '12px 16px', borderRadius: 10,
-                        background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)',
-                        display: 'flex', alignItems: 'center', gap: 14,
-                      }}>
-                        <span style={{ fontSize: '1.4rem' }}>✅</span>
-                        <div>
-                          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#10b981' }}>
-                            {ward?.NAME || 'Ward'} — Room {bed.ROOM_NUMBER}, Bed {bed.BED_NUMBER}
-                          </div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                            Patient will be assigned to this bed upon confirmation.
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div style={{
-              padding: '16px 28px', borderTop: '1px solid var(--border)',
-              background: 'var(--surface-2)', borderRadius: '0 0 20px 20px',
-              display: 'flex', justifyContent: 'flex-end', gap: 12,
-            }}>
-              <button className="btn btn-ghost" onClick={() => setAdmitModal(null)}>Cancel</button>
-              <button
-                className="btn btn-primary btn-lg"
-                onClick={handleAdmitSubmit}
-                disabled={admitting || !selectedBed}
-                style={{ minWidth: 180 }}
-              >
-                {admitting ? '⏳ Processing...' : '✅ Confirm Admission'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                );
+              })()}
+            </section>
+          </>
+        )}
+      </Modal>
     </>
   );
 }

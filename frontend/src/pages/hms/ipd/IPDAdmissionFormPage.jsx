@@ -1,13 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { ArrowLeft, ClipboardList, NotebookPen, Send, ShieldPlus, TriangleAlert, UserRound } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
 import api from '../../../api/axios';
 import { useAuth } from '../../../context/AuthContext';
-import toast from 'react-hot-toast';
 
-const Field = ({ label, children, span, required }) => (
+const Field = ({ label, htmlFor, children, span, required }) => (
   <div className="form-group" style={span ? { gridColumn: `span ${span}` } : {}}>
-    <label className="form-label">{label}{required && <span style={{ color: 'var(--red)' }}> *</span>}</label>
+    <label className="form-label" htmlFor={htmlFor}>
+      {label}{required && <span style={{ color: 'var(--red)' }} aria-hidden="true"> *</span>}
+      {required && <span className="sr-only"> (required)</span>}
+    </label>
     {children}
   </div>
 );
@@ -62,7 +67,7 @@ export default function IPDAdmissionFormPage() {
       }
     } catch (e) {
       console.error('Failed to load patient:', e);
-      toast.error('Failed to load patient details');
+      toast.error('Could not load patient details');
     } finally {
       setLoading(false);
     }
@@ -80,7 +85,7 @@ export default function IPDAdmissionFormPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.reasonForAdmission || !form.primaryDiagnosis || !form.wardPreference || !form.urgencyLevel) {
-      return toast.error('Please fill in all required fields marked with *');
+      return toast.error('Fill in all required fields marked with *');
     }
     if (!patientId) return toast.error('No patient selected');
 
@@ -92,11 +97,11 @@ export default function IPDAdmissionFormPage() {
         ...form,
         specialRequirements: selectedReqs,
       });
-      toast.success('IPD Admission Request sent successfully!');
+      toast.success('IPD admission request sent');
       navigate('/ipd/requests');
     } catch (err) {
       console.error(err);
-      toast.error('Failed to send IPD request');
+      toast.error('Could not send IPD request');
     } finally {
       setSubmitting(false);
     }
@@ -110,88 +115,74 @@ export default function IPDAdmissionFormPage() {
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        {/* Page Header */}
-        <div className="hms-page-header">
-          <div>
-            <h1>
-              <span className="header-icon" style={{ background: 'rgba(236,72,153,0.1)', borderColor: 'rgba(236,72,153,0.25)' }}>🏥</span>
-              IPD Admission Request
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Submit an inpatient admission request for review and bed assignment.
-            </p>
-          </div>
-          <div className="header-actions">
-            <button className="btn btn-ghost" onClick={() => navigate(-1)}>← Back</button>
-          </div>
-        </div>
+      <main className="app-page">
+        <PageHeader
+          title="IPD admission request"
+          description="Submit an inpatient admission request for review and bed assignment."
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate(-1)}>
+              <ArrowLeft size={16} aria-hidden="true" /> Back
+            </button>
+          )}
+        />
 
         {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}>
-            <div className="spinner" style={{ width: 32, height: 32 }} />
-          </div>
+          <p className="muted">Loading…</p>
         ) : (
-          <form onSubmit={handleSubmit} className="hms-anim-2">
+          <form onSubmit={handleSubmit} className="stack">
 
-            {/* Patient Card */}
-            <div className="card" style={{ marginBottom: 24, padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(16,185,129,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>👤</span>
-                <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Patient Identification</h3>
-              </div>
-              <div style={{ padding: '18px 24px' }}>
+            {/* Patient */}
+            <section className="panel">
+              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><UserRound size={16} aria-hidden="true" /> Patient</h2></div>
+              <div className="panel-pad">
                 {patientInfo ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16 }}>
+                  <div className="facts">
                     {[
-                      { label: 'Patient Name', value: patientInfo.name },
-                      { label: 'UHID', value: patientInfo.uhid || 'N/A' },
-                      { label: 'Gender / Age', value: `${patientInfo.gender}, ${patientInfo.age} yrs` },
-                      { label: 'Employee No', value: patientInfo.empNumber || 'N/A' },
+                      { label: 'Patient name', value: patientInfo.name },
+                      { label: 'UHID', value: patientInfo.uhid || 'N/A', mono: true },
+                      { label: 'Gender / age', value: `${patientInfo.gender}, ${patientInfo.age} yrs` },
+                      { label: 'Employee no.', value: patientInfo.empNumber || 'N/A' },
                     ].map(item => (
                       <div key={item.label}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.06em', marginBottom: 4 }}>{item.label}</div>
-                        <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{item.value}</div>
+                        <div className="fact-label">{item.label}</div>
+                        <div className={`fact-value${item.mono ? ' mono' : ''}`} style={{ fontWeight: 600 }}>{item.value}</div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--red)', fontSize: '0.85rem' }}>
-                    ⚠️ No patient selected. Please initiate from the Doctor Dashboard queue.
+                  <div className="alert-strip alert-danger" role="alert" style={{ margin: 0 }}>
+                    <TriangleAlert size={16} aria-hidden="true" /> No patient selected. Start the request from the doctor dashboard queue.
                   </div>
                 )}
               </div>
-            </div>
+            </section>
 
-            {/* Admission Details */}
-            <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden', marginBottom: 24 }}>
-              <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(236,72,153,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>📋</span>
-                <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Admission Details</h3>
-              </div>
-              <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '18px 20px' }}>
+            {/* Admission details */}
+            <section className="panel">
+              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><ClipboardList size={16} aria-hidden="true" /> Admission details</h2></div>
+              <div className="panel-pad" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '16px 18px' }}>
 
-                <Field label="Reason for Admission" span={4} required>
+                <Field label="Reason for admission" htmlFor="adm-reason" span={4} required>
                   <textarea
+                    id="adm-reason"
                     name="reasonForAdmission"
-                    className="form-input"
+                    className="form-textarea"
                     rows="3"
                     value={form.reasonForAdmission}
                     onChange={handleChange}
-                    placeholder="e.g. Post-operative care following appendectomy, requires monitoring and IV antibiotics..."
-                    style={{ resize: 'vertical' }}
+                    placeholder="e.g. Post-operative care following appendectomy, requires monitoring and IV antibiotics"
                   />
                 </Field>
 
-                <Field label="Primary Diagnosis" span={2} required>
-                  <input type="text" name="primaryDiagnosis" className="form-input" value={form.primaryDiagnosis} onChange={handleChange} placeholder="e.g. Acute appendicitis" />
+                <Field label="Primary diagnosis" htmlFor="adm-diagnosis" span={2} required>
+                  <input id="adm-diagnosis" type="text" name="primaryDiagnosis" className="form-input" value={form.primaryDiagnosis} onChange={handleChange} placeholder="e.g. Acute appendicitis" />
                 </Field>
-                <Field label="ICD-10 Code" span={2}>
-                  <input type="text" name="icd10Code" className="form-input" value={form.icd10Code} onChange={handleChange} placeholder="e.g. K35.80" />
+                <Field label="ICD-10 code" htmlFor="adm-icd" span={2}>
+                  <input id="adm-icd" type="text" name="icd10Code" className="form-input" value={form.icd10Code} onChange={handleChange} placeholder="e.g. K35.80" />
                 </Field>
 
-                <Field label="Ward Preference" span={2} required>
-                  <select name="wardPreference" className="form-input" value={form.wardPreference} onChange={handleChange}>
+                <Field label="Ward preference" htmlFor="adm-ward" span={2} required>
+                  <select id="adm-ward" name="wardPreference" className="form-select" value={form.wardPreference} onChange={handleChange}>
                     <option value="">Select ward</option>
                     <option value="General Ward">General Ward</option>
                     <option value="Semi-Private">Semi-Private</option>
@@ -200,8 +191,8 @@ export default function IPDAdmissionFormPage() {
                     <option value="Maternity">Maternity</option>
                   </select>
                 </Field>
-                <Field label="Urgency Level" span={2} required>
-                  <select name="urgencyLevel" className="form-input" value={form.urgencyLevel} onChange={handleChange}>
+                <Field label="Urgency" htmlFor="adm-urgency" span={2} required>
+                  <select id="adm-urgency" name="urgencyLevel" className="form-select" value={form.urgencyLevel} onChange={handleChange}>
                     <option value="">Select urgency</option>
                     <option value="Routine">Routine</option>
                     <option value="Urgent">Urgent</option>
@@ -209,85 +200,82 @@ export default function IPDAdmissionFormPage() {
                   </select>
                 </Field>
 
-                <Field label="Estimated Duration">
-                  <input type="number" name="estimatedDuration" className="form-input" value={form.estimatedDuration} onChange={handleChange} placeholder="e.g. 3" />
+                <Field label="Estimated duration" htmlFor="adm-duration">
+                  <input id="adm-duration" type="number" name="estimatedDuration" className="form-input" value={form.estimatedDuration} onChange={handleChange} placeholder="e.g. 3" />
                 </Field>
-                <Field label="Duration Unit">
-                  <select name="durationUnit" className="form-input" value={form.durationUnit} onChange={handleChange}>
+                <Field label="Duration unit" htmlFor="adm-unit">
+                  <select id="adm-unit" name="durationUnit" className="form-select" value={form.durationUnit} onChange={handleChange}>
                     <option value="Days">Days</option>
                     <option value="Weeks">Weeks</option>
                     <option value="Months">Months</option>
                   </select>
                 </Field>
-                <Field label="Admitting Doctor">
-                  <input type="text" className="form-input" readOnly value={user?.name ? `Dr. ${user.name}` : ''} style={{ opacity: 0.7 }} />
+                <Field label="Admitting doctor" htmlFor="adm-doctor">
+                  <input id="adm-doctor" type="text" className="form-input" readOnly value={user?.name ? `Dr. ${user.name}` : ''} style={{ background: 'var(--surface-2)', color: 'var(--text-secondary)' }} />
                 </Field>
-                <Field label="Date & Time of Request">
-                  <input type="text" className="form-input" readOnly value={currentDateTime} style={{ opacity: 0.7 }} />
+                <Field label="Requested at" htmlFor="adm-requested">
+                  <input id="adm-requested" type="text" className="form-input" readOnly value={currentDateTime} style={{ background: 'var(--surface-2)', color: 'var(--text-secondary)' }} />
                 </Field>
 
               </div>
-            </div>
+            </section>
 
-            {/* Special Requirements */}
-            <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden', marginBottom: 24 }}>
-              <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(245,158,11,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>⚕️</span>
-                <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Special Requirements</h3>
-              </div>
-              <div style={{ padding: '24px' }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+            {/* Special requirements */}
+            <section className="panel">
+              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><ShieldPlus size={16} aria-hidden="true" /> Special requirements</h2></div>
+              <div className="panel-pad">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
                   {Object.keys(specialRequirements).map(key => (
-                    <label key={key} style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '10px 18px', borderRadius: 12,
-                      background: specialRequirements[key] ? 'rgba(59,130,246,0.08)' : 'var(--surface-2)',
-                      border: `1px solid ${specialRequirements[key] ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
-                      cursor: 'pointer', userSelect: 'none', transition: 'all 0.2s',
-                    }}>
+                    <label
+                      key={key}
+                      className="check-row"
+                      style={{
+                        padding: '10px 12px', borderRadius: 8,
+                        background: specialRequirements[key] ? 'var(--primary-light)' : 'var(--surface)',
+                        border: `1px solid ${specialRequirements[key] ? 'var(--primary-border)' : 'var(--border)'}`,
+                      }}
+                    >
                       <input
                         type="checkbox"
                         checked={specialRequirements[key]}
                         onChange={() => handleCheckbox(key)}
-                        style={{ accentColor: 'var(--blue)', width: 16, height: 16 }}
                       />
-                      <span style={{ fontSize: '0.88rem', fontWeight: 500 }}>{key}</span>
+                      <span>{key}</span>
                     </label>
                   ))}
                 </div>
               </div>
-            </div>
+            </section>
 
-            {/* Initial Orders */}
-            <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(13,148,136,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>📝</span>
-                <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Initial Orders / Instructions for Nurse</h3>
-              </div>
-              <div style={{ padding: '24px' }}>
+            {/* Initial orders */}
+            <section className="panel">
+              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><NotebookPen size={16} aria-hidden="true" /> Initial orders and instructions for nursing</h2></div>
+              <div className="panel-pad">
+                <label className="sr-only" htmlFor="adm-orders">Initial orders and instructions for nursing</label>
                 <textarea
+                  id="adm-orders"
                   name="initialOrders"
-                  className="form-input"
+                  className="form-textarea"
                   rows="4"
                   value={form.initialOrders}
                   onChange={handleChange}
-                  placeholder="e.g. Start IV fluids NS 100ml/hr, NPO until further notice, check BP every 4 hours..."
-                  style={{ resize: 'vertical', width: '100%' }}
+                  placeholder="e.g. Start IV fluids NS 100ml/hr, NPO until further notice, check BP every 4 hours"
+                  style={{ width: '100%' }}
                 />
               </div>
 
               {/* Actions */}
-              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-                <button type="button" className="btn btn-ghost" onClick={() => navigate(-1)}>Cancel</button>
-                <button type="submit" className="btn btn-primary btn-lg" disabled={submitting || !patientId} style={{ minWidth: 200 }}>
-                  {submitting ? '⏳ Sending...' : '📥 Send IPD Request'}
+              <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 8, borderRadius: '0 0 10px 10px' }}>
+                <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate(-1)}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-md" disabled={submitting || !patientId}>
+                  <Send size={16} aria-hidden="true" /> {submitting ? 'Sending…' : 'Send IPD request'}
                 </button>
               </div>
-            </div>
+            </section>
 
           </form>
         )}
-      </div>
+      </main>
     </>
   );
 }

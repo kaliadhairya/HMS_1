@@ -1,13 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { ArrowLeft, CalendarDays, CircleAlert, CircleCheck, History, Save, Search, Stethoscope, TriangleAlert, UserRound, X } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import PatientBanner from '../../../components/patient/PatientBanner';
+
+// /patients/hms/search returns raw SQL aliases (patient_name, phone_number); map them to the
+// field names the rest of this page uses.
+const normalizePatient = (p) => ({ ...p, name: p.name || p.patient_name, phoneNumber: p.phoneNumber || p.phone_number });
+const ENCOUNTER_TONE = { IPD: 'info', ER: 'danger', OPD: 'neutral' };
+const SEVERE_ALERTS = ['High BP', 'Low BP', 'Fever', 'Low SpO2', 'Tachycardia', 'Bradycardia'];
 
 export default function VitalsEntryPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const initialPatient = location.state?.patient;
-  
+
   const [patient, setPatient] = useState(initialPatient || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -21,11 +30,15 @@ export default function VitalsEntryPage() {
   const [vitalsHistory, setVitalsHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // Allergies for the patient banner ('loading' | 'ok' | 'error')
+  const [allergies, setAllergies] = useState([]);
+  const [allergyStatus, setAllergyStatus] = useState('loading');
+
   // Form State
   const [formData, setFormData] = useState({
     encounter_type: 'OPD',
     bp_systolic: '', bp_diastolic: '', temperature: '', temp_unit: 'C',
-    weight_kg: '', height_cm: '', spo2: '', pulse: '', respiratory_rate: ''
+    weight_kg: '', height_cm: '', spo2: '', pulse: '', respiratory_rate: '',
   });
 
   const [bmi, setBmi] = useState(null);
@@ -50,6 +63,17 @@ export default function VitalsEntryPage() {
       setVitalsHistory([]);
     }
   }, [patient]);
+
+  // Allergies feed the patient banner, so it never claims "no known allergies" without checking.
+  useEffect(() => {
+    if (!patient?.id) { setAllergies([]); setAllergyStatus('loading'); return undefined; }
+    let cancelled = false;
+    setAllergyStatus('loading');
+    api.get(`/patients/hms/${patient.id}/allergies`)
+      .then((res) => { if (!cancelled) { setAllergies(res.data.data || []); setAllergyStatus('ok'); } })
+      .catch(() => { if (!cancelled) { setAllergies([]); setAllergyStatus('error'); } });
+    return () => { cancelled = true; };
+  }, [patient?.id]);
 
   const fetchVitalsHistory = async (patientId) => {
     setHistoryLoading(true);
@@ -95,7 +119,7 @@ export default function VitalsEntryPage() {
         try {
           const res = await api.get(`/patients/hms/search?q=${searchQuery}`);
           setSearchResults(res.data.data);
-        } catch(err) {} 
+        } catch (err) { /* ignore search errors */ }
       } else { setSearchResults([]); }
     }, 400);
     return () => clearTimeout(handler);
@@ -128,7 +152,7 @@ export default function VitalsEntryPage() {
       // Refresh vitals history
       fetchVitalsHistory(patient.id);
       // Reset form
-      setFormData(prev => ({ ...prev, bp_systolic: '', bp_diastolic: '', temperature: '', weight_kg: '', height_cm: '', spo2: '', pulse: '', respiratory_rate: '' }));
+      setFormData((prev) => ({ ...prev, bp_systolic: '', bp_diastolic: '', temperature: '', weight_kg: '', height_cm: '', spo2: '', pulse: '', respiratory_rate: '' }));
     } catch (err) {
       setError('Failed to record vitals.');
     } finally {
@@ -147,299 +171,310 @@ export default function VitalsEntryPage() {
     return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
-  const getVitalColor = (key, value) => {
-    if (!value && value !== 0) return 'inherit';
+  // True when a recorded value is outside the normal range.
+  const isAbnormal = (key, value, unit) => {
+    if (!value && value !== 0) return false;
     const v = Number(value);
-    if (key === 'bp_systolic' && (v > 140 || v < 90)) return '#ef4444';
-    if (key === 'bp_diastolic' && (v > 90 || v < 60)) return '#ef4444';
-    if (key === 'pulse' && (v > 100 || v < 60)) return '#ef4444';
-    if (key === 'spo2' && v < 95) return '#ef4444';
-    if (key === 'temperature' && v > 99.5) return '#ef4444';
-    return '#10b981';
+    if (key === 'bp_systolic' && (v > 140 || v < 90)) return true;
+    if (key === 'bp_diastolic' && (v > 90 || v < 60)) return true;
+    if (key === 'pulse' && (v > 100 || v < 60)) return true;
+    if (key === 'spo2' && v < 95) return true;
+    if (key === 'temperature') return unit === 'C' ? v > 37.5 : v > 99.5;
+    return false;
   };
+
+  const changePatient = () => { setPatient(null); setVitalsHistory([]); };
+  const results = (Array.isArray(searchResults) ? searchResults : []).map(normalizePatient);
+  const showBanner = Boolean(patient) && allergyStatus === 'ok';
 
   return (
     <>
-    <Navbar />
-    <div className="container py-4">
-      {/* Page Header */}
-      <div className="hms-page-header" style={{ marginBottom: 28 }}>
-        <div>
-          <h1>
-            <span className="header-icon" style={{ background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.25)' }}>❤️</span>
-            Record Vitals
-          </h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-            Enter patient vitals for triage assessment and monitoring.
-          </p>
-        </div>
-        <div className="header-actions">
-          <button className="btn btn-ghost" onClick={() => navigate(-1)}>← Back</button>
-        </div>
-      </div>
+      <Navbar />
+      {showBanner && (
+        <PatientBanner
+          patient={patient}
+          allergies={allergies}
+          actions={!initialPatient && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={changePatient}>
+              <X size={14} aria-hidden="true" /> Change patient
+            </button>
+          )}
+        />
+      )}
+      <main className="app-page">
+        <PageHeader
+          title="Record vitals"
+          description="Enter vital signs for triage assessment and monitoring."
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate(-1)}>
+              <ArrowLeft size={16} aria-hidden="true" /> Back
+            </button>
+          )}
+        />
 
-      {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
-      {success && <div style={{ padding: '14px 20px', borderRadius: 12, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', color: '#10b981', marginBottom: 16, fontWeight: 600, fontSize: '0.88rem' }}>✅ Vitals recorded successfully!</div>}
+        {error && (
+          <div className="alert-strip alert-danger" role="alert">
+            <CircleAlert size={16} aria-hidden="true" /> {error}
+          </div>
+        )}
+        {success && (
+          <div className="alert-strip" role="status" style={{ background: 'var(--success-light)', borderColor: 'var(--success-border)', color: 'var(--success)' }}>
+            <CircleCheck size={16} aria-hidden="true" /> Vitals recorded.
+          </div>
+        )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-        {/* LEFT: Entry Form */}
-        <div>
-          {/* Patient Selection Card */}
-          <div className="card" style={{ padding: 0, overflow: 'visible', marginBottom: 20 }}>
-            <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, borderTopLeftRadius: 'inherit', borderTopRightRadius: 'inherit' }}>
-              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(59,130,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>👤</span>
-              <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Patient</h3>
-            </div>
-            <div style={{ padding: '16px 24px' }}>
-              {patient ? (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '1rem' }}>{patient.name}</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                      UHID: {patient.uhid || 'Legacy'} • {patient.age ? `${patient.age} Yrs` : ''} {patient.gender ? `• ${patient.gender}` : ''}
-                    </div>
-                  </div>
-                  {!initialPatient && <button className="btn btn-ghost btn-sm" onClick={() => { setPatient(null); setVitalsHistory([]); }}>Change</button>}
-                </div>
-              ) : (
-                <div style={{ position: 'relative' }}>
-                  <input 
-                    type="text" className="form-input" 
-                    placeholder="🔍 Search Patient Name or UHID..." 
-                    value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                  />
-                  {searchResults.length > 0 && (
-                    <div className="card" style={{ position: 'absolute', top: 45, left: 0, right: 0, zIndex: 10, padding: 0, maxHeight: 250, overflowY: 'auto' }}>
-                      {searchResults.map(p => (
-                        <div key={p.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.15s' }}
-                          onMouseEnter={e => e.currentTarget.style.background='var(--surface-2)'}
-                          onMouseLeave={e => e.currentTarget.style.background=''}
-                          onClick={() => { setPatient(p); setSearchQuery(''); }}>
-                          <strong>{p.name}</strong>
-                          <span style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginLeft: 8 }}>({p.uhid || 'Old'})</span>
+        <div className="split-2" style={{ alignItems: 'start' }}>
+          <div className="stack">
+            {!showBanner && (
+              <section className="panel">
+                <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><UserRound size={16} aria-hidden="true" /> Patient</h2></div>
+                <div className="panel-pad">
+                  {patient ? (
+                    <div className="stack-sm">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                        <span className="cell-person">
+                          <span className="cell-avatar" aria-hidden="true">{(patient.name || '?').charAt(0).toUpperCase()}</span>
+                          <span className="cell-stack">
+                            <span className="cell-primary">{patient.name}</span>
+                            <span className="cell-secondary">
+                              <span className="mono">{patient.uhid || 'Legacy'}</span>
+                              {patient.age ? ` · ${patient.age} y` : ''}{patient.gender ? ` · ${patient.gender}` : ''}
+                            </span>
+                          </span>
+                        </span>
+                        {!initialPatient && (
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={changePatient}>
+                            <X size={14} aria-hidden="true" /> Change
+                          </button>
+                        )}
+                      </div>
+                      {allergyStatus === 'loading' && <p className="muted">Checking allergies…</p>}
+                      {allergyStatus === 'error' && (
+                        <div className="alert-strip alert-warning" role="status" style={{ marginBottom: 0 }}>
+                          <TriangleAlert size={16} aria-hidden="true" /> Allergies could not be loaded. Check the patient record.
                         </div>
-                      ))}
+                      )}
+                    </div>
+                  ) : (
+                    <div className="stack-sm">
+                      <label className="search-field">
+                        <Search size={17} aria-hidden="true" />
+                        <span className="sr-only">Search patient by name or UHID</span>
+                        <input type="text" placeholder="Search patient name or UHID" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                      </label>
+                      {results.length > 0 && (
+                        <ul className="list-rows" aria-label="Matching patients" style={{ maxHeight: 260, overflowY: 'auto' }}>
+                          {results.map((p) => (
+                            <li key={p.id}>
+                              <button type="button" className="list-row" onClick={() => { setPatient(p); setSearchQuery(''); }}>
+                                <span className="cell-stack">
+                                  <span className="cell-primary">{p.name}</span>
+                                  <span className="cell-secondary mono">{p.uhid || 'Old record'}</span>
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {!searchQuery && <p className="form-hint" style={{ marginTop: 0 }}>Type at least 3 characters to search.</p>}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          </div>
+              </section>
+            )}
 
-          {/* Vitals Entry Form */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(239,68,68,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>🩺</span>
-              <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Vital Signs</h3>
-              {alerts.length > 0 && (
-                <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-                  {alerts.map(a => <span key={a} style={{ padding: '2px 8px', borderRadius: 6, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: '0.7rem', fontWeight: 700 }}>{a}</span>)}
-                </div>
-              )}
-            </div>
-            <form onSubmit={handleSubmit}>
-              <div style={{ padding: '20px 24px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px' }}>
-                  <div className="form-group">
-                    <label className="form-label">Blood Pressure (Sys / Dia)</label>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input type="number" className="form-input" name="bp_systolic" placeholder="120" value={formData.bp_systolic} onChange={handleChange} />
-                      <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>/</span>
-                      <input type="number" className="form-input" name="bp_diastolic" placeholder="80" value={formData.bp_diastolic} onChange={handleChange} />
-                    </div>
+            <section className="panel">
+              <div className="panel-head" style={{ flexWrap: 'wrap' }}>
+                <h2 className="panel-title" style={{ margin: 0 }}><Stethoscope size={16} aria-hidden="true" /> Vital signs</h2>
+                {alerts.length > 0 && (
+                  <div className="chip-row" role="status" aria-label="Vital sign alerts">
+                    {alerts.map((a) => <span key={a} className={`status ${SEVERE_ALERTS.includes(a) ? 'status-danger' : 'status-warning'}`}>{a}</span>)}
                   </div>
+                )}
+              </div>
+              <form onSubmit={handleSubmit}>
+                <div className="panel-pad stack">
+                  <div className="form-row-2">
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="v-bp-sys">Blood pressure (systolic / diastolic)</label>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input id="v-bp-sys" type="number" className="form-input" name="bp_systolic" placeholder="120" aria-label="Systolic, mmHg" value={formData.bp_systolic} onChange={handleChange} />
+                        <span style={{ color: 'var(--text-muted)', fontWeight: 600 }} aria-hidden="true">/</span>
+                        <input type="number" className="form-input" name="bp_diastolic" placeholder="80" aria-label="Diastolic, mmHg" value={formData.bp_diastolic} onChange={handleChange} />
+                      </div>
+                    </div>
 
-                  <div className="form-group">
-                    <label className="form-label">Temperature</label>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input type="number" step="0.1" className="form-input" name="temperature" placeholder="98.6" value={formData.temperature} onChange={handleChange} style={{ flex: 2 }} />
-                      <select className="form-input" name="temp_unit" value={formData.temp_unit} onChange={handleChange} style={{ flex: 1, maxWidth: 70 }}>
-                        <option value="C">°C</option>
-                        <option value="F">°F</option>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="v-temp">Temperature</label>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input id="v-temp" type="number" step="0.1" className="form-input" name="temperature" placeholder={formData.temp_unit === 'F' ? '98.6' : '37.0'} value={formData.temperature} onChange={handleChange} style={{ flex: 2, minWidth: 0 }} />
+                        <select className="form-select" name="temp_unit" aria-label="Temperature unit" value={formData.temp_unit} onChange={handleChange} style={{ flex: 1, maxWidth: 80 }}>
+                          <option value="C">°C</option>
+                          <option value="F">°F</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="v-pulse">Heart rate (bpm)</label>
+                      <input id="v-pulse" type="number" className="form-input" name="pulse" placeholder="bpm" value={formData.pulse} onChange={handleChange} />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="v-spo2">SpO2 (%)</label>
+                      <input id="v-spo2" type="number" className="form-input" name="spo2" placeholder="98" value={formData.spo2} onChange={handleChange} />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="v-rr">Respiratory rate (breaths/min)</label>
+                      <input id="v-rr" type="number" className="form-input" name="respiratory_rate" placeholder="breaths/min" value={formData.respiratory_rate} onChange={handleChange} />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="v-encounter">Encounter type</label>
+                      <select id="v-encounter" className="form-select" name="encounter_type" value={formData.encounter_type} onChange={handleChange}>
+                        <option value="OPD">OPD triage</option>
+                        <option value="IPD">IPD rounds</option>
+                        <option value="ER">Emergency</option>
                       </select>
                     </div>
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label">Heart Rate (Pulse)</label>
-                    <input type="number" className="form-input" name="pulse" placeholder="bpm" value={formData.pulse} onChange={handleChange} />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">SpO2 (%)</label>
-                    <input type="number" className="form-input" name="spo2" placeholder="98" value={formData.spo2} onChange={handleChange} />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Respiratory Rate</label>
-                    <input type="number" className="form-input" name="respiratory_rate" placeholder="breaths/min" value={formData.respiratory_rate} onChange={handleChange} />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">Encounter Type</label>
-                    <select className="form-input" name="encounter_type" value={formData.encounter_type} onChange={handleChange}>
-                      <option value="OPD">OPD Triage</option>
-                      <option value="IPD">IPD Rounds</option>
-                      <option value="ER">Emergency</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div style={{ borderTop: '1px solid var(--border)', margin: '20px 0', paddingTop: 16 }}>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 12 }}>Anthropometry</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-                    <div className="form-group">
-                      <label className="form-label">Weight (kg)</label>
-                      <input type="number" step="0.1" className="form-input" name="weight_kg" value={formData.weight_kg} onChange={handleChange} />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Height (cm)</label>
-                      <input type="number" step="0.1" className="form-input" name="height_cm" value={formData.height_cm} onChange={handleChange} />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">BMI</label>
-                      <div style={{ padding: '9px 13px', background: 'var(--surface-2)', borderRadius: 10, fontWeight: 700, color: bmi && Number(bmi) > 25 ? '#ef4444' : '#10b981', border: '1px solid var(--border)' }}>
-                        {bmi || '—'}
+                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                    <h3 className="panel-subtitle" style={{ marginTop: 0 }}>Anthropometry</h3>
+                    <div className="form-grid-3">
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="v-weight">Weight (kg)</label>
+                        <input id="v-weight" type="number" step="0.1" className="form-input" name="weight_kg" value={formData.weight_kg} onChange={handleChange} />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="v-height">Height (cm)</label>
+                        <input id="v-height" type="number" step="0.1" className="form-input" name="height_cm" value={formData.height_cm} onChange={handleChange} />
+                      </div>
+                      <div className="form-group">
+                        <span className="form-label" id="v-bmi-label">BMI</span>
+                        <div
+                          aria-labelledby="v-bmi-label"
+                          className="tabular"
+                          style={{
+                            padding: '9px 13px', background: 'var(--surface-2)', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+                            fontWeight: 600, color: bmi && Number(bmi) > 25 ? 'var(--amber)' : 'var(--text-primary)',
+                          }}
+                        >
+                          {bmi || '—'}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end' }}>
-                <button type="submit" className="btn btn-primary btn-lg" disabled={loading || !patient} style={{ minWidth: 180 }}>
-                  {loading ? <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> : '💾 Record Vitals'}
-                </button>
-              </div>
-            </form>
+                <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end', borderRadius: '0 0 10px 10px' }}>
+                  <button type="submit" className="btn btn-primary btn-md" disabled={loading || !patient}>
+                    <Save size={16} aria-hidden="true" /> {loading ? 'Saving…' : 'Record vitals'}
+                  </button>
+                </div>
+              </form>
+            </section>
           </div>
-        </div>
 
-        {/* RIGHT: Vitals History */}
-        <div>
-          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(139,92,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>📊</span>
-              <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Previous Vitals</h3>
-              {vitalsHistory.length > 0 && (
-                <span style={{ marginLeft: 'auto', padding: '2px 10px', borderRadius: 10, background: 'rgba(139,92,246,0.08)', color: '#8b5cf6', fontSize: '0.72rem', fontWeight: 700 }}>
-                  {vitalsHistory.length} records
-                </span>
-              )}
+          <section className="panel">
+            <div className="panel-head">
+              <h2 className="panel-title" style={{ margin: 0 }}><History size={16} aria-hidden="true" /> Previous vitals</h2>
+              {vitalsHistory.length > 0 && <span className="muted">{vitalsHistory.length} records</span>}
             </div>
 
             <div style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
               {!patient ? (
-                <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.4 }}>👤</div>
-                  <div style={{ fontSize: '0.88rem' }}>Select a patient to view vitals history</div>
+                <div className="empty-state">
+                  <span className="empty-state-icon"><UserRound size={22} strokeWidth={1.75} aria-hidden="true" /></span>
+                  <h3>No patient selected</h3>
+                  <p>Select a patient to see their vitals history.</p>
                 </div>
               ) : historyLoading ? (
-                <div style={{ padding: 48, textAlign: 'center' }}>
-                  <div className="spinner" style={{ width: 28, height: 28, margin: '0 auto' }} />
-                </div>
+                <div className="panel-pad"><p className="muted">Loading…</p></div>
               ) : vitalsHistory.length === 0 ? (
-                <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.4 }}>📋</div>
-                  <div style={{ fontSize: '0.88rem' }}>No previous vitals recorded</div>
-                  <div style={{ fontSize: '0.78rem', marginTop: 6 }}>This will be the first entry for this patient</div>
+                <div className="empty-state">
+                  <span className="empty-state-icon"><History size={22} strokeWidth={1.75} aria-hidden="true" /></span>
+                  <h3>No previous vitals</h3>
+                  <p>This will be the first entry for this patient.</p>
                 </div>
               ) : (
-                <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <ol style={{ listStyle: 'none', padding: 12, display: 'grid', gap: 10 }}>
                   {vitalsHistory.map((v, idx) => {
                     const recordedAt = v.recorded_at || v.RECORDED_AT || v.createdAt;
                     const recBy = v.recordedByUser?.name || v.RECORDED_BY_NAME || '';
                     const isLatest = idx === 0;
+                    const encType = v.encounter_type || v.ENCOUNTER_TYPE || 'OPD';
+                    const tempUnit = v.temp_unit || v.TEMP_UNIT || 'F';
+                    const bmiVal = v.bmi || v.BMI;
+                    const sys = v.bp_systolic || v.BP_SYSTOLIC;
+                    const dia = v.bp_diastolic || v.BP_DIASTOLIC;
+                    const items = [
+                      { label: 'BP', value: sys ? `${sys}/${dia}` : null, unit: 'mmHg', abnormal: isAbnormal('bp_systolic', sys) || isAbnormal('bp_diastolic', dia) },
+                      { label: 'Pulse', value: v.pulse || v.PULSE, unit: 'bpm', abnormal: isAbnormal('pulse', v.pulse || v.PULSE) },
+                      { label: 'SpO2', value: v.spo2 || v.SPO2, unit: '%', abnormal: isAbnormal('spo2', v.spo2 || v.SPO2) },
+                      { label: 'Temp', value: v.temperature || v.TEMPERATURE, unit: `°${tempUnit}`, abnormal: isAbnormal('temperature', v.temperature || v.TEMPERATURE, tempUnit) },
+                      { label: 'Resp', value: v.respiratory_rate || v.RESPIRATORY_RATE, unit: '/min' },
+                      { label: 'Weight', value: v.weight_kg || v.WEIGHT_KG, unit: 'kg' },
+                    ];
+                    let recordAlerts = [];
+                    const rawAlerts = v.alerts || v.ALERTS;
+                    if (rawAlerts) {
+                      try {
+                        const parsed = typeof rawAlerts === 'string' ? JSON.parse(rawAlerts) : rawAlerts;
+                        if (Array.isArray(parsed)) recordAlerts = parsed;
+                      } catch (e) { /* ignore malformed alerts */ }
+                    }
                     return (
-                      <div key={v.id || idx} style={{
-                        border: `1px solid ${isLatest ? 'rgba(59,130,246,0.2)' : 'var(--border)'}`,
-                        borderRadius: 14,
-                        background: isLatest ? 'rgba(59,130,246,0.02)' : 'var(--surface)',
-                        overflow: 'hidden',
-                        transition: 'all 0.2s',
-                      }}>
-                        {/* Header: Date/Time & Badge */}
-                        <div style={{
-                          padding: '10px 16px',
-                          background: isLatest ? 'rgba(59,130,246,0.05)' : 'var(--surface-2)',
-                          borderBottom: '1px solid var(--border)',
-                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        }}>
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                              📅 {formatDate(recordedAt)}
-                              <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.78rem' }}>at {formatTime(recordedAt)}</span>
-                            </div>
-                            {recBy && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>By: {recBy}</div>}
+                      <li
+                        key={v.id || idx}
+                        style={{ border: `1px solid ${isLatest ? 'var(--primary-border)' : 'var(--border)'}`, borderRadius: 8, overflow: 'hidden', background: 'var(--surface)' }}
+                      >
+                        <div style={{ padding: '10px 14px', background: isLatest ? 'var(--primary-light)' : 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                          <div className="cell-stack">
+                            <span style={{ fontWeight: 600, fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              <CalendarDays size={14} aria-hidden="true" /> {formatDate(recordedAt)}
+                              <span className="cell-secondary" style={{ fontWeight: 500 }}>at {formatTime(recordedAt)}</span>
+                            </span>
+                            {recBy && <span className="cell-secondary">By {recBy}</span>}
                           </div>
-                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            {isLatest && <span style={{ padding: '2px 8px', borderRadius: 6, background: 'rgba(59,130,246,0.1)', color: '#3b82f6', fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Latest</span>}
-                            <span style={{
-                              padding: '2px 8px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
-                              background: (v.encounter_type || v.ENCOUNTER_TYPE) === 'IPD' ? 'rgba(139,92,246,0.08)' : (v.encounter_type || v.ENCOUNTER_TYPE) === 'ER' ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)',
-                              color: (v.encounter_type || v.ENCOUNTER_TYPE) === 'IPD' ? '#8b5cf6' : (v.encounter_type || v.ENCOUNTER_TYPE) === 'ER' ? '#ef4444' : '#10b981',
-                            }}>{v.encounter_type || v.ENCOUNTER_TYPE || 'OPD'}</span>
+                          <div className="chip-row">
+                            {isLatest && <span className="status status-info">Latest</span>}
+                            <span className={`status status-${ENCOUNTER_TONE[encType] || 'neutral'}`}>{encType}</span>
                           </div>
                         </div>
 
-                        {/* Vitals Grid */}
-                        <div style={{ padding: '12px 16px' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px 14px' }}>
-                            {[
-                              { label: 'BP', value: (v.bp_systolic || v.BP_SYSTOLIC) ? `${v.bp_systolic || v.BP_SYSTOLIC}/${v.bp_diastolic || v.BP_DIASTOLIC}` : null, unit: 'mmHg', color: getVitalColor('bp_systolic', v.bp_systolic || v.BP_SYSTOLIC), icon: '🫀' },
-                              { label: 'Pulse', value: v.pulse || v.PULSE, unit: 'bpm', color: getVitalColor('pulse', v.pulse || v.PULSE), icon: '💓' },
-                              { label: 'SpO2', value: v.spo2 || v.SPO2, unit: '%', color: getVitalColor('spo2', v.spo2 || v.SPO2), icon: '🫁' },
-                              { label: 'Temp', value: v.temperature || v.TEMPERATURE, unit: `°${v.temp_unit || v.TEMP_UNIT || 'F'}`, color: getVitalColor('temperature', v.temperature || v.TEMPERATURE), icon: '🌡️' },
-                              { label: 'Resp', value: v.respiratory_rate || v.RESPIRATORY_RATE, unit: '/min', icon: '💨' },
-                              { label: 'Weight', value: v.weight_kg || v.WEIGHT_KG, unit: 'kg', icon: '⚖️' },
-                            ].map(item => (
-                              <div key={item.label} style={{
-                                padding: '8px 10px', borderRadius: 10, background: 'var(--surface-2)', border: '1px solid var(--border)',
-                                textAlign: 'center',
-                              }}>
-                                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4, fontWeight: 600 }}>
-                                  {item.icon} {item.label}
-                                </div>
-                                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: item.value ? (item.color || 'inherit') : 'var(--text-muted)' }}>
+                        <div style={{ padding: '12px 14px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px 14px' }}>
+                            {items.map((item) => (
+                              <div key={item.label}>
+                                <div className="fact-label">{item.label}</div>
+                                <div className="fact-value tabular" style={{ fontWeight: 600, color: !item.value ? 'var(--text-muted)' : item.abnormal ? 'var(--red)' : 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  {item.value && item.abnormal && <TriangleAlert size={13} aria-hidden="true" />}
                                   {item.value || '—'}
-                                  {item.value && <span style={{ fontSize: '0.65rem', fontWeight: 500, color: 'var(--text-muted)', marginLeft: 2 }}>{item.unit}</span>}
+                                  {item.value && <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)' }}>{item.unit}</span>}
+                                  {item.value && item.abnormal && <span className="sr-only">(out of range)</span>}
                                 </div>
                               </div>
                             ))}
                           </div>
 
-                          {/* BMI & Alerts row */}
-                          {((v.bmi || v.BMI) || (v.alerts || v.ALERTS)) && (
-                            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                              {(v.bmi || v.BMI) && (
-                                <span style={{ padding: '3px 10px', borderRadius: 8, background: Number(v.bmi || v.BMI) > 25 ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', color: Number(v.bmi || v.BMI) > 25 ? '#ef4444' : '#10b981', fontSize: '0.72rem', fontWeight: 700 }}>
-                                  BMI: {v.bmi || v.BMI}
-                                </span>
-                              )}
-                              {(v.alerts || v.ALERTS) && (() => {
-                                try {
-                                  const parsed = typeof (v.alerts || v.ALERTS) === 'string' ? JSON.parse(v.alerts || v.ALERTS) : (v.alerts || v.ALERTS);
-                                  if (Array.isArray(parsed) && parsed.length > 0) {
-                                    return parsed.map(a => (
-                                      <span key={a} style={{ padding: '3px 8px', borderRadius: 6, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: '0.65rem', fontWeight: 700 }}>⚠ {a}</span>
-                                    ));
-                                  }
-                                } catch(e) {}
-                                return null;
-                              })()}
+                          {(bmiVal || recordAlerts.length > 0) && (
+                            <div className="chip-row" style={{ marginTop: 10 }}>
+                              {bmiVal && <span className={`status ${Number(bmiVal) > 25 ? 'status-warning' : 'status-neutral'}`}>BMI {bmiVal}</span>}
+                              {recordAlerts.map((a) => <span key={a} className="status status-danger">{a}</span>)}
                             </div>
                           )}
                         </div>
-                      </div>
+                      </li>
                     );
                   })}
-                </div>
+                </ol>
               )}
             </div>
-          </div>
+          </section>
         </div>
-      </div>
-    </div>
+      </main>
     </>
   );
 }

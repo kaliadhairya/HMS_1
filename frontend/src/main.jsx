@@ -4,6 +4,9 @@ import App from './App.jsx';
 import '@fontsource-variable/inter';
 import './index.css';
 import './theme-clinical.css';
+import './styles/app-shell.css';
+import './styles/components.css';
+import './styles/legacy-bridge.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

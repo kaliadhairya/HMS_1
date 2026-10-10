@@ -6,6 +6,11 @@ import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 import { useAuth } from '../../../context/AuthContext';
 import { useSocket } from '../../../context/SocketContext';
+import { ArrowLeft, CircleAlert, CircleCheck, Download, History, Printer, Receipt, RefreshCw, Wallet } from 'lucide-react';
+import PageHeader from '../../../components/ui/PageHeader';
+import EmptyState from '../../../components/ui/EmptyState';
+
+const STATUS_TONE = { Paid: 'success', 'Partially Paid': 'warning', Pending: 'warning', Cancelled: 'neutral' };
 
 export default function OPDBillingPage() {
   const { encounterId } = useParams();
@@ -25,9 +30,9 @@ export default function OPDBillingPage() {
   useEffect(() => {
     if (!socket) return;
     socket.on('billing_updated', (data) => {
-      console.log('💰 Billing updated:', data);
+      console.log('Billing updated:', data);
       if (data.patientId == patientId) {
-        toast('Bill updated with new items!', { icon: '💰' });
+        toast('Bill updated with new items');
         initBill();
       }
     });
@@ -78,7 +83,7 @@ export default function OPDBillingPage() {
       setBill(finalBillRes.data.data);
       setPaymentForm(prev => ({ ...prev, amount: finalBillRes.data.data.NET_PAYABLE }));
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Discount failed');
+      toast.error(err.response?.data?.message || 'Could not apply discount');
     }
   };
 
@@ -89,13 +94,13 @@ export default function OPDBillingPage() {
         ...paymentForm,
         applyAdvance
       });
-      toast.success('Payment recorded successfully');
+      toast.success('Payment recorded');
       setReceipt(res.data.data);
       // Refresh bill
       const finalBillRes = await api.get(`/billing/${bill.ID || bill.id}`);
       setBill(finalBillRes.data.data);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Payment failed');
+      toast.error(err.response?.data?.message || 'Could not record payment');
     }
   };
 
@@ -103,22 +108,29 @@ export default function OPDBillingPage() {
     return (
       <>
         <Navbar />
-        <div className="page-wrapper">
-          <div className="card" style={{ maxWidth: 520, margin: '40px auto', textAlign: 'center' }}>
+        <main className="app-page">
+          <section className="panel" style={{ maxWidth: 520, margin: '40px auto' }}>
             {loading ? (
-              <p style={{ color: 'var(--text-secondary)' }}>Loading bill details…</p>
+              <p className="muted panel-pad" style={{ textAlign: 'center' }}>Loading bill details…</p>
             ) : (
-              <>
-                <h3 style={{ marginBottom: 8 }}>Bill unavailable</h3>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: 20 }}>{loadError || 'The bill could not be loaded.'}</p>
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                  <button className="btn btn-ghost" onClick={() => navigate(-1)}>Go back</button>
-                  <button className="btn btn-primary" onClick={initBill}>Try again</button>
-                </div>
-              </>
+              <EmptyState
+                icon={CircleAlert}
+                title="Bill unavailable"
+                description={loadError || 'The bill could not be loaded.'}
+                action={(
+                  <>
+                    <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate(-1)}>
+                      <ArrowLeft size={16} aria-hidden="true" /> Go back
+                    </button>
+                    <button type="button" className="btn btn-primary btn-md" onClick={initBill}>
+                      <RefreshCw size={16} aria-hidden="true" /> Try again
+                    </button>
+                  </>
+                )}
+              />
             )}
-          </div>
-        </div>
+          </section>
+        </main>
       </>
     );
   }
@@ -127,150 +139,157 @@ export default function OPDBillingPage() {
     return (
       <>
       <Navbar />
-      <div className="page-wrapper fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <div className="card print-area" style={{ width: 600, padding: 40 }}>
-           <div style={{ textAlign: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 16, marginBottom: 24 }}>
-             <h2>HMS Hospital</h2>
-             <p>Payment Receipt</p>
+      <main className="app-page" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <section className="panel print-area" style={{ width: '100%', maxWidth: 600, padding: 32 }}>
+           <div style={{ textAlign: 'center', borderBottom: '1px solid var(--border)', paddingBottom: 16, marginBottom: 20 }}>
+             <h2 style={{ fontSize: '1.2rem', fontWeight: 650 }}>HMS Hospital</h2>
+             <p className="muted">Payment receipt</p>
            </div>
-           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
-             <div>
-               <strong>Receipt No:</strong> {receipt.RECEIPT_NUMBER || receipt.receiptNumber}<br/>
-               <strong>Date:</strong> {new Date(receipt.PAYMENT_DATE || receipt.paymentDate).toLocaleString()}<br/>
-               <strong>Patient:</strong> {bill.PATIENT_NAME} ({bill.UHID})
+           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+             <div className="stack-sm" style={{ gap: 4 }}>
+               <div><span className="fact-label">Receipt no.</span> <span className="mono">{receipt.RECEIPT_NUMBER || receipt.receiptNumber}</span></div>
+               <div><span className="fact-label">Date</span> <span className="tabular">{new Date(receipt.PAYMENT_DATE || receipt.paymentDate).toLocaleString()}</span></div>
+               <div><span className="fact-label">Patient</span> {bill.PATIENT_NAME} (<span className="mono">{bill.UHID}</span>)</div>
              </div>
-             <div style={{ textAlign: 'right' }}>
-               <strong>Bill No:</strong> {bill.BILL_NUMBER}<br/>
-               <strong>Payment Mode:</strong> {receipt.PAYMENT_MODE || receipt.paymentMode}
+             <div className="stack-sm" style={{ gap: 4, textAlign: 'right' }}>
+               <div><span className="fact-label">Bill no.</span> <span className="mono">{bill.BILL_NUMBER}</span></div>
+               <div><span className="fact-label">Payment mode</span> {receipt.PAYMENT_MODE || receipt.paymentMode}</div>
              </div>
            </div>
-           <div style={{ background: 'var(--surface-color)', padding: 16, borderRadius: 8, textAlign: 'center', marginBottom: 24 }}>
-             <h1 style={{ margin: 0, color: 'var(--primary, var(--blue))' }}>₹{receipt.AMOUNT || receipt.amount}</h1>
-             <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Amount Received successfully</p>
+           <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', padding: 16, borderRadius: 8, textAlign: 'center', marginBottom: 20 }}>
+             <div className="tabular" style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary)' }}>₹{receipt.AMOUNT || receipt.amount}</div>
+             <p className="muted">Amount received</p>
            </div>
            
-           <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }} className="no-print">
-             <button className="btn btn-primary" onClick={() => window.print()}>Print Receipt</button>
-             <button className="btn btn-outline" onClick={() => navigate(`/billing/patient/${bill.PATIENT_ID}`)}>View History</button>
+           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }} className="no-print">
+             <button type="button" className="btn btn-primary btn-md" onClick={() => window.print()}>
+               <Printer size={16} aria-hidden="true" /> Print receipt
+             </button>
+             <button type="button" className="btn btn-secondary btn-md" onClick={() => navigate(`/billing/patient/${bill.PATIENT_ID}`)}>
+               <History size={16} aria-hidden="true" /> View history
+             </button>
            </div>
-        </div>
-      </div>
+        </section>
+      </main>
       </>
     );
   }
 
   const isPaid = bill.STATUS === 'Paid';
+  const rowStyle = { display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 };
 
   return (
     <>
     <Navbar />
-    <div className="page-wrapper fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2>OPD Billing Checkout</h2>
-        <span className="badge" style={{ background: isPaid ? '#48bb7820' : '#ecc94b20', color: isPaid ? '#48bb78' : '#d69e2e', padding: '8px 16px', fontSize: '1.2rem' }}>
-          {bill.STATUS}
-        </span>
-      </div>
+    <main className="app-page">
+      <PageHeader
+        title="OPD billing"
+        description="Review the charges for this visit, apply a discount if needed and record payment."
+        meta={<span className={`status status-${STATUS_TONE[bill.STATUS] || 'info'}`}>{bill.STATUS}</span>}
+      />
 
-      <div style={{ display: 'flex', gap: 24 }}>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         {/* Bill Details */}
-        <div className="card billing-invoice-print" style={{ flex: 2, padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
+        <section className="panel panel-pad billing-invoice-print" style={{ flex: '2 1 520px', minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
              <div>
-               <h4 style={{ margin: '0 0 8px 0' }}>Patient Info</h4>
-               {bill.PATIENT_NAME} ({bill.UHID})<br/>
-               {bill.AGE}Y / {bill.GENDER}<br/>
-               Ph: {bill.PHONE}
+               <div className="fact-label" style={{ marginBottom: 4 }}>Patient</div>
+               <div className="cell-primary">{bill.PATIENT_NAME} (<span className="mono">{bill.UHID}</span>)</div>
+               <div className="cell-secondary">{bill.AGE}Y / {bill.GENDER}</div>
+               <div className="cell-secondary">Ph: {bill.PHONE}</div>
              </div>
              <div style={{ textAlign: 'right' }}>
-               <h4 style={{ margin: '0 0 8px 0' }}>Invoice</h4>
-               <strong>{bill.BILL_NUMBER}</strong><br/>
-               Date: {new Date(bill.CREATED_AT).toLocaleDateString()}
+               <div className="fact-label" style={{ marginBottom: 4 }}>Invoice</div>
+               <div className="mono" style={{ fontWeight: 600 }}>{bill.BILL_NUMBER}</div>
+               <div className="cell-secondary">Date: {new Date(bill.CREATED_AT).toLocaleDateString()}</div>
              </div>
           </div>
 
-          <table className="table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', marginBottom: 24 }}>
+          <table className="mini-table" style={{ marginBottom: 20 }}>
             <thead>
-              <tr style={{ background: 'var(--surface-color)' }}>
-                <th style={{ padding: 12 }}>Service</th>
-                <th style={{ padding: 12 }}>Qty</th>
-                <th style={{ padding: 12 }}>Rate</th>
-                <th style={{ padding: 12, textAlign: 'right' }}>Amount</th>
+              <tr>
+                <th>Service</th>
+                <th>Qty</th>
+                <th>Rate</th>
+                <th style={{ textAlign: 'right' }}>Amount</th>
               </tr>
             </thead>
             <tbody>
               {bill.items && bill.items.map(item => (
-                <tr key={item.ID} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 12 }}>
-                    <strong>{item.ITEM_TYPE}</strong><br/>
-                    <small style={{ color: 'var(--text-secondary)' }}>{item.ITEM_NAME}</small>
+                <tr key={item.ID}>
+                  <td>
+                    <span className="cell-stack">
+                      <span className="cell-primary">{item.ITEM_TYPE}</span>
+                      <span className="cell-secondary">{item.ITEM_NAME}</span>
+                    </span>
                   </td>
-                  <td style={{ padding: 12 }}>{item.QUANTITY || 1}</td>
-                  <td style={{ padding: 12 }}>₹{item.RATE}</td>
-                  <td style={{ padding: 12, textAlign: 'right' }}>₹{item.AMOUNT}</td>
+                  <td className="tabular">{item.QUANTITY || 1}</td>
+                  <td className="tabular">₹{item.RATE}</td>
+                  <td className="tabular" style={{ textAlign: 'right' }}>₹{item.AMOUNT}</td>
                 </tr>
               ))}
             </tbody>
           </table>
 
-          <div style={{ borderTop: '2px dashed var(--border)', paddingTop: 16 }}>
-             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-               <span>Subtotal</span>
+          <div className="tabular" style={{ borderTop: '1px dashed var(--border)', paddingTop: 14 }}>
+             <div style={rowStyle}>
+               <span style={{ color: 'var(--text-secondary)' }}>Subtotal</span>
                <strong>₹{bill.TOTAL_AMOUNT}</strong>
              </div>
-             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-               <span>Discount</span>
+             <div style={rowStyle}>
+               <span style={{ color: 'var(--text-secondary)' }}>Discount</span>
                <strong style={{ color: 'var(--red)' }}>- ₹{bill.DISCOUNT_AMOUNT}</strong>
              </div>
              {bill.ADVANCE_ADJUSTED > 0 && (
-               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                 <span>Advance Adjusted</span>
-                 <strong style={{ color: 'var(--blue)' }}>- ₹{bill.ADVANCE_ADJUSTED}</strong>
+               <div style={rowStyle}>
+                 <span style={{ color: 'var(--text-secondary)' }}>Advance adjusted</span>
+                 <strong style={{ color: 'var(--primary)' }}>- ₹{bill.ADVANCE_ADJUSTED}</strong>
                </div>
              )}
-             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)', fontSize: '1.5rem' }}>
-               <strong>Net Payable</strong>
+             <div style={{ ...rowStyle, marginTop: 12, paddingTop: 12, marginBottom: 0, borderTop: '1px solid var(--border)', fontSize: '1.35rem' }}>
+               <strong>Net payable</strong>
                <strong>₹{bill.NET_PAYABLE}</strong>
              </div>
           </div>
-        </div>
+        </section>
 
         {/* Payment & Actions */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 24 }}>
+        <div className="stack" style={{ flex: '1 1 300px' }}>
            
            {!isPaid && ['admin', 'super_admin'].includes(user.role) && (
-             <div className="card" style={{ padding: 24 }}>
-               <h4 style={{ marginBottom: 16 }}>Apply Discount</h4>
+             <section className="panel panel-pad no-print">
+               <h2 className="panel-title">Apply discount</h2>
+               <label className="sr-only" htmlFor="discount-amount">Discount amount (₹)</label>
                <div style={{ display: 'flex', gap: 8 }}>
-                 <input type="number" className="form-input" placeholder="Amount (₹)" value={discountAmount} onChange={e=>setDiscountAmount(e.target.value)} />
-                 <button className="btn btn-secondary" onClick={handleApplyDiscount}>Apply</button>
+                 <input id="discount-amount" type="number" className="form-input" placeholder="Amount (₹)" value={discountAmount} onChange={e=>setDiscountAmount(e.target.value)} />
+                 <button type="button" className="btn btn-secondary btn-md" onClick={handleApplyDiscount}>Apply</button>
                </div>
-             </div>
+             </section>
            )}
 
            {!isPaid && (
-             <div className="card" style={{ padding: 24, background: 'var(--surface-color)' }}>
-               <h3 style={{ marginBottom: 16 }}>Record Payment</h3>
+             <section className="panel panel-pad no-print">
+               <h2 className="panel-title"><Wallet size={16} aria-hidden="true" /> Record payment</h2>
                
                {advanceData?.availableAdvance > 0 && (
-                 <div style={{ padding: 12, background: 'rgba(59,130,246,0.1)', border: '1px solid var(--blue)', borderRadius: 8, marginBottom: 16 }}>
-                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, cursor: 'pointer', color: 'var(--blue)' }}>
+                 <div className="alert-strip alert-info">
+                   <label className="check-row" style={{ margin: 0 }}>
                      <input type="checkbox" checked={applyAdvance} onChange={e=>setApplyAdvance(e.target.checked)} />
-                     <strong>Use Patient Advance (Available: ₹{advanceData.availableAdvance})</strong>
+                     <strong>Use patient advance (available: ₹{advanceData.availableAdvance})</strong>
                    </label>
                  </div>
                )}
 
-               <form onSubmit={handlePayment} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+               <form onSubmit={handlePayment} className="stack-sm">
                  <div className="form-group">
-                   <label>Amount Recieved (₹)</label>
-                   <input type="number" className="form-input" value={paymentForm.amount} onChange={e=>setPaymentForm({...paymentForm, amount: e.target.value})} required disabled={applyAdvance} />
+                   <label className="form-label" htmlFor="pay-amount">Amount received (₹)</label>
+                   <input id="pay-amount" type="number" className="form-input" value={paymentForm.amount} onChange={e=>setPaymentForm({...paymentForm, amount: e.target.value})} required disabled={applyAdvance} />
                  </div>
                  {!applyAdvance && (
                    <>
                      <div className="form-group">
-                       <label>Payment Mode</label>
-                       <select className="form-input" value={paymentForm.paymentMode} onChange={e=>setPaymentForm({...paymentForm, paymentMode: e.target.value})}>
+                       <label className="form-label" htmlFor="pay-mode">Payment mode</label>
+                       <select id="pay-mode" className="form-select" value={paymentForm.paymentMode} onChange={e=>setPaymentForm({...paymentForm, paymentMode: e.target.value})}>
                          <option>Cash</option>
                          <option>Card</option>
                          <option>UPI</option>
@@ -278,35 +297,43 @@ export default function OPDBillingPage() {
                        </select>
                      </div>
                      <div className="form-group">
-                       <label>Reference No. (Optional)</label>
-                       <input type="text" className="form-input" value={paymentForm.referenceNumber} onChange={e=>setPaymentForm({...paymentForm, referenceNumber: e.target.value})} />
+                       <label className="form-label" htmlFor="pay-ref">Reference no. (optional)</label>
+                       <input id="pay-ref" type="text" className="form-input" value={paymentForm.referenceNumber} onChange={e=>setPaymentForm({...paymentForm, referenceNumber: e.target.value})} />
                      </div>
                    </>
                  )}
-                 <button type="submit" className="btn btn-primary" style={{ marginTop: 8 }}>Complete Transaction</button>
+                 <button type="submit" className="btn btn-primary btn-md" style={{ marginTop: 4 }}>
+                   <Receipt size={16} aria-hidden="true" /> Complete payment
+                 </button>
                </form>
-             </div>
+             </section>
            )}
 
            {isPaid && (
-             <div className="card" style={{ padding: 24, textAlign: 'center' }}>
-               <div style={{ fontSize: '3rem', marginBottom: 16 }}>✅</div>
-               <h3>Bill Fully Paid</h3>
-               <button className="btn btn-outline" style={{ marginTop: 16, width: '100%' }} onClick={() => window.print()}>Print Invoice</button>
-               <button type="button" className="btn btn-primary btn-full" style={{ marginTop: 8 }} onClick={() => openAuthenticatedBlob(`/pdf/bill/${bill.ID || bill.id}`, { download: true, filename: `bill-${bill.ID || bill.id}.pdf` })}>Download PDF</button>
-             </div>
+             <section className="panel panel-pad no-print" style={{ textAlign: 'center' }}>
+               <CircleCheck size={32} aria-hidden="true" style={{ color: 'var(--success)', marginBottom: 8 }} />
+               <h2 className="panel-title" style={{ justifyContent: 'center' }}>Bill fully paid</h2>
+               <div className="stack-sm">
+                 <button type="button" className="btn btn-secondary btn-md" style={{ width: '100%', justifyContent: 'center' }} onClick={() => window.print()}>
+                   <Printer size={16} aria-hidden="true" /> Print invoice
+                 </button>
+                 <button type="button" className="btn btn-primary btn-md" style={{ width: '100%', justifyContent: 'center' }} onClick={() => openAuthenticatedBlob(`/pdf/bill/${bill.ID || bill.id}`, { download: true, filename: `bill-${bill.ID || bill.id}.pdf` })}>
+                   <Download size={16} aria-hidden="true" /> Download PDF
+                 </button>
+               </div>
+             </section>
            )}
         </div>
       </div>
       
-      <style jsx>{`
+      <style>{`
         @media print {
           .no-print { display: none !important; }
-          .page-wrapper { margin: 0; padding: 0; }
-          .card { border: none; box-shadow: none; }
+          .app-page { margin: 0; padding: 0; }
+          .panel { border: none; box-shadow: none; }
         }
       `}</style>
-    </div>
+    </main>
     </>
   );
 }

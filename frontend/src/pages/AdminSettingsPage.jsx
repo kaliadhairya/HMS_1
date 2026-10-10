@@ -1,8 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
+import {
+  Building2, CalendarDays, Clock, Lock, LockOpen, Pencil, Plus, ReceiptText, Save, Search, ShieldCheck, Upload, Layers,
+} from 'lucide-react';
 import Navbar from '../components/Navbar';
+import PageHeader from '../components/ui/PageHeader';
+import DataTable from '../components/ui/DataTable';
+import EmptyState from '../components/ui/EmptyState';
+import Modal from '../components/ui/Modal';
+import RowMenu from '../components/ui/RowMenu';
 import { useAuth } from '../context/AuthContext';
+
+const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 export default function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState(0);
@@ -12,41 +23,58 @@ export default function AdminSettingsPage() {
   // Admin tabs: Hospital Profile, Tariff, Dept Config, Working Hours, Holiday Calendar
   // Super Admin also keeps Security Logs
   const TABS = [
-    { label: 'Hospital Profile', comp: <HospitalProfileTab /> },
-    { label: 'Tariff / Rate Card', comp: <TariffTab /> },
-    { label: 'Department Config', comp: <DepartmentConfigTab /> },
-    { label: 'Working Hours', comp: <WorkingHoursTab /> },
-    { label: 'Holiday Calendar', comp: <HolidayCalendarTab /> },
-    ...(isSuperAdmin ? [{ label: 'Security Logs', comp: <SecurityLogsTab /> }] : []),
+    { label: 'Hospital profile', icon: Building2, comp: <HospitalProfileTab /> },
+    { label: 'Tariff and rate card', icon: ReceiptText, comp: <TariffTab /> },
+    { label: 'Departments', icon: Layers, comp: <DepartmentConfigTab /> },
+    { label: 'Working hours', icon: Clock, comp: <WorkingHoursTab /> },
+    { label: 'Holiday calendar', icon: CalendarDays, comp: <HolidayCalendarTab /> },
+    ...(isSuperAdmin ? [{ label: 'Security logs', icon: ShieldCheck, comp: <SecurityLogsTab /> }] : []),
   ];
 
   return (
     <>
       <Navbar />
-      <div className="page-wrapper fade-up">
-        <h2 style={{ marginBottom: 24 }}>⚙️ Settings</h2>
-        <div style={{ display: 'flex', gap: 24 }}>
-          {/* Sidebar */}
-          <div className="card" style={{ width: 230, padding: 0, flexShrink: 0 }}>
-            {TABS.map((tab, i) => (
-              <div key={tab.label} onClick={() => setActiveTab(i)} style={{
-                padding: '14px 20px', cursor: 'pointer', fontSize: '0.9rem', fontWeight: activeTab === i ? 600 : 400,
-                background: activeTab === i ? 'var(--primary-color)' : 'transparent',
-                color: activeTab === i ? '#fff' : 'var(--text-primary)',
-                borderBottom: '1px solid var(--border)', transition: 'all 0.15s',
-              }}>{tab.label}</div>
-            ))}
-          </div>
+      <main className="app-page">
+        <PageHeader title="Settings" description="Hospital profile, rate card, departments, timings and holidays." />
 
-          {/* Content */}
-          <div style={{ flex: 1 }}>
-            {TABS[activeTab]?.comp}
-          </div>
+        <div className="tabs" role="tablist" aria-label="Settings sections">
+          {TABS.map((tab, i) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.label}
+                type="button"
+                role="tab"
+                id={`settings-tab-${i}`}
+                aria-selected={activeTab === i}
+                aria-controls={`settings-panel-${i}`}
+                className={`tab${activeTab === i ? ' is-active' : ''}`}
+                onClick={() => setActiveTab(i)}
+              >
+                <Icon size={16} aria-hidden="true" /> {tab.label}
+              </button>
+            );
+          })}
         </div>
-      </div>
+
+        <div role="tabpanel" id={`settings-panel-${activeTab}`} aria-labelledby={`settings-tab-${activeTab}`}>
+          {TABS[activeTab]?.comp}
+        </div>
+      </main>
     </>
   );
 }
+
+function PanelHead({ icon: Icon, title, actions }) {
+  return (
+    <div className="panel-head">
+      <h2 className="panel-title" style={{ margin: 0 }}><Icon size={16} aria-hidden="true" /> {title}</h2>
+      {actions}
+    </div>
+  );
+}
+
+const loadingPanel = <section className="panel panel-pad"><p className="muted">Loading…</p></section>;
 
 // ═══════════════════════════════════════════════════════════════
 //  TAB 1 — Hospital Profile
@@ -59,7 +87,7 @@ function HospitalProfileTab() {
 
   useEffect(() => {
     api.get('/admin/hospital-profile')
-      .then(res => {
+      .then((res) => {
         setForm(res.data.data || {});
         if (res.data.data?.LOGO_URL) setLogoPreview(res.data.data.LOGO_URL);
       })
@@ -80,7 +108,7 @@ function HospitalProfileTab() {
   const handleSave = async () => {
     try {
       const fd = new FormData();
-      Object.keys(form).forEach(k => { if (form[k] !== null && form[k] !== undefined) fd.append(k === 'NAME' ? 'name' : k === 'TAGLINE' ? 'tagline' : k === 'ADDRESS' ? 'address' : k === 'CITY' ? 'city' : k === 'STATE' ? 'state' : k === 'PIN' ? 'pin' : k === 'PHONE' ? 'phone' : k === 'EMAIL' ? 'email' : k === 'WEBSITE' ? 'website' : k === 'GSTIN' ? 'gstin' : k === 'REG_NUMBER' ? 'regNumber' : k === 'NABH_STATUS' ? 'nabhStatus' : k === 'CGHS_EMPANELLED' ? 'cghsEmpanelled' : k, form[k]); });
+      Object.keys(form).forEach((k) => { if (form[k] !== null && form[k] !== undefined) fd.append(k === 'NAME' ? 'name' : k === 'TAGLINE' ? 'tagline' : k === 'ADDRESS' ? 'address' : k === 'CITY' ? 'city' : k === 'STATE' ? 'state' : k === 'PIN' ? 'pin' : k === 'PHONE' ? 'phone' : k === 'EMAIL' ? 'email' : k === 'WEBSITE' ? 'website' : k === 'GSTIN' ? 'gstin' : k === 'REG_NUMBER' ? 'regNumber' : k === 'NABH_STATUS' ? 'nabhStatus' : k === 'CGHS_EMPANELLED' ? 'cghsEmpanelled' : k, form[k]); });
       if (logoFile) fd.append('logo', logoFile);
       await api.put('/admin/hospital-profile', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       toast.success('Hospital profile updated');
@@ -89,96 +117,84 @@ function HospitalProfileTab() {
     }
   };
 
-  const upd = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+  const upd = (key, val) => setForm((prev) => ({ ...prev, [key]: val }));
 
-  if (loading) return <div className="card" style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
+  if (loading) return loadingPanel;
+
+  const field = (key, label, opts = {}) => (
+    <div className="form-group" style={opts.full ? { gridColumn: '1 / -1' } : undefined}>
+      <label className="form-label" htmlFor={`hp-${key}`}>{label}</label>
+      <input
+        id={`hp-${key}`}
+        className="form-input"
+        type={opts.type || 'text'}
+        value={form[key] || ''}
+        onChange={(e) => upd(key, e.target.value)}
+      />
+    </div>
+  );
 
   return (
-    <div className="card" style={{ padding: 28 }}>
-      <h3 style={{ marginBottom: 20 }}>Hospital Profile</h3>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <div className="form-group">
-          <label>Hospital Name *</label>
-          <input className="form-control" value={form.NAME || ''} onChange={e => upd('NAME', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label>Tagline</label>
-          <input className="form-control" value={form.TAGLINE || ''} onChange={e => upd('TAGLINE', e.target.value)} />
-        </div>
-        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-          <label>Address</label>
-          <input className="form-control" value={form.ADDRESS || ''} onChange={e => upd('ADDRESS', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label>City</label>
-          <input className="form-control" value={form.CITY || ''} onChange={e => upd('CITY', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label>State</label>
-          <input className="form-control" value={form.STATE || ''} onChange={e => upd('STATE', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label>PIN</label>
-          <input className="form-control" value={form.PIN || ''} onChange={e => upd('PIN', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label>Phone</label>
-          <input className="form-control" value={form.PHONE || ''} onChange={e => upd('PHONE', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label>Email</label>
-          <input className="form-control" value={form.EMAIL || ''} onChange={e => upd('EMAIL', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label>Website</label>
-          <input className="form-control" value={form.WEBSITE || ''} onChange={e => upd('WEBSITE', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label>GSTIN</label>
-          <input className="form-control" value={form.GSTIN || ''} onChange={e => upd('GSTIN', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label>Registration Number</label>
-          <input className="form-control" value={form.REG_NUMBER || ''} onChange={e => upd('REG_NUMBER', e.target.value)} />
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 24, marginTop: 16 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-          <input type="checkbox" checked={form.NABH_STATUS == 1} onChange={e => upd('NABH_STATUS', e.target.checked ? 1 : 0)} /> NABH Accredited
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-          <input type="checkbox" checked={form.CGHS_EMPANELLED == 1} onChange={e => upd('CGHS_EMPANELLED', e.target.checked ? 1 : 0)} /> CGHS Empanelled
-        </label>
-      </div>
-
-      <div style={{ marginTop: 20 }}>
-        <label style={{ fontWeight: 600, marginBottom: 8, display: 'block' }}>Hospital Logo</label>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          {logoPreview && <img src={logoPreview} alt="Logo" style={{ width: 80, height: 80, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 8, padding: 4, background: '#fff' }} />}
-          <input type="file" accept="image/*" onChange={handleLogoChange} />
-        </div>
-      </div>
-
-      {/* Letterhead Preview */}
-      <div style={{ marginTop: 24, padding: 20, border: '2px dashed var(--border)', borderRadius: 12, background: '#fff' }}>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Letterhead Preview</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          {logoPreview && <img src={logoPreview} alt="" style={{ width: 50, height: 50, objectFit: 'contain' }} />}
-          <div>
-            <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0f4c81' }}>{form.NAME || 'Hospital Name'}</div>
-            <div style={{ fontSize: '0.85rem', color: '#666' }}>{form.TAGLINE || ''}</div>
-            <div style={{ fontSize: '0.75rem', color: '#888' }}>{form.ADDRESS || ''}, {form.CITY || ''} - {form.PIN || ''}</div>
-            <div style={{ fontSize: '0.75rem', color: '#888' }}>Ph: {form.PHONE || ''} | Reg: {form.REG_NUMBER || ''}</div>
+    <div className="split-2" style={{ alignItems: 'start' }}>
+      <section className="panel">
+        <PanelHead icon={Building2} title="Hospital profile" />
+        <form className="panel-pad stack" onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
+          <div className="form-row-2">
+            {field('NAME', 'Hospital name')}
+            {field('TAGLINE', 'Tagline')}
+            {field('ADDRESS', 'Address', { full: true })}
+            {field('CITY', 'City')}
+            {field('STATE', 'State')}
+            {field('PIN', 'PIN')}
+            {field('PHONE', 'Phone', { type: 'tel' })}
+            {field('EMAIL', 'Email')}
+            {field('WEBSITE', 'Website')}
+            {field('GSTIN', 'GSTIN')}
+            {field('REG_NUMBER', 'Registration number')}
           </div>
-        </div>
-        <div style={{ height: 3, background: '#0f4c81', marginTop: 12, borderRadius: 2 }}></div>
-      </div>
 
-      <div style={{ marginTop: 24, textAlign: 'right' }}>
-        <button className="btn btn-primary" onClick={handleSave}>Save Profile</button>
-      </div>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <label className="check-row">
+              <input type="checkbox" checked={form.NABH_STATUS == 1} onChange={(e) => upd('NABH_STATUS', e.target.checked ? 1 : 0)} /> NABH accredited
+            </label>
+            <label className="check-row">
+              <input type="checkbox" checked={form.CGHS_EMPANELLED == 1} onChange={(e) => upd('CGHS_EMPANELLED', e.target.checked ? 1 : 0)} /> CGHS empanelled
+            </label>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="hp-logo">Hospital logo</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              {logoPreview && (
+                <img src={logoPreview} alt="Current logo" style={{ width: 72, height: 72, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 8, padding: 4, background: 'var(--surface)' }} />
+              )}
+              <input id="hp-logo" type="file" accept="image/*" onChange={handleLogoChange} />
+            </div>
+            <p className="form-hint"><Upload size={12} aria-hidden="true" /> PNG or JPG. Used on printed letterheads and reports.</p>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="submit" className="btn btn-primary btn-md"><Save size={16} aria-hidden="true" /> Save profile</button>
+          </div>
+        </form>
+      </section>
+
+      <section className="panel panel-pad">
+        <h2 className="panel-title">Letterhead preview</h2>
+        {/* print-area keeps the preview on a white, print-like palette in both themes */}
+        <div className="print-area" style={{ padding: 20, border: '1px dashed var(--border)', borderRadius: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {logoPreview && <img src={logoPreview} alt="" style={{ width: 50, height: 50, objectFit: 'contain' }} />}
+            <div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary)' }}>{form.NAME || 'Hospital name'}</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{form.TAGLINE || ''}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{form.ADDRESS || ''}, {form.CITY || ''} - {form.PIN || ''}</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Ph: {form.PHONE || ''} | Reg: {form.REG_NUMBER || ''}</div>
+            </div>
+          </div>
+          <div style={{ height: 3, background: 'var(--primary)', marginTop: 12, borderRadius: 2 }} />
+        </div>
+      </section>
     </div>
   );
 }
@@ -191,76 +207,116 @@ function TariffTab() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState(null);
+  const [category, setCategory] = useState('');
+  const [query, setQuery] = useState('');
 
   const fetchTariffs = () => {
     api.get('/admin/tariff/all')
-      .then(res => setTariffs(res.data.data))
+      .then((res) => setTariffs(res.data.data))
       .catch(() => toast.error('Failed to load tariffs'))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { fetchTariffs(); }, []);
 
-  const categories = [...new Set(tariffs.map(t => t.CATEGORY))];
+  const list = Array.isArray(tariffs) ? tariffs : [];
+  const categories = [...new Set(list.map((t) => t.CATEGORY))];
 
   const handleToggle = async (id) => {
     try {
       await api.patch(`/admin/tariff/${id}/toggle`);
       fetchTariffs();
-      toast.success('Tariff toggled');
+      toast.success('Tariff status changed');
     } catch { toast.error('Toggle failed'); }
   };
 
-  if (loading) return <div className="card" style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
+  const openAdd = () => { setEditItem(null); setShowModal(true); };
+  const openEdit = (t) => { setEditItem(t); setShowModal(true); };
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return list.filter((t) => {
+      if (category && t.CATEGORY !== category) return false;
+      if (!q) return true;
+      return [t.NAME, t.CATEGORY, t.WARD_TYPE].some((v) => String(v || '').toLowerCase().includes(q));
+    });
+  }, [list, category, query]);
+
+  const columns = useMemo(() => [
+    {
+      id: 'name', header: 'Name', accessorFn: (t) => t.NAME || '',
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="cell-primary" style={{ color: row.original.IS_ACTIVE ? undefined : 'var(--text-muted)' }}>{row.original.NAME}</span>
+          {row.original.DOCTOR_NAME && <span className="cell-secondary">{row.original.DOCTOR_NAME}</span>}
+        </span>
+      ),
+    },
+    { id: 'category', header: 'Category', accessorFn: (t) => t.CATEGORY || '', meta: { width: 140 }, cell: ({ getValue }) => <span className="tag">{getValue()}</span> },
+    { id: 'rate', header: 'Rate', accessorFn: (t) => Number(t.RATE) || 0, meta: { width: 120, align: 'right' }, cell: ({ getValue }) => <span className="tabular">{inr(getValue())}</span> },
+    { id: 'gst', header: 'GST', accessorFn: (t) => Number(t.GST_RATE) || 0, meta: { width: 80, align: 'right' }, cell: ({ row }) => <span className="tabular">{row.original.GST_RATE}%</span> },
+    { id: 'unit', header: 'Per unit', accessorFn: (t) => t.PER_UNIT || '', meta: { width: 120 }, cell: ({ getValue }) => getValue() || '—' },
+    { id: 'ward', header: 'Ward type', accessorFn: (t) => t.WARD_TYPE || '', meta: { width: 120 }, cell: ({ getValue }) => getValue() || '—' },
+    {
+      id: 'status', header: 'Status', accessorFn: (t) => (t.IS_ACTIVE ? 'Active' : 'Inactive'), meta: { width: 110 },
+      cell: ({ getValue }) => <span className={`status ${getValue() === 'Active' ? 'status-success' : 'status-neutral'}`}>{getValue()}</span>,
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 56, align: 'right' },
+      cell: ({ row }) => {
+        const t = row.original;
+        return (
+          <RowMenu
+            label={`Actions for ${t.NAME}`}
+            items={[
+              { label: 'Edit tariff', icon: Pencil, onSelect: () => openEdit(t) },
+              { label: t.IS_ACTIVE ? 'Disable' : 'Enable', icon: t.IS_ACTIVE ? Lock : LockOpen, onSelect: () => handleToggle(t.ID), danger: Boolean(t.IS_ACTIVE), separator: true },
+            ]}
+          />
+        );
+      },
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const addButton = (
+    <button type="button" className="btn btn-primary btn-md" onClick={openAdd}>
+      <Plus size={16} aria-hidden="true" /> Add tariff
+    </button>
+  );
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h3>Tariff / Rate Card</h3>
-        <button className="btn btn-primary" onClick={() => { setEditItem(null); setShowModal(true); }}>+ Add Tariff</button>
+    <section className="panel">
+      <PanelHead icon={ReceiptText} title="Tariff and rate card" actions={addButton} />
+      <div className="toolbar">
+        <label className="search-field">
+          <Search size={17} aria-hidden="true" />
+          <span className="sr-only">Search tariffs</span>
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, category or ward type" />
+        </label>
+        <label className="sr-only" htmlFor="tariff-category">Filter by category</label>
+        <select id="tariff-category" className="form-select" style={{ width: 200 }} value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">All categories</option>
+          {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
       </div>
-
-      {categories.map(cat => (
-        <div key={cat} className="card" style={{ padding: 20, marginBottom: 16 }}>
-          <h4 style={{ marginBottom: 12, color: 'var(--primary-color)' }}>{cat}</h4>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                <th style={{ padding: 10 }}>Name</th>
-                <th style={{ padding: 10 }}>Rate (Rs.)</th>
-                <th style={{ padding: 10 }}>GST %</th>
-                <th style={{ padding: 10 }}>Per Unit</th>
-                <th style={{ padding: 10 }}>Ward Type</th>
-                <th style={{ padding: 10 }}>Status</th>
-                <th style={{ padding: 10 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tariffs.filter(t => t.CATEGORY === cat).map(t => (
-                <tr key={t.ID} style={{ borderBottom: '1px solid var(--border)', opacity: t.IS_ACTIVE ? 1 : 0.5 }}>
-                  <td style={{ padding: 10, fontWeight: 500 }}>{t.NAME}</td>
-                  <td style={{ padding: 10 }}>{t.RATE}</td>
-                  <td style={{ padding: 10 }}>{t.GST_RATE}%</td>
-                  <td style={{ padding: 10 }}>{t.PER_UNIT || '-'}</td>
-                  <td style={{ padding: 10 }}>{t.WARD_TYPE || '-'}</td>
-                  <td style={{ padding: 10 }}>
-                    <span style={{ padding: '3px 8px', borderRadius: 12, fontSize: '0.8rem', background: t.IS_ACTIVE ? '#48bb7820' : '#e53e3e20', color: t.IS_ACTIVE ? '#48bb78' : '#e53e3e' }}>
-                      {t.IS_ACTIVE ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td style={{ padding: 10, display: 'flex', gap: 6 }}>
-                    <button className="btn btn-outline" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => { setEditItem(t); setShowModal(true); }}>Edit</button>
-                    <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.8rem' }} onClick={() => handleToggle(t.ID)}>{t.IS_ACTIVE ? 'Disable' : 'Enable'}</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
+      <DataTable
+        columns={columns}
+        data={filtered}
+        loading={loading}
+        getRowId={(t) => String(t.ID)}
+        onRowClick={openEdit}
+        rowLabel={(t) => `Edit ${t.NAME}`}
+        pageSize={50}
+        empty={list.length > 0 ? (
+          <EmptyState icon={Search} title="No tariffs match" description="Try another name, or clear the category filter." />
+        ) : (
+          <EmptyState icon={ReceiptText} title="No tariffs yet" description="Add consultation, lab, bed and procedure rates for billing." action={addButton} />
+        )}
+      />
 
       {showModal && <TariffModal item={editItem} onClose={() => setShowModal(false)} onSaved={fetchTariffs} />}
-    </div>
+    </section>
   );
 }
 
@@ -286,40 +342,56 @@ function TariffModal({ item, onClose, onSaved }) {
       onSaved();
       onClose();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed');
+      toast.error(err.response?.data?.message || 'Failed to save tariff');
     }
   };
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="card" style={{ width: 500, padding: 28 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h3>{item ? 'Edit Tariff' : 'Add Tariff'}</h3>
-          <button style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--text-primary)' }} onClick={onClose}>x</button>
+    <Modal
+      open
+      onOpenChange={(open) => { if (!open) onClose(); }}
+      title={item ? `Edit ${item.NAME}` : 'Add tariff'}
+      description="Rates are used when bills are generated."
+      footer={(
+        <>
+          <button type="button" className="btn btn-ghost btn-md" onClick={onClose}>Cancel</button>
+          <button type="submit" form="tariff-form" className="btn btn-primary btn-md">{item ? 'Save changes' : 'Create tariff'}</button>
+        </>
+      )}
+    >
+      <form id="tariff-form" onSubmit={handleSubmit} style={{ display: 'grid', gap: 14 }}>
+        <div className="form-group">
+          <label className="form-label" htmlFor="tf-category">Category</label>
+          <select id="tf-category" className="form-select" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+            <option>Consultation</option><option>Lab</option><option>Bed Rent</option><option>Procedure</option><option>Package</option>
+          </select>
         </div>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="form-group">
+          <label className="form-label" htmlFor="tf-name">Name</label>
+          <input id="tf-name" className="form-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+        </div>
+        <div className="form-row-2">
           <div className="form-group">
-            <label>Category</label>
-            <select className="form-control" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
-              <option>Consultation</option><option>Lab</option><option>Bed Rent</option><option>Procedure</option><option>Package</option>
-            </select>
+            <label className="form-label" htmlFor="tf-rate">Rate (₹)</label>
+            <input id="tf-rate" type="number" className="form-input" value={form.rate} onChange={(e) => setForm({ ...form, rate: e.target.value })} required />
           </div>
-          <div className="form-group"><label>Name</label><input className="form-control" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <div className="form-group" style={{ flex: 1 }}><label>Rate (Rs.)</label><input type="number" className="form-control" value={form.rate} onChange={e => setForm({ ...form, rate: e.target.value })} required /></div>
-            <div className="form-group" style={{ flex: 1 }}><label>GST %</label><input type="number" step="0.01" className="form-control" value={form.gstRate} onChange={e => setForm({ ...form, gstRate: e.target.value })} /></div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="tf-gst">GST %</label>
+            <input id="tf-gst" type="number" step="0.01" className="form-input" value={form.gstRate} onChange={(e) => setForm({ ...form, gstRate: e.target.value })} />
           </div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <div className="form-group" style={{ flex: 1 }}><label>Per Unit</label><input className="form-control" value={form.perUnit} onChange={e => setForm({ ...form, perUnit: e.target.value })} placeholder="e.g. per visit" /></div>
-            <div className="form-group" style={{ flex: 1 }}><label>Ward Type</label><input className="form-control" value={form.wardType} onChange={e => setForm({ ...form, wardType: e.target.value })} placeholder="General/Private/ICU" /></div>
+        </div>
+        <div className="form-row-2">
+          <div className="form-group">
+            <label className="form-label" htmlFor="tf-unit">Per unit</label>
+            <input id="tf-unit" className="form-input" value={form.perUnit} onChange={(e) => setForm({ ...form, perUnit: e.target.value })} placeholder="e.g. per visit" />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 8 }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary">{item ? 'Update' : 'Create'}</button>
+          <div className="form-group">
+            <label className="form-label" htmlFor="tf-ward">Ward type</label>
+            <input id="tf-ward" className="form-input" value={form.wardType} onChange={(e) => setForm({ ...form, wardType: e.target.value })} placeholder="General, Private or ICU" />
           </div>
-        </form>
-      </div>
-    </div>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -332,42 +404,30 @@ function DepartmentConfigTab() {
 
   useEffect(() => {
     api.get('/admin/departments')
-      .then(res => setDepts(res.data.data || []))
+      .then((res) => setDepts(res.data.data || []))
       .catch(() => toast.error('Failed to load departments'))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="card" style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
+  const columns = useMemo(() => [
+    { id: 'name', header: 'Department', accessorFn: (d) => d.NAME || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    { id: 'code', header: 'Code', accessorFn: (d) => d.CODE || '', meta: { width: 160 }, cell: ({ getValue }) => <span className="mono">{getValue() || '—'}</span> },
+    { id: 'status', header: 'Status', enableSorting: false, meta: { width: 120 }, cell: () => <span className="status status-success">Active</span> },
+  ], []);
 
   return (
-    <div className="card" style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h3>🏥 Department Configuration</h3>
-      </div>
-      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16 }}>Manage hospital departments, assign HODs, and configure departmental settings.</p>
-      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            <th style={{ padding: 10 }}>Department</th>
-            <th style={{ padding: 10 }}>Code</th>
-            <th style={{ padding: 10 }}>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {depts.length === 0 ? (
-            <tr><td colSpan="3" style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)' }}>No departments configured. Add departments via the HMS setup.</td></tr>
-          ) : depts.map((d, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-              <td style={{ padding: 10, fontWeight: 600 }}>{d.NAME}</td>
-              <td style={{ padding: 10, fontFamily: 'monospace', fontSize: '0.85rem' }}>{d.CODE || '—'}</td>
-              <td style={{ padding: 10 }}>
-                <span style={{ padding: '3px 8px', borderRadius: 12, fontSize: '0.8rem', background: '#48bb7820', color: '#48bb78' }}>Active</span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <section className="panel">
+      <PanelHead icon={Layers} title="Departments" />
+      <p className="muted" style={{ padding: '12px 16px 0' }}>Hospital departments available for appointments, billing and reports.</p>
+      <DataTable
+        columns={columns}
+        data={depts}
+        loading={loading}
+        getRowId={(d, i) => String(d.ID ?? i)}
+        initialSorting={[{ id: 'name', desc: false }]}
+        empty={<EmptyState icon={Layers} title="No departments configured" description="Add departments through the HMS setup." />}
+      />
+    </section>
   );
 }
 
@@ -375,7 +435,7 @@ function DepartmentConfigTab() {
 //  TAB 4 — Working Hours
 // ═══════════════════════════════════════════════════════════════
 function WorkingHoursTab() {
-  const [hours, setHours] = useState([
+  const [hours] = useState([
     { day: 'Monday', opd: '9:00 AM – 5:00 PM', emergency: '24/7', shifts: 3 },
     { day: 'Tuesday', opd: '9:00 AM – 5:00 PM', emergency: '24/7', shifts: 3 },
     { day: 'Wednesday', opd: '9:00 AM – 5:00 PM', emergency: '24/7', shifts: 3 },
@@ -386,34 +446,27 @@ function WorkingHoursTab() {
   ]);
 
   return (
-    <div className="card" style={{ padding: 24 }}>
-      <h3 style={{ marginBottom: 16 }}>🕐 Working Hours & Shift Configuration</h3>
-      <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16 }}>Define OPD timings, emergency availability, and daily shift counts.</p>
-      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            <th style={{ padding: 10 }}>Day</th>
-            <th style={{ padding: 10 }}>OPD Hours</th>
-            <th style={{ padding: 10 }}>Emergency</th>
-            <th style={{ padding: 10 }}>Shifts/Day</th>
-          </tr>
-        </thead>
-        <tbody>
-          {hours.map(h => (
-            <tr key={h.day} style={{ borderBottom: '1px solid var(--border)' }}>
-              <td style={{ padding: 10, fontWeight: 600 }}>{h.day}</td>
-              <td style={{ padding: 10 }}>
-                <span style={{ color: h.opd === 'Closed' ? '#ef4444' : 'var(--text-primary)' }}>{h.opd}</span>
-              </td>
-              <td style={{ padding: 10 }}>
-                <span style={{ padding: '3px 8px', borderRadius: 12, fontSize: '0.8rem', background: '#48bb7820', color: '#48bb78' }}>{h.emergency}</span>
-              </td>
-              <td style={{ padding: 10 }}>{h.shifts}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <section className="panel">
+      <PanelHead icon={Clock} title="Working hours and shifts" />
+      <div className="panel-pad">
+        <p className="muted" style={{ marginBottom: 12 }}>OPD timings, emergency availability and the number of shifts each day.</p>
+        <table className="mini-table">
+          <thead>
+            <tr><th>Day</th><th>OPD hours</th><th>Emergency</th><th className="text-right">Shifts per day</th></tr>
+          </thead>
+          <tbody>
+            {hours.map((h) => (
+              <tr key={h.day}>
+                <td className="cell-primary">{h.day}</td>
+                <td>{h.opd === 'Closed' ? <span className="status status-neutral">Closed</span> : <span className="tabular">{h.opd}</span>}</td>
+                <td><span className="status status-success">{h.emergency}</span></td>
+                <td className="text-right tabular">{h.shifts}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -437,68 +490,82 @@ function HolidayCalendarTab() {
 
   const addHoliday = () => {
     if (!form.date || !form.name) return;
-    setHolidays(prev => [...prev, { ...form }].sort((a, b) => a.date.localeCompare(b.date)));
+    setHolidays((prev) => [...prev, { ...form }].sort((a, b) => a.date.localeCompare(b.date)));
     setForm({ date: '', name: '', type: 'National' });
     setShowForm(false);
     toast.success('Holiday added');
   };
 
   return (
-    <div className="card" style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h3>📅 Holiday Calendar</h3>
-        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>+ Add Holiday</button>
+    <section className="panel">
+      <PanelHead
+        icon={CalendarDays}
+        title="Holiday calendar"
+        actions={(
+          <button type="button" className="btn btn-primary btn-md" onClick={() => setShowForm(true)}>
+            <Plus size={16} aria-hidden="true" /> Add holiday
+          </button>
+        )}
+      />
+      <div className="panel-pad">
+        <table className="mini-table">
+          <thead>
+            <tr><th>Date</th><th>Holiday</th><th>Type</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {holidays.map((h, i) => {
+              const isPast = new Date(h.date) < new Date();
+              return (
+                <tr key={i} style={{ color: isPast ? 'var(--text-muted)' : undefined }}>
+                  <td className="mono">{h.date}</td>
+                  <td style={{ fontWeight: 500 }}>{h.name}</td>
+                  <td><span className="tag">{h.type}</span></td>
+                  <td>{isPast ? <span className="status status-neutral">Past</span> : <span className="status status-info">Upcoming</span>}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
-      {showForm && (
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16, padding: 16, background: 'var(--surface-2)', borderRadius: 10 }}>
-          <input type="date" className="form-control" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
-          <input className="form-control" placeholder="Holiday name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={{ flex: 1 }} />
-          <select className="form-control" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
-            <option>National</option><option>Festival</option><option>Hospital</option>
-          </select>
-          <button className="btn btn-primary" onClick={addHoliday}>Add</button>
-        </div>
-      )}
-
-      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            <th style={{ padding: 10 }}>Date</th>
-            <th style={{ padding: 10 }}>Holiday</th>
-            <th style={{ padding: 10 }}>Type</th>
-            <th style={{ padding: 10 }}>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {holidays.map((h, i) => {
-            const isPast = new Date(h.date) < new Date();
-            return (
-              <tr key={i} style={{ borderBottom: '1px solid var(--border)', opacity: isPast ? 0.5 : 1 }}>
-                <td style={{ padding: 10, fontFamily: 'monospace', fontWeight: 600 }}>{h.date}</td>
-                <td style={{ padding: 10, fontWeight: 500 }}>{h.name}</td>
-                <td style={{ padding: 10 }}>
-                  <span style={{
-                    padding: '3px 8px', borderRadius: 12, fontSize: '0.8rem',
-                    background: h.type === 'National' ? '#60a5fa20' : h.type === 'Festival' ? '#f59e0b20' : '#a855f720',
-                    color: h.type === 'National' ? '#60a5fa' : h.type === 'Festival' ? '#f59e0b' : '#a855f7',
-                  }}>{h.type}</span>
-                </td>
-                <td style={{ padding: 10 }}>
-                  {isPast ? <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Past</span> : <span style={{ fontSize: '0.8rem', color: 'var(--green)' }}>Upcoming</span>}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+      <Modal
+        open={showForm}
+        onOpenChange={setShowForm}
+        title="Add holiday"
+        size="sm"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setShowForm(false)}>Cancel</button>
+            <button type="submit" form="holiday-form" className="btn btn-primary btn-md">Add holiday</button>
+          </>
+        )}
+      >
+        <form id="holiday-form" onSubmit={(e) => { e.preventDefault(); addHoliday(); }} style={{ display: 'grid', gap: 14 }}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="hol-date">Date</label>
+            <input id="hol-date" type="date" className="form-input" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="hol-name">Holiday name</label>
+            <input id="hol-name" className="form-input" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="hol-type">Type</label>
+            <select id="hol-type" className="form-select" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              <option>National</option><option>Festival</option><option>Hospital</option>
+            </select>
+          </div>
+        </form>
+      </Modal>
+    </section>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
 //  TAB 6 — Security Logs (Super Admin only)
 // ═══════════════════════════════════════════════════════════════
+const LOG_TONE = { LOGIN_FAILED: 'danger', ACCOUNT_LOCKED: 'warning', LOGIN: 'success' };
+
 function SecurityLogsTab() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -506,53 +573,46 @@ function SecurityLogsTab() {
 
   useEffect(() => {
     api.get('/security/audit-trail?per_page=200')
-      .then(res => setLogs(res.data.data?.logs || []))
+      .then((res) => setLogs(res.data.data?.logs || []))
       .catch(() => toast.error('Failed to load logs'))
       .finally(() => setLoading(false));
   }, []);
 
-  const filtered = failedOnly ? logs.filter(l => l.ACTION === 'LOGIN_FAILED' || l.ACTION === 'ACCOUNT_LOCKED') : logs;
+  const filtered = failedOnly ? logs.filter((l) => l.ACTION === 'LOGIN_FAILED' || l.ACTION === 'ACCOUNT_LOCKED') : logs;
 
-  if (loading) return <div className="card" style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
+  const columns = useMemo(() => [
+    {
+      id: 'time', header: 'Time', accessorFn: (l) => (l.CREATED_AT ? new Date(l.CREATED_AT).getTime() : 0), meta: { width: 190 },
+      cell: ({ row }) => <span className="tabular">{fmtDateTime(row.original.CREATED_AT)}</span>,
+    },
+    { id: 'user', header: 'Username', accessorFn: (l) => l.USERNAME || l.USER_NAME || 'Unknown', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    {
+      id: 'action', header: 'Action', accessorFn: (l) => l.ACTION || '', meta: { width: 180 },
+      cell: ({ getValue }) => <span className={`status status-${LOG_TONE[getValue()] || 'neutral'}`}>{getValue() || '—'}</span>,
+    },
+    { id: 'module', header: 'Module', accessorFn: (l) => l.MODULE || '', meta: { width: 130 }, cell: ({ getValue }) => getValue() || '—' },
+    { id: 'ip', header: 'IP address', accessorFn: (l) => l.IP_ADDRESS || '', meta: { width: 160 }, cell: ({ getValue }) => <span className="mono">{getValue() || '—'}</span> },
+  ], []);
 
   return (
-    <div className="card" style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h3>🔐 Security Logs</h3>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.9rem' }}>
-          <input type="checkbox" checked={failedOnly} onChange={e => setFailedOnly(e.target.checked)} /> Failed logins only
-        </label>
-      </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            <th style={{ padding: 10 }}>Timestamp</th>
-            <th style={{ padding: 10 }}>Username</th>
-            <th style={{ padding: 10 }}>Action</th>
-            <th style={{ padding: 10 }}>Module</th>
-            <th style={{ padding: 10 }}>IP Address</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.length === 0 ? (
-            <tr><td colSpan="5" style={{ padding: 16, textAlign: 'center' }}>No logs found</td></tr>
-          ) : filtered.map((l, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-              <td style={{ padding: 10, fontSize: '0.85rem' }}>{l.CREATED_AT ? new Date(l.CREATED_AT).toLocaleString() : ''}</td>
-              <td style={{ padding: 10 }}>{l.USERNAME || l.USER_NAME || 'Unknown'}</td>
-              <td style={{ padding: 10 }}>
-                <span style={{
-                  padding: '3px 8px', borderRadius: 12, fontSize: '0.8rem',
-                  background: l.ACTION === 'LOGIN_FAILED' ? '#e53e3e20' : l.ACTION === 'ACCOUNT_LOCKED' ? '#d69e2e20' : '#48bb7820',
-                  color: l.ACTION === 'LOGIN_FAILED' ? '#e53e3e' : l.ACTION === 'ACCOUNT_LOCKED' ? '#d69e2e' : '#48bb78',
-                }}>{l.ACTION}</span>
-              </td>
-              <td style={{ padding: 10 }}>{l.MODULE || '-'}</td>
-              <td style={{ padding: 10, fontSize: '0.85rem', fontFamily: 'monospace' }}>{l.IP_ADDRESS || '-'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <section className="panel">
+      <PanelHead
+        icon={ShieldCheck}
+        title="Security logs"
+        actions={(
+          <label className="check-row" style={{ fontSize: '0.86rem' }}>
+            <input type="checkbox" checked={failedOnly} onChange={(e) => setFailedOnly(e.target.checked)} /> Failed sign-ins only
+          </label>
+        )}
+      />
+      <DataTable
+        columns={columns}
+        data={filtered}
+        loading={loading}
+        getRowId={(l, i) => String(l.ID ?? i)}
+        initialSorting={[{ id: 'time', desc: true }]}
+        empty={<EmptyState icon={ShieldCheck} title="No logs found" description={failedOnly ? 'No failed sign-ins or locked accounts were recorded.' : 'Security events appear here.'} />}
+      />
+    </section>
   );
 }

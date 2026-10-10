@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import Glyph from './ui/Glyph';
 
 export default function ReferralTypeModal({ isOpen, onClose, patient = null }) {
   const navigate = useNavigate();
@@ -62,7 +63,7 @@ export default function ReferralTypeModal({ isOpen, onClose, patient = null }) {
               <div style={{
                 width: 48, height: 48, borderRadius: 12, background: 'rgba(59,130,246,0.1)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem'
-              }}>🏥</div>
+              }}><Glyph icon="🏥" /></div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#1e3a8a', marginBottom: 4 }}>Local Referral</div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Refer to another department within HMS Hospital</div>
@@ -84,7 +85,7 @@ export default function ReferralTypeModal({ isOpen, onClose, patient = null }) {
               <div style={{
                 width: 48, height: 48, borderRadius: 12, background: 'rgba(245,158,11,0.1)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem'
-              }}>🚑</div>
+              }}><Glyph icon="🚑" /></div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#92400e', marginBottom: 4 }}>Outside Referral</div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Refer to PGI, AIIMS, or other external hospitals</div>

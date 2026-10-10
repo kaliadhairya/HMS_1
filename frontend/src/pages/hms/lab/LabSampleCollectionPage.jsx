@@ -1,11 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { RefreshCw, Search, TestTubes } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
 import { toast } from 'react-hot-toast';
+
+const STATUS_TONE = { 'Pending Collection': 'warning', 'Received in Lab': 'info', Collected: 'success', 'In Progress': 'info', Completed: 'success' };
 
 export default function LabSampleCollectionPage() {
   const [samples, setSamples] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
   useEffect(() => {
     api.get('/lab/samples')
@@ -34,74 +42,100 @@ export default function LabSampleCollectionPage() {
     }
   };
 
+  const pendingCount = samples.filter((s) => s.status === 'Pending Collection').length;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return samples.filter((s) => {
+      if (statusFilter === 'pending' && s.status !== 'Pending Collection') return false;
+      if (statusFilter === 'logged' && s.status === 'Pending Collection') return false;
+      if (!q) return true;
+      return [s.id, s.barcode, s.patient, s.tests].some((v) => String(v || '').toLowerCase().includes(q));
+    });
+  }, [samples, query, statusFilter]);
+
+  const columns = useMemo(() => [
+    {
+      id: 'id', header: 'Sample', accessorFn: (s) => s.itemId || 0, meta: { width: 150 },
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="mono cell-primary">{row.original.id}</span>
+          <span className="cell-secondary mono">{row.original.barcode}</span>
+        </span>
+      ),
+    },
+    { id: 'patient', header: 'Patient', accessorFn: (s) => s.patient || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    { id: 'tests', header: 'Test', accessorFn: (s) => s.tests || '' },
+    {
+      id: 'type', header: 'Sample details', accessorFn: (s) => s.type || '', meta: { width: 170 },
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span>{row.original.type}</span>
+          <span className="cell-secondary">By {row.original.collector}</span>
+        </span>
+      ),
+    },
+    { id: 'collectedAt', header: 'Collected', accessorFn: (s) => s.collectedAt || '', meta: { width: 110 } },
+    { id: 'storage', header: 'Storage', accessorFn: (s) => s.storage || '', meta: { width: 150 }, cell: ({ getValue }) => <span className="cell-secondary">{getValue()}</span> },
+    {
+      id: 'status', header: 'Status', accessorFn: (s) => s.status || '', meta: { width: 160 },
+      cell: ({ getValue }) => <span className={`status status-${STATUS_TONE[getValue()] || 'success'}`}>{getValue()}</span>,
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 130, align: 'right' },
+      cell: ({ row }) => (row.original.status === 'Pending Collection' ? (
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => handleLogSample(row.original)}>
+          <TestTubes size={14} aria-hidden="true" /> Log sample
+        </button>
+      ) : <span className="cell-secondary">Logged</span>),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h1>🩸 Sample Collection</h1>
-            <p style={{ color: 'var(--text-secondary)' }}>Log sample collection times, assign barcodes, and track storage.</p>
-          </div>
-          <button className="btn btn-outline" onClick={refreshSamples}>↻ Refresh</button>
-        </div>
+      <main className="app-page">
+        <PageHeader
+          title="Sample collection"
+          description="Log sample collection, check barcodes and track storage."
+          meta={!loading && <span className="muted">{pendingCount} waiting for collection</span>}
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={refreshSamples}>
+              <RefreshCw size={16} aria-hidden="true" /> Refresh
+            </button>
+          )}
+        />
 
-        {loading ? <div className="spinner" /> : (
-          <div className="card fade-up-2" style={{ padding: 24 }}>
-            <div className="table-wrapper">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Sample ID</th>
-                    <th>Barcode</th>
-                    <th>Patient</th>
-                    <th>Test Type</th>
-                    <th>Sample Details</th>
-                    <th>Collected At</th>
-                    <th>Storage</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {samples.map(s => (
-                    <tr key={s.id}>
-                      <td><strong>{s.id}</strong></td>
-                      <td>
-                        <span style={{ fontFamily: 'monospace', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: 4 }}>
-                          {s.barcode}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 500 }}>{s.patient}</td>
-                      <td style={{ fontSize: '0.85rem' }}>{s.tests}</td>
-                      <td>
-                        <div style={{ fontWeight: 500 }}>{s.type}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>By: {s.collector}</div>
-                      </td>
-                      <td>{s.collectedAt}</td>
-                      <td style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{s.storage}</td>
-                      <td>
-                        <span className={`badge ${s.status === 'Pending Collection' ? 'badge-amber' : s.status === 'Received in Lab' ? 'badge-blue' : 'badge-green'}`}>
-                          {s.status}
-                        </span>
-                      </td>
-                      <td>
-                        {s.status === 'Pending Collection' ? (
-                          <button className="btn btn-sm btn-primary" onClick={() => handleLogSample(s)}>
-                            Log Sample
-                          </button>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Logged</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <section className="panel">
+          <div className="toolbar">
+            <div className="segmented" role="tablist" aria-label="Filter by collection status">
+              {[['', 'All', samples.length], ['pending', 'Pending', pendingCount], ['logged', 'Logged', samples.length - pendingCount]].map(([key, label, n]) => (
+                <button key={label} type="button" role="tab" aria-selected={statusFilter === key} className={statusFilter === key ? 'is-active' : ''} onClick={() => setStatusFilter(key)}>
+                  {label} <span className="seg-count">{n}</span>
+                </button>
+              ))}
             </div>
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search samples</span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search patient, sample, barcode or test" />
+            </label>
           </div>
-        )}
-      </div>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            loading={loading}
+            getRowId={(s) => String(s.id)}
+            pageSize={50}
+            empty={samples.length > 0 ? (
+              <EmptyState icon={Search} title="No samples match" description="Clear the search or choose another status." />
+            ) : (
+              <EmptyState icon={TestTubes} title="No samples yet" description="Samples appear here once investigations are ordered." />
+            )}
+          />
+        </section>
+      </main>
     </>
   );
 }

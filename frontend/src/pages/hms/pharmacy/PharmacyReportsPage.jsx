@@ -1,6 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import toast from 'react-hot-toast';
+import { FileDown, Hourglass, PackageCheck } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
 
 export default function PharmacyReportsPage() {
   const [report, setReport] = useState(null);
@@ -9,71 +14,76 @@ export default function PharmacyReportsPage() {
   useEffect(() => {
     api.get('/pharmacist_lms/reports')
       .then(res => setReport(res.data.data))
-      .catch(console.error)
+      .catch((err) => {
+        console.error(err);
+        toast.error('Could not load pharmacy reports');
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  const show = (v) => (loading || !report ? '—' : v);
+  const alerts = Number(report?.stockAlerts || 0);
+
+  const columns = useMemo(() => [
+    {
+      id: 'name', header: 'Medicine', accessorFn: (r) => r.name || '',
+      cell: ({ getValue }) => <span className="cell-primary">{getValue() || '—'}</span>,
+    },
+    {
+      id: 'stock', header: 'Current stock', accessorFn: (r) => Number(r.stock || 0), meta: { width: 160, align: 'right' },
+      cell: ({ getValue }) => <span className="tabular">{getValue()} units</span>,
+    },
+    {
+      id: 'lastMoved', header: 'Last dispensed', accessorFn: (r) => r.lastMoved || '', meta: { width: 200 },
+      cell: ({ getValue }) => <span className="status status-warning">{getValue() || 'Never'}</span>,
+    },
+  ], []);
 
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h1>📊 Pharmacy Operations Reports</h1>
-            <p style={{ color: 'var(--text-secondary)' }}>Daily sales, stock valuation, and slow-moving item tracking.</p>
+      <main className="app-page">
+        <PageHeader
+          title="Pharmacy reports"
+          description="Daily sales, stock valuation and medicines that are not moving."
+          actions={(
+            <button type="button" className="btn btn-secondary btn-md" disabled title="PDF export is not available yet">
+              <FileDown size={16} aria-hidden="true" /> Export PDF
+            </button>
+          )}
+        />
+
+        <div className="kpi-strip">
+          <div className="panel kpi"><div className="kpi-label">Daily sales (OTC and IPD)</div><div className="kpi-value">{show(report?.dailySales)}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Items dispensed</div><div className="kpi-value">{show(report?.totalDispensed)}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Estimated inventory value</div><div className="kpi-value">{show(report?.inventoryValue)}</div></div>
+          <div className="panel kpi">
+            <div className="kpi-label">Active stock alerts</div>
+            <div className="kpi-value" style={{ color: alerts > 0 ? 'var(--red)' : undefined }}>{show(report?.stockAlerts)}</div>
           </div>
-          <button className="btn btn-outline">🖨️ Export PDF</button>
         </div>
 
-        {loading ? <div className="spinner" /> : report && (
-          <div className="fade-up-2">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
-              <div className="card" style={{ padding: 20 }}>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Daily Sales (OTC+IPD)</div>
-                <div style={{ fontSize: '2.2rem', fontWeight: 700, color: 'var(--green-mid)', margin: '8px 0' }}>{report.dailySales}</div>
-              </div>
-              <div className="card" style={{ padding: 20 }}>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Items Dispensed</div>
-                <div style={{ fontSize: '2.2rem', fontWeight: 700, color: 'var(--blue)', margin: '8px 0' }}>{report.totalDispensed}</div>
-              </div>
-              <div className="card" style={{ padding: 20 }}>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Est. Inventory Value</div>
-                <div style={{ fontSize: '2.2rem', fontWeight: 700, margin: '8px 0' }}>{report.inventoryValue}</div>
-              </div>
-              <div className="card" style={{ padding: 20, background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                <div style={{ fontSize: '0.85rem', color: '#ef4444', textTransform: 'uppercase' }}>Active Stock Alerts</div>
-                <div style={{ fontSize: '2.2rem', fontWeight: 700, color: '#ef4444', margin: '8px 0' }}>{report.stockAlerts}</div>
-              </div>
-            </div>
-
-            <div className="card fade-up-3" style={{ padding: 24 }}>
-              <h3 style={{ marginBottom: 16 }}>Slow-Moving Inventory Alert</h3>
-              <div className="table-wrapper">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Medicine Name</th>
-                      <th>Current Stock</th>
-                      <th>Last Dispensed</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.slowMoving.map((item, i) => (
-                      <tr key={i}>
-                        <td style={{ fontWeight: 500 }}>{item.name}</td>
-                        <td>{item.stock} units</td>
-                        <td style={{ color: 'var(--amber)' }}>{item.lastMoved}</td>
-                        <td><button className="btn btn-sm btn-outline">Review / Return</button></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+        <section className="panel">
+          <div className="panel-head">
+            <h2 className="panel-title" style={{ margin: 0 }}><Hourglass size={16} aria-hidden="true" /> Slow-moving inventory</h2>
           </div>
-        )}
-      </div>
+          <DataTable
+            columns={columns}
+            data={report?.slowMoving || []}
+            loading={loading}
+            getRowId={(r, i) => String(r.id ?? i)}
+            pageSize={15}
+            initialSorting={[{ id: 'stock', desc: true }]}
+            empty={(
+              <EmptyState
+                icon={PackageCheck}
+                title={report ? 'No slow-moving stock' : 'Report unavailable'}
+                description={report ? 'Every medicine in stock has been dispensed recently.' : 'The report could not be loaded. Refresh the page to try again.'}
+              />
+            )}
+          />
+        </section>
+      </main>
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
+import Glyph from './ui/Glyph';
 
 const inputStyle = {
   width: '100%', padding: '10px 14px', fontSize: '0.9rem', fontWeight: 500,
@@ -177,8 +178,8 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
                 {isPreview ? '✏️ Edit' : '👁️ Preview'}
               </button>
             )}
-            {isPreview && <button className="btn btn-primary" onClick={handlePrint} style={{ fontSize: '0.85rem' }}>🖨️ Print</button>}
-            <button className="btn btn-outline" style={{ border: 'none', background: '#f7fafc', fontSize: '1rem', padding: '6px 12px' }} onClick={onClose}>✕</button>
+            {isPreview && <button className="btn btn-primary" onClick={handlePrint} style={{ fontSize: '0.85rem' }}><Glyph icon="🖨️" /> Print</button>}
+            <button className="btn btn-outline" style={{ border: 'none', background: '#f7fafc', fontSize: '1rem', padding: '6px 12px' }} onClick={onClose}><Glyph icon="✕" /></button>
           </div>
         </div>
 
@@ -197,7 +198,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
 
               {/* ── CLINICAL INFORMATION ── */}
               <div style={sectionCardStyle}>
-                <div style={sectionHeaderStyle}>⚕️ CLINICAL INFORMATION</div>
+                <div style={sectionHeaderStyle}><Glyph icon="⚕️" /> CLINICAL INFORMATION</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div>
                     <label style={labelStyle}>Chief Complaint <span style={{ color: '#e53e3e' }}>*</span></label>
@@ -235,13 +236,13 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
 
               {/* ── COURSE IN HOSPITAL ── */}
               <div style={sectionCardStyle}>
-                <div style={sectionHeaderStyle}>🏥 COURSE IN HOSPITAL</div>
+                <div style={sectionHeaderStyle}><Glyph icon="🏥" /> COURSE IN HOSPITAL</div>
                 <textarea style={textareaStyle} rows="5" value={form.courseInHospital} onChange={e => setForm({ ...form, courseInHospital: e.target.value })} placeholder="Patient was managed with IV antibiotics, nebulisation, supplemental oxygen..." onFocus={e => e.target.style.borderColor = '#c6943e'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
               </div>
 
               {/* ── INVESTIGATIONS ── */}
               <div style={sectionCardStyle}>
-                <div style={sectionHeaderStyle}>🔬 INVESTIGATIONS SUMMARY</div>
+                <div style={sectionHeaderStyle}><Glyph icon="🔬" /> INVESTIGATIONS SUMMARY</div>
                 <DynamicTable
                   columns={[
                     { key: 'test', label: 'Test', placeholder: 'Hb' },
@@ -256,7 +257,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
 
               {/* ── DISCHARGE MEDICATIONS ── */}
               <div style={sectionCardStyle}>
-                <div style={sectionHeaderStyle}>💊 DISCHARGE MEDICATIONS</div>
+                <div style={sectionHeaderStyle}><Glyph icon="💊" /> DISCHARGE MEDICATIONS</div>
                 <DynamicTable
                   columns={[
                     { key: 'drug', label: 'Drug', placeholder: 'Tab. Azithromycin' },
@@ -272,7 +273,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
 
               {/* ── INSTRUCTIONS & FOLLOW-UP ── */}
               <div style={sectionCardStyle}>
-                <div style={sectionHeaderStyle}>📋 DISCHARGE INSTRUCTIONS & FOLLOW-UP</div>
+                <div style={sectionHeaderStyle}><Glyph icon="📋" /> DISCHARGE INSTRUCTIONS & FOLLOW-UP</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div>
                     <label style={labelStyle}>Diet & Lifestyle Advice</label>
@@ -318,7 +319,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
 
               {/* PATIENT DEMOGRAPHICS */}
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px' }}>
-                <div style={{ ...sectionHeaderStyle, margin: '0 0 14px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}>👤 PATIENT DEMOGRAPHICS</div>
+                <div style={{ ...sectionHeaderStyle, margin: '0 0 14px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}><Glyph icon="👤" /> PATIENT DEMOGRAPHICS</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
                   <InfoRow label="Full Name" value={admission.PATIENT_NAME} />
                   <InfoRow label="Age / Sex" value={`${admission.AGE} yrs / ${admission.GENDER}`} />
@@ -333,7 +334,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
 
               {/* ADMISSION & DISCHARGE */}
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px' }}>
-                <div style={{ ...sectionHeaderStyle, margin: '0 0 14px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}>🏥 ADMISSION & DISCHARGE</div>
+                <div style={{ ...sectionHeaderStyle, margin: '0 0 14px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}><Glyph icon="🏥" /> ADMISSION & DISCHARGE</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
                   <InfoRow label="Date of Admission" value={new Date(admission.ADMISSION_DATE).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} />
                   <InfoRow label="Date of Discharge" value={admission.DISCHARGE_DATE ? new Date(admission.DISCHARGE_DATE).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} />
@@ -353,7 +354,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
 
               {/* CLINICAL INFORMATION */}
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px' }}>
-                <div style={{ ...sectionHeaderStyle, margin: '0 0 14px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}>⚕️ CLINICAL INFORMATION</div>
+                <div style={{ ...sectionHeaderStyle, margin: '0 0 14px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}><Glyph icon="⚕️" /> CLINICAL INFORMATION</div>
                 {form.chiefComplaint && (
                   <div style={{ marginBottom: '16px' }}>
                     <div style={previewLabelStyle}>Chief Complaint</div>
@@ -379,7 +380,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
                     <div style={previewLabelStyle}>Allergies</div>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
                       {form.allergies.split(',').map((a, i) => (
-                        <span key={i} style={{ padding: '4px 14px', borderRadius: '16px', border: '1px solid #e53e3e', fontSize: '0.82rem', fontWeight: 600, color: '#e53e3e', background: 'rgba(229,62,62,0.05)' }}>⚠ {a.trim()}</span>
+                        <span key={i} style={{ padding: '4px 14px', borderRadius: '16px', border: '1px solid #e53e3e', fontSize: '0.82rem', fontWeight: 600, color: '#e53e3e', background: 'rgba(229,62,62,0.05)' }}><Glyph icon="⚠" /> {a.trim()}</span>
                       ))}
                     </div>
                   </div>
@@ -401,7 +402,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
               {/* COURSE IN HOSPITAL */}
               {form.courseInHospital && (
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px' }}>
-                  <div style={{ ...sectionHeaderStyle, margin: '0 0 10px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}>🏥 COURSE IN HOSPITAL</div>
+                  <div style={{ ...sectionHeaderStyle, margin: '0 0 10px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}><Glyph icon="🏥" /> COURSE IN HOSPITAL</div>
                   <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{form.courseInHospital}</p>
                 </div>
               )}
@@ -409,7 +410,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
               {/* INVESTIGATIONS */}
               {investigations.length > 0 && investigations.some(i => i.test) && (
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden', marginBottom: '20px' }}>
-                  <div style={{ ...sectionHeaderStyle, margin: 0, borderRadius: 0, borderLeft: 'none', borderBottom: '1px solid #e2e8f0' }}>🔬 INVESTIGATIONS SUMMARY</div>
+                  <div style={{ ...sectionHeaderStyle, margin: 0, borderRadius: 0, borderLeft: 'none', borderBottom: '1px solid #e2e8f0' }}><Glyph icon="🔬" /> INVESTIGATIONS SUMMARY</div>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                     <thead>
                       <tr style={{ background: '#f7fafc' }}>
@@ -436,7 +437,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
               {/* DISCHARGE MEDICATIONS */}
               {medications.length > 0 && medications.some(m => m.drug) && (
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden', marginBottom: '20px' }}>
-                  <div style={{ ...sectionHeaderStyle, margin: 0, borderRadius: 0, borderLeft: 'none', borderBottom: '1px solid #e2e8f0' }}>💊 DISCHARGE MEDICATIONS</div>
+                  <div style={{ ...sectionHeaderStyle, margin: 0, borderRadius: 0, borderLeft: 'none', borderBottom: '1px solid #e2e8f0' }}><Glyph icon="💊" /> DISCHARGE MEDICATIONS</div>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                     <thead>
                       <tr style={{ background: '#f7fafc' }}>
@@ -465,7 +466,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
               {/* DISCHARGE INSTRUCTIONS */}
               {(form.dietLifestyle || form.warningSigns || followUps.some(f => f.department)) && (
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', marginBottom: '20px' }}>
-                  <div style={{ ...sectionHeaderStyle, margin: '0 0 14px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}>📋 DISCHARGE INSTRUCTIONS & FOLLOW-UP</div>
+                  <div style={{ ...sectionHeaderStyle, margin: '0 0 14px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}><Glyph icon="📋" /> DISCHARGE INSTRUCTIONS & FOLLOW-UP</div>
                   {form.dietLifestyle && (
                     <div style={{ marginBottom: '16px' }}>
                       <div style={previewLabelStyle}>Diet & Lifestyle</div>
@@ -512,7 +513,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
 
               {/* SIGNATURES */}
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px' }}>
-                <div style={{ ...sectionHeaderStyle, margin: '0 0 14px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}>✍️ SIGNATURES</div>
+                <div style={{ ...sectionHeaderStyle, margin: '0 0 14px', padding: '0 0 8px', background: 'none', borderLeft: 'none', borderBottom: '1px solid #e2e8f0', borderRadius: 0 }}><Glyph icon="✍️" /> SIGNATURES</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px', marginTop: '40px' }}>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ borderTop: '1.5px solid #2d3748', paddingTop: '10px' }}>

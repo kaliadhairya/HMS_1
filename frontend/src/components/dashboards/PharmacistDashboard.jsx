@@ -89,7 +89,7 @@ export default function PharmacistDashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 24, marginBottom: 28 }}>
         {/* Fast Moving Items */}
         <div className="card fade-up-3" style={{ padding: 24 }}>
-          <h3 style={{ marginBottom: 16 }}>Fast-Moving Medicines (30d)</h3>
+          <h2 style={{ marginBottom: 16, fontSize: '1.05rem' }}>Fast-Moving Medicines (30d)</h2>
           <table style={{ width: '100%', textAlign: 'left' }}>
             <thead>
               <tr>
@@ -112,7 +112,7 @@ export default function PharmacistDashboard() {
 
         {/* IPD vs OPD Dispense Ratio */}
         <div className="card fade-up-3" style={{ padding: 24 }}>
-          <h3 style={{ marginBottom: 24 }}>Dispense Ratio: IPD vs OPD</h3>
+          <h2 style={{ marginBottom: 24, fontSize: '1.05rem' }}>Dispense Ratio: IPD vs OPD</h2>
           {data?.dispenseRatio && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -136,7 +136,7 @@ export default function PharmacistDashboard() {
 
       {/* Quick Links */}
       <div className="fade-up-3" style={{ marginBottom: 28 }}>
-        <h3 style={{ marginBottom: 16 }}>Quick Launch</h3>
+        <h2 style={{ marginBottom: 16, fontSize: '1.05rem' }}>Quick Launch</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16 }}>
           {quickLinks.map(link => (
             <div

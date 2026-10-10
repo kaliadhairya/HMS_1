@@ -1,10 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Droplet, FlaskConical, BarChart3 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
-import api from '../api/axios'; // Or standard axios
-import axios from 'axios';
+import PageHeader from '../components/ui/PageHeader';
+import api from '../api/axios';
 
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+};
+
+// Laboratory home: live workload for lab technicians.
 export default function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -12,82 +21,76 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Attempt to load from LIMS API
     api.get('/lab/dashboard')
-      .then(res => setStats(res.data.data))
-      .catch(err => console.error(err))
+      .then((res) => setStats(res.data.data))
+      .catch(() => setStats(null))
       .finally(() => setLoading(false));
   }, []);
 
-  const greeting = () => {
-    const h = new Date().getHours();
-    if (h < 12) return 'Good morning';
-    if (h < 17) return 'Good afternoon';
-    return 'Good evening';
-  };
+  const byDept = useMemo(() => {
+    const rows = Object.entries(stats?.testTypes || {}).map(([name, count]) => ({ name, value: Number(count) || 0 }));
+    const max = Math.max(1, ...rows.map((r) => r.value));
+    return rows.sort((a, b) => b.value - a.value).map((r) => ({ ...r, pct: (r.value / max) * 100 }));
+  }, [stats]);
+
+  const kpi = (v) => (loading ? '—' : (v ?? 0));
+  const critical = Number(stats?.criticalAlerts || 0);
+  const delayed = Number(stats?.collectionDelayed || 0);
 
   return (
     <>
       <Navbar />
-      <div className="page-wrapper">
-        <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
-          <div>
-            <h1 style={{ fontSize: 'clamp(1.4rem,3vw,1.9rem)' }}>{greeting()}, <span style={{ color: 'var(--green-mid)' }}>{user?.name?.split(' ')[0]}</span></h1>
-            <p style={{ color: 'var(--text-secondary)', marginTop: 4 }}>Laboratory Information Management System (LIMS) Dashboard</p>
-          </div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <button className="btn" onClick={() => navigate('/lab/samples')}>🩸 Collect Sample</button>
-            <button className="btn btn-primary" onClick={() => navigate('/lab/queue')}>🧪 View Test Queue</button>
-          </div>
-        </div>
+      <main className="app-page">
+        <PageHeader
+          title={`${greeting()}, ${user?.name?.split(' ')[0] || 'there'}`}
+          description="Laboratory workload for today."
+          actions={(
+            <>
+              <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/lab/samples')}>
+                <Droplet size={16} aria-hidden="true" /> Collect sample
+              </button>
+              <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/lab/queue')}>
+                <FlaskConical size={16} aria-hidden="true" /> Open test queue
+              </button>
+            </>
+          )}
+        />
 
-        {/* ── LIVE WORKLOAD KPI ────────────────────────────── */}
-        {loading ? <div className="spinner" /> : stats && (
-          <div className="fade-up-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 32 }}>
-            <div className="card" style={{ padding: 20, borderLeft: '4px solid #f59e0b' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Pending Queue</div>
-              <div style={{ fontSize: '2.4rem', fontWeight: 700, color: '#f59e0b', lineHeight: 1 }}>{stats.pendingQueue}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 8 }}>Tests awaiting results</div>
-            </div>
-            
-            <div className="card" style={{ padding: 20, borderLeft: '4px solid #10b981' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Completed Today</div>
-              <div style={{ fontSize: '2.4rem', fontWeight: 700, color: '#10b981', lineHeight: 1 }}>{stats.completedToday}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 8 }}>Verified reports generated</div>
-            </div>
-
-            <div className="card" style={{ padding: 20, borderLeft: '4px solid #ef4444' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Critical Alerts</div>
-              <div style={{ fontSize: '2.4rem', fontWeight: 700, color: '#ef4444', lineHeight: 1 }}>{stats.criticalAlerts}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: 8 }}>Values outside reference range</div>
-            </div>
-
-            <div className="card" style={{ padding: 20, borderLeft: '4px solid #3b82f6' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Collection Window</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#3b82f6', lineHeight: 1, marginTop: 4 }}>8:00 - 11:30 AM</div>
-              <div style={{ fontSize: '0.8rem', color: '#ef4444', marginTop: 12 }}>{stats.collectionDelayed} samples delayed</div>
-            </div>
+        {critical > 0 && (
+          <div className="alert-strip alert-danger" role="status">
+            <strong>{critical} critical {critical === 1 ? 'value' : 'values'}</strong> outside the reference range. Review and notify the doctor.
           </div>
         )}
 
-        {/* ── TODAY'S WORKLOAD BY DEPARTMENT ────────────────── */}
-        <div className="card fade-up-3" style={{ padding: 24 }}>
-          <h3 style={{ marginBottom: 20 }}>Workload Distribution (Today)</h3>
-          {stats?.testTypes && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
-              {Object.entries(stats.testTypes).map(([dept, count]) => (
-                <div key={dept} style={{ padding: 16, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'capitalize', marginBottom: 4 }}>{dept}</div>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{count}</div>
-                  <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.1)', marginTop: 8, borderRadius: 2 }}>
-                    <div style={{ height: '100%', width: `${Math.min(count, 100)}%`, background: 'var(--green-mid)', borderRadius: 2 }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="kpi-strip">
+          <div className="panel kpi"><div className="kpi-label">Awaiting results</div><div className="kpi-value">{kpi(stats?.pendingQueue)}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Reports completed today</div><div className="kpi-value">{kpi(stats?.completedToday)}</div></div>
+          <div className="panel kpi">
+            <div className="kpi-label">Critical values</div>
+            <div className="kpi-value" style={{ color: critical ? 'var(--red)' : undefined }}>{kpi(stats?.criticalAlerts)}</div>
+          </div>
+          <div className="panel kpi">
+            <div className="kpi-label">Samples delayed</div>
+            <div className="kpi-value" style={{ color: delayed ? 'var(--amber)' : undefined }}>{kpi(stats?.collectionDelayed)}</div>
+          </div>
         </div>
-      </div>
+
+        <section className="panel panel-pad">
+          <h2 className="panel-title"><BarChart3 size={16} aria-hidden="true" /> Tests by department today</h2>
+          {loading ? <p className="muted">Loading…</p> : byDept.length === 0 ? (
+            <p className="muted">No tests recorded today.</p>
+          ) : (
+            <ul className="bar-list">
+              {byDept.map((d) => (
+                <li key={d.name}>
+                  <div className="bar-row"><span style={{ textTransform: 'capitalize' }}>{d.name}</span><strong className="tabular">{d.value}</strong></div>
+                  <div className="bar-track"><div className="bar-fill" style={{ width: `${d.pct}%` }} /></div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>
     </>
   );
 }

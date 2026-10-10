@@ -1,4 +1,5 @@
 import React from 'react';
+import Glyph from './ui/Glyph';
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -57,7 +58,7 @@ export default class ErrorBoundary extends React.Component {
               fontSize: '2rem',
               margin: '0 auto 20px'
             }}>
-              ⚠️
+              <Glyph icon="⚠️" />
             </div>
 
             <h2 style={{

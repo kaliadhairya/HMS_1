@@ -691,7 +691,15 @@ router.get('/reports', protect, async (req, res) => {
     );
     const monthlyPatients = monthlyPatientIds.size;
     const prescriptionsWritten = prescriptions.filter((prescription) => isThisMonth(prescription.createdAt ?? prescription.createdat)).length;
-    const referralsMade = labOrders.filter((order) => isThisMonth(order.order_date)).length;
+    const labOrdersThisMonth = labOrders.filter((order) => isThisMonth(order.order_date)).length;
+    // Referrals live in HMS_REFERRALS keyed by the doctor record; they were previously reported as the lab order count.
+    const [referralRows] = doctorRecord
+      ? await sequelize.query(
+        'SELECT COUNT(*) AS "N" FROM HMS_REFERRALS WHERE FROM_DOCTOR_ID = :doctorId AND CREATED_AT >= :since',
+        { replacements: { doctorId: doctorRecord.id, since: monthStart } }
+      ).catch(() => [[{ N: 0 }]])
+      : [[{ N: 0 }]];
+    const referralsMade = Number(referralRows?.[0]?.N || 0);
     const ipdAdmissions = admissions.filter((admission) => isThisMonth(admission.admissionDate)).length;
     const avgConsultationTime = doctorRecord?.slot_duration_mins
       ? `${doctorRecord.slot_duration_mins} mins`
@@ -705,7 +713,7 @@ router.get('/reports', protect, async (req, res) => {
         prescriptions_written: prescriptionsWritten,
         referrals_made: referralsMade,
         ipd_admissions: ipdAdmissions,
-        lab_orders: referralsMade,
+        lab_orders: labOrdersThisMonth,
       }
     });
   } catch (err) {

@@ -76,6 +76,7 @@ router.get('/queue', async (req, res) => {
       priority: order.priority || 'Routine',
       status: order.status,
       time: order.order_date ? new Date(order.order_date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '---',
+      ordered_at: order.order_date || null,
     }));
 
     res.json({ status: 'success', data: queue, source: 'live' });

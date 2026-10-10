@@ -1,12 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import api from '../../../api/axios';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import { FlaskConical, RefreshCw, Search } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+
+const PRIORITY_RANK = { STAT: 0, Urgent: 1, Routine: 2 };
+const PRIORITY_TONE = { STAT: 'danger', Urgent: 'warning', Routine: 'success' };
 
 export default function InvestigationQueuePage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -37,71 +45,87 @@ export default function InvestigationQueuePage() {
     }
   };
 
-  if (loading) return <><Navbar /><div className="page-wrapper"><h3>Loading Queue...</h3></div></>;
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return orders;
+    return orders.filter((o) => [o.patient, o.uhid, o.doctor, ...(o.tests || [])].some((v) => String(v || '').toLowerCase().includes(q)));
+  }, [orders, query]);
+
+  const columns = useMemo(() => [
+    {
+      id: 'patient', header: 'Patient', accessorFn: (o) => o.patient || '',
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="cell-primary">{row.original.patient}</span>
+          <span className="cell-secondary mono">{row.original.uhid}</span>
+        </span>
+      ),
+    },
+    { id: 'time', header: 'Ordered at', accessorFn: (o) => o.time || '', meta: { width: 110 }, cell: ({ getValue }) => <span className="tabular">{getValue()}</span> },
+    {
+      id: 'tests', header: 'Tests ordered', accessorFn: (o) => (o.tests || []).join(', '), enableSorting: false,
+      cell: ({ row }) => {
+        const tests = row.original.tests || [];
+        if (tests.length === 0) return <span className="cell-secondary">No tests listed</span>;
+        return (
+          <span className="chip-row" style={{ gap: 4 }}>
+            {tests.slice(0, 4).map((t, idx) => <span key={idx} className="tag">{t}</span>)}
+            {tests.length > 4 && <span className="tag tag-more">+{tests.length - 4}</span>}
+          </span>
+        );
+      },
+    },
+    { id: 'doctor', header: 'Doctor', accessorFn: (o) => o.doctor || '', meta: { width: 170 }, cell: ({ getValue }) => `Dr. ${getValue()}` },
+    {
+      id: 'priority', header: 'Urgency', accessorFn: (o) => PRIORITY_RANK[o.priority] ?? 2, meta: { width: 110 },
+      cell: ({ row }) => <span className={`status status-${PRIORITY_TONE[row.original.priority] || 'neutral'}`}>{row.original.priority}</span>,
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 140, align: 'right' },
+      cell: ({ row }) => (
+        <button type="button" className="btn btn-primary btn-sm" onClick={() => processTests(row.original)}>Process tests</button>
+      ),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
 
   return (
     <>
-    <Navbar />
-    <div className="page-wrapper fade-up">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2>Doctor Ordered Investigations</h2>
-          <p>Lab tests ordered during doctor consultations</p>
-        </div>
-        <button className="btn btn-outline" onClick={fetchQueue}>↻ Refresh</button>
-      </div>
+      <Navbar />
+      <main className="app-page">
+        <PageHeader
+          title="Ordered investigations"
+          description="Lab tests ordered during doctor consultations. Refreshes every 30 seconds."
+          meta={!loading && <span className="muted">{orders.length} pending {orders.length === 1 ? 'order' : 'orders'}</span>}
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={fetchQueue}>
+              <RefreshCw size={16} aria-hidden="true" /> Refresh
+            </button>
+          )}
+        />
 
-      <div className="card">
-        {orders.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: 10 }}>🧪</div>
-            <p>No pending laboratory orders at this time.</p>
+        <section className="panel">
+          <div className="toolbar">
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search investigations</span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search patient, UHID, test or doctor" />
+            </label>
           </div>
-        ) : (
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Patient</th>
-                  <th>Order Time</th>
-                  <th>Tests Ordered</th>
-                  <th>Doctor</th>
-                  <th>Urgency</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map(o => (
-                  <tr key={o.id}>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{o.patient}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>UHID: {o.uhid}</div>
-                    </td>
-                    <td>{o.time}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                        {o.tests?.map((item, idx) => (
-                          <span key={idx} className="badge badge-blue">{item}</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>Dr. {o.doctor}</td>
-                    <td>
-                      <span className={`badge ${o.priority === 'STAT' ? 'badge-red' : o.priority === 'Urgent' ? 'badge-amber' : 'badge-green'}`}>
-                        {o.priority}
-                      </span>
-                    </td>
-                    <td>
-                      <button className="btn btn-sm btn-primary" onClick={() => processTests(o)}>Process Tests</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            loading={loading}
+            getRowId={(o) => String(o.id)}
+            pageSize={50}
+            empty={orders.length > 0 ? (
+              <EmptyState icon={Search} title="No orders match" description="Try another patient, test or doctor." />
+            ) : (
+              <EmptyState icon={FlaskConical} title="No pending orders" description="Investigations ordered during consultations appear here." />
+            )}
+          />
+        </section>
+      </main>
     </>
   );
 }

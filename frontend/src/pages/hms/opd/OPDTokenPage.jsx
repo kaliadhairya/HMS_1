@@ -1,19 +1,28 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { Search, X, Ticket, Printer, RefreshCw, UserPlus, UserRound, Stethoscope, ListOrdered, CircleAlert } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+
+const QUEUE_TONE = { Waiting: 'warning', Consulting: 'info', Completed: 'success' };
+const TOKEN_CLASS = { Waiting: 'token-waiting', Consulting: 'token-consulting' };
+
+// /patients/hms/search returns raw SQL aliases (patient_name, phone_number); map them to the
+// field names the rest of this page uses.
+const normalizePatient = (p) => ({ ...p, name: p.name || p.patient_name, phoneNumber: p.phoneNumber || p.phone_number });
 
 export default function OPDTokenPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const initialPatient = location.state?.patient;
-  
+
   const [patient, setPatient] = useState(initialPatient || null);
   const [doctors, setDoctors] = useState([]);
   const [queue, setQueue] = useState([]);
-  
+
   const [selectedDoctor, setSelectedDoctor] = useState('');
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [generatedToken, setGeneratedToken] = useState(null);
@@ -36,14 +45,14 @@ export default function OPDTokenPage() {
       const docs = res.data?.data || [];
       setDoctors(docs);
       if (docs.length === 1) setSelectedDoctor(String(docs[0].id));
-    } catch(err) { console.error(err); }
+    } catch (err) { console.error(err); }
   };
 
   const fetchQueue = async (docId) => {
     try {
       const res = await api.get(`/hms/tokens/queue?doctor_id=${docId}`);
       setQueue(res.data.data);
-    } catch(err) { console.error(err); }
+    } catch (err) { console.error(err); }
   };
 
   // Debounced patient search
@@ -53,7 +62,7 @@ export default function OPDTokenPage() {
         try {
           const res = await api.get(`/patients/hms/search?q=${searchQuery}`);
           setSearchResults(res.data.data);
-        } catch(err) {} 
+        } catch (err) { /* ignore search errors */ }
       } else {
         setSearchResults([]);
       }
@@ -72,7 +81,7 @@ export default function OPDTokenPage() {
       const payload = {
         patient_id: patient.id,
         department_id: 1,
-        doctor_id: selectedDoctor
+        doctor_id: selectedDoctor,
       };
       const res = await api.post('/hms/tokens', payload);
       setGeneratedToken(res.data.data);
@@ -84,143 +93,170 @@ export default function OPDTokenPage() {
     }
   };
 
+  const results = (Array.isArray(searchResults) ? searchResults : []).map(normalizePatient);
+  const queueList = Array.isArray(queue) ? queue : [];
+
   return (
     <>
-    <Navbar />
-    <div className="page-wrapper fade-up">
-      <div className="page-header">
-        <h1>Generate OPD Token</h1>
-        <p>Walk-in patient registration for today's consultation queue.</p>
-      </div>
-
-      <div className="form-grid-2">
-        {/* Token Generation Form */}
-        <div>
-          <div className="card" style={{ marginBottom: 20 }}>
-            <div className="card-section-title">1. Patient Selection</div>
-            
-            {patient ? (
-              <div style={{ background: 'var(--surface-3)', padding: 16, borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <h3 style={{ margin: '0 0 4px 0' }}>{patient.name}</h3>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                    {patient.uhid || 'Legacy'} • {patient.age} Yrs • {patient.gender}
-                  </p>
-                </div>
-                {!initialPatient && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => setPatient(null)}>✕ Change</button>
-                )}
-              </div>
-            ) : (
-              <div style={{ position: 'relative' }}>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  placeholder="Search Name or UHID..." 
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                />
-                {searchResults.length > 0 && (
-                  <div className="card" style={{ position: 'absolute', top: 45, left: 0, right: 0, zIndex: 10, padding: 0, maxHeight: 200, overflowY: 'auto' }}>
-                    {searchResults.map(p => (
-                      <div key={p.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => { setPatient(p); setSearchQuery(''); }}>
-                        <strong>{p.name}</strong> ({p.uhid || 'Old Record'}) - {p.age}/{p.phoneNumber || '-'}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {!searchQuery && (
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 8 }}>
-                    Can't find patient? <a href="#" onClick={(e) => { e.preventDefault(); navigate('/hms/patients/new'); }} style={{ color: 'var(--blue)' }}>Register New</a>
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="card">
-            <div className="card-section-title">2. Select Doctor</div>
-            {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
-
-            <div className="form-group" style={{ marginBottom: 24 }}>
-              <label className="form-label">Doctor</label>
-              <select className="form-select" value={selectedDoctor} onChange={e => setSelectedDoctor(e.target.value)}>
-                <option value="">-- Choose --</option>
-                {doctors.map(d => <option key={d.id} value={d.id}>Dr. {d.user?.name || d.name} ({d.speciality || 'General'})</option>)}
-              </select>
-            </div>
-
-            <button 
-              className="btn btn-primary btn-lg btn-full" 
-              onClick={handleGenerate}
-              disabled={loading || !patient || !selectedDoctor}
-            >
-              {loading ? <span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> : '🎫 Generate Token'}
+      <Navbar />
+      <main className="app-page">
+        <PageHeader
+          title="OPD token"
+          description="Issue a walk-in token for today's consultation queue."
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/hms/patients/new')}>
+              <UserPlus size={16} aria-hidden="true" /> Register patient
             </button>
+          )}
+        />
 
-            {generatedToken && (
-              <div className="fade-up opd-token-print" style={{ marginTop: 24, textAlign: 'center', background: 'var(--green-light)', border: '1px solid var(--green)', padding: 24, borderRadius: 12 }}>
-                <p style={{ margin: 0, color: 'var(--green)', fontWeight: 'bold' }}>Success!</p>
-                <div style={{ fontSize: '3.5rem', fontWeight: 800, color: 'var(--green)', lineHeight: 1 }}>
-                  {String(generatedToken.token_number).padStart(3, '0')}
+        <div className="split-2" style={{ alignItems: 'start' }}>
+          <div className="stack">
+            <section className="panel">
+              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><UserRound size={16} aria-hidden="true" /> 1. Patient</h2></div>
+              <div className="panel-pad">
+                {patient ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: 12, borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                    <span className="cell-person">
+                      <span className="cell-avatar" aria-hidden="true">{(patient.name || '?').charAt(0).toUpperCase()}</span>
+                      <span className="cell-stack">
+                        <span className="cell-primary">{patient.name}</span>
+                        <span className="cell-secondary"><span className="mono">{patient.uhid || 'Legacy'}</span> · {patient.age} y · {patient.gender}</span>
+                      </span>
+                    </span>
+                    {!initialPatient && (
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPatient(null)}>
+                        <X size={14} aria-hidden="true" /> Change
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="stack-sm">
+                    <label className="search-field">
+                      <Search size={17} aria-hidden="true" />
+                      <span className="sr-only">Search patient by name or UHID</span>
+                      <input
+                        type="text"
+                        placeholder="Search name or UHID"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                    </label>
+                    {results.length > 0 && (
+                      <ul className="list-rows" aria-label="Matching patients" style={{ maxHeight: 240, overflowY: 'auto' }}>
+                        {results.map((p) => (
+                          <li key={p.id}>
+                            <button type="button" className="list-row" onClick={() => { setPatient(p); setSearchQuery(''); }}>
+                              <span className="cell-stack">
+                                <span className="cell-primary">{p.name}</span>
+                                <span className="cell-secondary"><span className="mono">{p.uhid || 'Old record'}</span> · {p.age} y · {p.phoneNumber || '—'}</span>
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {!searchQuery && (
+                      <p className="form-hint" style={{ marginTop: 0 }}>
+                        Type at least 3 characters. Patient not found?{' '}
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate('/hms/patients/new')}>Register new patient</button>
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><Stethoscope size={16} aria-hidden="true" /> 2. Doctor</h2></div>
+              <div className="panel-pad stack">
+                {error && (
+                  <div className="alert-strip alert-danger" role="alert" style={{ marginBottom: 0 }}>
+                    <CircleAlert size={16} aria-hidden="true" /> {error}
+                  </div>
+                )}
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="token-doctor">Doctor</label>
+                  <select id="token-doctor" className="form-select" value={selectedDoctor} onChange={(e) => setSelectedDoctor(e.target.value)}>
+                    <option value="">Choose a doctor</option>
+                    {doctors.map((d) => <option key={d.id} value={d.id}>Dr. {d.user?.name || d.name} ({d.speciality || 'General'})</option>)}
+                  </select>
                 </div>
-                <p style={{ margin: '8px 0 0 0', color: 'var(--text-secondary)' }}>Token Number</p>
-                <button className="btn btn-outline btn-sm" style={{ marginTop: 16 }} onClick={() => window.print()}>🖨️ Print</button>
-              </div>
-            )}
-          </div>
-        </div>
 
-        {/* Live Queue Display */}
-        <div>
-          <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div className="card-section-title" style={{ margin: 0 }}>Live OPD Queue</div>
-              <button className="btn btn-ghost btn-sm" onClick={() => selectedDoctor && fetchQueue(selectedDoctor)}>↻ Refresh</button>
-            </div>
-            
-            {!selectedDoctor ? (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', textAlign: 'center' }}>
-                Select a doctor to view<br/>their live queue for today.
+                <button
+                  type="button"
+                  className="btn btn-primary btn-md"
+                  style={{ justifyContent: 'center' }}
+                  onClick={handleGenerate}
+                  disabled={loading || !patient || !selectedDoctor}
+                >
+                  <Ticket size={16} aria-hidden="true" /> {loading ? 'Generating…' : 'Generate token'}
+                </button>
+
+                {generatedToken && (
+                  <div
+                    className="opd-token-print"
+                    role="status"
+                    style={{ textAlign: 'center', background: 'var(--success-light)', border: '1px solid var(--success-border)', padding: 20, borderRadius: 10 }}
+                  >
+                    <p style={{ margin: 0, color: 'var(--success)', fontWeight: 600, fontSize: '0.88rem' }}>Token generated</p>
+                    <div className="tabular" style={{ fontSize: '3rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.1, marginTop: 6 }}>
+                      {String(generatedToken.token_number).padStart(3, '0')}
+                    </div>
+                    <p style={{ margin: '4px 0 0', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Token number</p>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: 14 }} onClick={() => window.print()}>
+                      <Printer size={14} aria-hidden="true" /> Print
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : queue.length === 0 ? (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                Queue is empty today.
+            </section>
+          </div>
+
+          <section className="panel">
+            <div className="panel-head">
+              <h2 className="panel-title" style={{ margin: 0 }}><ListOrdered size={16} aria-hidden="true" /> Live OPD queue</h2>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => selectedDoctor && fetchQueue(selectedDoctor)} disabled={!selectedDoctor}>
+                <RefreshCw size={14} aria-hidden="true" /> Refresh
+              </button>
+            </div>
+
+            {!selectedDoctor ? (
+              <div className="empty-state">
+                <span className="empty-state-icon"><Stethoscope size={22} strokeWidth={1.75} aria-hidden="true" /></span>
+                <h3>No doctor selected</h3>
+                <p>Select a doctor to see their queue for today.</p>
+              </div>
+            ) : queueList.length === 0 ? (
+              <div className="empty-state">
+                <span className="empty-state-icon"><ListOrdered size={22} strokeWidth={1.75} aria-hidden="true" /></span>
+                <h3>Queue is empty</h3>
+                <p>No tokens have been issued for this doctor today.</p>
               </div>
             ) : (
-              <div style={{ flex: 1, overflowY: 'auto' }}>
-                {queue.map((t) => (
-                  <div key={t.id} style={{ 
-                    display: 'flex', alignItems: 'center', padding: '12px 16px', 
-                    borderBottom: '1px solid var(--border)', gap: 16,
-                    background: t.status === 'Consulting' ? 'var(--blue-light)' : 'transparent'
-                  }}>
-                    <div style={{ 
-                      width: 44, height: 44, borderRadius: '50%', 
-                      background: t.status === 'Waiting' ? 'var(--surface-3)' : (t.status === 'Consulting' ? 'var(--blue)' : 'var(--green)'),
-                      color: t.status === 'Waiting' ? 'var(--text-primary)' : '#fff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 'bold', fontSize: '1.2rem'
-                    }}>
+              <ul style={{ listStyle: 'none', maxHeight: 640, overflowY: 'auto' }} aria-label="Today's queue">
+                {queueList.map((t) => (
+                  <li
+                    key={t.id}
+                    className="queue-item"
+                    style={{ background: t.status === 'Consulting' ? 'var(--primary-light)' : undefined }}
+                  >
+                    <span className={`token-circle ${TOKEN_CLASS[t.status] || 'token-completed'} tabular`} aria-label={`Token ${t.token_number}`}>
                       {t.token_number}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600 }}>{t.patient?.name}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t.patient?.uhid} • {t.patient?.age} Yrs</div>
-                    </div>
-                    <div>
-                      <span className={`badge badge-${t.status === 'Waiting' ? 'amber' : (t.status === 'Consulting' ? 'blue' : 'green')}`}>
-                        {t.status}
-                      </span>
-                    </div>
-                  </div>
+                    </span>
+                    <span className="cell-stack" style={{ flex: 1 }}>
+                      <span className="cell-primary">{t.patient?.name}</span>
+                      <span className="cell-secondary"><span className="mono">{t.patient?.uhid}</span> · {t.patient?.age} y</span>
+                    </span>
+                    <span className={`status status-${QUEUE_TONE[t.status] || 'success'}`}>{t.status}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
-          </div>
+          </section>
         </div>
-      </div>
-    </div>
+      </main>
     </>
   );
 }

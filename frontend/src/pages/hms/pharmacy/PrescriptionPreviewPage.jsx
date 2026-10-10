@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
+import { Download, FileText, Printer, X } from 'lucide-react';
 import api from '../../../api/axios';
+import EmptyState from '../../../components/ui/EmptyState';
 import { openAuthenticatedBlob } from '../../../utils/authenticatedDownload';
 
 export default function PrescriptionPreviewPage() {
@@ -34,8 +36,16 @@ export default function PrescriptionPreviewPage() {
     }
   };
 
-  if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading Prescription...</div>;
-  if (!prescription) return <div style={{ padding: 40, textAlign: 'center' }}>Prescription data not found.</div>;
+  if (loading) return <main className="app-page"><p className="muted">Loading prescription…</p></main>;
+  if (!prescription) {
+    return (
+      <main className="app-page">
+        <section className="panel">
+          <EmptyState icon={FileText} title="Prescription not found" description="It may have been removed, or the link is incomplete." />
+        </section>
+      </main>
+    );
+  }
 
   const patient = prescription.patient || {};
   const doctor = prescription.doctor || {};
@@ -47,24 +57,34 @@ export default function PrescriptionPreviewPage() {
   };
 
   return (
-    <div className="prescription-preview-page" style={{ background: '#fff', minHeight: '100vh', padding: '40px 0', fontFamily: 'Arial, sans-serif', color: '#000' }}>
-      
-      <div className="prescription-preview-sheet" style={{ maxWidth: 800, margin: '0 auto', border: '1px solid #ccc', padding: 40, position: 'relative', color: '#000', background: '#fff' }}>
-        
-        {/* Buttons (Hidden on Print) */}
-        <div className="no-print" style={{ position: 'absolute', top: -50, right: 0, display: 'flex', gap: 10 }}>
-          <button className="btn btn-primary" onClick={handlePrint}>Print Prescription</button>
+    <main>
+    {/* Screen toolbar (hidden on print). Kept outside the sheet so the sheet's forced print colours do not apply to it. */}
+    <div className="no-print" style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <span className="toolbar-caption"><FileText size={16} aria-hidden="true" /> Prescription preview</span>
+        <div className="inline-actions">
+          <button type="button" className="btn btn-ghost btn-md" onClick={() => window.close()}>
+            <X size={16} aria-hidden="true" /> Close
+          </button>
           {prescription?.id && (
             <button
               type="button"
-              className="btn btn-outline"
+              className="btn btn-secondary btn-md"
               onClick={() => openAuthenticatedBlob(`/pdf/prescription/${prescription.id}`, { download: true, filename: `prescription-${prescription.id}.pdf` })}
             >
-              Download PDF
+              <Download size={16} aria-hidden="true" /> Download PDF
             </button>
           )}
-          <button className="btn btn-outline" onClick={() => window.close()}>Close</button>
+          <button type="button" className="btn btn-primary btn-md" onClick={handlePrint}>
+            <Printer size={16} aria-hidden="true" /> Print prescription
+          </button>
         </div>
+      </div>
+    </div>
+
+    <div className="prescription-preview-page" style={{ background: '#fff', minHeight: '100vh', padding: '40px 0', fontFamily: 'Arial, sans-serif', color: '#000' }}>
+      
+      <div className="prescription-preview-sheet" style={{ maxWidth: 800, margin: '0 auto', border: '1px solid #ccc', padding: 40, position: 'relative', color: '#000', background: '#fff' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0f4c81', paddingBottom: 20, marginBottom: 20 }}>
@@ -218,5 +238,6 @@ export default function PrescriptionPreviewPage() {
         }
       `}</style>
     </div>
+    </main>
   );
 }

@@ -1,13 +1,14 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
+import Glyph from './ui/Glyph';
 
 const quickActions = [
   { label: 'Register New Patient', icon: '📝', to: '/hms/patients/new', color: '#10b981' },
   { label: 'Generate OPD Token', icon: '🎫', to: '/hms/opd/token', color: '#f59e0b', disabled: true },
   { label: 'Book Appointment', icon: '📅', to: '/hms/appointments/book', color: '#3b82f6' },
-  { label: 'Collect Payment', icon: '💳', to: '/receptionist/billing', color: '#8b5cf6' },
-  { label: 'New IPD Admission', icon: '🛏️', to: '/receptionist/ipd', color: '#ec4899' },
-  { label: 'Issue Visitor Pass', icon: '👥', to: '/receptionist/visitors', color: '#06b6d4' },
+  { label: 'Collect Payment', icon: '💳', to: '/receptionist/billing', color: 'var(--primary)' },
+  { label: 'New IPD Admission', icon: '🛏️', to: '/receptionist/ipd', color: 'var(--primary)' },
+  { label: 'Issue Visitor Pass', icon: '👥', to: '/receptionist/visitors', color: 'var(--primary)' },
 ];
 
 export default function ReceptionistQuickActionsDock() {
@@ -109,7 +110,7 @@ export default function ReceptionistQuickActionsDock() {
                 width: 22, height: 22, borderRadius: 6,
                 background: 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(5,150,105,0.2))',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem',
-              }}>⚡</span>
+              }}><Glyph icon="⚡" /></span>
               Quick Actions
             </div>
 
@@ -137,7 +138,7 @@ export default function ReceptionistQuickActionsDock() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '1rem', flexShrink: 0,
                   filter: a.disabled ? 'grayscale(1)' : 'none',
-                }}>{a.icon}</span>
+                }}><Glyph icon={a.icon} /></span>
                 {a.label}
               </button>
             ))}
@@ -161,8 +162,8 @@ export default function ReceptionistQuickActionsDock() {
           style={{
             width: 56, height: 56, borderRadius: '50%',
             background: isOpen
-              ? 'linear-gradient(135deg, #ef4444, #f97316)'
-              : 'linear-gradient(135deg, #10b981, #059669)',
+              ? 'var(--red)'
+              : 'var(--primary)',
             border: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer',

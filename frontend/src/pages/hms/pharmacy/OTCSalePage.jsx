@@ -1,7 +1,18 @@
 import { useState } from 'react';
-import api from '../../../api/axios';
 import toast from 'react-hot-toast';
+import { Plus, Printer, ShoppingCart, Trash2 } from 'lucide-react';
+import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+
+const suggestionBox = {
+  position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, zIndex: 10, maxHeight: 220, overflowY: 'auto',
+  background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)',
+};
+const suggestionItem = {
+  display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 0, borderBottom: '1px solid var(--border)',
+  background: 'transparent', color: 'var(--text-primary)', font: 'inherit', cursor: 'pointer',
+};
 
 export default function OTCSalePage() {
   const [patientId, setPatientId] = useState('');
@@ -15,7 +26,7 @@ export default function OTCSalePage() {
   const handleItemChange = async (index, field, value) => {
     const newItems = [...items];
     newItems[index][field] = value;
-    
+
     // Autocomplete for medicines
     if (field === 'medicineSearch') {
       if (value.length > 2) {
@@ -38,13 +49,19 @@ export default function OTCSalePage() {
     newItems[index].medicineSearch = medicine.genericName;
     newItems[index].gstRate = medicine.gstRate || 0;
     newItems[index].suggestions = [];
-    
+
     // Fetch batches for this medicine
     try {
-      const res = await api.get(`/pharmacy/stock-ledger/${medicine.id}`);
-      // Use existing stock endpoint or derive batches:
-      const resStock = await api.get('/pharmacy/stock');
-      const medBatches = resStock.data.data.filter(b => b.ID === medicine.id && b.QUANTITY > 0);
+      await api.get(`/pharmacy/stock-ledger/${medicine.id}`);
+      // In-stock batches for this medicine, earliest expiry first. (The consolidated /pharmacy/stock list has one
+      // row per medicine with no batch ID or batch quantity, so batches could never be found there.)
+      const batchRes = await api.get(`/pharmacy/medicines/${medicine.id}/batches`);
+      const medBatches = (batchRes.data.data || []).map(b => ({
+        BATCH_ID: b.id ?? b.ID,
+        BATCH_NUMBER: b.batchNumber ?? b.BATCH_NUMBER,
+        QUANTITY: Number(b.quantity ?? b.QUANTITY ?? 0),
+        MRP: b.mrp ?? b.MRP,
+      })).filter(b => b.QUANTITY > 0);
       newItems[index].batches = medBatches;
       if (medBatches.length > 0) {
         newItems[index].batchId = medBatches[0].BATCH_ID;
@@ -53,7 +70,7 @@ export default function OTCSalePage() {
     } catch (e) {
       console.error(e);
     }
-    
+
     setItems(newItems);
   };
 
@@ -88,7 +105,7 @@ export default function OTCSalePage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const validItems = items.filter(i => i.medicineId && i.batchId && i.quantity > 0);
-    if (validItems.length === 0) return toast.error('Please add at least one valid item with a batch selected.');
+    if (validItems.length === 0) return toast.error('Add at least one medicine with a batch selected');
 
     try {
       setLoading(true);
@@ -103,8 +120,8 @@ export default function OTCSalePage() {
       };
 
       const res = await api.post('/pharmacy/otc', payload);
-      toast.success('Sale completed successfully.');
-      
+      toast.success('Sale completed');
+
       // Receipt data
       setReceiptData({
         billNumber: res.data.billNumber,
@@ -118,12 +135,12 @@ export default function OTCSalePage() {
           amount: calcRowAmount(i).total
         }))
       });
-      
+
       // Reset
       setItems([{ id: Date.now(), medicineId: '', batchId: '', quantity: 1, mrp: 0, gstRate: 0, suggestions: [], batches: [] }]);
       setPatientId('');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'OTC sale failed.');
+      toast.error(err.response?.data?.message || 'The sale could not be completed');
       console.error(err);
     } finally {
       setLoading(false);
@@ -134,13 +151,13 @@ export default function OTCSalePage() {
     return (
       <>
       <Navbar />
-      <div className="page-wrapper fade-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <main className="app-page" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <div className="card print-area" style={{ padding: 40, width: '100%', maxWidth: 600, marginTop: 20 }}>
           <div style={{ textAlign: 'center', marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
             <h2>HMS Hospital Pharmacy</h2>
             <div>Cash Receipt</div>
           </div>
-          
+
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
             <div>
               <div><strong>Bill No:</strong> {receiptData.billNumber}</div>
@@ -150,7 +167,7 @@ export default function OTCSalePage() {
               <div><strong>Payment:</strong> {receiptData.paymentMode}</div>
             </div>
           </div>
-          
+
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 24 }}>
             <thead>
               <tr style={{ background: 'var(--surface-3)' }}>
@@ -171,20 +188,24 @@ export default function OTCSalePage() {
               ))}
             </tbody>
           </table>
-          
+
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.2rem', fontWeight: 700 }}>
             <span>Total Amount:</span>
             <span>₹{Number(receiptData.totalAmount || 0).toFixed(2)}</span>
           </div>
-          
+
           <div style={{ textAlign: 'center', marginTop: 40, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
             Thank you for visiting!
           </div>
         </div>
 
-        <div style={{ marginTop: 24, display: 'flex', gap: 16 }} className="no-print">
-          <button className="btn btn-outline" onClick={() => setReceiptData(null)}>New Sale</button>
-          <button className="btn btn-primary" onClick={() => window.print()}>🖨️ Print Receipt</button>
+        <div style={{ marginTop: 24, display: 'flex', gap: 8 }} className="no-print">
+          <button type="button" className="btn btn-secondary btn-md" onClick={() => setReceiptData(null)}>
+            <Plus size={16} aria-hidden="true" /> New sale
+          </button>
+          <button type="button" className="btn btn-primary btn-md" onClick={() => window.print()}>
+            <Printer size={16} aria-hidden="true" /> Print receipt
+          </button>
         </div>
 
         <style>{`
@@ -195,7 +216,7 @@ export default function OTCSalePage() {
             .no-print { display: none !important; }
           }
         `}</style>
-      </div>
+      </main>
       </>
     );
   }
@@ -203,40 +224,49 @@ export default function OTCSalePage() {
   return (
     <>
     <Navbar />
-    <div className="page-wrapper fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2>OTC Sale (Over The Counter)</h2>
-      </div>
+    <main className="app-page">
+      <PageHeader
+        title="Counter sale"
+        description="Sell medicines over the counter. Stock is taken from the batch you choose, earliest expiry first."
+      />
 
-      <div className="card" style={{ padding: 24 }}>
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 24 }}>
-            <div>
-              <label style={{ display: 'block', marginBottom: 6 }}>Patient ID (Optional)</label>
-              <input type="text" placeholder="Enter UHID if registered patient" value={patientId} onChange={e => setPatientId(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: 6, border: '1px solid var(--border)' }} />
+      <form onSubmit={handleSubmit} className="stack">
+        <section className="panel panel-pad">
+          <h2 className="panel-title">Customer and payment</h2>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="otc-patient">Patient UHID (optional)</label>
+              <input id="otc-patient" className="form-input" type="text" placeholder="e.g. HOSP-2026-000123" value={patientId} onChange={e => setPatientId(e.target.value)} aria-describedby="otc-patient-hint" />
+              <p className="form-hint" id="otc-patient-hint">Leave blank for walk-in customers.</p>
             </div>
-            <div>
-              <label style={{ display: 'block', marginBottom: 6 }}>Payment Mode</label>
-              <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: 6, border: '1px solid var(--border)' }}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="otc-payment">Payment mode</label>
+              <select id="otc-payment" className="form-select" value={paymentMode} onChange={e => setPaymentMode(e.target.value)}>
                 <option value="Cash">Cash</option>
                 <option value="Card">Card</option>
                 <option value="UPI">UPI</option>
               </select>
             </div>
           </div>
+        </section>
 
-          <hr style={{ border: 0, borderTop: '1px solid var(--border)', margin: '24px 0' }} />
-          
-          <div style={{ overflowX: 'auto' }}>
-            <table className="table" style={{ width: '100%', fontSize: '0.9rem', marginBottom: 16 }}>
+        <section className="panel">
+          <div className="panel-head">
+            <h2 className="panel-title" style={{ margin: 0 }}><ShoppingCart size={16} aria-hidden="true" /> Items</h2>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={addItem}>
+              <Plus size={14} aria-hidden="true" /> Add medicine
+            </button>
+          </div>
+          <div style={{ overflowX: 'auto', padding: '4px 8px 8px' }}>
+            <table className="mini-table">
               <thead>
                 <tr>
-                  <th>Medicine Name</th>
-                  <th>Batch (Stock)</th>
-                  <th>Qty</th>
-                  <th>Rate (₹)</th>
-                  <th>Amount (₹)</th>
-                  <th></th>
+                  <th>Medicine</th>
+                  <th>Batch (in stock)</th>
+                  <th style={{ width: 100 }}>Qty</th>
+                  <th className="text-right" style={{ width: 110 }}>Rate (₹)</th>
+                  <th className="text-right" style={{ width: 120 }}>Amount (₹)</th>
+                  <th style={{ width: 48 }}><span className="sr-only">Remove</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -244,75 +274,74 @@ export default function OTCSalePage() {
                   const r = calcRowAmount(item);
                   return (
                     <tr key={item.id}>
-                      <td style={{ position: 'relative', width: 300 }}>
-                        <input 
-                          type="text" 
+                      <td style={{ position: 'relative', minWidth: 240 }}>
+                        <label className="sr-only" htmlFor={`otc-med-${item.id}`}>Medicine for row {index + 1}</label>
+                        <input
+                          id={`otc-med-${item.id}`}
+                          className="form-input"
+                          type="text"
                           required
-                          placeholder="Search medicine..."
+                          autoComplete="off"
+                          placeholder="Search medicine"
                           value={item.medicineSearch || ''}
                           onChange={e => handleItemChange(index, 'medicineSearch', e.target.value)}
-                          style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid var(--border)' }}
                         />
                         {item.suggestions?.length > 0 && (
-                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--surface-1)', border: '1px solid var(--border)', zIndex: 10, borderRadius: 4, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto' }}>
+                          <div style={suggestionBox} role="listbox" aria-label="Matching medicines">
                             {item.suggestions.map(med => (
-                              <div 
-                                key={med.id} 
-                                style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border)' }}
-                                onClick={() => selectMedicine(index, med)}
-                              >
+                              <button key={med.id} type="button" role="option" aria-selected="false" style={suggestionItem} onClick={() => selectMedicine(index, med)}>
                                 {med.genericName}
-                              </div>
+                              </button>
                             ))}
                           </div>
                         )}
                       </td>
-                      <td>
-                        <select required disabled={!item.batches || item.batches.length === 0} value={item.batchId} onChange={e => {
+                      <td style={{ minWidth: 200 }}>
+                        <label className="sr-only" htmlFor={`otc-batch-${item.id}`}>Batch for row {index + 1}</label>
+                        <select id={`otc-batch-${item.id}`} className="form-select" required disabled={!item.batches || item.batches.length === 0} value={item.batchId} onChange={e => {
                           const batch = item.batches.find(b => b.BATCH_ID.toString() === e.target.value);
                           handleItemChange(index, 'batchId', batch?.BATCH_ID || '');
                           if (batch) handleItemChange(index, 'mrp', batch.MRP);
-                        }} style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid var(--border)' }}>
-                          <option value="">Select Batch</option>
+                        }}>
+                          <option value="">{item.medicineId && item.batches?.length === 0 ? 'No stock' : 'Select batch'}</option>
                           {item.batches?.map(b => (
                             <option key={b.BATCH_ID} value={b.BATCH_ID}>
-                              {b.BATCH_NUMBER} (Qty: {b.QUANTITY})
+                              {b.BATCH_NUMBER} (qty {b.QUANTITY})
                             </option>
                           ))}
                         </select>
                       </td>
                       <td>
-                        <input required type="number" min="1" value={item.quantity} onChange={e => handleItemChange(index, 'quantity', e.target.value)} style={{ width: 80, padding: '8px', borderRadius: 4, border: '1px solid var(--border)' }} />
+                        <label className="sr-only" htmlFor={`otc-qty-${item.id}`}>Quantity for row {index + 1}</label>
+                        <input id={`otc-qty-${item.id}`} className="form-input" required type="number" min="1" value={item.quantity} onChange={e => handleItemChange(index, 'quantity', e.target.value)} />
                       </td>
-                      <td>
-                        <input type="number" readOnly value={item.mrp} style={{ width: 80, padding: '8px', borderRadius: 4, border: 'none', background: 'transparent' }} />
-                      </td>
-                      <td style={{ fontWeight: 600 }}>
-                        {r.total.toFixed(2)}
-                      </td>
-                      <td>
-                        <button type="button" className="btn btn-outline" style={{ padding: '4px 8px', color: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => removeItem(index)}>×</button>
+                      <td className="text-right tabular">{(parseFloat(item.mrp) || 0).toFixed(2)}</td>
+                      <td className="text-right tabular" style={{ fontWeight: 600 }}>{r.total.toFixed(2)}</td>
+                      <td className="text-right">
+                        <button type="button" className="icon-btn" aria-label={`Remove row ${index + 1}`} onClick={() => removeItem(index)} disabled={items.length === 1}>
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
                       </td>
                     </tr>
-                  )
+                  );
                 })}
               </tbody>
             </table>
           </div>
-
-          <button type="button" className="btn btn-outline" onClick={addItem} style={{ marginBottom: 24 }}>+ Add Medicine</button>
-
-          <div style={{ background: 'var(--surface-2)', padding: 20, borderRadius: 8, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 32 }}>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, marginTop: 4 }}>Total Record: ₹{totals.grandTotal.toFixed(2)}</div>
-            </div>
-            <button type="submit" className="btn btn-primary" style={{ padding: '12px 24px', fontSize: '1.1rem' }} disabled={loading}>
-              {loading ? 'Processing...' : 'Complete Sale'}
-            </button>
+          <div className="toolbar toolbar-sub" style={{ borderBottom: 0, borderTop: '1px solid var(--border)', borderRadius: '0 0 10px 10px' }}>
+            <span className="muted">
+              Subtotal <span className="tabular">₹{totals.subtotal.toFixed(2)}</span> · GST <span className="tabular">₹{totals.gst.toFixed(2)}</span>
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 16 }}>
+              <span style={{ fontSize: '1.15rem', fontWeight: 650 }}>Total <span className="tabular">₹{totals.grandTotal.toFixed(2)}</span></span>
+              <button type="submit" className="btn btn-primary btn-md" disabled={loading}>
+                {loading ? 'Completing…' : 'Complete sale'}
+              </button>
+            </span>
           </div>
-        </form>
-      </div>
-    </div>
+        </section>
+      </form>
+    </main>
     </>
   );
 }

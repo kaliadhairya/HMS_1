@@ -1,11 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { CircleCheck, FlaskConical, Plus, Search } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+
+const PRIORITY_RANK = { STAT: 0, Urgent: 1, Routine: 2 };
+const PRIORITY_TONE = { STAT: 'danger', Urgent: 'danger', Routine: 'info' };
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
 export default function DoctorLabsPage() {
   const [labs, setLabs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('pending');
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     api.get('/doctor/labs')
@@ -18,119 +27,89 @@ export default function DoctorLabsPage() {
   const completed = labs.filter(l => l.status === 'Completed');
   const displayed = tab === 'pending' ? pending : completed;
 
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return displayed;
+    return displayed.filter((l) => [l.id, l.patient, l.test].some((v) => String(v || '').toLowerCase().includes(q)));
+  }, [displayed, query]);
+
+  const columns = useMemo(() => [
+    {
+      id: 'date', header: 'Date', accessorFn: (l) => (l.date ? new Date(l.date).getTime() : 0), meta: { width: 130 },
+      cell: ({ row }) => <span className="tabular cell-secondary">{fmtDate(row.original.date)}</span>,
+    },
+    { id: 'id', header: 'Request', accessorFn: (l) => l.id || '', meta: { width: 120 }, cell: ({ getValue }) => <span className="mono">{getValue()}</span> },
+    { id: 'patient', header: 'Patient', accessorFn: (l) => l.patient || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    { id: 'test', header: 'Investigation', accessorFn: (l) => l.test || '' },
+    {
+      id: 'priority', header: 'Priority', accessorFn: (l) => PRIORITY_RANK[l.priority] ?? 2, meta: { width: 110 },
+      cell: ({ row }) => <span className={`status status-${PRIORITY_TONE[row.original.priority] || 'info'}`}>{row.original.priority}</span>,
+    },
+    {
+      id: 'status', header: 'Status', accessorFn: (l) => l.status || '', meta: { width: 150 },
+      cell: ({ getValue }) => <span className={`status ${getValue() === 'Completed' ? 'status-success' : 'status-warning'}`}>{getValue()}</span>,
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Report</span>, enableSorting: false, meta: { width: 140, align: 'right' },
+      cell: ({ row }) => (row.original.status === 'Completed' ? (
+        <button type="button" className="btn btn-secondary btn-sm">Review report</button>
+      ) : <span className="cell-secondary">Awaiting result</span>),
+    },
+  ], []);
+
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        {/* Header */}
-        <div className="hms-page-header">
-          <div>
-            <h1>
-              <span className="header-icon">🔬</span>
-              Lab & Diagnostics
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Raise investigation requests and review completed test reports.
-            </p>
-          </div>
-          <div className="header-actions">
-            <button className="btn btn-primary">+ Request Investigation</button>
-          </div>
-        </div>
-
-        {/* Summary */}
-        <div className="hms-anim-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 24 }}>
-          <div className="hms-stat-card" style={{ padding: 18, borderLeft: '4px solid #3b82f6', cursor: 'default' }}>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.08em', marginBottom: 4 }}>Total Orders</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800 }}>{labs.length}</div>
-          </div>
-          <div className="hms-stat-card" style={{ padding: 18, borderLeft: '4px solid #f59e0b', cursor: 'default' }}>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.08em', marginBottom: 4 }}>Pending Review</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f59e0b' }}>{pending.length}</div>
-          </div>
-          <div className="hms-stat-card" style={{ padding: 18, borderLeft: '4px solid #10b981', cursor: 'default' }}>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.08em', marginBottom: 4 }}>Completed</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#10b981' }}>{completed.length}</div>
-          </div>
-        </div>
-
-        {/* Tabs + Table */}
-        <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)' }}>
-            <button className={`hms-tab-btn ${tab === 'pending' ? 'active' : ''}`}
-              onClick={() => setTab('pending')} style={{ borderRadius: 0, borderRight: '1px solid var(--border)' }}>
-              ⏳ Pending Reviews ({pending.length})
+      <main className="app-page">
+        <PageHeader
+          title="Lab and diagnostics"
+          description="Raise investigation requests and review completed test reports."
+          actions={(
+            <button type="button" className="btn btn-primary btn-md">
+              <Plus size={16} aria-hidden="true" /> Request investigation
             </button>
-            <button className={`hms-tab-btn ${tab === 'completed' ? 'active' : ''}`}
-              onClick={() => setTab('completed')} style={{ borderRadius: 0 }}>
-              ✅ Completed ({completed.length})
-            </button>
-          </div>
-
-          {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60, gap: 12 }}>
-              <div className="spinner" style={{ width: 28, height: 28 }} />
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading lab data...</span>
-            </div>
-          ) : displayed.length === 0 ? (
-            <div className="hms-empty-state" style={{ margin: 24, border: 'none' }}>
-              <span className="empty-icon">{tab === 'pending' ? '🎉' : '📭'}</span>
-              <h3>{tab === 'pending' ? 'All Caught Up!' : 'No Completed Tests'}</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                {tab === 'pending' ? 'No pending lab reports to review.' : 'No completed investigations yet.'}
-              </p>
-            </div>
-          ) : (
-            <div className="table-wrapper hms-table-anim" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th><th>Request ID</th><th>Patient</th>
-                    <th>Investigation</th><th>Priority</th><th>Status</th><th>Report</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayed.map((lab, idx) => (
-                    <tr key={idx}>
-                      <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{new Date(lab.date).toLocaleDateString()}</td>
-                      <td><strong style={{ color: 'var(--blue)' }}>{lab.id}</strong></td>
-                      <td style={{ fontWeight: 600 }}>{lab.patient}</td>
-                      <td>{lab.test}</td>
-                      <td>
-                        <span style={{
-                          padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700,
-                          background: lab.priority === 'Urgent' ? 'rgba(239,68,68,0.1)' : 'rgba(59,130,246,0.1)',
-                          color: lab.priority === 'Urgent' ? '#ef4444' : '#2563eb',
-                          border: `1px solid ${lab.priority === 'Urgent' ? 'rgba(239,68,68,0.2)' : 'rgba(59,130,246,0.2)'}`,
-                        }}>
-                          {lab.priority === 'Urgent' ? '🔴' : '🔵'} {lab.priority}
-                        </span>
-                      </td>
-                      <td>
-                        <span style={{
-                          padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700,
-                          background: lab.status === 'Completed' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-                          color: lab.status === 'Completed' ? '#059669' : '#d97706',
-                          border: `1px solid ${lab.status === 'Completed' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`,
-                        }}>
-                          {lab.status}
-                        </span>
-                      </td>
-                      <td>
-                        {lab.status === 'Completed' ? (
-                          <button className="btn btn-sm btn-primary">Review Report</button>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem', fontStyle: 'italic' }}>Awaiting...</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           )}
+        />
+
+        <div className="kpi-strip">
+          <div className="panel kpi"><div className="kpi-label">Total orders</div><div className="kpi-value">{labs.length}</div></div>
+          <div className="panel kpi">
+            <div className="kpi-label">Pending review</div>
+            <div className="kpi-value" style={{ color: pending.length > 0 ? 'var(--amber)' : undefined }}>{pending.length}</div>
+          </div>
+          <div className="panel kpi"><div className="kpi-label">Completed</div><div className="kpi-value">{completed.length}</div></div>
         </div>
-      </div>
+
+        <section className="panel">
+          <div className="toolbar">
+            <div className="segmented" role="tablist" aria-label="Filter by status">
+              {[['pending', 'Pending', pending.length], ['completed', 'Completed', completed.length]].map(([key, label, n]) => (
+                <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? 'is-active' : ''} onClick={() => setTab(key)}>
+                  {label} <span className="seg-count">{n}</span>
+                </button>
+              ))}
+            </div>
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search investigations</span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search patient, request or test" />
+            </label>
+          </div>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            loading={loading}
+            getRowId={(l) => String(l.id)}
+            empty={displayed.length > 0 ? (
+              <EmptyState icon={Search} title="No investigations match" description="Try another patient name, request number or test." />
+            ) : tab === 'pending' ? (
+              <EmptyState icon={CircleCheck} title="No pending reports" description="Investigations you order appear here until results are ready." />
+            ) : (
+              <EmptyState icon={FlaskConical} title="No completed investigations yet" description="Completed reports appear here once the lab enters results." />
+            )}
+          />
+        </section>
+      </main>
     </>
   );
 }

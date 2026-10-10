@@ -131,7 +131,7 @@ export default function NurseDashboard() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: '1.2rem' }}><Glyph icon="📋" /></span>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>My Ward Patients</h3>
+                <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>My Ward Patients</h2>
                 <span className="badge badge-teal" style={{ padding: '4px 10px' }}>{admissions.length} Active</span>
               </div>
               <button onClick={() => navigate('/ipd/patients')} className="btn btn-ghost" style={{ fontSize: '0.85rem', fontWeight: 600 }}>View Patient Directory →</button>
@@ -152,7 +152,7 @@ export default function NurseDashboard() {
                   {admissions.length === 0 ? (
                     <tr><td colSpan="5" style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>
                       <div style={{ fontSize: '3rem', marginBottom: 16 }}><Glyph icon="🏥" /></div>
-                      <h4 style={{ margin: 0 }}>No active patients in your ward</h4>
+                      <h3 style={{ margin: 0, fontSize: '1rem' }}>No active patients in your ward</h3>
                       <p style={{ fontSize: '0.85rem', marginTop: 8 }}>Use the IPD Requests to admit new patients.</p>
                     </td></tr>
                   ) : (
@@ -205,7 +205,7 @@ export default function NurseDashboard() {
           <div className="card hms-anim-4" style={{ padding: 0, overflow: 'hidden', borderRadius: 16, border: '1px solid var(--border)' }}>
             <div style={{ padding: '16px 20px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: '1rem' }}><Glyph icon="⚡" /></span>
-              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800 }}>Quick Navigation</h3>
+              <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800 }}>Quick Navigation</h2>
             </div>
             <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
@@ -234,7 +234,7 @@ export default function NurseDashboard() {
           <div className="card hms-anim-5" style={{ flex: 1, padding: 0, overflow: 'hidden', borderRadius: 16, display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '16px 20px', background: 'rgba(239,68,68,0.03)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontSize: '1rem' }}><Glyph icon="💓" /></span>
-              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#ef4444' }}>Vitals Due (This Shift)</h3>
+              <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#ef4444' }}>Vitals Due (This Shift)</h2>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
               {admissions.length === 0 ? (

@@ -1,11 +1,27 @@
 import { useState, useEffect } from 'react';
+import { Save } from 'lucide-react';
 import Navbar from '../../components/Navbar';
+import PageHeader from '../../components/ui/PageHeader';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
 const ROLES = ['super_admin', 'admin', 'doctor', 'lab_technician', 'receptionist', 'pharmacist', 'nurse'];
 const MODULES = ['auth', 'dashboard', 'patient', 'consultation', 'lab', 'radiology', 'pharmacy', 'ipd', 'billing', 'reports', 'admin'];
 const ACTIONS = ['can_read', 'can_write', 'can_edit', 'can_delete'];
+
+const ROLE_LABEL = {
+  super_admin: 'Super admin', admin: 'Administrator', doctor: 'Doctor', lab_technician: 'Lab technician',
+  receptionist: 'Receptionist', pharmacist: 'Pharmacist', nurse: 'Nurse',
+};
+const MODULE_LABEL = {
+  auth: 'Auth', dashboard: 'Dashboard', patient: 'Patient', consultation: 'Consultation', lab: 'Lab', radiology: 'Radiology',
+  pharmacy: 'Pharmacy', ipd: 'IPD', billing: 'Billing', reports: 'Reports', admin: 'Admin',
+};
+const ACTION_SHORT = { can_read: 'R', can_write: 'W', can_edit: 'E', can_delete: 'D' };
+const ACTION_NAME = { can_read: 'Read', can_write: 'Write', can_edit: 'Edit', can_delete: 'Delete' };
+
+const groupStart = { borderLeft: '1px solid var(--border-dark)' };
+const stickyCell = { position: 'sticky', left: 0, zIndex: 1, background: 'var(--surface)', minWidth: 140 };
 
 export default function PermissionMatrixPage() {
   const [matrix, setMatrix] = useState({});
@@ -14,16 +30,16 @@ export default function PermissionMatrixPage() {
 
   useEffect(() => {
     api.get('/users/permissions')
-      .then(res => {
+      .then((res) => {
         const data = res.data.data || [];
         const m = {};
-        ROLES.forEach(r => {
+        ROLES.forEach((r) => {
           m[r] = {};
-          MODULES.forEach(mod => {
+          MODULES.forEach((mod) => {
             m[r][mod] = { can_read: 'N', can_write: 'N', can_edit: 'N', can_delete: 'N' };
           });
         });
-        data.forEach(p => {
+        data.forEach((p) => {
           if (m[p.role] && m[p.role][p.module]) {
             m[p.role][p.module] = {
               can_read: p.can_read || 'N',
@@ -35,12 +51,15 @@ export default function PermissionMatrixPage() {
         });
         setMatrix(m);
       })
-      .catch(err => console.error(err))
+      .catch((err) => {
+        console.error(err);
+        toast.error('Could not load permissions');
+      })
       .finally(() => setLoading(false));
   }, []);
 
   const toggle = (role, mod, action) => {
-    setMatrix(prev => ({
+    setMatrix((prev) => ({
       ...prev,
       [role]: {
         ...prev[role],
@@ -56,8 +75,8 @@ export default function PermissionMatrixPage() {
     setSaving(true);
     try {
       const permissions = [];
-      ROLES.forEach(role => {
-        MODULES.forEach(mod => {
+      ROLES.forEach((role) => {
+        MODULES.forEach((mod) => {
           permissions.push({
             role, module: mod,
             ...matrix[role][mod],
@@ -65,107 +84,96 @@ export default function PermissionMatrixPage() {
         });
       });
       await api.put('/users/permissions', { permissions });
-      toast.success('Permissions saved successfully!');
+      toast.success('Permissions saved');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save');
+      toast.error(err.response?.data?.message || 'Failed to save permissions');
     } finally {
       setSaving(false);
     }
   };
 
-  const actionLabels = { can_read: 'R', can_write: 'W', can_edit: 'E', can_delete: 'D' };
-
-  if (loading) {
-    return (
-      <>
-        <Navbar />
-        <div className="page-wrapper" style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-          <div className="spinner" style={{ width: 36, height: 36 }} />
-        </div>
-      </>
-    );
-  }
-
   return (
     <>
       <Navbar />
-      <div className="page-wrapper">
-        <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <div>
-            <h1>🔐 Permission Matrix</h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: 4 }}>
-              Configure module access for each role. R=Read, W=Write, E=Edit, D=Delete
-            </p>
-          </div>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : '💾 Save Changes'}
-          </button>
-        </div>
+      <main className="app-page">
+        <PageHeader
+          title="Permission matrix"
+          description="Module access for each role. Changes apply after you save."
+          meta={(
+            <span className="muted">
+              {ACTIONS.map((a, i) => <span key={a}>{i > 0 ? ' · ' : ''}<strong>{ACTION_SHORT[a]}</strong> {ACTION_NAME[a]}</span>)}
+            </span>
+          )}
+          actions={(
+            <button type="button" className="btn btn-primary btn-md" onClick={handleSave} disabled={saving || loading}>
+              <Save size={16} aria-hidden="true" /> {saving ? 'Saving…' : 'Save changes'}
+            </button>
+          )}
+        />
 
-        <div className="fade-up-2" style={{ overflowX: 'auto' }}>
-          <table style={{ minWidth: 900, fontSize: '0.78rem' }}>
-            <thead>
-              <tr>
-                <th style={{ position: 'sticky', left: 0, background: 'var(--surface-3)', zIndex: 2, minWidth: 120 }}>Role</th>
-                {MODULES.map(mod => (
-                  <th key={mod} colSpan={4} style={{ textAlign: 'center', borderLeft: '2px solid var(--border)' }}>
-                    {mod}
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                <th style={{ position: 'sticky', left: 0, background: 'var(--surface-3)', zIndex: 2 }}></th>
-                {MODULES.map(mod => (
-                  ACTIONS.map(act => (
-                    <th key={`${mod}-${act}`} style={{
-                      textAlign: 'center', fontSize: '0.65rem', padding: '4px 6px',
-                      borderLeft: act === 'can_read' ? '2px solid var(--border)' : 'none',
-                    }}>
-                      {actionLabels[act]}
-                    </th>
-                  ))
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {ROLES.map(role => (
-                <tr key={role}>
-                  <td style={{
-                    position: 'sticky', left: 0, background: 'var(--surface)',
-                    zIndex: 1, fontWeight: 600, textTransform: 'capitalize',
-                  }}>
-                    {role.replace(/_/g, ' ')}
-                  </td>
-                  {MODULES.map(mod => (
-                    ACTIONS.map(act => (
-                      <td key={`${role}-${mod}-${act}`} style={{
-                        textAlign: 'center', padding: '6px 4px',
-                        borderLeft: act === 'can_read' ? '2px solid var(--border)' : 'none',
-                      }}>
-                        <button
-                          onClick={() => toggle(role, mod, act)}
-                          style={{
-                            width: 26, height: 26, borderRadius: 6,
-                            border: '1.5px solid',
-                            borderColor: matrix[role]?.[mod]?.[act] === 'Y' ? 'var(--green)' : 'var(--border)',
-                            background: matrix[role]?.[mod]?.[act] === 'Y' ? 'var(--green-light)' : 'var(--surface)',
-                            color: matrix[role]?.[mod]?.[act] === 'Y' ? 'var(--green)' : 'var(--text-muted)',
-                            cursor: 'pointer', fontWeight: 700, fontSize: '0.7rem',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            transition: 'all 0.15s',
-                          }}
+        <section className="panel">
+          {loading ? (
+            <div className="panel-pad"><p className="muted">Loading…</p></div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="mini-table" style={{ minWidth: 980, fontSize: '0.8rem' }}>
+                <caption className="sr-only">Permissions by role and module</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" rowSpan={2} style={{ ...stickyCell, zIndex: 2, background: 'var(--surface-2)', verticalAlign: 'bottom' }}>Role</th>
+                    {MODULES.map((mod) => (
+                      <th key={mod} scope="colgroup" colSpan={4} style={{ ...groupStart, textAlign: 'center', background: 'var(--surface-2)', color: 'var(--text-secondary)' }}>
+                        {MODULE_LABEL[mod] || mod}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr>
+                    {MODULES.map((mod) => (
+                      ACTIONS.map((act) => (
+                        <th
+                          key={`${mod}-${act}`}
+                          scope="col"
+                          style={{ textAlign: 'center', padding: '4px 6px', background: 'var(--surface-2)', ...(act === 'can_read' ? groupStart : null) }}
                         >
-                          {matrix[role]?.[mod]?.[act] === 'Y' ? '✓' : '—'}
-                        </button>
-                      </td>
-                    ))
+                          <abbr title={ACTION_NAME[act]} style={{ textDecoration: 'none' }}>{ACTION_SHORT[act]}</abbr>
+                        </th>
+                      ))
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ROLES.map((role) => (
+                    <tr key={role}>
+                      <th scope="row" style={{ ...stickyCell, fontWeight: 600, fontSize: '0.84rem', textTransform: 'none', letterSpacing: 0, color: 'var(--text-primary)', padding: 8, borderBottom: '1px solid var(--border)' }}>
+                        {ROLE_LABEL[role] || role.replace(/_/g, ' ')}
+                      </th>
+                      {MODULES.map((mod) => (
+                        ACTIONS.map((act) => {
+                          const checked = matrix[role]?.[mod]?.[act] === 'Y';
+                          return (
+                            <td
+                              key={`${role}-${mod}-${act}`}
+                              style={{ textAlign: 'center', padding: '6px 4px', background: checked ? 'var(--primary-light)' : undefined, ...(act === 'can_read' ? groupStart : null) }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggle(role, mod, act)}
+                                aria-label={`${ROLE_LABEL[role] || role}: ${ACTION_NAME[act]} ${MODULE_LABEL[mod] || mod}`}
+                                style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer', margin: 0 }}
+                              />
+                            </td>
+                          );
+                        })
+                      ))}
+                    </tr>
                   ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </main>
     </>
   );
 }
