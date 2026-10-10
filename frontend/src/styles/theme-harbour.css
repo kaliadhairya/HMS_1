@@ -1,0 +1,62 @@
+/* ═══════════════════════════════════════════════════════════════
+   HARBOUR — default light theme
+   Colour lives in the frame (navy sidebar, tinted canvas, top bar, card
+   depth); content stays neutral so clinical status colours keep their
+   meaning. Light mode only: dark mode keeps its own tokens.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Elevated cards on a tinted canvas ──────────────────────────── */
+html:not([data-theme="dark"]) .panel {
+  border-color: #e1e7ee;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(16, 42, 67, 0.04), 0 8px 24px -12px rgba(16, 42, 67, 0.12);
+}
+html:not([data-theme="dark"]) .kpi-strip .kpi { border-radius: 12px; }
+html:not([data-theme="dark"]) .app-topbar { border-bottom-color: rgba(16, 42, 67, 0.08); }
+html:not([data-theme="dark"]) body.has-app-shell { background-attachment: fixed; }
+
+/* ── Navy sidebar, cool canvas with a soft blue glow ─────────────── */
+html:not([data-theme="dark"]) {
+  --bg: #eef2f7;
+}
+html:not([data-theme="dark"]) body.has-app-shell {
+  background:
+    radial-gradient(1000px 460px at 85% -120px, rgba(0, 94, 184, 0.22), transparent 70%),
+    radial-gradient(800px 380px at 20% -180px, rgba(0, 150, 170, 0.14), transparent 70%),
+    linear-gradient(180deg, #e2eaf4 0px, #eef2f7 420px);
+}
+html:not([data-theme="dark"]) .app-topbar { background: rgba(226, 234, 244, 0.78); }
+html:not([data-theme="dark"]) .app-sidebar {
+  background: linear-gradient(180deg, #0d2f52 0%, #0b2a4a 55%, #09223d 100%);
+  border-right: 0;
+}
+html:not([data-theme="dark"]) .sidebar-brand { border-bottom-color: rgba(255, 255, 255, 0.08); color: #ffffff; }
+html:not([data-theme="dark"]) .sidebar-brand-text span { color: #8fa3b8; }
+html:not([data-theme="dark"]) .sidebar-logo { background: #ffffff; padding: 2px; }
+html:not([data-theme="dark"]) .nav-group-title { color: #8fa3b8; }
+html:not([data-theme="dark"]) .nav-item { color: #c9d4df; }
+html:not([data-theme="dark"]) .nav-item:hover { background: rgba(255, 255, 255, 0.07); color: #ffffff; }
+html:not([data-theme="dark"]) .nav-item.is-active { background: #17406b; color: #ffffff; }
+html:not([data-theme="dark"]) .nav-item.is-active::before { background: #5fb0ff; }
+html:not([data-theme="dark"]) .sidebar-collapse { color: #8fa3b8; border-top-color: rgba(255, 255, 255, 0.08); }
+html:not([data-theme="dark"]) .sidebar-collapse:hover { background: rgba(255, 255, 255, 0.07); color: #ffffff; }
+html:not([data-theme="dark"]) .sidebar-collapsed .nav-group + .nav-group { border-top-color: rgba(255, 255, 255, 0.08); }
+html:not([data-theme="dark"]) .page-head h1 { color: #0b2a4a; }
+
+/* ── Sign-in page: same navy and glow as the app frame ───────────── */
+html:not([data-theme="dark"]) .login-brand {
+  background:
+    radial-gradient(700px 420px at 100% 0, rgba(95, 176, 255, 0.22), transparent 65%),
+    radial-gradient(600px 400px at 0 100%, rgba(0, 150, 170, 0.18), transparent 65%),
+    linear-gradient(180deg, #0d2f52 0%, #0b2a4a 55%, #09223d 100%);
+}
+html:not([data-theme="dark"]) .login-shell {
+  background:
+    radial-gradient(900px 420px at 100% -120px, rgba(0, 94, 184, 0.16), transparent 70%),
+    linear-gradient(180deg, #e2eaf4 0px, #eef2f7 420px);
+}
+html:not([data-theme="dark"]) .login-main { background: transparent; }
+html:not([data-theme="dark"]) .login-card {
+  border-color: #e1e7ee; border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16, 42, 67, 0.04), 0 16px 40px -16px rgba(16, 42, 67, 0.18);
+}
