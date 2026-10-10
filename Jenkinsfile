@@ -35,9 +35,11 @@ pipeline {
                 echo "Building and launching HMS containers via Docker Compose..."
                 script {
                     if (isUnix()) {
+                        sh 'docker rm -f hms-backend hms-frontend hms-db hms-prometheus hms-grafana 2>/dev/null || true'
                         sh 'docker compose up -d --build'
                         sh 'docker compose ps'
                     } else {
+                        bat 'docker rm -f hms-backend hms-frontend hms-db hms-prometheus hms-grafana 2>nul || ver >nul'
                         bat 'docker compose up -d --build'
                         bat 'docker compose ps'
                     }
