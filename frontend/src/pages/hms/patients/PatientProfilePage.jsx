@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import { openAuthenticatedBlob } from '../../../utils/authenticatedDownload';
 import Navbar from '../../../components/Navbar';
+import PatientBanner from '../../../components/patient/PatientBanner';
+import { CalendarPlus, Ticket, Route } from 'lucide-react';
 
 const PATIENT_TYPE_META = {
   corporate_employee: { label: 'Corporate Patient', fullLabel: 'Corporate Employee', bg: 'rgba(16,185,129,0.1)', color: '#059669', border: 'rgba(16,185,129,0.24)' },
@@ -70,77 +72,30 @@ export default function PatientProfilePage() {
   if (!patient) return <><Navbar /><div className="page-wrapper"><h2>Patient not found</h2></div></>;
 
   const patientType = patient.patientType || patient.patient_type;
-  const isCorporatePatient = patientType === 'corporate_employee';
   const patientTypeMeta = getPatientTypeMeta(patientType);
-  const patientTypeLabel = patientTypeMeta.label;
-  const headerIdLabel = isCorporatePatient ? 'EMP Number' : 'Phone';
-  const headerIdValue = isCorporatePatient
-    ? (patient.empNumber || patient.emp_number || '-')
-    : (patient.phoneNumber || patient.phone_number || '-');
 
   return (
     <>
     <Navbar />
+    <PatientBanner
+      patient={patient}
+      allergies={allergies}
+      conditions={conditions}
+      actions={(
+        <>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate('/hms/appointments/book', { state: { patient } })}>
+            <CalendarPlus size={14} aria-hidden="true" /> Book appointment
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate('/hms/opd/token', { state: { patient } })}>
+            <Ticket size={14} aria-hidden="true" /> Token
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(`/patient/${id}/journey`)}>
+            <Route size={14} aria-hidden="true" /> Journey
+          </button>
+        </>
+      )}
+    />
     <div className="page-wrapper fade-up">
-      {/* ── Header Card ── */}
-      <div className="card" style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: 6, background: 'var(--green)' }} />
-        
-        <div style={{ 
-          width: 80, height: 80, borderRadius: '50%', background: 'var(--surface-3)', 
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', 
-          color: 'var(--text-secondary)', fontWeight: 'bold', shrink: 0 
-        }}>
-          {patient.name.charAt(0)}{patient.last_name ? patient.last_name.charAt(0) : ''}
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 10, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
-              <h1 style={{ margin: 0 }}>{patient.name}</h1>
-              <span
-                className="badge"
-                style={{
-                  fontSize: '0.78rem',
-                  padding: '5px 11px',
-                  borderRadius: 999,
-                  background: patientTypeMeta.bg,
-                  color: patientTypeMeta.color,
-                  border: `1px solid ${patientTypeMeta.border}`,
-                  textTransform: 'uppercase',
-                }}
-              >
-                {patientTypeLabel}
-              </span>
-            </div>
-            <div className="badge badge-teal" style={{ fontSize: '1rem', padding: '6px 14px' }}>
-              {patient.uhid || 'Legacy Patient'}
-            </div>
-          </div>
-          
-          <div style={{ display: 'flex', gap: '10px 24px', flexWrap: 'wrap', fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: 16 }}>
-            <div><strong>Age:</strong> {patient.age} Yrs</div>
-            <div><strong>Gender:</strong> {patient.gender}</div>
-            <div><strong>Blood Group:</strong> <span style={{ color: 'var(--red)', fontWeight: 'bold' }}>{patient.blood_group || 'Unknown'}</span></div>
-            <div><strong>{headerIdLabel}:</strong> {headerIdValue}</div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {allergies.length > 0 && <span className="badge badge-red">Allergies ({allergies.length})</span>}
-            {conditions.length > 0 && <span className="badge badge-amber">Chronic ({conditions.length})</span>}
-            <button className="btn btn-primary btn-sm" onClick={() => navigate('/hms/appointments/book', { state: { patient } })}>
-              📅 Book Appointment
-            </button>
-            <button className="btn btn-outline btn-sm" onClick={() => navigate('/hms/opd/token', { state: { patient } })}>
-              🎫 Generate Token
-            </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/patient/${id}/journey`)}>
-              🗂️ Journey
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* ── Tabs Navigation ── */}
       <div style={{ display: 'flex', gap: 2, marginBottom: 20, borderBottom: '2px solid var(--border)' }}>
         {['overview', 'visits', 'documents', 'prescriptions', 'billing', 'clinical', 'vitals'].map(tab => (
