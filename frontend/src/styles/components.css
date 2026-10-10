@@ -268,3 +268,9 @@
 /* Data table hover: subtle on data rows, none on the empty-state and loading rows */
 .dt-table tbody tr:hover { background: var(--surface-2); }
 .dt-table tbody tr:has(.dt-empty-cell):hover, .dt-table tbody tr.dt-skeleton-row:hover { background: transparent; }
+
+/* KPI tiles that act as filters or links */
+.kpi.kpi-button { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.kpi.kpi-button .kpi-label, .kpi.kpi-button .kpi-value { display: block; }
+.kpi.kpi-button:hover { border-color: var(--border-dark); }
+.kpi.kpi-button.is-selected { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }

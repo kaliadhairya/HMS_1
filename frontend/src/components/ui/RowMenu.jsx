@@ -2,13 +2,15 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { MoreHorizontal } from 'lucide-react';
 
 // "More actions" menu for a table row. items: [{ label, icon, onSelect, danger, separator, hidden }]
-export default function RowMenu({ label, items }) {
+// Optional `open`/`onOpenChange` let a page open the menu itself (e.g. right after starting a consultation);
+// `triggerRef` exposes the trigger button.
+export default function RowMenu({ label, items, open, onOpenChange, triggerRef }) {
   const visible = items.filter((i) => i && !i.hidden);
   if (visible.length === 0) return null;
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root open={open} onOpenChange={onOpenChange}>
       <DropdownMenu.Trigger asChild>
-        <button type="button" className="icon-btn row-action" aria-label={label} onClick={(e) => e.stopPropagation()}>
+        <button ref={triggerRef} type="button" className="icon-btn row-action" aria-label={label} onClick={(e) => e.stopPropagation()}>
           <MoreHorizontal size={18} aria-hidden="true" />
         </button>
       </DropdownMenu.Trigger>

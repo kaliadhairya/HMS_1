@@ -27,10 +27,7 @@ export default function RoleDashboard() {
   return (
     <>
       <Navbar />
-      <main
-        className="page-wrapper" 
-        style={['doctor', 'nurse', 'pharmacist'].includes(role) ? { maxWidth: '100%', padding: '0', overflow: 'hidden' } : {}}
-      >
+      <main className="app-page">
         {dashboardMap[role] || (
           <div className="card" style={{ padding: 40, textAlign: 'center' }}>
             <h1 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Hospital size={22} aria-hidden="true" /> Welcome to HMS</h1>
