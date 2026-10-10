@@ -1,9 +1,20 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { ArrowLeft, Building2, ClipboardList, Eye, Pill, Plus, Printer, Search, Send, Trash2 } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
-import toast from 'react-hot-toast';
-import Glyph from '../../../components/ui/Glyph';
+import PageHeader from '../../../components/ui/PageHeader';
+
+const suggestionBox = {
+  position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 10, maxHeight: 240, overflowY: 'auto',
+  background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: 'var(--shadow-lg)',
+};
+const suggestionItem = {
+  width: '100%', textAlign: 'left', padding: '9px 12px', border: 0, borderBottom: '1px solid var(--border)',
+  background: 'transparent', color: 'var(--text-primary)', font: 'inherit', cursor: 'pointer',
+  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+};
 
 export default function RaiseIndentPage() {
   const navigate = useNavigate();
@@ -26,6 +37,7 @@ export default function RaiseIndentPage() {
   
   // Print Preview
   const [showPreview, setShowPreview] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     // Fetch active suppliers
@@ -77,7 +89,7 @@ export default function RaiseIndentPage() {
   const addMedicine = (med) => {
     // Check if already added
     if (items.some(item => item.id === med.id)) {
-      toast.error('Medicine already added to the list.');
+      toast.error('That medicine is already on the list');
       return;
     }
     
@@ -122,19 +134,20 @@ export default function RaiseIndentPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedSupplier) {
-      toast.error('Please select a Supplier.');
+      toast.error('Select a supplier');
       return;
     }
     if (items.length === 0) {
-      toast.error('Please add at least one medicine to the request.');
+      toast.error('Add at least one medicine to the request');
       return;
     }
     if (!expectedDelivery) {
-      toast.error('Please enter Expected Delivery Date.');
+      toast.error('Enter the expected delivery date');
       return;
     }
 
     try {
+      setSubmitting(true);
       await api.post('/pharmacist_lms/purchase-orders', {
         supplierId: selectedSupplier.id,
         expectedDelivery,
@@ -142,11 +155,13 @@ export default function RaiseIndentPage() {
         items: items,
         grandTotal
       });
-      toast.success('Purchase Request created successfully!');
+      toast.success('Purchase request created');
       navigate('/pharmacy/pos');
     } catch (err) {
       console.error(err);
-      toast.error('Failed to create Purchase Request.');
+      toast.error('Could not create the purchase request');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -184,9 +199,13 @@ export default function RaiseIndentPage() {
         `}</style>
 
         {/* Action Buttons (Hidden in actual print) */}
-        <div className="no-print" style={{ display: 'flex', gap: '15px', marginBottom: '30px', justifyContent: 'flex-end' }}>
-          <button className="btn btn-outline" onClick={() => setShowPreview(false)}>← Back to Edit</button>
-          <button className="btn btn-primary" onClick={handlePrint}><Glyph icon="🖨️" /> Print PR</button>
+        <div className="no-print" style={{ display: 'flex', gap: 8, marginBottom: '30px', justifyContent: 'flex-end' }}>
+          <button type="button" className="btn btn-secondary btn-md" onClick={() => setShowPreview(false)}>
+            <ArrowLeft size={16} aria-hidden="true" /> Back to edit
+          </button>
+          <button type="button" className="btn btn-primary btn-md" onClick={handlePrint}>
+            <Printer size={16} aria-hidden="true" /> Print request
+          </button>
         </div>
 
         {/* Formal Document */}
@@ -275,122 +294,115 @@ export default function RaiseIndentPage() {
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h1><Glyph icon="📄" /> Raise Indent (PR)</h1>
-            <p style={{ color: 'var(--text-secondary)' }}>Create a detailed Purchase Request with medicine items.</p>
-          </div>
-          <button 
-            className="btn btn-outline" 
-            onClick={() => navigate('/pharmacy/pos')}
-          >
-            ← Back to PRs
-          </button>
-        </div>
+      <main className="app-page">
+        <PageHeader
+          title="Raise indent"
+          description="Create a purchase request to a supplier with the medicines and quantities you need."
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/pharmacy/pos')}>
+              <ArrowLeft size={16} aria-hidden="true" /> Purchase requests
+            </button>
+          )}
+        />
 
-        {loading ? <div className="spinner" /> : (
-          <div className="card fade-up-2" style={{ padding: 32, maxWidth: 1000, margin: '0 auto' }}>
-            <form onSubmit={handleSubmit}>
-              <div style={{ display: 'grid', gap: 24 }}>
-                
-                {/* Supplier & Top-Level Details */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-                  <div style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--surface-2)' }}>
-                    <h3 style={{ marginBottom: 16, fontSize: '1.1rem' }}>1. Supplier Details</h3>
-                    
-                    <div className="form-group" style={{ marginBottom: 16, position: 'relative' }}>
-                      <label>Search Supplier (Name or UID) <span style={{ color: 'var(--red)' }}>*</span></label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
-                        placeholder="Start typing name or SUP-XXX..." 
-                        value={searchQuery}
-                        onChange={handleSearchChange}
-                        onFocus={() => setShowSuggestions(true)}
-                        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                        required
-                      />
-                      
-                      {/* Autocomplete Dropdown */}
-                      {showSuggestions && searchQuery.length >= 2 && (
-                        <div style={{ 
-                          position: 'absolute', top: '100%', left: 0, right: 0, 
-                          background: 'var(--surface-1)', border: '1px solid var(--border)', 
-                          borderRadius: 8, marginTop: 4, zIndex: 10, maxHeight: 200, overflowY: 'auto',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                        }}>
-                          {filteredSuppliers.length > 0 ? (
-                            filteredSuppliers.map(sup => (
-                              <div 
-                                key={sup.id} 
-                                onClick={() => selectSupplier(sup)}
-                                style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                              >
-                                <strong>{sup.name}</strong>
-                                <span style={{ color: 'var(--text-muted)' }}>{sup.supplierNumber || '-'}</span>
-                              </div>
-                            ))
-                          ) : (
-                            <div style={{ padding: 12, color: 'var(--text-muted)' }}>No matches found.</div>
-                          )}
-                        </div>
+        {loading ? <p className="muted">Loading…</p> : (
+          <form onSubmit={handleSubmit} className="stack">
+            <div className="split-2">
+              {/* Supplier */}
+              <section className="panel panel-pad">
+                <h2 className="panel-title"><Building2 size={16} aria-hidden="true" /> Supplier</h2>
+                <div className="form-group" style={{ position: 'relative' }}>
+                  <label className="form-label" htmlFor="indent-supplier">Search supplier by name or number</label>
+                  <input
+                    id="indent-supplier"
+                    type="text"
+                    className="form-input"
+                    placeholder="Start typing a name or SUP-001"
+                    autoComplete="off"
+                    value={searchQuery}
+                    onChange={handleSearchChange}
+                    onFocus={() => setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    required
+                  />
+
+                  {/* Autocomplete Dropdown */}
+                  {showSuggestions && searchQuery.length >= 2 && (
+                    <div style={suggestionBox} role="listbox" aria-label="Matching suppliers">
+                      {filteredSuppliers.length > 0 ? (
+                        filteredSuppliers.map(sup => (
+                          <button key={sup.id} type="button" role="option" aria-selected={selectedSupplier?.id === sup.id} style={suggestionItem} onClick={() => selectSupplier(sup)}>
+                            <span className="cell-primary">{sup.name}</span>
+                            <span className="cell-secondary mono">{sup.supplierNumber || '—'}</span>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="muted" style={{ padding: 12 }}>No suppliers match.</p>
                       )}
                     </div>
-
-                    {selectedSupplier && (
-                      <div style={{ padding: 12, background: 'rgba(52, 211, 153, 0.1)', border: '1px solid var(--green)', borderRadius: 8, color: 'var(--text-primary)' }}>
-                        <strong><Glyph icon="✅" /> Supplier Selected: </strong> {selectedSupplier.name}
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 }}>
-                          UID: {selectedSupplier.supplierNumber} | Ph: {selectedSupplier.phone}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 12 }}>
-                    <h3 style={{ marginBottom: 16, fontSize: '1.1rem' }}>2. Request Details</h3>
-                    <div className="form-group" style={{ marginBottom: 16 }}>
-                      <label>Expected Delivery Date <span style={{ color: 'var(--red)' }}>*</span></label>
-                      <input 
-                        type="date" 
-                        className="form-control" 
-                        value={expectedDelivery}
-                        onChange={e => setExpectedDelivery(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Remarks / Notes</label>
-                      <textarea 
-                        className="form-control" 
-                        rows={2} 
-                        placeholder="Instructions..."
-                        value={notes}
-                        onChange={e => setNotes(e.target.value)}
-                      ></textarea>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
-                {/* Medicine Items Section */}
-                <div style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <h3 style={{ margin: 0, fontSize: '1.1rem' }}>3. Medicine Items</h3>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--primary)' }}>
-                      Total: ₹{grandTotal.toFixed(2)}
-                    </div>
+                {selectedSupplier && (
+                  <div className="alert-strip alert-info" role="status" style={{ marginTop: 12, marginBottom: 0 }}>
+                    <span className="cell-stack">
+                      <strong>{selectedSupplier.name}</strong>
+                      <span style={{ fontSize: '0.85rem' }}>
+                        <span className="mono">{selectedSupplier.supplierNumber || '—'}</span>{selectedSupplier.phone ? ` · ${selectedSupplier.phone}` : ''}
+                      </span>
+                    </span>
                   </div>
+                )}
+              </section>
 
-                  {/* Add Medicine Search */}
-                  <div className="form-group" style={{ marginBottom: 20, position: 'relative', maxWidth: 400 }}>
-                    <label>Add Medicine</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      placeholder="Search medicine by name..." 
+              {/* Request details */}
+              <section className="panel panel-pad">
+                <h2 className="panel-title"><ClipboardList size={16} aria-hidden="true" /> Request details</h2>
+                <div className="stack-sm">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="indent-delivery">Expected delivery date</label>
+                    <input
+                      id="indent-delivery"
+                      type="date"
+                      className="form-input"
+                      value={expectedDelivery}
+                      onChange={e => setExpectedDelivery(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="indent-notes">Remarks (optional)</label>
+                    <textarea
+                      id="indent-notes"
+                      className="form-textarea"
+                      rows={2}
+                      placeholder="Delivery or packing instructions"
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                    ></textarea>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            {/* Medicine Items Section */}
+            <section className="panel">
+              <div className="panel-head">
+                <h2 className="panel-title" style={{ margin: 0 }}><Pill size={16} aria-hidden="true" /> Medicines</h2>
+                <span className="tabular" style={{ fontWeight: 650 }}>Total ₹{grandTotal.toFixed(2)}</span>
+              </div>
+
+              <div className="panel-pad stack-sm">
+                {/* Add Medicine Search */}
+                <div className="form-group" style={{ position: 'relative', maxWidth: 420 }}>
+                  <label className="form-label" htmlFor="indent-med">Add a medicine</label>
+                  <div className="search-field" style={{ minWidth: 0 }}>
+                    <Search size={17} aria-hidden="true" />
+                    <input
+                      id="indent-med"
+                      type="text"
+                      placeholder="Search medicine by name"
+                      autoComplete="off"
                       value={medSearchQuery}
                       onChange={e => {
                         setMedSearchQuery(e.target.value);
@@ -399,129 +411,125 @@ export default function RaiseIndentPage() {
                       onFocus={() => setShowMedSuggestions(true)}
                       onBlur={() => setTimeout(() => setShowMedSuggestions(false), 200)}
                     />
-                    
-                    {/* Medicine Autocomplete */}
-                    {showMedSuggestions && medSearchQuery.length >= 2 && (
-                      <div style={{ 
-                        position: 'absolute', top: '100%', left: 0, right: 0, 
-                        background: 'var(--surface-1)', border: '1px solid var(--border)', 
-                        borderRadius: 8, marginTop: 4, zIndex: 10, maxHeight: 250, overflowY: 'auto',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                      }}>
-                        {medSuggestions.length > 0 ? (
-                          medSuggestions.map(med => (
-                            <div 
-                              key={med.id} 
-                              onClick={() => addMedicine(med)}
-                              style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface-2)'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            >
-                              <div>
-                                <strong style={{ display: 'block' }}>{med.genericName}</strong>
-                                <small style={{ color: 'var(--text-muted)' }}>{med.formulation} | GST: {med.gstRate}%</small>
-                              </div>
-                              <span style={{ fontSize: '1.2rem', color: 'var(--primary)' }}>+</span>
-                            </div>
-                          ))
-                        ) : (
-                          <div style={{ padding: 12, color: 'var(--text-muted)' }}>No medicines found.</div>
-                        )}
-                      </div>
-                    )}
                   </div>
 
-                  {/* Items Table */}
-                  {items.length > 0 ? (
-                    <div className="table-wrapper">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Medicine Name</th>
-                            <th width="10%">Qty</th>
-                            <th width="15%">Unit Price (₹)</th>
-                            <th width="10%">GST (%)</th>
-                            <th width="15%">Total (₹)</th>
-                            <th width="8%">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {items.map((item, index) => (
-                            <tr key={index}>
-                              <td style={{ fontWeight: 500 }}>{item.genericName}</td>
-                              <td>
-                                <input 
-                                  type="number" 
-                                  className="form-control" 
-                                  min="1" 
-                                  value={item.qty} 
-                                  onChange={(e) => updateItem(index, 'qty', e.target.value)} 
-                                  style={{ padding: '6px' }}
-                                />
-                              </td>
-                              <td>
-                                <input 
-                                  type="number" 
-                                  className="form-control" 
-                                  min="0" 
-                                  step="0.01"
-                                  value={item.unitPrice} 
-                                  onChange={(e) => updateItem(index, 'unitPrice', e.target.value)} 
-                                  style={{ padding: '6px' }}
-                                />
-                              </td>
-                              <td>
-                                <input 
-                                  type="number" 
-                                  className="form-control" 
-                                  min="0" 
-                                  max="100"
-                                  value={item.gstRate} 
-                                  onChange={(e) => updateItem(index, 'gstRate', e.target.value)} 
-                                  style={{ padding: '6px' }}
-                                />
-                              </td>
-                              <td style={{ fontWeight: 'bold' }}>
-                                {item.total.toFixed(2)}
-                              </td>
-                              <td>
-                                <button type="button" className="btn btn-sm" style={{ background: 'var(--red)', color: 'white', padding: '6px 12px' }} onClick={() => removeItem(index)}>
-                                  <Glyph icon="✕" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div style={{ padding: '30px', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: 8, color: 'var(--text-muted)' }}>
-                      No medicines added yet. Use the search bar above to add items.
+                  {/* Medicine Autocomplete */}
+                  {showMedSuggestions && medSearchQuery.length >= 2 && (
+                    <div style={suggestionBox} role="listbox" aria-label="Matching medicines">
+                      {medSuggestions.length > 0 ? (
+                        medSuggestions.map(med => (
+                          <button key={med.id} type="button" role="option" aria-selected="false" style={suggestionItem} onClick={() => addMedicine(med)}>
+                            <span className="cell-stack">
+                              <span className="cell-primary">{med.genericName}</span>
+                              <span className="cell-secondary">{med.formulation || '—'} · GST {med.gstRate ?? 0}%</span>
+                            </span>
+                            <Plus size={16} aria-hidden="true" />
+                          </button>
+                        ))
+                      ) : (
+                        <p className="muted" style={{ padding: 12 }}>No medicines match.</p>
+                      )}
                     </div>
                   )}
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 16 }}>
-                  <button type="button" className="btn btn-outline" onClick={() => navigate('/pharmacy/pos')}>Cancel</button>
-                  <button type="button" className="btn btn-secondary" onClick={() => {
-                    if (!selectedSupplier || items.length === 0 || !expectedDelivery) {
-                      toast.error('Please fill required details (Supplier, Date, Items) before previewing.');
-                      return;
-                    }
-                    setShowPreview(true);
-                  }}>
-                    <Glyph icon="👁️" /> Preview & Print
-                  </button>
-                  <button type="submit" className="btn btn-primary" disabled={!selectedSupplier || items.length === 0}>
-                    Submit Purchase Request
-                  </button>
-                </div>
-
+                {/* Items Table */}
+                {items.length > 0 ? (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table className="mini-table">
+                      <thead>
+                        <tr>
+                          <th>Medicine</th>
+                          <th style={{ width: 110 }}>Qty</th>
+                          <th style={{ width: 140 }}>Unit price (₹)</th>
+                          <th style={{ width: 100 }}>GST (%)</th>
+                          <th className="text-right" style={{ width: 120 }}>Total (₹)</th>
+                          <th style={{ width: 48 }}><span className="sr-only">Remove</span></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item, index) => (
+                          <tr key={item.id}>
+                            <td>
+                              <span className="cell-stack">
+                                <span className="cell-primary">{item.genericName}</span>
+                                <span className="cell-secondary">per {item.unitOfSale}</span>
+                              </span>
+                            </td>
+                            <td>
+                              <label className="sr-only" htmlFor={`indent-qty-${item.id}`}>Quantity of {item.genericName}</label>
+                              <input
+                                id={`indent-qty-${item.id}`}
+                                type="number"
+                                className="form-input"
+                                min="1"
+                                value={item.qty}
+                                onChange={(e) => updateItem(index, 'qty', e.target.value)}
+                              />
+                            </td>
+                            <td>
+                              <label className="sr-only" htmlFor={`indent-price-${item.id}`}>Unit price of {item.genericName}</label>
+                              <input
+                                id={`indent-price-${item.id}`}
+                                type="number"
+                                className="form-input"
+                                min="0"
+                                step="0.01"
+                                value={item.unitPrice}
+                                onChange={(e) => updateItem(index, 'unitPrice', e.target.value)}
+                              />
+                            </td>
+                            <td>
+                              <label className="sr-only" htmlFor={`indent-gst-${item.id}`}>GST rate of {item.genericName}</label>
+                              <input
+                                id={`indent-gst-${item.id}`}
+                                type="number"
+                                className="form-input"
+                                min="0"
+                                max="100"
+                                value={item.gstRate}
+                                onChange={(e) => updateItem(index, 'gstRate', e.target.value)}
+                              />
+                            </td>
+                            <td className="text-right tabular" style={{ fontWeight: 600 }}>
+                              {item.total.toFixed(2)}
+                            </td>
+                            <td className="text-right">
+                              <button type="button" className="icon-btn" aria-label={`Remove ${item.genericName}`} onClick={() => removeItem(index)}>
+                                <Trash2 size={16} aria-hidden="true" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="muted" style={{ padding: '20px 0', textAlign: 'center' }}>
+                    No medicines added yet. Search above to add the first one.
+                  </p>
+                )}
               </div>
-            </form>
-          </div>
+            </section>
+
+            <div className="inline-actions" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/pharmacy/pos')}>Cancel</button>
+              <button type="button" className="btn btn-secondary btn-md" onClick={() => {
+                if (!selectedSupplier || items.length === 0 || !expectedDelivery) {
+                  toast.error('Choose a supplier, a delivery date and at least one medicine before previewing');
+                  return;
+                }
+                setShowPreview(true);
+              }}>
+                <Eye size={16} aria-hidden="true" /> Preview and print
+              </button>
+              <button type="submit" className="btn btn-primary btn-md" disabled={!selectedSupplier || items.length === 0 || submitting}>
+                <Send size={16} aria-hidden="true" /> {submitting ? 'Submitting…' : 'Submit request'}
+              </button>
+            </div>
+          </form>
         )}
-      </div>
+      </main>
     </>
   );
 }

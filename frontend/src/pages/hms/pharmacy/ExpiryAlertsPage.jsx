@@ -1,14 +1,43 @@
-import { useState, useEffect } from 'react';
-import api from '../../../api/axios';
+import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
+import { CalendarClock, RefreshCw, Search, ShieldAlert, Trash2, Undo2 } from 'lucide-react';
+import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
-import Glyph from '../../../components/ui/Glyph';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+import Modal from '../../../components/ui/Modal';
+import RowMenu from '../../../components/ui/RowMenu';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WINDOWS = [7, 30, 90];
+const ACTIONS = {
+  return: { title: 'Return to supplier', verb: 'return', confirm: 'Confirm return' },
+  quarantine: { title: 'Quarantine stock', verb: 'quarantine', confirm: 'Confirm quarantine' },
+  discard: { title: 'Log disposal', verb: 'dispose of', confirm: 'Confirm disposal' },
+};
+
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const msLeft = (item) => new Date(item.EXPIRY_DATE) - new Date();
+const expiryState = (item) => {
+  const left = msLeft(item);
+  if (left < 0) return 'expired';
+  if (left <= 7 * DAY_MS) return 'critical';
+  return 'soon';
+};
+const daysLabel = (item) => {
+  const days = Math.ceil(msLeft(item) / DAY_MS);
+  if (days < 0) return `Expired ${Math.abs(days)} ${Math.abs(days) === 1 ? 'day' : 'days'} ago`;
+  if (days === 0) return 'Expires today';
+  return `In ${days} ${days === 1 ? 'day' : 'days'}`;
+};
 
 export default function ExpiryAlertsPage() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(30);
-  
+  const [query, setQuery] = useState('');
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionType, setActionType] = useState('return'); // return, discard, quarantine
   const [selectedBatch, setSelectedBatch] = useState(null);
@@ -23,7 +52,7 @@ export default function ExpiryAlertsPage() {
     try {
       setLoading(true);
       const res = await api.get(`/pharmacy/stock/expiring?days=${days}`);
-      // Quarantine is a local, per-session flag the pharmacist sets on this screen
+      // Quarantine status comes from the API when it provides one
       const enriched = (res.data.data || []).map(d => ({
         ...d,
         isQuarantined: Boolean(d.isQuarantined ?? d.IS_QUARANTINED),
@@ -31,7 +60,7 @@ export default function ExpiryAlertsPage() {
       setData(enriched);
     } catch (err) {
       console.error(err);
-      toast.error('Failed to load expiry alerts.');
+      toast.error('Could not load expiry alerts');
     } finally {
       setLoading(false);
     }
@@ -49,167 +78,208 @@ export default function ExpiryAlertsPage() {
     e.preventDefault();
     try {
       if (quantity <= 0 || quantity > selectedBatch.QUANTITY) {
-        return toast.error('Invalid quantity.');
+        return toast.error('Enter a quantity between 1 and the available stock');
       }
       if (actionType === 'discard' && !reason.trim()) {
-        return toast.error('Disposal reason and witness approval required.');
+        return toast.error('Enter the disposal reason. Disposal needs a witness approval on record.');
       }
 
-      // Simulate API Call
-      toast.success(`Stock successfully ${actionType === 'quarantine' ? 'quarantined' : actionType === 'return' ? 'returned to supplier' : 'marked for destruction'}.`);
+      // No API call is made for these actions yet; say so rather than confirming a change that was not saved.
+      toast(`${ACTIONS[actionType].title} noted, but not saved. This screen is not yet connected to stock records.`, { duration: 6000 });
       setIsModalOpen(false);
       fetchExpiring(activeTab);
     } catch (err) {
       console.error(err);
-      toast.error(`Failed to process ${actionType}.`);
+      toast.error(`Could not ${ACTIONS[actionType].verb} this stock`);
     }
   };
 
+  const counts = useMemo(() => ({
+    expired: data.filter((d) => expiryState(d) === 'expired').length,
+    critical: data.filter((d) => expiryState(d) === 'critical').length,
+    units: data.reduce((sum, d) => sum + Number(d.QUANTITY || 0), 0),
+  }), [data]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return data;
+    return data.filter((d) => [d.GENERIC_NAME, d.BATCH_NUMBER, d.SUPPLIER_NAME].some((v) => String(v || '').toLowerCase().includes(q)));
+  }, [data, query]);
+
+  const columns = useMemo(() => [
+    {
+      id: 'medicine', header: 'Medicine', accessorFn: (d) => d.GENERIC_NAME || '',
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="cell-primary">{row.original.GENERIC_NAME}</span>
+          <span className="cell-secondary">{[row.original.FORMULATION, row.original.STRENGTH].filter(Boolean).join(' · ') || '—'}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'batch', header: 'Batch', accessorFn: (d) => d.BATCH_NUMBER || '', meta: { width: 150 },
+      cell: ({ getValue }) => <span className="mono">{getValue() || '—'}</span>,
+    },
+    {
+      id: 'expiry', header: 'Expires', accessorFn: (d) => new Date(d.EXPIRY_DATE).getTime() || 0, meta: { width: 180 },
+      cell: ({ row }) => {
+        const state = expiryState(row.original);
+        return (
+          <span className="cell-stack">
+            <span className="tabular" style={{ fontWeight: state === 'soon' ? undefined : 600, color: state === 'soon' ? undefined : 'var(--red)' }}>{fmtDate(row.original.EXPIRY_DATE)}</span>
+            <span className="cell-secondary">{daysLabel(row.original)}</span>
+          </span>
+        );
+      },
+    },
+    {
+      id: 'status', header: 'Status', accessorFn: (d) => ({ expired: 0, critical: 1, soon: 2 }[expiryState(d)]), meta: { width: 210 },
+      cell: ({ row }) => {
+        const state = expiryState(row.original);
+        return (
+          <span className="chip-row" style={{ gap: 4 }}>
+            {state === 'expired' && <span className="status status-danger">Expired</span>}
+            {state === 'critical' && <span className="status status-warning">Within 7 days</span>}
+            {state === 'soon' && <span className="status status-info">Expiring soon</span>}
+            {row.original.isQuarantined && <span className="status status-neutral">Quarantined</span>}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'qty', header: 'Qty', accessorFn: (d) => Number(d.QUANTITY || 0), meta: { width: 90, align: 'right' },
+      cell: ({ getValue }) => <span className="tabular" style={{ fontWeight: 600 }}>{getValue()}</span>,
+    },
+    { id: 'supplier', header: 'Supplier', accessorFn: (d) => d.SUPPLIER_NAME || '', meta: { width: 180 }, cell: ({ getValue }) => getValue() || '—' },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 56, align: 'right' },
+      cell: ({ row }) => (
+        <RowMenu
+          label={`Actions for ${row.original.GENERIC_NAME} batch ${row.original.BATCH_NUMBER}`}
+          items={[
+            { label: 'Return to supplier', icon: Undo2, onSelect: () => openActionModal(row.original, 'return') },
+            { label: 'Quarantine', icon: ShieldAlert, onSelect: () => openActionModal(row.original, 'quarantine') },
+            { label: 'Log disposal', icon: Trash2, onSelect: () => openActionModal(row.original, 'discard'), danger: true, separator: true },
+          ]}
+        />
+      ),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], []);
+
+  const action = ACTIONS[actionType] || ACTIONS.return;
+
   return (
     <>
-    <Navbar />
-    <div className="page-wrapper fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <div>
-          <h2>⏰ Expiry & Short-Dated Items</h2>
-          <p style={{ color: 'var(--text-secondary)' }}>Manage expiring stock, quarantines, vendor returns, and destruction logs.</p>
-        </div>
-      </div>
+      <Navbar />
+      <main className="app-page">
+        <PageHeader
+          title="Expiry alerts"
+          description="Batches that have expired or expire soon. Quarantine them, return them to the supplier, or log their disposal."
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => fetchExpiring(activeTab)}>
+              <RefreshCw size={16} aria-hidden="true" /> Refresh
+            </button>
+          )}
+        />
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
-        {[7, 30, 90].map(days => (
-          <button 
-            key={days}
-            className={`btn ${activeTab === days ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => setActiveTab(days)}
-          >
-            Expiring in {days} Days
-          </button>
-        ))}
-      </div>
-
-      <div className="card" style={{ padding: 24 }}>
-        {loading ? (
-          <div style={{ padding: 40, textAlign: 'center' }}><div className="spinner" /></div>
-        ) : (
-          <div className="table-wrapper">
-          <table className="table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th>Medicine</th>
-                <th>Batch / Expiry</th>
-                <th>Status</th>
-                <th>Qty</th>
-                <th>Supplier</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map(item => {
-                const isCritical = new Date(item.EXPIRY_DATE) - new Date() <= 7 * 24 * 60 * 60 * 1000;
-                const isExpired = new Date(item.EXPIRY_DATE) - new Date() < 0;
-
-                return (
-                  <tr key={item.BATCH_ID} style={{ background: isExpired ? 'rgba(239, 68, 68, 0.1)' : isCritical ? 'rgba(245, 158, 11, 0.1)' : 'transparent' }}>
-                    <td>
-                      <strong>{item.GENERIC_NAME}</strong>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{item.STRENGTH}</div>
-                    </td>
-                    <td>
-                      <code>{item.BATCH_NUMBER}</code>
-                      <div style={{ color: isCritical || isExpired ? 'var(--red)' : 'inherit', fontWeight: isCritical || isExpired ? 600 : 400, fontSize: '0.85rem', marginTop: 4 }}>
-                        {new Date(item.EXPIRY_DATE).toLocaleDateString()}
-                      </div>
-                    </td>
-                    <td>
-                      {isExpired ? <span className="badge badge-red">EXPIRED</span> : isCritical ? <span className="badge badge-amber">CRITICAL</span> : <span className="badge badge-blue">WARNING</span>}
-                      {item.isQuarantined && <span className="badge" style={{ background: '#7e22ce', color: '#fff', marginLeft: 6 }}>QUARANTINED</span>}
-                    </td>
-                    <td style={{ fontWeight: 600, fontSize: '1.05rem' }}>{item.QUANTITY || 0}</td>
-                    <td style={{ fontSize: '0.85rem' }}>{item.SUPPLIER_NAME}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                        <button className="btn btn-sm btn-outline" style={{ color: 'var(--green-mid)', borderColor: 'var(--green-mid)' }} onClick={() => openActionModal(item, 'return')}>Return</button>
-                        <button className="btn btn-sm btn-outline" style={{ color: '#7e22ce', borderColor: '#7e22ce' }} onClick={() => openActionModal(item, 'quarantine')}>Quarantine</button>
-                        <button className="btn btn-sm btn-outline" style={{ color: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => openActionModal(item, 'discard')}>Disposal</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {data.length === 0 && (
-                <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                    No items expiring within {activeTab} days.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="kpi-strip">
+          <div className="panel kpi">
+            <div className="kpi-label">Expired</div>
+            <div className="kpi-value" style={{ color: counts.expired > 0 ? 'var(--red)' : undefined }}>{loading ? '—' : counts.expired}</div>
           </div>
-        )}
-      </div>
+          <div className="panel kpi">
+            <div className="kpi-label">Expire within 7 days</div>
+            <div className="kpi-value" style={{ color: counts.critical > 0 ? 'var(--amber)' : undefined }}>{loading ? '—' : counts.critical}</div>
+          </div>
+          <div className="panel kpi">
+            <div className="kpi-label">Batches in the next {activeTab} days</div>
+            <div className="kpi-value">{loading ? '—' : data.length}</div>
+          </div>
+          <div className="panel kpi">
+            <div className="kpi-label">Units affected</div>
+            <div className="kpi-value">{loading ? '—' : counts.units.toLocaleString('en-IN')}</div>
+          </div>
+        </div>
 
-      {isModalOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20
-        }}>
-          <div className="card" style={{ width: 500, padding: 32, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 48px rgba(0,0,0,0.5)' }}>
-            <h2 style={{ marginBottom: 20, textTransform: 'capitalize', color: actionType === 'discard' ? 'var(--red)' : actionType === 'quarantine' ? '#7e22ce' : 'var(--green-mid)' }}>
-              {actionType === 'discard' ? 'Disposal & Destruction' : actionType === 'quarantine' ? 'Quarantine Stock' : 'Vendor Return'}
-            </h2>
-            
-            <div style={{ background: 'var(--surface-2)', padding: '16px 20px', borderRadius: 8, marginBottom: 24, borderLeft: '4px solid var(--primary)' }}>
-              <div style={{ fontSize: '1.2rem', fontWeight: 600, color: 'var(--primary)' }}>{selectedBatch?.GENERIC_NAME}</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                <span>Batch: <code style={{ color: '#fff' }}>{selectedBatch?.BATCH_NUMBER}</code></span>
-                <span>Available Qty: <strong style={{ color: '#fff' }}>{selectedBatch?.QUANTITY}</strong></span>
-              </div>
-            </div>
-
-            <form onSubmit={handleActionSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Quantity to {actionType}</label>
-                <input 
-                  required type="number" min="1" max={selectedBatch?.QUANTITY}
-                  value={quantity} onChange={e => setQuantity(e.target.value)} 
-                  className="form-input" style={{ width: '100%', fontSize: '1.1rem' }} 
-                />
-              </div>
-
-              {(actionType === 'discard' || actionType === 'quarantine') && (
-                <div>
-                  <label style={{ display: 'block', marginBottom: 6, fontWeight: 500 }}>Reason / Notes *</label>
-                  <textarea 
-                    required rows="3"
-                    placeholder="Provide detailed reason for audit trail..."
-                    value={reason} onChange={e => setReason(e.target.value)} 
-                    className="form-input" style={{ width: '100%', resize: 'vertical' }} 
-                  />
-                </div>
-              )}
-              
-              {actionType === 'discard' && (
-                <div style={{ padding: 12, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, color: 'var(--red)', fontSize: '0.85rem' }}>
-                  <Glyph icon="⚠️" /> Discarding stock requires witness approval per compliance regulations. The record will be permanently logged in the destruction register.
-                </div>
-              )}
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-                <button type="button" className="btn btn-outline" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn" style={{ 
-                  background: actionType === 'discard' ? 'var(--red)' : actionType === 'quarantine' ? '#7e22ce' : 'var(--green-mid)',
-                  color: '#fff', padding: '12px 24px', fontWeight: 600
-                }}>
-                  Confirm {actionType}
+        <section className="panel">
+          <div className="toolbar">
+            <div className="segmented" role="tablist" aria-label="Expiry window">
+              {WINDOWS.map((days) => (
+                <button key={days} type="button" role="tab" aria-selected={activeTab === days} className={activeTab === days ? 'is-active' : ''} onClick={() => setActiveTab(days)}>
+                  {days} days
                 </button>
-              </div>
-            </form>
+              ))}
+            </div>
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search expiring batches</span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search medicine, batch or supplier" />
+            </label>
           </div>
-        </div>
-      )}
-    </div>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            loading={loading}
+            getRowId={(d) => String(d.BATCH_ID)}
+            initialSorting={[{ id: 'expiry', desc: false }]}
+            empty={data.length > 0 ? (
+              <EmptyState icon={Search} title="No batches match" description="Try another medicine, batch number or supplier." />
+            ) : (
+              <EmptyState icon={CalendarClock} title={`Nothing expires within ${activeTab} days`} description="Choose a longer window to look further ahead." />
+            )}
+          />
+        </section>
+      </main>
+
+      <Modal
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        title={action.title}
+        description={selectedBatch ? `${selectedBatch.GENERIC_NAME} · batch ${selectedBatch.BATCH_NUMBER}` : ''}
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setIsModalOpen(false)}>Cancel</button>
+            <button type="submit" form="expiry-action-form" className={`btn btn-md ${actionType === 'discard' ? 'btn-danger' : 'btn-primary'}`}>
+              {action.confirm}
+            </button>
+          </>
+        )}
+      >
+        <form id="expiry-action-form" onSubmit={handleActionSubmit} style={{ display: 'grid', gap: 14 }}>
+          <div className="facts">
+            <div><div className="fact-label">Batch</div><div className="fact-value mono">{selectedBatch?.BATCH_NUMBER || '—'}</div></div>
+            <div><div className="fact-label">Expires</div><div className="fact-value tabular">{fmtDate(selectedBatch?.EXPIRY_DATE)}</div></div>
+            <div><div className="fact-label">Available</div><div className="fact-value tabular">{selectedBatch?.QUANTITY ?? '—'}</div></div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="expiry-qty">Quantity to {action.verb}</label>
+            <input
+              id="expiry-qty" className="form-input" required type="number" min="1" max={selectedBatch?.QUANTITY}
+              value={quantity} onChange={e => setQuantity(e.target.value)}
+            />
+          </div>
+
+          {(actionType === 'discard' || actionType === 'quarantine') && (
+            <div className="form-group">
+              <label className="form-label" htmlFor="expiry-reason">Reason</label>
+              <textarea
+                id="expiry-reason" className="form-textarea" required rows="3"
+                placeholder="Give the reason for the audit trail"
+                value={reason} onChange={e => setReason(e.target.value)}
+              />
+            </div>
+          )}
+
+          {actionType === 'discard' && (
+            <div className="alert-strip alert-danger" role="note" style={{ marginBottom: 0 }}>
+              Disposal needs witness approval under compliance rules and must be entered in the destruction register.
+            </div>
+          )}
+          <p className="form-hint">This action is not yet saved to stock records from this screen.</p>
+        </form>
+      </Modal>
     </>
   );
 }
