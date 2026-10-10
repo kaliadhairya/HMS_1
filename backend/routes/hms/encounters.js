@@ -7,12 +7,61 @@ const { logAction } = require('../../utils/auditLogger');
 const { clobToString } = require('../../utils/clobToString');
 const { Op } = require('sequelize');
 
+// Today's open OPD token / appointment for this patient with this doctor. Tokens and appointments
+// store either the doctor's user ID or their HMS_DOCTORS ID, so both are matched.
+async function findOpenVisit(patientId, userId, transaction) {
+  const [doctorRows] = await sequelize.query(
+    'SELECT ID, DEPARTMENT_ID FROM HMS_DOCTORS WHERE USER_ID = :userId ORDER BY ID LIMIT 1',
+    { replacements: { userId }, transaction }
+  );
+  const doctorRow = doctorRows[0] || null;
+  const doctorIds = [Number(userId)];
+  if (doctorRow && !doctorIds.includes(Number(doctorRow.ID))) doctorIds.push(Number(doctorRow.ID));
+
+  const [tokenRows] = await sequelize.query(`
+    SELECT ID, DEPARTMENT_ID FROM HMS_TOKENS
+     WHERE PATIENT_ID = :patientId AND DOCTOR_ID IN (:doctorIds)
+       AND TRUNC(TOKEN_DATE) = TRUNC(CURRENT_TIMESTAMP)
+       AND STATUS = 'Waiting'
+     ORDER BY TOKEN_NUMBER ASC LIMIT 1
+  `, { replacements: { patientId, doctorIds }, transaction });
+
+  const [appointmentRows] = await sequelize.query(`
+    SELECT ID, DEPARTMENT_ID FROM HMS_APPOINTMENTS
+     WHERE PATIENT_ID = :patientId AND DOCTOR_ID IN (:doctorIds)
+       AND TRUNC(APPOINTMENT_DATE) = TRUNC(CURRENT_TIMESTAMP)
+       AND STATUS IN ('Scheduled', 'Checked-in')
+     ORDER BY CASE WHEN STATUS = 'Checked-in' THEN 0 ELSE 1 END, SLOT_START ASC LIMIT 1
+  `, { replacements: { patientId, doctorIds }, transaction });
+
+  return {
+    token: tokenRows[0] || null,
+    appointment: appointmentRows[0] || null,
+    doctorDepartmentId: doctorRow ? doctorRow.DEPARTMENT_ID : null,
+  };
+}
+
 // Create a new encounter (Start Consultation)
 router.post('/', protect, checkPermission('consultation', 'write'), async (req, res) => {
   try {
     const { patient_id, token_id, appointment_id, department_id, chief_complaint, encounter_type } = req.body;
-    const normalizedTokenId = token_id ? Number(token_id) : null;
+    const patientId = Number(patient_id);
+    if (!Number.isInteger(patientId) || patientId <= 0) {
+      return res.status(400).json({ error: 'patient_id is required' });
+    }
+    const patient = await Patient.findByPk(patientId, { attributes: ['id'] });
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+
     const encounterId = await sequelize.transaction(async (transaction) => {
+      // Link the visit the front desk opened today (token and/or appointment), so the queue
+      // status, the department and later the appointment completion follow this consultation.
+      const open = await findOpenVisit(patientId, Number(req.user.id), transaction);
+      const normalizedTokenId = token_id ? Number(token_id) : (open.token ? Number(open.token.ID) : null);
+      const normalizedAppointmentId = appointment_id ? Number(appointment_id) : (open.appointment ? Number(open.appointment.ID) : null);
+      const resolvedDepartmentId = department_id
+        ? Number(department_id)
+        : (open.token?.DEPARTMENT_ID ?? open.appointment?.DEPARTMENT_ID ?? open.doctorDepartmentId ?? null);
+
       const [[{ NEXTVAL: nextId }]] = await sequelize.query(
         "SELECT nextval('hms_encounters_seq') AS \"NEXTVAL\"",
         { transaction }
@@ -29,11 +78,11 @@ router.post('/', protect, checkPermission('consultation', 'write'), async (req, 
       `, {
         replacements: {
           id: nextId,
-          patientId: Number(patient_id),
+          patientId,
           doctorId: Number(req.user.id),
-          departmentId: department_id ? Number(department_id) : null,
+          departmentId: resolvedDepartmentId ? Number(resolvedDepartmentId) : null,
           tokenId: normalizedTokenId,
-          appointmentId: appointment_id ? Number(appointment_id) : null,
+          appointmentId: normalizedAppointmentId,
           chiefComplaint: chief_complaint || null,
           encounterType: encounter_type || 'OPD',
         },
@@ -63,14 +112,26 @@ router.post('/', protect, checkPermission('consultation', 'write'), async (req, 
 });
 
 // Update Encounter (Autosave endpoint)
+// Partial update: only the note fields present in the body are written. Callers that save a
+// subset (the prescription slip sends chief_complaint and current_medications only) used to
+// overwrite every other field with NULL, wiping the consultation history and examination.
+const NOTE_FIELDS = {
+  chief_complaint: 'CHIEF_COMPLAINT',
+  hopi: 'HOPI',
+  past_medical_history: 'PAST_MEDICAL_HISTORY',
+  surgical_history: 'SURGICAL_HISTORY',
+  family_history: 'FAMILY_HISTORY',
+  social_history: 'SOCIAL_HISTORY',
+  current_medications: 'CURRENT_MEDICATIONS',
+  general_examination: 'GENERAL_EXAMINATION',
+  cvs_findings: 'CVS_FINDINGS',
+  rs_findings: 'RS_FINDINGS',
+  abdomen_findings: 'ABDOMEN_FINDINGS',
+  cns_findings: 'CNS_FINDINGS',
+};
+
 router.put('/:id', protect, checkPermission('consultation', 'write'), async (req, res) => {
   try {
-    const { 
-      chief_complaint, hopi, past_medical_history, surgical_history, 
-      family_history, social_history, current_medications,
-      general_examination, cvs_findings, rs_findings, abdomen_findings, cns_findings
-    } = req.body;
-
     const encounterId = Number(req.params.id);
 
     // Get current status safely
@@ -87,38 +148,17 @@ router.put('/:id', protect, checkPermission('consultation', 'write'), async (req
       return res.status(400).json({ error: 'Cannot edit finalized encounter' });
     }
 
-    await sequelize.query(`
-      UPDATE HMS_ENCOUNTERS SET 
-        CHIEF_COMPLAINT = :chief_complaint, 
-        HOPI = :hopi, 
-        PAST_MEDICAL_HISTORY = :past_medical_history, 
-        SURGICAL_HISTORY = :surgical_history,
-        FAMILY_HISTORY = :family_history, 
-        SOCIAL_HISTORY = :social_history, 
-        CURRENT_MEDICATIONS = :current_medications,
-        GENERAL_EXAMINATION = :general_examination, 
-        CVS_FINDINGS = :cvs_findings, 
-        RS_FINDINGS = :rs_findings, 
-        ABDOMEN_FINDINGS = :abdomen_findings, 
-        CNS_FINDINGS = :cns_findings
-      WHERE ID = :id
-    `, {
-      replacements: {
-        chief_complaint: chief_complaint || null,
-        hopi: hopi || null,
-        past_medical_history: past_medical_history || null,
-        surgical_history: surgical_history || null,
-        family_history: family_history || null,
-        social_history: social_history || null,
-        current_medications: current_medications || null,
-        general_examination: general_examination || null,
-        cvs_findings: cvs_findings || null,
-        rs_findings: rs_findings || null,
-        abdomen_findings: abdomen_findings || null,
-        cns_findings: cns_findings || null,
-        id: encounterId
-      }
-    });
+    const sets = [];
+    const replacements = { id: encounterId };
+    for (const [key, column] of Object.entries(NOTE_FIELDS)) {
+      if (!Object.prototype.hasOwnProperty.call(req.body, key)) continue;
+      sets.push(`${column} = :${key}`);
+      replacements[key] = req.body[key] || null;
+    }
+
+    if (sets.length > 0) {
+      await sequelize.query(`UPDATE HMS_ENCOUNTERS SET ${sets.join(', ')} WHERE ID = :id`, { replacements });
+    }
 
     res.json({ success: true, id: encounterId });
   } catch (error) {
@@ -132,6 +172,9 @@ router.patch('/:id/finalize', protect, checkPermission('consultation', 'write'),
   try {
     const encounter = await Encounter.findByPk(req.params.id);
     if (!encounter) return res.status(404).json({ error: 'Encounter not found' });
+    if (encounter.status === 'Finalized') {
+      return res.status(400).json({ error: 'Encounter is already finalized' });
+    }
 
     // Wrap all status transitions in a single atomic transaction
     await sequelize.transaction(async (t) => {
@@ -143,6 +186,14 @@ router.patch('/:id/finalize', protect, checkPermission('consultation', 'write'),
         if (token) {
           await token.update({ status: 'Done' }, { transaction: t });
         }
+      }
+
+      // The booked appointment for this visit is now complete
+      if (encounter.appointment_id) {
+        await sequelize.query(
+          "UPDATE HMS_APPOINTMENTS SET STATUS = 'Completed' WHERE ID = :id AND STATUS IN ('Scheduled', 'Checked-in')",
+          { replacements: { id: encounter.appointment_id }, transaction: t }
+        );
       }
 
       // Mark Prescription as Finalized and Generate QR Code data
