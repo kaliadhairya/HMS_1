@@ -75,11 +75,13 @@ export default function Navbar() {
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
-  // Give the page's main region a stable target for the skip link.
+  // Give the page's main region a stable target for the skip link. Runs after every render because
+  // pages swap their <main> (loading -> loaded) without a route change.
   useEffect(() => {
+    if (document.getElementById('main')) return;
     const main = document.querySelector('main');
-    if (main && !main.id) main.id = 'main';
-  }, [location.pathname]);
+    if (main) main.id = 'main';
+  });
 
   useEffect(() => {
     const onKey = (e) => {

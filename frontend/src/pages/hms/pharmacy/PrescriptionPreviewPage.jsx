@@ -57,7 +57,7 @@ export default function PrescriptionPreviewPage() {
   };
 
   return (
-    <>
+    <main>
     {/* Screen toolbar (hidden on print). Kept outside the sheet so the sheet's forced print colours do not apply to it. */}
     <div className="no-print" style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
@@ -238,6 +238,6 @@ export default function PrescriptionPreviewPage() {
         }
       `}</style>
     </div>
-    </>
+    </main>
   );
 }

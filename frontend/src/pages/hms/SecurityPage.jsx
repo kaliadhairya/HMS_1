@@ -443,7 +443,7 @@ function IPRulesPanel() {
             <p className="muted">Only these addresses can access the system. Leave empty to allow all.</p>
             <form style={{ display: 'flex', gap: 8 }} onSubmit={(e) => { e.preventDefault(); if (newWL) { setWhitelist([...whitelist, newWL]); setNewWL(''); } }}>
               <label className="sr-only" htmlFor="ip-allow">IP address or range to allow</label>
-              <input id="ip-allow" className="form-input mono" placeholder="e.g. 10.2.111.0/24" value={newWL} onChange={(e) => setNewWL(e.target.value)} style={{ flex: 1 }} />
+              <input id="ip-allow" className="form-input mono" placeholder="e.g. 192.168.1.0/24" value={newWL} onChange={(e) => setNewWL(e.target.value)} style={{ flex: 1 }} />
               <button type="submit" className="btn btn-secondary btn-md"><Plus size={16} aria-hidden="true" /> Add</button>
             </form>
             {whitelist.length > 0 && (

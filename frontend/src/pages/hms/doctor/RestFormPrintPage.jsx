@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
-import Glyph from '../../../components/ui/Glyph';
+import { ArrowLeft, Pencil, Printer } from 'lucide-react';
 
 export default function RestFormPrintPage() {
   const { id } = useParams();
@@ -83,7 +83,7 @@ export default function RestFormPrintPage() {
           .footer-date { font-size: 13pt; font-weight: 700; color: #c62828; }
           .footer-sign { text-align: center; font-size: 11pt; }
           .sign-line { width: 170px; border-bottom: 1.2px solid #333; margin-bottom: 5px; }
-          .copyright { text-align: center; font-size: 8pt; color: #aaa; margin-top: 10mm; }
+          .copyright { text-align: center; font-size: 8pt; color: #666; margin-top: 10mm; }
 
           @media print {
             body { -webkit-print-color-adjust: exact; }
@@ -193,7 +193,7 @@ export default function RestFormPrintPage() {
   const { name, empNo, attendedDateStr, attendedTimeStr, fromDate, toDate, fitDate, extendedDate, formDate } = getDisplayValues(data, patientInfo);
 
   return (
-    <div style={{ background: '#64748b', minHeight: '100vh' }}>
+    <main style={{ background: '#64748b', minHeight: '100vh' }}>
 
       {/* Controls bar */}
       <div style={{
@@ -201,9 +201,10 @@ export default function RestFormPrintPage() {
         background: '#1e293b', borderBottom: '1px solid #334155',
         position: 'sticky', top: 0, zIndex: 10
       }}>
-        <button onClick={() => navigate(-1)} style={btnStyle('#334155', '#e2e8f0', '#475569')}>← Back</button>
-        <button onClick={() => navigate(`/doctor/rest-forms/edit/${id}`)} style={btnStyle('#334155', '#e2e8f0', '#475569')}><Glyph icon="✏️" /> Edit</button>
-        <button onClick={handlePrint} style={btnStyle('#2563eb', '#fff', '#2563eb')}><Glyph icon="🖨️" /> Print</button>
+        <h1 className="sr-only">Rest form preview</h1>
+        <button type="button" onClick={() => navigate(-1)} style={btnStyle('#334155', '#e2e8f0', '#475569')}><ArrowLeft size={16} aria-hidden="true" /> Back</button>
+        <button type="button" onClick={() => navigate(`/doctor/rest-forms/edit/${id}`)} style={btnStyle('#334155', '#e2e8f0', '#475569')}><Pencil size={16} aria-hidden="true" /> Edit</button>
+        <button type="button" onClick={handlePrint} style={btnStyle('#005eb8', '#fff', '#005eb8')}><Printer size={16} aria-hidden="true" /> Print</button>
       </div>
 
       {/* Preview */}
@@ -316,13 +317,13 @@ export default function RestFormPrintPage() {
           </div>
 
           {/* COPYRIGHT */}
-          <div style={{ textAlign: 'center', fontSize: '7.5pt', color: '#aaa', marginTop: '8mm' }}>
+          <div style={{ textAlign: 'center', fontSize: '7.5pt', color: '#666', marginTop: '8mm' }}>
             Designed, developed, and maintained by HMS IT Department © 2026. All rights reserved.
           </div>
 
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -362,6 +363,7 @@ const inkRed = {
 };
 
 const btnStyle = (bg, color, border) => ({
+  display: 'inline-flex', alignItems: 'center', gap: 6,
   padding: '10px 22px',
   borderRadius: 8,
   fontSize: '0.9rem',

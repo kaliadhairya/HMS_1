@@ -68,8 +68,8 @@ export default function PatientProfilePage() {
     }
   };
 
-  if (loading) return <><Navbar /><div className="page-wrapper" style={{textAlign: 'center', padding: 60}}><div className="spinner" /></div></>;
-  if (!patient) return <><Navbar /><div className="page-wrapper"><h2>Patient not found</h2></div></>;
+  if (loading) return <><Navbar /><main className="app-page"><p className="muted">Loading patient…</p></main></>;
+  if (!patient) return <><Navbar /><main className="app-page"><h1>Patient not found</h1><p className="muted">The patient may have been removed, or the link is wrong.</p></main></>;
 
   const patientType = patient.patientType || patient.patient_type;
   const patientTypeMeta = getPatientTypeMeta(patientType);
@@ -77,6 +77,7 @@ export default function PatientProfilePage() {
   return (
     <>
     <Navbar />
+    <main>
     <PatientBanner
       patient={patient}
       allergies={allergies}
@@ -329,6 +330,7 @@ export default function PatientProfilePage() {
 
       </div>
     </div>
+    </main>
     </>
   );
 }

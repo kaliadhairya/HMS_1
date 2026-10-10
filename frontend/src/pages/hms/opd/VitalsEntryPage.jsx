@@ -307,7 +307,7 @@ export default function VitalsEntryPage() {
                     <div className="form-group">
                       <label className="form-label" htmlFor="v-temp">Temperature</label>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <input id="v-temp" type="number" step="0.1" className="form-input" name="temperature" placeholder="98.6" value={formData.temperature} onChange={handleChange} style={{ flex: 2, minWidth: 0 }} />
+                        <input id="v-temp" type="number" step="0.1" className="form-input" name="temperature" placeholder={formData.temp_unit === 'F' ? '98.6' : '37.0'} value={formData.temperature} onChange={handleChange} style={{ flex: 2, minWidth: 0 }} />
                         <select className="form-select" name="temp_unit" aria-label="Temperature unit" value={formData.temp_unit} onChange={handleChange} style={{ flex: 1, maxWidth: 80 }}>
                           <option value="C">°C</option>
                           <option value="F">°F</option>

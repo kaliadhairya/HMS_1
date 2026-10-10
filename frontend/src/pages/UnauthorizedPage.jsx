@@ -12,6 +12,7 @@ export default function UnauthorizedPage() {
   if (!user) {
     return (
       <main className="app-page" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
+        <h1 className="sr-only">Sign in required</h1>
         <EmptyState
           icon={ShieldAlert}
           title="Sign in to continue"
@@ -26,6 +27,7 @@ export default function UnauthorizedPage() {
     <>
       <Navbar />
       <main className="app-page">
+        <h1 className="sr-only">Access denied</h1>
         <section className="panel">
           <EmptyState
             icon={ShieldAlert}

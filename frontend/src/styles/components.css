@@ -99,7 +99,7 @@
   width: 48px; height: 48px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center;
   background: var(--surface-3); color: var(--text-secondary); margin-bottom: 4px;
 }
-.empty-state h3 { font-size: 1rem; }
+.empty-state h3, .empty-state-title { font-size: 1rem; }
 .empty-state p { max-width: 420px; color: var(--text-secondary); font-size: 0.9rem; }
 .empty-state-action { margin-top: 10px; display: flex; gap: 8px; }
 
@@ -237,3 +237,34 @@
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 20px; }
 .fact-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
 .fact-value { margin-top: 2px; font-size: 0.92rem; color: var(--text-primary); }
+
+/* Tone backgrounds for small icon dots and tiles */
+.tone-neutral { background: var(--surface-3); color: var(--text-secondary); }
+.tone-info { background: var(--primary-light); color: var(--primary); }
+.tone-success { background: var(--success-light); color: var(--success); }
+.tone-warning { background: var(--amber-light); color: var(--amber); }
+.tone-danger { background: var(--red-light); color: var(--red); }
+
+/* Vertical timeline (patient journey) */
+.timeline { list-style: none; margin: 0; padding: 16px 16px 16px 52px; position: relative; display: grid; gap: 10px; }
+.timeline::before { content: ''; position: absolute; left: 31px; top: 20px; bottom: 20px; width: 2px; background: var(--border); }
+.timeline-item { position: relative; }
+.timeline-dot {
+  position: absolute; left: -35px; top: 10px; width: 28px; height: 28px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 0 0 4px var(--surface);
+}
+.timeline-card { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.timeline-head {
+  width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; background: none;
+  font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 10px;
+}
+.timeline-head:hover { background: var(--surface-2); }
+.timeline-summary { flex: 1; font-size: 0.9rem; font-weight: 500; }
+.timeline-chevron { color: var(--text-muted); transition: transform .15s ease; }
+.timeline-chevron.is-open { transform: rotate(180deg); }
+.timeline-details { padding: 4px 14px 14px; border-top: 1px dashed var(--border); padding-top: 12px; }
+@media (max-width: 640px) { .timeline-head { flex-wrap: wrap; } }
+
+/* Data table hover: subtle on data rows, none on the empty-state and loading rows */
+.dt-table tbody tr:hover { background: var(--surface-2); }
+.dt-table tbody tr:has(.dt-empty-cell):hover, .dt-table tbody tr.dt-skeleton-row:hover { background: transparent; }

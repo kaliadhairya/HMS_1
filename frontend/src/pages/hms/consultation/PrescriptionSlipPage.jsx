@@ -7,6 +7,7 @@ import { useAuth } from '../../../context/AuthContext';
 import Navbar from '../../../components/Navbar';
 import './PrescriptionSlip.css';
 import Glyph from '../../../components/ui/Glyph';
+import { ArrowLeft, Eye, Printer, Save } from 'lucide-react';
 
 const emptyItem = () => ({
   medicine_id: null,
@@ -377,8 +378,8 @@ function UnitDropdown({ value, onChange, rowIndex }) {
 }
 
 function getPatientTypeMeta(type) {
-  if (type === 'corporate_employee') return { label: '🏢 Corporate', bg: 'rgba(16, 185, 129, 0.12)', color: '#059669', border: 'rgba(16,185,129,0.2)' };
-  return { label: '👤 General', bg: 'rgba(59, 130, 246, 0.12)', color: '#2563eb', border: 'rgba(59,130,246,0.2)' };
+  if (type === 'corporate_employee') return { label: 'Corporate', bg: 'var(--primary-light)', color: 'var(--primary)', border: 'var(--primary-border)' };
+  return { label: 'General', bg: 'var(--surface-3)', color: 'var(--text-secondary)', border: 'var(--border)' };
 }
 
 function formatPatientId(patient) {
@@ -1113,7 +1114,7 @@ export default function PrescriptionSlipPage() {
   return (
     <>
       {!previewMode && <Navbar />}
-      <div className={`prescription-slip-container ${previewMode ? 'preview-mode' : ''}`}>
+      <main className={`prescription-slip-container ${previewMode ? 'preview-mode' : ''}`}>
       {!previewMode ? (
         <div className="no-print prescription-workbench">
           
@@ -1124,8 +1125,7 @@ export default function PrescriptionSlipPage() {
             <div className="hms-page-header" style={{ marginBottom: 0, marginTop: 8 }}>
               <div>
                 <h1>
-                  <span className="header-icon" style={{ background: 'rgba(96,165,250,0.12)', borderColor: 'rgba(96,165,250,0.25)' }}><Glyph icon="💊" /></span>
-                  Electronic Prescription
+                  Electronic prescription
                 </h1>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
                   Search for a patient, add medicines, and generate a printable prescription slip.
@@ -1137,7 +1137,7 @@ export default function PrescriptionSlipPage() {
             <div className="card prescription-toolbar" style={{ padding: '20px 24px', flexDirection: 'column', gap: '16px', alignItems: 'stretch' }}>
               <div className="toolbar-search" style={{ width: '100%' }}>
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(59,130,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="🔍" /></span>
+                <span style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surface-3)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="🔍" /></span>
                 Find Registered Patient
               </label>
               <div className="toolbar-search-input">
@@ -1175,7 +1175,7 @@ export default function PrescriptionSlipPage() {
           {/* ── Patient & Clinical Details Card ── */}
           <div className="card prescription-editor-panel">
             <div className="editor-section-header">
-              <span className="section-icon" style={{ background: 'rgba(16,185,129,0.1)' }}><Glyph icon="👤" /></span>
+              <span className="section-icon" style={{ background: 'var(--surface-3)' }}><Glyph icon="👤" /></span>
               Patient & Clinical Details
             </div>
             <div className="editor-body">
@@ -1204,13 +1204,13 @@ export default function PrescriptionSlipPage() {
                             <span style={{ fontWeight: 600 }}>Emp: {patient.empNumber}</span>
                           )}
                           {patient.patientType === 'corporate_employee' && patient.relationship && patient.relationship !== 'Self' && (
-                            <span style={{ fontWeight: 600, color: '#d97706' }}>Relation: {patient.relationship}</span>
+                            <span style={{ fontWeight: 600, color: 'var(--amber)' }}>Relation: {patient.relationship}</span>
                           )}
                           {patient.patientType === 'corporate_employee' && patient.employee_name && patient.relationship !== 'Self' && (
-                            <span style={{ fontWeight: 600, color: '#059669' }}>Emp Name: {patient.employee_name}</span>
+                            <span style={{ fontWeight: 600, color: 'var(--success)' }}>Emp Name: {patient.employee_name}</span>
                           )}
                           {patient.patientType === 'corporate_employee' && (!patient.relationship || patient.relationship === 'Self') && (
-                            <span style={{ fontWeight: 600, color: '#059669' }}>Self</span>
+                            <span style={{ fontWeight: 600, color: 'var(--success)' }}>Self</span>
                           )}
                           {patient.patientType !== 'corporate_employee' && (
                             <span>{patient.phoneNumber || 'No phone'}</span>
@@ -1257,13 +1257,11 @@ export default function PrescriptionSlipPage() {
           {/* ── Action Buttons Card ── */}
           <div className="card" style={{ display: 'flex', justifyContent: 'flex-end', padding: '16px 24px' }}>
             <div className="toolbar-actions">
-              <button className="btn btn-ghost" onClick={() => navigate(-1)}>← Back</button>
-              <button className="btn btn-outline" onClick={handlePreview} style={{ borderColor: 'rgba(139,92,246,0.3)', color: 'var(--primary)' }}><Glyph icon="👁️" /> Preview</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? '⏳ Saving...' : '💾 Save Prescription'}
-              </button>
-              <button className="btn" onClick={handlePrint} disabled={saving} style={{ background: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.25)', fontWeight: 700 }}>
-                <Glyph icon="🖨️" /> Print
+              <button type="button" className="btn btn-ghost" onClick={() => navigate(-1)}><ArrowLeft size={16} aria-hidden="true" /> Back</button>
+              <button type="button" className="btn btn-secondary" onClick={handlePreview}><Eye size={16} aria-hidden="true" /> Preview</button>
+              <button type="button" className="btn btn-secondary" onClick={handlePrint} disabled={saving}><Printer size={16} aria-hidden="true" /> Print</button>
+              <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
+                <Save size={16} aria-hidden="true" /> {saving ? 'Saving…' : 'Save prescription'}
               </button>
             </div>
           </div>
@@ -1271,7 +1269,7 @@ export default function PrescriptionSlipPage() {
           {/* ── Medicine Section Card ── */}
           <div className="card prescription-editor-panel prescription-medicine-panel">
             <div className="editor-section-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '16px' }}>
-              <span className="section-icon" style={{ background: 'rgba(139,92,246,0.1)' }}><Glyph icon="💊" /></span>
+              <span className="section-icon" style={{ background: 'var(--surface-3)' }}><Glyph icon="💊" /></span>
               Prescription & Medicines
             </div>
             
@@ -1280,7 +1278,7 @@ export default function PrescriptionSlipPage() {
               <div className="medicine-lookup-row" style={{ padding: '0 24px 20px' }}>
               <div className="medicine-lookup-box">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(139,92,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="💊" /></span>
+                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--surface-3)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="💊" /></span>
                   Add Medicine
                 </label>
                 <div className="toolbar-search-input">
@@ -1315,7 +1313,7 @@ export default function PrescriptionSlipPage() {
                       >
                         <strong>{medicine.genericName}</strong>
                         <span>
-                          {medicine._isRxTerm ? '🌐 RxTerms' : [medicine.formulation, medicine.strength, medicine.strengthUnit].filter(Boolean).join(' ')}
+                          {medicine._isRxTerm ? 'RxTerms' : [medicine.formulation, medicine.strength, medicine.strengthUnit].filter(Boolean).join(' ')}
                         </span>
                       </button>
                     ))}
@@ -1397,7 +1395,7 @@ export default function PrescriptionSlipPage() {
             {/* ── Medicine Editor ── */}
             <div className="prescription-medicine-list" role="list">
               {prescriptionItems.map((item, index) => (
-                  <article className="prescription-medicine-card" key={index + '-' + (item.medicine_id || 'manual')} role="listitem">
+                  <div role="listitem" className="prescription-medicine-card" key={index + '-' + (item.medicine_id || 'manual')}>
                     <div className="medicine-card-header">
                       <div className="medicine-card-count" aria-hidden="true">{index + 1}</div>
                       <div className="medicine-card-title-field">
@@ -1505,6 +1503,7 @@ export default function PrescriptionSlipPage() {
                         <label className="medicine-field-label">Frequency</label>
                         <select
                           className="form-input prescription-select frequency-select"
+                          aria-label={`Frequency for medicine ${index + 1}`}
                           value={getFrequencySelectValue(item.frequency)}
                           onChange={(event) => {
                             const nextValue = event.target.value;
@@ -1531,6 +1530,7 @@ export default function PrescriptionSlipPage() {
                         <label className="medicine-field-label">Instructions</label>
                         <select
                           className="form-input instruction-select"
+                          aria-label={`Instructions for medicine ${index + 1}`}
                           value={getInstructionSelectValue(item.instructions)}
                           onChange={(event) => {
                             const nextValue = event.target.value;
@@ -1553,7 +1553,7 @@ export default function PrescriptionSlipPage() {
                         )}
                       </div>
                     </div>
-                  </article>
+                  </div>
               ))}
             </div>
             </div>
@@ -1563,7 +1563,7 @@ export default function PrescriptionSlipPage() {
       ) : (
         <div className="no-print preview-controls card" style={{ display: 'flex', gap: 12, justifyContent: 'center', padding: 16 }}>
           <button className="btn btn-secondary" onClick={() => setPreviewMode(false)}>← Back to Edit</button>
-          <button className="btn btn-accent" onClick={handlePrint}><Glyph icon="🖨️" /> Print Prescription</button>
+          <button type="button" className="btn btn-primary" onClick={handlePrint}><Printer size={16} aria-hidden="true" /> Print prescription</button>
         </div>
       )}
 
@@ -1731,7 +1731,7 @@ export default function PrescriptionSlipPage() {
           </div>
         </div>
       )}
-    </div>
+    </main>
 
     </>
   );

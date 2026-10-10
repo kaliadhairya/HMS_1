@@ -7,7 +7,7 @@ import DoctorDashboard from '../../components/dashboards/DoctorDashboard';
 import ReceptionistDashboard from '../../components/dashboards/ReceptionistDashboard';
 import PharmacistDashboard from '../../components/dashboards/PharmacistDashboard';
 import NurseDashboard from '../../components/dashboards/NurseDashboard';
-import Glyph from '../../components/ui/Glyph';
+import { Hospital } from 'lucide-react';
 
 export default function RoleDashboard() {
   const { user } = useAuth();
@@ -27,19 +27,19 @@ export default function RoleDashboard() {
   return (
     <>
       <Navbar />
-      <div 
+      <main
         className="page-wrapper" 
         style={['doctor', 'nurse', 'pharmacist'].includes(role) ? { maxWidth: '100%', padding: '0', overflow: 'hidden' } : {}}
       >
         {dashboardMap[role] || (
           <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-            <h2><Glyph icon="🏥" /> Welcome to HMS</h2>
+            <h1 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Hospital size={22} aria-hidden="true" /> Welcome to HMS</h1>
             <p style={{ color: 'var(--text-secondary)', marginTop: 8 }}>
               Your dashboard is being configured. Please contact the administrator.
             </p>
           </div>
         )}
-      </div>
+      </main>
     </>
   );
 }
