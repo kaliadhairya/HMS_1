@@ -7,6 +7,7 @@ import DischargeSummaryModal from '../../../components/DischargeSummaryModal';
 import { useAuth } from '../../../context/AuthContext';
 // Assuming recharts is installed based on standard dashboard tech stack
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function IPDPatientChartPage() {
   const { id } = useParams();
@@ -170,7 +171,7 @@ export default function IPDPatientChartPage() {
         width: 'fit-content'
       }}>
         {[
-          { id: 'progress', label: 'Progress', icon: '📝', color: '#6366f1' },
+          { id: 'progress', label: 'Progress', icon: '📝', color: 'var(--primary)' },
           { id: 'nursing', label: 'Nursing', icon: '👩‍⚕️', color: '#10b981' },
           { id: 'vitals', label: 'Vitals', icon: '❤️', color: '#ef4444' },
           { id: 'mar', label: 'Medications', icon: '💊', color: '#3b82f6' },
@@ -196,7 +197,7 @@ export default function IPDPatientChartPage() {
                 fontSize: '1.1rem', 
                 opacity: isActive ? 1 : 0.6,
                 filter: isActive ? `drop-shadow(0 2px 4px ${tab.color}30)` : 'none'
-              }}>{tab.icon}</span>
+              }}><Glyph icon={tab.icon} /></span>
               {tab.label}
               {isActive && (
                 <div style={{ 
@@ -216,14 +217,14 @@ export default function IPDPatientChartPage() {
           <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: 16 }}>
             {progressNotes.length === 0 ? (
               <div className="card" style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-                <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.3 }}>📝</div>
+                <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.3 }}><Glyph icon="📝" /></div>
                 <p>No clinical progress notes have been recorded yet.</p>
               </div>
             ) : (
               progressNotes.map(pn => (
                 <div key={pn.ID} className="card hms-anim-1" style={{ padding: 0, overflow: 'hidden' }}>
                   <div style={{ padding: '14px 20px', background: 'rgba(99,102,241,0.03)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontWeight: 800, color: '#6366f1', fontSize: '0.9rem' }}>{pn.DOCTOR_NAME}</div>
+                    <div style={{ fontWeight: 800, color: 'var(--primary)', fontSize: '0.9rem' }}>{pn.DOCTOR_NAME}</div>
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{new Date(pn.NOTE_DATE).toLocaleString()}</div>
                   </div>
                   <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
@@ -285,7 +286,7 @@ export default function IPDPatientChartPage() {
           <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: 16 }}>
             {nursingNotes.length === 0 ? (
               <div className="card" style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-                <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.3 }}>👩‍⚕️</div>
+                <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.3 }}><Glyph icon="👩‍⚕️" /></div>
                 <p>No nursing observations recorded yet.</p>
               </div>
             ) : (
@@ -412,7 +413,7 @@ export default function IPDPatientChartPage() {
                         <YAxis tick={{ fontSize: 11, fontWeight: 600, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
                         <Tooltip labelFormatter={(v) => new Date(v).toLocaleString()} contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 12 }} />
                         <Legend iconType="circle" wrapperStyle={{ paddingTop: 20, fontSize: '0.75rem', fontWeight: 700 }} />
-                        <Line type="monotone" dataKey="pulse" stroke="#7c3aed" strokeWidth={3} dot={{ r: 4, fill: '#7c3aed', strokeWidth: 2, stroke: '#fff' }} name="Pulse" activeDot={{ r: 6 }} />
+                        <Line type="monotone" dataKey="pulse" stroke="#7c3aed" strokeWidth={3} dot={{ r: 4, fill: 'var(--primary)', strokeWidth: 2, stroke: '#fff' }} name="Pulse" activeDot={{ r: 6 }} />
                         <Line type="monotone" dataKey="bpSystolic" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#fff' }} name="Systolic BP" activeDot={{ r: 6 }} />
                         {user.role === 'doctor' && (
                           <>
@@ -425,7 +426,7 @@ export default function IPDPatientChartPage() {
                     </ResponsiveContainer>
                   ) : (
                     <div style={{ textAlign: 'center', paddingTop: 120, color: 'var(--text-muted)' }}>
-                      <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.2 }}>📊</div>
+                      <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.2 }}><Glyph icon="📊" /></div>
                       <p>No vital trends available yet.</p>
                     </div>
                   )}

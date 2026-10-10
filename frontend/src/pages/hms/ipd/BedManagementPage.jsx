@@ -3,6 +3,7 @@ import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 import AdmissionModal from '../../../components/AdmissionModal';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function BedManagementPage() {
   const [wards, setWards] = useState([]);
@@ -52,9 +53,9 @@ export default function BedManagementPage() {
   const occPct = totalBeds > 0 ? Math.round((occ / totalBeds) * 100) : 0;
 
   const wardColors = {
-    'General': { accent: '#3b82f6', gradient: 'linear-gradient(135deg,#3b82f6,#60a5fa)' },
-    'Semi-Private': { accent: '#8b5cf6', gradient: 'linear-gradient(135deg,#8b5cf6,#a78bfa)' },
-    'Critical Care': { accent: '#ef4444', gradient: 'linear-gradient(135deg,#ef4444,#f87171)' },
+    'General': { accent: '#3b82f6', gradient: 'var(--primary)' },
+    'Semi-Private': { accent: 'var(--primary)', gradient: 'var(--primary)' },
+    'Critical Care': { accent: '#ef4444', gradient: 'var(--red)' },
   };
   const getWardStyle = (type) => wardColors[type] || wardColors['General'];
 
@@ -67,7 +68,7 @@ export default function BedManagementPage() {
         <div className="hms-page-header" style={{ marginBottom: 24 }}>
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.25)' }}>🏥</span>
+              <span className="header-icon" style={{ background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.25)' }}><Glyph icon="🏥" /></span>
               Bed Management Dashboard
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -134,7 +135,7 @@ export default function BedManagementPage() {
                 { label: 'Occupied', val: occ, color: '#ef4444', icon: '🔴' },
               ].map(s => (
                 <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: '1rem' }}>{s.icon}</span>
+                  <span style={{ fontSize: '1rem' }}><Glyph icon={s.icon} /></span>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>{s.label}:</span>
                   <span style={{ fontSize: '1rem', fontWeight: 800, color: s.color }}>{s.val}</span>
                 </div>
@@ -320,7 +321,7 @@ export default function BedManagementPage() {
                 background: `${l.color}15`, border: `2px solid ${l.color}`,
               }} />
               <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>{l.label}</span>
-              <span style={{ fontSize: '0.9rem' }}>{l.icon}</span>
+              <span style={{ fontSize: '0.9rem' }}><Glyph icon={l.icon} /></span>
             </div>
           ))}
         </div>

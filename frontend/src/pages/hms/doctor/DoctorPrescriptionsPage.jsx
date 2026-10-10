@@ -4,6 +4,7 @@ import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import { useAuth } from '../../../context/AuthContext';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 const CONSULTED_STATUSES = new Set(['Consulted', 'Finalized']);
 
@@ -206,7 +207,7 @@ export default function DoctorPrescriptionsPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">📋</span>
+              <span className="header-icon"><Glyph icon="📋" /></span>
               Prescription Hub
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -252,7 +253,7 @@ export default function DoctorPrescriptionsPage() {
           onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--green)'}
           onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}
           >
-            <span style={{ fontSize: '1.4rem', filter: 'grayscale(0.5)' }}>🔍</span>
+            <span style={{ fontSize: '1.4rem', filter: 'grayscale(0.5)' }}><Glyph icon="🔍" /></span>
             <input
               type="text"
               className="form-input"
@@ -483,7 +484,7 @@ export default function DoctorPrescriptionsPage() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="hms-empty-state" style={{ margin: 24 }}>
-              <span className="empty-icon">📭</span>
+              <span className="empty-icon"><Glyph icon="📭" /></span>
               <h3>{searchQuery || activeFilterCount ? 'No Results Found' : 'No Prescriptions Yet'}</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
                 {searchQuery || activeFilterCount ? 'No prescriptions match the current search or filters.' : 'No prescriptions have been saved yet.'}
@@ -575,13 +576,13 @@ export default function DoctorPrescriptionsPage() {
                             style={{ color: '#2563eb', borderColor: 'rgba(37,99,235,0.2)' }}
                             onClick={() => navigate(`/hms/prescription-slip?encounterId=${rx.encounter_id}&patientId=${rx.patient_id}`)}
                           >
-                            ✏️ Edit
+                            <Glyph icon="✏️" /> Edit
                           </button>
                           {isOwnPrescription && (
                             <button className="btn btn-sm btn-danger"
                               onClick={(e) => handleDelete(e, rx)}
                             >
-                              🗑️ Delete
+                              <Glyph icon="🗑️" /> Delete
                             </button>
                           )}
                         </div>

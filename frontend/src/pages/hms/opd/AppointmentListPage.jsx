@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function AppointmentListPage() {
   const navigate = useNavigate();
@@ -74,7 +75,7 @@ export default function AppointmentListPage() {
         <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>
       ) : appointments.length === 0 ? (
         <div style={{ padding: '60px 20px', textAlign: 'center', background: 'var(--bg-secondary, rgba(0,0,0,0.02))', border: '2px dashed var(--border-color, rgba(0,0,0,0.1))', borderRadius: 12 }}>
-          <span style={{ fontSize: '3rem', display: 'block', marginBottom: 16, opacity: 0.8 }}>🗓️</span>
+          <span style={{ fontSize: '3rem', display: 'block', marginBottom: 16, opacity: 0.8 }}><Glyph icon="🗓️" /></span>
           <h3 style={{ fontSize: '1.25rem', marginBottom: 8, color: 'var(--text-primary, #333)' }}>No Appointments Found</h3>
           <p style={{ color: 'var(--text-secondary, #666)', margin: 0 }}>No slots are booked for {filterDate}.</p>
         </div>

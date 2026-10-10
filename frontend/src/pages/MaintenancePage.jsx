@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
+import Glyph from '../components/ui/Glyph';
 
 function MaintenancePage() {
   const navigate = useNavigate();
@@ -33,7 +34,7 @@ function MaintenancePage() {
             color: '#fff', 
             padding: '30px 20px',
           }}>
-            <div style={{ fontSize: '4rem', marginBottom: 10 }}>🔨</div>
+            <div style={{ fontSize: '4rem', marginBottom: 10 }}><Glyph icon="🔨" /></div>
             <h1 style={{ margin: 0, fontSize: '2rem', fontWeight: 800 }}>System Maintenance</h1>
           </div>
 
@@ -58,7 +59,7 @@ function MaintenancePage() {
               marginBottom: 30
             }}>
               <span style={{ fontSize: '0.85rem', color: '#ef4444', fontWeight: 600 }}>
-                ⚠️ Super Admins can still log in to manage the system.
+                <Glyph icon="⚠️" /> Super Admins can still log in to manage the system.
               </span>
             </div>
 
@@ -69,7 +70,7 @@ function MaintenancePage() {
               className="btn btn-primary"
               style={{ padding: '12px 30px', fontSize: '1rem', borderRadius: 8 }}
             >
-              🔄 Try Again
+              <Glyph icon="🔄" /> Try Again
             </button>
             <div style={{ marginTop: 16 }}>
               <button 

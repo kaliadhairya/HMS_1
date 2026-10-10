@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import Glyph from '../../components/ui/Glyph';
 
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
@@ -114,7 +115,7 @@ export default function ForgotPasswordPage() {
             ))}
           </div>
 
-          <h2 style={{ marginBottom: 8 }}>🔑 Reset Password</h2>
+          <h2 style={{ marginBottom: 8 }}><Glyph icon="🔑" /> Reset Password</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: 24 }}>
             {step === 1 && 'Enter your username or registered phone number.'}
             {step === 2 && 'Enter the 6-digit OTP sent to your contact.'}
@@ -123,7 +124,7 @@ export default function ForgotPasswordPage() {
 
           {err && (
             <div className="alert alert-error" style={{ marginBottom: 16 }}>
-              <span>⚠️</span> {err}
+              <span><Glyph icon="⚠️" /></span> {err}
             </div>
           )}
 

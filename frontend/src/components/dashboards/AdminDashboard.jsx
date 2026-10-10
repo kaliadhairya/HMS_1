@@ -55,7 +55,7 @@ export default function AdminDashboard() {
     { icon: '📅', label: 'Appointments', path: '/hms/appointments', color: '#f59e0b' },
     { icon: '💳', label: 'Billing & Finance', path: '/hms/admin/billing', color: '#ef4444' },
     { icon: '💊', label: 'Pharmacy', path: '/hms/admin/pharmacy', color: 'var(--primary)' },
-    { icon: '📝', label: 'Attendance & Leave', path: '/hms/admin/attendance', color: '#14b8a6' },
+    { icon: '📝', label: 'Attendance & Leave', path: '/hms/admin/attendance', color: 'var(--primary)' },
     { icon: '🛏️', label: 'Bed Management', path: '/hms/admin/bed-management', color: '#0ea5e9' },
   ];
 

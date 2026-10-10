@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 function BedProgressBar({ pct, barColor }) {
   return (
@@ -68,7 +69,7 @@ export default function ReceptionistIPDPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">🛏️</span>
+              <span className="header-icon"><Glyph icon="🛏️" /></span>
               IPD Admission Desk
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -122,7 +123,7 @@ export default function ReceptionistIPDPage() {
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.08em', marginBottom: 6 }}>
               Total Available
             </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#8b5cf6' }}>
+            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)' }}>
               {totalAvail} <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-muted)' }}>/ {totalBeds}</span>
             </div>
           </div>
@@ -136,14 +137,14 @@ export default function ReceptionistIPDPage() {
               onClick={() => setTab('admissions')}
               style={{ borderRadius: 0, borderRight: '1px solid var(--border)' }}
             >
-              🏥 Active Admissions ({admittedCount})
+              <Glyph icon="🏥" /> Active Admissions ({admittedCount})
             </button>
             <button
               className={`hms-tab-btn ${tab === 'discharge' ? 'active' : ''}`}
               onClick={() => setTab('discharge')}
               style={{ borderRadius: 0 }}
             >
-              🚪 Discharge Pending ({dischargeCount})
+              <Glyph icon="🚪" /> Discharge Pending ({dischargeCount})
             </button>
           </div>
 
@@ -189,7 +190,7 @@ export default function ReceptionistIPDPage() {
                         <div style={{ display: 'flex', gap: 6 }}>
                           {a.status === 'Admitted' && (
                             <button className="btn btn-sm btn-outline" onClick={() => addAdvance(a)}>
-                              💰 Add Advance
+                              <Glyph icon="💰" /> Add Advance
                             </button>
                           )}
                           {a.status === 'Discharge Pending' && (

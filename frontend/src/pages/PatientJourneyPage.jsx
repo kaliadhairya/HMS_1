@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import Navbar from '../components/Navbar';
 import toast from 'react-hot-toast';
+import Glyph from '../components/ui/Glyph';
 
 const getPatientTypeLabel = (type) => {
   if (type === 'corporate_employee') return 'Corporate Beneficiary';
@@ -11,7 +12,7 @@ const getPatientTypeLabel = (type) => {
 
 const EVENT_TYPES = {
   Registration: { icon: '📋', color: '#48bb78' },
-  'OPD Visit': { icon: '🩺', color: '#0f4c81' },
+  'OPD Visit': { icon: '🩺', color: 'var(--primary)' },
   'Lab Report': { icon: '🔬', color: '#d69e2e' },
   Prescription: { icon: '💊', color: '#9f7aea' },
   Admission: { icon: '🛏️', color: '#e53e3e' },
@@ -181,7 +182,7 @@ export default function PatientJourneyPage() {
           <button className="btn btn-outline" onClick={() => navigate(`/hms/patients/${patientId}`)}>← Profile</button>
         </div>
 
-        <h2 style={{ marginBottom: 20 }}>🗂️ Patient Journey Timeline</h2>
+        <h2 style={{ marginBottom: 20 }}><Glyph icon="🗂️" /> Patient Journey Timeline</h2>
 
         {events.length === 0 ? (
           <div className="card" style={{ textAlign: 'center', padding: 40 }}>
@@ -204,7 +205,7 @@ export default function PatientJourneyPage() {
                     alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem',
                     boxShadow: `0 0 0 4px var(--bg)`, zIndex: 1,
                   }}>
-                    {et.icon}
+                    <Glyph icon={et.icon} />
                   </div>
 
                   {/* Event card */}

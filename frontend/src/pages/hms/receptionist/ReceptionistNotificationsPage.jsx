@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function ReceptionistNotificationsPage() {
   const navigate = useNavigate();
@@ -49,7 +50,7 @@ export default function ReceptionistNotificationsPage() {
   const typeConfig = {
     appointment: { icon: '📅', color: '#3b82f6', label: 'Appointment' },
     bill: { icon: '💳', color: '#f59e0b', label: 'Billing' },
-    ipd: { icon: '🛏️', color: '#8b5cf6', label: 'IPD' },
+    ipd: { icon: '🛏️', color: 'var(--primary)', label: 'IPD' },
   };
 
   const priorityBorder = {
@@ -75,8 +76,7 @@ export default function ReceptionistNotificationsPage() {
           <div>
             <h1>
               <span className="header-icon" style={{ position: 'relative' }}>
-                🔔
-                {unreadCount > 0 && (
+                <Glyph icon="🔔" /> {unreadCount > 0 && (
                   <span style={{
                     position: 'absolute', top: -4, right: -4,
                     width: 18, height: 18, borderRadius: '50%',
@@ -104,7 +104,7 @@ export default function ReceptionistNotificationsPage() {
           {unreadCount > 0 && (
             <div className="header-actions">
               <button className="btn btn-outline" onClick={markAllRead}>
-                ✅ Mark All Read
+                <Glyph icon="✅" /> Mark All Read
               </button>
             </div>
           )}
@@ -143,7 +143,7 @@ export default function ReceptionistNotificationsPage() {
                 }
               }}
             >
-              <span style={{ fontSize: '0.85rem' }}>{f.icon}</span>
+              <span style={{ fontSize: '0.85rem' }}><Glyph icon={f.icon} /></span>
               {f.label}
             </button>
           ))}
@@ -157,7 +157,7 @@ export default function ReceptionistNotificationsPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="hms-empty-state">
-            <span className="empty-icon">🎉</span>
+            <span className="empty-icon"><Glyph icon="🎉" /></span>
             <h3 style={{ marginBottom: 8 }}>All Caught Up!</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>No notifications match your filter.</p>
           </div>
@@ -183,7 +183,7 @@ export default function ReceptionistNotificationsPage() {
                     flexShrink: 0,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                    {tc.icon}
+                    <Glyph icon={tc.icon} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>

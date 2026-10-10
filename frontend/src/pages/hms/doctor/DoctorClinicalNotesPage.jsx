@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function DoctorClinicalNotesPage() {
   const [notes, setNotes] = useState([]);
@@ -28,7 +29,7 @@ export default function DoctorClinicalNotesPage() {
     'SOAP Note': { bg: 'rgba(59,130,246,0.1)', color: '#2563eb', border: 'rgba(59,130,246,0.2)' },
     'Progress Note': { bg: 'rgba(16,185,129,0.1)', color: '#059669', border: 'rgba(16,185,129,0.2)' },
     'Discharge Summary': { bg: 'rgba(245,158,11,0.1)', color: '#d97706', border: 'rgba(245,158,11,0.2)' },
-    'Operative Note': { bg: 'rgba(139,92,246,0.1)', color: '#7c3aed', border: 'rgba(139,92,246,0.2)' },
+    'Operative Note': { bg: 'rgba(139,92,246,0.1)', color: 'var(--primary)', border: 'rgba(139,92,246,0.2)' },
   };
 
   return (
@@ -39,7 +40,7 @@ export default function DoctorClinicalNotesPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">📄</span>
+              <span className="header-icon"><Glyph icon="📄" /></span>
               Clinical Notes
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -86,7 +87,7 @@ export default function DoctorClinicalNotesPage() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="hms-empty-state" style={{ margin: 24, border: 'none' }}>
-              <span className="empty-icon">📝</span>
+              <span className="empty-icon"><Glyph icon="📝" /></span>
               <h3>No Clinical Notes</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                 {searchQuery ? `No notes matching "${searchQuery}".` : 'No encounter notes have been recorded yet.'}

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 import api from '../api/axios';
+import Glyph from '../components/ui/Glyph';
 
 export default function SearchPage() {
   const navigate = useNavigate();
@@ -155,7 +156,7 @@ export default function SearchPage() {
               textAlign: 'center', padding: '48px 20px',
               background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12,
             }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>🔍</div>
+              <div style={{ fontSize: '2.5rem', marginBottom: 12 }}><Glyph icon="🔍" /></div>
               <p style={{ color: 'var(--text-secondary)' }}>No records found matching your filters.</p>
             </div>
           ) : (

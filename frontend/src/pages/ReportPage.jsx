@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 import api from '../api/axios';
 import { openAuthenticatedBlob } from '../utils/authenticatedDownload';
+import Glyph from '../components/ui/Glyph';
 
 // ── Helper: nested path setter ─────────────────────
 function setNestedValue(obj, path, value) {
@@ -142,7 +143,7 @@ function WidalGrid({ reportData, onChange }) {
         borderBottom: '1px solid rgba(255,255,255,0.06)',
         display: 'flex', alignItems: 'center', gap: 10,
       }}>
-        <span style={{ fontSize: '1.1rem' }}>🧫</span>
+        <span style={{ fontSize: '1.1rem' }}><Glyph icon="🧫" /></span>
         <span style={{ fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#a78bfa' }}>
           Widal Test
         </span>
@@ -367,7 +368,7 @@ export default function ReportPage() {
                   style={{ padding: '2px 8px', fontSize: '0.75rem', height: 'auto', marginLeft: 'auto' }}
                   onClick={() => navigate(`/edit/${patient.id}`)}
                 >
-                  ✏️ Edit Patient
+                  <Glyph icon="✏️" /> Edit Patient
                 </button>
               </div>
               <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', marginBottom: 4 }}>
@@ -424,7 +425,7 @@ export default function ReportPage() {
                   background: activeTab === tab.id ? tab.color : 'var(--surface-3)',
                   color: activeTab === tab.id ? '#fff' : 'inherit'
                 }}>
-                  {tab.icon}
+                  <Glyph icon={tab.icon} />
                 </div>
                 {tab.label}
               </button>
@@ -447,7 +448,7 @@ export default function ReportPage() {
             {activeTab === 'remarks' && (
               <div className="card fade-in" style={{ padding: '24px 28px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-                  <span style={{ fontSize: '1.4rem' }}>📝</span>
+                  <span style={{ fontSize: '1.4rem' }}><Glyph icon="📝" /></span>
                   <div className="card-section-title" style={{ marginBottom: 0 }}>Remarks & Suggestions</div>
                 </div>
                 <div className="form-grid-2">

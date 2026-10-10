@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../../components/Navbar';
 import api from '../../../api/axios';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function AdminPatientsPage() {
   const navigate = useNavigate();
@@ -30,7 +31,7 @@ export default function AdminPatientsPage() {
         <div className="hms-page-header hms-anim-1">
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.25)' }}>🏥</span>
+              <span className="header-icon" style={{ background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.25)' }}><Glyph icon="🏥" /></span>
               Patient Overview
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -54,7 +55,7 @@ export default function AdminPatientsPage() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '1.5rem',
               }}>
-                {k.icon}
+                <Glyph icon={k.icon} />
               </div>
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>{k.label}</div>
@@ -67,7 +68,7 @@ export default function AdminPatientsPage() {
         {/* Search & Actions */}
         <div className="card hms-anim-3" style={{ padding: 20, marginBottom: 30, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, position: 'relative' }}>
-            <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>🔍</span>
+            <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}><Glyph icon="🔍" /></span>
             <input 
               className="form-input" 
               style={{ width: '100%', paddingLeft: 42, paddingRight: 16, fontSize: '0.95rem' }} 
@@ -77,14 +78,14 @@ export default function AdminPatientsPage() {
             />
           </div>
           <button className="btn btn-primary btn-lg" onClick={() => navigate('/ipd/beds')} style={{ padding: '0 24px' }}>
-            🛏️ Bed Management
+            <Glyph icon="🛏️" /> Bed Management
           </button>
         </div>
 
         {/* Recent Admissions */}
         <div className="card hms-anim-4" style={{ padding: 24 }}>
           <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '1.2rem' }}>📋</span> Recent Admissions
+            <span style={{ fontSize: '1.2rem' }}><Glyph icon="📋" /></span> Recent Admissions
           </h3>
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40 }}><div className="spinner" /></div>

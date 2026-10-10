@@ -4,6 +4,7 @@ import Navbar from '../../../components/Navbar';
 import api from '../../../api/axios';
 import { useAuth } from '../../../context/AuthContext';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function IPDRequestsPage() {
   const { user } = useAuth();
@@ -216,7 +217,7 @@ export default function IPDRequestsPage() {
       <div className="container py-4" style={{ maxWidth: '100%' }}>
         <div className="hms-page-header">
           <div>
-            <h1><span className="header-icon">📥</span>IPD Admission Requests</h1>
+            <h1><span className="header-icon"><Glyph icon="📥" /></span>IPD Admission Requests</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
               Review and manage pending patient admissions requested by doctors.
             </p>
@@ -225,7 +226,7 @@ export default function IPDRequestsPage() {
 
         <div className="hms-anim-2" style={{ marginBottom: 0 }}>
           <div className="card" style={{ padding: '12px 24px', borderRadius: 40, display: 'flex', alignItems: 'center', gap: 16 }}>
-            <span style={{ fontSize: '1.2rem' }}>🚦</span>
+            <span style={{ fontSize: '1.2rem' }}><Glyph icon="🚦" /></span>
             <select 
               className="form-input" 
               value={statusFilter} 
@@ -369,7 +370,7 @@ export default function IPDRequestsPage() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {(req.STATUS || req.status) === 'Pending' && canAdmit && (
                             <button className="btn btn-sm btn-primary" onClick={() => handleOpenAdmit(req)}>
-                              🏥 Admit Patient
+                              <Glyph icon="🏥" /> Admit Patient
                             </button>
                           )}
                           {(req.STATUS || req.status) === 'Pending' && !canAdmit && (
@@ -387,14 +388,14 @@ export default function IPDRequestsPage() {
                                 fontSize: '0.78rem',
                               }}
                               onClick={() => setDeleteTarget(req)}
-                            >🗑️ Delete Request</button>
+                            ><Glyph icon="🗑️" /> Delete Request</button>
                           )}
                           {(req.STATUS || req.status) === 'Admitted' && (
                             <>
                               <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 5,
                                 fontSize: '0.78rem', color: '#10b981', fontWeight: 700,
-                              }}>✅ Admitted</span>
+                              }}><Glyph icon="✅" /> Admitted</span>
                               {canAdmit && (
                                 <button
                                   className="btn btn-sm"
@@ -412,7 +413,7 @@ export default function IPDRequestsPage() {
                                       }
                                     }
                                   })}
-                                >🩺 Record Vitals</button>
+                                ><Glyph icon="🩺" /> Record Vitals</button>
                               )}
                             </>
                           )}
@@ -459,7 +460,7 @@ export default function IPDRequestsPage() {
                 background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '1.3rem',
-              }}>⚠️</div>
+              }}><Glyph icon="⚠️" /></div>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.1rem', color: '#ef4444' }}>Delete IPD Request</h3>
                 <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 2 }}>This action cannot be undone</p>
@@ -468,7 +469,7 @@ export default function IPDRequestsPage() {
                 marginLeft: 'auto', background: 'none', border: 'none',
                 fontSize: '1.2rem', cursor: 'pointer', color: 'var(--text-muted)',
                 padding: 4, lineHeight: 1,
-              }}>✕</button>
+              }}><Glyph icon="✕" /></button>
             </div>
 
             {/* Body */}
@@ -561,7 +562,7 @@ export default function IPDRequestsPage() {
                   background: 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(59,130,246,0.12))',
                   border: '1px solid rgba(16,185,129,0.2)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem',
-                }}>🏥</div>
+                }}><Glyph icon="🏥" /></div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Admit Patient</h3>
                   <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)' }}>Assign ward & bed to complete admission</p>
@@ -572,7 +573,7 @@ export default function IPDRequestsPage() {
                 background: 'var(--surface)', cursor: 'pointer', fontSize: '1rem',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: 'var(--text-muted)',
-              }}>✕</button>
+              }}><Glyph icon="✕" /></button>
             </div>
 
             <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -591,7 +592,7 @@ export default function IPDRequestsPage() {
                     width: 24, height: 24, borderRadius: 6,
                     background: 'rgba(59,130,246,0.1)', fontSize: '0.75rem',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  }}>👤</span>
+                  }}><Glyph icon="👤" /></span>
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Patient Details</span>
                 </div>
                 <div style={{ padding: '16px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' }}>
@@ -623,7 +624,7 @@ export default function IPDRequestsPage() {
                     width: 24, height: 24, borderRadius: 6,
                     background: 'rgba(236,72,153,0.1)', fontSize: '0.75rem',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  }}>📋</span>
+                  }}><Glyph icon="📋" /></span>
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Clinical Summary</span>
                 </div>
                 <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -677,7 +678,7 @@ export default function IPDRequestsPage() {
                     width: 24, height: 24, borderRadius: 6,
                     background: 'rgba(16,185,129,0.1)', fontSize: '0.75rem',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  }}>🛏️</span>
+                  }}><Glyph icon="🛏️" /></span>
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#10b981' }}>Assign Ward & Bed</span>
                 </div>
                 <div style={{ padding: '18px' }}>
@@ -709,7 +710,7 @@ export default function IPDRequestsPage() {
                         ))}
                       </select>
                       {selectedWard && beds.length === 0 && (
-                        <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#ef4444', fontWeight: 600 }}>⚠️ No beds available in this ward.</div>
+                        <div style={{ marginTop: 6, fontSize: '0.72rem', color: '#ef4444', fontWeight: 600 }}><Glyph icon="⚠️" /> No beds available in this ward.</div>
                       )}
                     </div>
                   </div>
@@ -725,7 +726,7 @@ export default function IPDRequestsPage() {
                         background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)',
                         display: 'flex', alignItems: 'center', gap: 14,
                       }}>
-                        <span style={{ fontSize: '1.4rem' }}>✅</span>
+                        <span style={{ fontSize: '1.4rem' }}><Glyph icon="✅" /></span>
                         <div>
                           <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#10b981' }}>
                             {ward?.NAME || 'Ward'} — Room {bed.ROOM_NUMBER}, Bed {bed.BED_NUMBER}

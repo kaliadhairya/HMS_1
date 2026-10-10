@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function ExpiryAlertsPage() {
   const [data, setData] = useState([]);
@@ -22,10 +23,10 @@ export default function ExpiryAlertsPage() {
     try {
       setLoading(true);
       const res = await api.get(`/pharmacy/stock/expiring?days=${days}`);
-      // Add fake quarantine flags to state for demo and mock
+      // Quarantine is a local, per-session flag the pharmacist sets on this screen
       const enriched = (res.data.data || []).map(d => ({
         ...d,
-        isQuarantined: Math.random() > 0.8
+        isQuarantined: Boolean(d.isQuarantined ?? d.IS_QUARANTINED),
       }));
       setData(enriched);
     } catch (err) {
@@ -191,7 +192,7 @@ export default function ExpiryAlertsPage() {
               
               {actionType === 'discard' && (
                 <div style={{ padding: 12, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, color: 'var(--red)', fontSize: '0.85rem' }}>
-                  ⚠️ Discarding stock requires witness approval per compliance regulations. The record will be permanently logged in the destruction register.
+                  <Glyph icon="⚠️" /> Discarding stock requires witness approval per compliance regulations. The record will be permanently logged in the destruction register.
                 </div>
               )}
 

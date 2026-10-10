@@ -6,6 +6,7 @@ import api from '../../../api/axios';
 import { useAuth } from '../../../context/AuthContext';
 import Navbar from '../../../components/Navbar';
 import './PrescriptionSlip.css';
+import Glyph from '../../../components/ui/Glyph';
 
 const emptyItem = () => ({
   medicine_id: null,
@@ -1123,7 +1124,7 @@ export default function PrescriptionSlipPage() {
             <div className="hms-page-header" style={{ marginBottom: 0, marginTop: 8 }}>
               <div>
                 <h1>
-                  <span className="header-icon" style={{ background: 'rgba(96,165,250,0.12)', borderColor: 'rgba(96,165,250,0.25)' }}>💊</span>
+                  <span className="header-icon" style={{ background: 'rgba(96,165,250,0.12)', borderColor: 'rgba(96,165,250,0.25)' }}><Glyph icon="💊" /></span>
                   Electronic Prescription
                 </h1>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -1136,7 +1137,7 @@ export default function PrescriptionSlipPage() {
             <div className="card prescription-toolbar" style={{ padding: '20px 24px', flexDirection: 'column', gap: '16px', alignItems: 'stretch' }}>
               <div className="toolbar-search" style={{ width: '100%' }}>
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(59,130,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>🔍</span>
+                <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(59,130,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="🔍" /></span>
                 Find Registered Patient
               </label>
               <div className="toolbar-search-input">
@@ -1174,7 +1175,7 @@ export default function PrescriptionSlipPage() {
           {/* ── Patient & Clinical Details Card ── */}
           <div className="card prescription-editor-panel">
             <div className="editor-section-header">
-              <span className="section-icon" style={{ background: 'rgba(16,185,129,0.1)' }}>👤</span>
+              <span className="section-icon" style={{ background: 'rgba(16,185,129,0.1)' }}><Glyph icon="👤" /></span>
               Patient & Clinical Details
             </div>
             <div className="editor-body">
@@ -1217,7 +1218,7 @@ export default function PrescriptionSlipPage() {
                         </div>
                       </>
                     ) : (
-                      <div className="patient-summary-empty">🔍 Search and select a patient above to begin.</div>
+                      <div className="patient-summary-empty"><Glyph icon="🔍" /> Search and select a patient above to begin.</div>
                     )}
                   </div>
                 </div>
@@ -1257,12 +1258,12 @@ export default function PrescriptionSlipPage() {
           <div className="card" style={{ display: 'flex', justifyContent: 'flex-end', padding: '16px 24px' }}>
             <div className="toolbar-actions">
               <button className="btn btn-ghost" onClick={() => navigate(-1)}>← Back</button>
-              <button className="btn btn-outline" onClick={handlePreview} style={{ borderColor: 'rgba(139,92,246,0.3)', color: '#7c3aed' }}>👁️ Preview</button>
+              <button className="btn btn-outline" onClick={handlePreview} style={{ borderColor: 'rgba(139,92,246,0.3)', color: 'var(--primary)' }}><Glyph icon="👁️" /> Preview</button>
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
                 {saving ? '⏳ Saving...' : '💾 Save Prescription'}
               </button>
               <button className="btn" onClick={handlePrint} disabled={saving} style={{ background: 'rgba(16,185,129,0.1)', color: '#059669', border: '1px solid rgba(16,185,129,0.25)', fontWeight: 700 }}>
-                🖨️ Print
+                <Glyph icon="🖨️" /> Print
               </button>
             </div>
           </div>
@@ -1270,7 +1271,7 @@ export default function PrescriptionSlipPage() {
           {/* ── Medicine Section Card ── */}
           <div className="card prescription-editor-panel prescription-medicine-panel">
             <div className="editor-section-header" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '16px', marginBottom: '16px' }}>
-              <span className="section-icon" style={{ background: 'rgba(139,92,246,0.1)' }}>💊</span>
+              <span className="section-icon" style={{ background: 'rgba(139,92,246,0.1)' }}><Glyph icon="💊" /></span>
               Prescription & Medicines
             </div>
             
@@ -1279,7 +1280,7 @@ export default function PrescriptionSlipPage() {
               <div className="medicine-lookup-row" style={{ padding: '0 24px 20px' }}>
               <div className="medicine-lookup-box">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(139,92,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>💊</span>
+                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(139,92,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="💊" /></span>
                   Add Medicine
                 </label>
                 <div className="toolbar-search-input">
@@ -1561,7 +1562,7 @@ export default function PrescriptionSlipPage() {
       ) : (
         <div className="no-print preview-controls card" style={{ display: 'flex', gap: 12, justifyContent: 'center', padding: 16 }}>
           <button className="btn btn-secondary" onClick={() => setPreviewMode(false)}>← Back to Edit</button>
-          <button className="btn btn-accent" onClick={handlePrint}>🖨️ Print Prescription</button>
+          <button className="btn btn-accent" onClick={handlePrint}><Glyph icon="🖨️" /> Print Prescription</button>
         </div>
       )}
 
@@ -1586,7 +1587,7 @@ export default function PrescriptionSlipPage() {
               }}
               title={name}
             >
-              <span>💊</span>
+              <span><Glyph icon="💊" /></span>
               <span>{name}</span>
             </button>
           ))}

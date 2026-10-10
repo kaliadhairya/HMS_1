@@ -1,15 +1,16 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useRef, useEffect } from 'react';
 import ReferralTypeModal from './ReferralTypeModal';
+import Glyph from './ui/Glyph';
 
 const quickActions = [
   { label: 'Register Patient', icon: '📝', to: '/hms/patients/new', color: '#059669' },
   { label: 'Electronic Prescription', icon: '💊', to: '/hms/prescription-slip', color: '#3b82f6' },
   { label: 'Lab Investigation', icon: '🔬', to: '/doctor/labs', color: '#10b981' },
-  { label: 'Make a Referral', icon: '🔄', to: '/doctor/referrals', color: '#8b5cf6' },
+  { label: 'Make a Referral', icon: '🔄', to: '/doctor/referrals', color: 'var(--primary)' },
   { label: 'Generate Rest Form', icon: '🛏️', to: '/doctor/rest-forms/new', color: '#f59e0b' },
-  { label: 'Prescription History', icon: '📋', to: '/doctor/prescriptions', color: '#06b6d4' },
-  { label: 'Schedule & Leaves', icon: '🗓️', to: '/doctor/schedule', color: '#ec4899' },
+  { label: 'Prescription History', icon: '📋', to: '/doctor/prescriptions', color: 'var(--primary)' },
+  { label: 'Schedule & Leaves', icon: '🗓️', to: '/doctor/schedule', color: 'var(--primary)' },
 ];
 
 export default function DoctorQuickActionsDock() {
@@ -104,7 +105,7 @@ export default function DoctorQuickActionsDock() {
                 width: 22, height: 22, borderRadius: 6,
                 background: 'var(--blue-light)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem',
-              }}>⚡</span>
+              }}><Glyph icon="⚡" /></span>
               Quick Actions
             </div>
 
@@ -137,7 +138,7 @@ export default function DoctorQuickActionsDock() {
                   background: `${a.color}12`, border: `1px solid ${a.color}20`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '1rem', flexShrink: 0,
-                }}>{a.icon}</span>
+                }}><Glyph icon={a.icon} /></span>
                 {a.label}
               </button>
             ))}
@@ -162,8 +163,8 @@ export default function DoctorQuickActionsDock() {
           style={{
             width: 48, height: 48, borderRadius: '50%',
             background: isOpen
-              ? 'linear-gradient(135deg, #ef4444, #f97316)'
-              : 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+              ? 'var(--red)'
+              : 'var(--primary)',
             border: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             cursor: 'pointer',

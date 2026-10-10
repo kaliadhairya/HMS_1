@@ -4,6 +4,7 @@ import Navbar from '../../../components/Navbar';
 import api from '../../../api/axios';
 import { useAuth } from '../../../context/AuthContext';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 const Field = ({ label, children, span, required }) => (
   <div className="form-group" style={span ? { gridColumn: `span ${span}` } : {}}>
@@ -115,7 +116,7 @@ export default function IPDAdmissionFormPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(236,72,153,0.1)', borderColor: 'rgba(236,72,153,0.25)' }}>🏥</span>
+              <span className="header-icon" style={{ background: 'rgba(236,72,153,0.1)', borderColor: 'rgba(236,72,153,0.25)' }}><Glyph icon="🏥" /></span>
               IPD Admission Request
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -137,7 +138,7 @@ export default function IPDAdmissionFormPage() {
             {/* Patient Card */}
             <div className="card" style={{ marginBottom: 24, padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(16,185,129,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>👤</span>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(16,185,129,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="👤" /></span>
                 <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Patient Identification</h3>
               </div>
               <div style={{ padding: '18px 24px' }}>
@@ -157,7 +158,7 @@ export default function IPDAdmissionFormPage() {
                   </div>
                 ) : (
                   <div style={{ padding: 20, textAlign: 'center', color: 'var(--red)', fontSize: '0.85rem' }}>
-                    ⚠️ No patient selected. Please initiate from the Doctor Dashboard queue.
+                    <Glyph icon="⚠️" /> No patient selected. Please initiate from the Doctor Dashboard queue.
                   </div>
                 )}
               </div>
@@ -166,7 +167,7 @@ export default function IPDAdmissionFormPage() {
             {/* Admission Details */}
             <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden', marginBottom: 24 }}>
               <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(236,72,153,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>📋</span>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(236,72,153,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="📋" /></span>
                 <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Admission Details</h3>
               </div>
               <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '18px 20px' }}>
@@ -232,7 +233,7 @@ export default function IPDAdmissionFormPage() {
             {/* Special Requirements */}
             <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden', marginBottom: 24 }}>
               <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(245,158,11,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>⚕️</span>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(245,158,11,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="⚕️" /></span>
                 <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Special Requirements</h3>
               </div>
               <div style={{ padding: '24px' }}>
@@ -261,7 +262,7 @@ export default function IPDAdmissionFormPage() {
             {/* Initial Orders */}
             <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(13,148,136,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>📝</span>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(13,148,136,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="📝" /></span>
                 <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Initial Orders / Instructions for Nurse</h3>
               </div>
               <div style={{ padding: '24px' }}>

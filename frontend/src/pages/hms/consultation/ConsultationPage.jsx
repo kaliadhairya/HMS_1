@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import { toast } from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function ConsultationPage() {
   const { id } = useParams(); // Encounter ID
@@ -258,7 +259,7 @@ export default function ConsultationPage() {
             </div>
             {vitals.alerts && JSON.parse(vitals.alerts).map((alert, i) => (
               <div key={i} className="alert alert-error" style={{ marginTop: 10, padding: 6, fontSize: '0.75rem' }}>
-                ⚠️ {alert}
+                <Glyph icon="⚠️" /> {alert}
               </div>
             ))}
           </div>
@@ -359,7 +360,7 @@ export default function ConsultationPage() {
                 <label className="form-label">Search Medicine</label>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button className="btn btn-sm btn-outline" onClick={savePrescription}>Save Draft</button>
-                  <button className="btn btn-sm btn-blue" onClick={() => window.open(`/prescription/${id}/print`, '_blank')}>🖨️ Preview Rx</button>
+                  <button className="btn btn-sm btn-blue" onClick={() => window.open(`/prescription/${id}/print`, '_blank')}><Glyph icon="🖨️" /> Preview Rx</button>
                 </div>
               </div>
               
@@ -388,7 +389,7 @@ export default function ConsultationPage() {
                         <td><input type="text" className="result-input" value={item.route} onChange={e => updateItem(idx, 'route', e.target.value)} /></td>
                         <td><input type="text" className="result-input" value={item.frequency} onChange={e => updateItem(idx, 'frequency', e.target.value)} /></td>
                         <td><input type="number" className="result-input" value={item.duration_days} onChange={e => updateItem(idx, 'duration_days', e.target.value)} style={{width: 60}} /></td>
-                        <td><button className="btn btn-sm btn-ghost" onClick={() => removeRxItem(idx)}>❌</button></td>
+                        <td><button className="btn btn-sm btn-ghost" onClick={() => removeRxItem(idx)}><Glyph icon="❌" /></button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -438,7 +439,7 @@ export default function ConsultationPage() {
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button className="btn btn-outline" onClick={() => saveEncounter(true)}>Save Draft</button>
-            <button className="btn btn-primary" onClick={finalizeEncounter}>✔ Finalize Encounter</button>
+            <button className="btn btn-primary" onClick={finalizeEncounter}><Glyph icon="✔" /> Finalize Encounter</button>
           </div>
         </div>
 

@@ -3,6 +3,7 @@ import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 import { useSocket } from '../../../context/SocketContext';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function DispensePage() {
   const [queue, setQueue] = useState([]);
@@ -268,7 +269,7 @@ export default function DispensePage() {
 
             <div style={{ marginTop: 24, display: 'flex', gap: 16 }} className="no-print">
               <button className="btn btn-outline" onClick={() => setSlipData(null)}>← Back to Queue</button>
-              <button className="btn btn-primary" onClick={printSlip}>🖨️ Print Slip</button>
+              <button className="btn btn-primary" onClick={printSlip}><Glyph icon="🖨️" /> Print Slip</button>
               {slipData.isIpd && <button className="btn btn-outline" style={{ borderColor: 'var(--blue)', color: 'var(--blue)' }}>View IPD Bill</button>}
             </div>
           </div>
@@ -350,7 +351,7 @@ export default function DispensePage() {
                  </table>
                </div>
                <div style={{ marginTop: 24, padding: 16, background: 'var(--surface-2)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-                 <div style={{ fontSize: '1.5rem' }}>💡</div>
+                 <div style={{ fontSize: '1.5rem' }}><Glyph icon="💡" /></div>
                  <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
                    <strong>IPD Billing Link Active:</strong> For inpatient UHIDs, confirming dispense will immediately route the cost to their central IPD bill. No cash collection required here.
                  </div>
@@ -359,7 +360,7 @@ export default function DispensePage() {
           </>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', color: 'var(--text-muted)' }}>
-            <div style={{ fontSize: '4rem', marginBottom: 16, opacity: 0.5 }}>📝</div>
+            <div style={{ fontSize: '4rem', marginBottom: 16, opacity: 0.5 }}><Glyph icon="📝" /></div>
             <h3>Select a Prescription</h3>
             <p>Choose a prescription from the queue to process dispensing.</p>
           </div>

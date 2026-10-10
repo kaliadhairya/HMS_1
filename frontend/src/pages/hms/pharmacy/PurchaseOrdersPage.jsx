@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function PurchaseOrdersPage() {
   const navigate = useNavigate();
@@ -22,7 +23,7 @@ export default function PurchaseOrdersPage() {
       <div className="container py-4">
         <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h1>📋 Purchase Requests</h1>
+            <h1><Glyph icon="📋" /> Purchase Requests</h1>
             <p style={{ color: 'var(--text-secondary)' }}>Raise indents to suppliers, track approvals, and link to GRN.</p>
           </div>
           <button 

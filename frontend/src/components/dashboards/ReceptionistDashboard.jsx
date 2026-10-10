@@ -126,7 +126,7 @@ export default function ReceptionistDashboard() {
   const secondaryCards = [
     { icon: '🚨', label: 'Pending Discharges', value: data?.pending_discharges || 0, color: 'var(--primary)', onClick: () => navigate('/receptionist/ipd') },
     { icon: '🔔', label: 'Unread Alerts', value: notifications.length, color: '#f59e0b', onClick: () => navigate('/receptionist/notifications') },
-    { icon: '🚶', label: 'Walk-in / Booked', value: `${data?.walk_in_count || 0} / ${data?.booked_count || 0}`, color: '#06b6d4' },
+    { icon: '🚶', label: 'Walk-in / Booked', value: `${data?.walk_in_count || 0} / ${data?.booked_count || 0}`, color: 'var(--primary)' },
   ];
 
   return (
@@ -165,7 +165,7 @@ export default function ReceptionistDashboard() {
             fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)',
             fontVariantNumeric: 'tabular-nums',
           }}>
-            🕐 {timeStr}
+            <Glyph icon="🕐" /> {timeStr}
           </div>
           <button className="btn btn-primary" onClick={() => navigate('/hms/patients/new')}
             style={{ position: 'relative', overflow: 'hidden' }}

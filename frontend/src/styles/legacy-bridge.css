@@ -1,0 +1,67 @@
+/* ═══════════════════════════════════════════════════════════════
+   LEGACY BRIDGE
+   Brings pages written before the design system in line with it.
+   Loaded last. Remove rules here as pages move to the shared components.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Page containers: same width and rhythm as .app-page */
+.container.py-4, .page-wrapper {
+  max-width: 1480px !important;
+  margin: 0 auto;
+  padding: 24px 28px 48px !important;
+}
+@media (max-width: 960px) { .container.py-4, .page-wrapper { padding: 16px !important; } }
+
+/* Page headers: plain title + description, no decorative icon box */
+.hms-page-header, .page-header {
+  align-items: flex-end !important;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px !important;
+  animation: none !important;
+}
+.hms-page-header h1, .page-header h1 {
+  font-size: 1.5rem !important; font-weight: 650; letter-spacing: -0.02em; gap: 0 !important;
+}
+.hms-page-header .header-icon, .page-header .header-icon { display: none !important; }
+.hms-page-header p, .page-header p {
+  margin-left: 0 !important; margin-top: 4px !important; font-size: 0.92rem !important; color: var(--text-secondary) !important;
+}
+.hms-page-header .header-actions { gap: 8px; flex-wrap: wrap; }
+
+/* Entrance animations: removed for a calm, instant UI */
+[class*="hms-anim-"], .fade-up, .hms-table-anim tbody tr, .hms-empty-state, .hms-filter-bar {
+  animation: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+/* Filter bars and empty states */
+.hms-filter-bar { padding: 12px !important; border-radius: 10px !important; gap: 10px !important; }
+.hms-empty-state { border: 1px solid var(--border) !important; border-radius: 10px !important; background: var(--surface) !important; padding: 48px 20px !important; }
+.hms-empty-state .empty-icon { font-size: 1.6rem !important; color: var(--text-muted); }
+
+/* Bootstrap-style inputs used by a few pages had no styles at all */
+.form-control {
+  display: block; width: 100%; height: 38px; padding: 0 12px;
+  background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--border-dark); border-radius: var(--radius-sm);
+  font: inherit; font-size: 0.92rem; outline: none;
+}
+textarea.form-control { height: auto; min-height: 80px; padding: 8px 12px; resize: vertical; }
+.form-control:focus { border-color: var(--text-primary); box-shadow: 0 0 0 3px var(--focus-ring); }
+.form-group > label:not(.form-label) { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+
+/* Cards and panels */
+.card { border-radius: 10px !important; }
+.card:hover { transform: none !important; }
+
+/* Tables inside legacy wrappers */
+.table-wrapper { border-radius: 10px !important; }
+.hms-table thead th, .table-wrapper thead th { position: sticky; top: 0; z-index: 1; }
+
+/* Tabs used by profile/IPD pages */
+.tab-btn, [role="tab"] { font-weight: 600; }
+
+/* Floating quick-action button: no attention-seeking pulse */
+.doctor-quick-dock-button { animation: none !important; }

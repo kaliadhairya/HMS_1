@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
 import { useAuth } from '../../../context/AuthContext';
 import { useSocket } from '../../../context/SocketContext';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function OPDBillingPage() {
   const { encounterId } = useParams();
@@ -290,7 +291,7 @@ export default function OPDBillingPage() {
 
            {isPaid && (
              <div className="card" style={{ padding: 24, textAlign: 'center' }}>
-               <div style={{ fontSize: '3rem', marginBottom: 16 }}>✅</div>
+               <div style={{ fontSize: '3rem', marginBottom: 16 }}><Glyph icon="✅" /></div>
                <h3>Bill Fully Paid</h3>
                <button className="btn btn-outline" style={{ marginTop: 16, width: '100%' }} onClick={() => window.print()}>Print Invoice</button>
                <button type="button" className="btn btn-primary btn-full" style={{ marginTop: 8 }} onClick={() => openAuthenticatedBlob(`/pdf/bill/${bill.ID || bill.id}`, { download: true, filename: `bill-${bill.ID || bill.id}.pdf` })}>Download PDF</button>

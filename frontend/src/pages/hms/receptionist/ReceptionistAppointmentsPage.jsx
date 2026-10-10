@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function ReceptionistAppointmentsPage() {
   const navigate = useNavigate();
@@ -59,7 +60,7 @@ export default function ReceptionistAppointmentsPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">📅</span>
+              <span className="header-icon"><Glyph icon="📅" /></span>
               Appointment Management
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -110,7 +111,7 @@ export default function ReceptionistAppointmentsPage() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="hms-empty-state" style={{ margin: 24 }}>
-              <span className="empty-icon">📭</span>
+              <span className="empty-icon"><Glyph icon="📭" /></span>
               <h3 style={{ fontSize: '1.15rem', marginBottom: 8 }}>No Appointments Found</h3>
               <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.88rem' }}>
                 There are no appointments matching your criteria for this day.

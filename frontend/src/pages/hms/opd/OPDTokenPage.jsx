@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function OPDTokenPage() {
   const navigate = useNavigate();
@@ -108,7 +109,7 @@ export default function OPDTokenPage() {
                   </p>
                 </div>
                 {!initialPatient && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => setPatient(null)}>✕ Change</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setPatient(null)}><Glyph icon="✕" /> Change</button>
                 )}
               </div>
             ) : (
@@ -165,7 +166,7 @@ export default function OPDTokenPage() {
                   {String(generatedToken.token_number).padStart(3, '0')}
                 </div>
                 <p style={{ margin: '8px 0 0 0', color: 'var(--text-secondary)' }}>Token Number</p>
-                <button className="btn btn-outline btn-sm" style={{ marginTop: 16 }} onClick={() => window.print()}>🖨️ Print</button>
+                <button className="btn btn-outline btn-sm" style={{ marginTop: 16 }} onClick={() => window.print()}><Glyph icon="🖨️" /> Print</button>
               </div>
             )}
           </div>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import Glyph from '../../components/ui/Glyph';
 
 const ROLES = ['super_admin', 'admin', 'doctor', 'lab_technician', 'receptionist', 'pharmacist', 'nurse'];
 
@@ -90,7 +91,7 @@ export default function UserManagementPage() {
       <div className="page-wrapper">
         <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
-            <h1>👥 User Management</h1>
+            <h1><Glyph icon="👥" /> User Management</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: 4 }}>Manage system users and their roles.</p>
           </div>
           <button className="btn btn-primary" onClick={openAddModal}>+ Add User</button>
@@ -135,11 +136,11 @@ export default function UserManagementPage() {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => openEditModal(u)}>✏️</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => openEditModal(u)}><Glyph icon="✏️" /></button>
                         <button className="btn btn-ghost btn-sm" onClick={() => toggleActive(u.id)}>
                           {u.isActive ? '🔒' : '🔓'}
                         </button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => viewHistory(u)}>📋</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => viewHistory(u)}><Glyph icon="📋" /></button>
                       </div>
                     </td>
                   </tr>
@@ -212,7 +213,7 @@ export default function UserManagementPage() {
           }} onClick={() => setHistoryModal(null)}>
             <div className="card" style={{ width: 520, maxHeight: '80vh', overflowY: 'auto', padding: 28 }}
               onClick={e => e.stopPropagation()}>
-              <h2 style={{ marginBottom: 16 }}>📋 Login History — {historyModal.name}</h2>
+              <h2 style={{ marginBottom: 16 }}><Glyph icon="📋" /> Login History — {historyModal.name}</h2>
               <div className="table-wrapper">
                 <table>
                   <thead>

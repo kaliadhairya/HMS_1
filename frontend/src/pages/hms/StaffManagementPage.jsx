@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import Glyph from '../../components/ui/Glyph';
 
 const ROLE_COLORS = {
-  doctor: '#60a5fa', nurse: '#f472b6', receptionist: '#a855f7',
+  doctor: '#60a5fa', nurse: '#f472b6', receptionist: 'var(--primary)',
   pharmacist: '#2dd4bf', lab_technician: '#34d399',
 };
 
@@ -87,13 +88,13 @@ export default function StaffManagementPage() {
       <div className="page-wrapper fade-up">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h2 style={{ marginBottom: 4 }}>👥 Staff Management</h2>
+            <h2 style={{ marginBottom: 4 }}><Glyph icon="👥" /> Staff Management</h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
               View and manage operational staff — doctors, nurses, receptionists, pharmacists, lab technicians
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-primary" onClick={openAddModal}>➕ Add New Staff</button>
+            <button className="btn btn-primary" onClick={openAddModal}><Glyph icon="➕" /> Add New Staff</button>
             <span className="badge badge-blue" style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
               {staff.length} Total Staff
             </span>
@@ -171,7 +172,7 @@ export default function StaffManagementPage() {
                         ) : 'Never'}
                       </td>
                       <td>
-                        <button className="btn btn-outline btn-sm" onClick={() => openEditModal(s)}>✏️ Edit</button>
+                        <button className="btn btn-outline btn-sm" onClick={() => openEditModal(s)}><Glyph icon="✏️" /> Edit</button>
                       </td>
                     </tr>
                   );
@@ -240,7 +241,7 @@ export default function StaffManagementPage() {
               {editStaffId && (
                  <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)', textAlign: 'center' }}>
                    <button type="button" className="btn btn-outline" style={{ color: 'var(--red)', borderColor: 'var(--red)', width: '100%' }} onClick={handleDelete}>
-                     🗑️ Delete Staff
+                     <Glyph icon="🗑️" /> Delete Staff
                    </button>
                  </div>
               )}

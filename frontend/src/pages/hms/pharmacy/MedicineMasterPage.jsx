@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 function parseBrandNames(val) {
   if (!val) return [];
@@ -195,7 +196,7 @@ export default function MedicineMasterPage() {
         <div className="hms-page-header" style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(13,148,136,0.1)', borderColor: 'rgba(13,148,136,0.2)' }}>💊</span>
+              <span className="header-icon" style={{ background: 'rgba(13,148,136,0.1)', borderColor: 'rgba(13,148,136,0.2)' }}><Glyph icon="💊" /></span>
               Medicine Master
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -208,7 +209,7 @@ export default function MedicineMasterPage() {
             style={{ 
               fontWeight: 700, padding: '12px 28px', borderRadius: 14, 
               display: 'flex', alignItems: 'center', gap: 10, 
-              background: 'linear-gradient(135deg, #0d9488, #0f766e)', border: 'none',
+              background: 'var(--primary)', border: 'none',
               boxShadow: '0 4px 14px rgba(13,148,136,0.3)' 
             }}
           >
@@ -232,7 +233,7 @@ export default function MedicineMasterPage() {
           onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--green)'}
           onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}
           >
-            <span style={{ fontSize: '1.4rem', opacity: 0.6 }}>🔍</span>
+            <span style={{ fontSize: '1.4rem', opacity: 0.6 }}><Glyph icon="🔍" /></span>
             <input
               type="text"
               className="form-input"
@@ -271,7 +272,7 @@ export default function MedicineMasterPage() {
                 {medicines.length === 0 && !loading ? (
                   <tr>
                     <td colSpan="7" style={{ padding: 80, textAlign: 'center' }}>
-                      <div style={{ fontSize: '3.5rem', marginBottom: 16, opacity: 0.2 }}>💊</div>
+                      <div style={{ fontSize: '3.5rem', marginBottom: 16, opacity: 0.2 }}><Glyph icon="💊" /></div>
                       <h3 style={{ color: 'var(--text-secondary)' }}>No medicines found</h3>
                       <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Try adjusting your search or add a new entry.</p>
                     </td>
@@ -293,7 +294,7 @@ export default function MedicineMasterPage() {
                       <td style={tdS}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxWidth: 220 }}>
                           {parseBrandNames(med.brandNames).slice(0, 3).map((b, idx) => (
-                            <span key={idx} className="badge" style={{ background: 'rgba(13,148,136,0.06)', color: '#0d9488', fontSize: '0.72rem', border: '1px solid rgba(13,148,136,0.1)' }}>{b}</span>
+                            <span key={idx} className="badge" style={{ background: 'rgba(13,148,136,0.06)', color: 'var(--primary)', fontSize: '0.72rem', border: '1px solid rgba(13,148,136,0.1)' }}>{b}</span>
                           ))}
                           {parseBrandNames(med.brandNames).length > 3 && 
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>+{parseBrandNames(med.brandNames).length - 3} more</span>
@@ -381,7 +382,7 @@ export default function MedicineMasterPage() {
               <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700 }}>{editingId ? 'Edit Medicine' : 'Add New Medicine'}</h3>
               <p style={{ margin: '2px 0 0', fontSize: '0.8rem', opacity: 0.85 }}>{editingId ? 'Update details for this medicine entry.' : 'Fill in the details to register a new medicine in inventory.'}</p>
             </div>
-            <button type="button" onClick={() => setIsModalOpen(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>✕</button>
+            <button type="button" onClick={() => setIsModalOpen(false)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}><Glyph icon="✕" /></button>
           </div>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -389,14 +390,14 @@ export default function MedicineMasterPage() {
 
               <div style={{ marginBottom: 22 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(13,148,136,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>🧬</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#0d9488' }}>Medicine Identity</span>
+                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(13,148,136,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="🧬" /></span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--primary)' }}>Medicine Identity</span>
                 </div>
                 <div style={{ marginBottom: 16 }}>
                   <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>Generic Name <span style={{ color: '#ef4444' }}>*</span></label>
                   <div style={{ position: 'relative' }}>
                     <input required type="text" value={formData.genericName} onChange={e => setFormData({ ...formData, genericName: e.target.value })} placeholder="e.g. Aspirin, Metformin..." className="form-input" style={{ paddingLeft: 38 }} />
-                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.95rem', pointerEvents: 'none' }}>🔍</span>
+                    <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.95rem', pointerEvents: 'none' }}><Glyph icon="🔍" /></span>
                     {(suggestionsLoading || rxNavSuggestions.length > 0) && (
                       <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20, background: '#fff', border: '1.5px solid #0d9488', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.15)', maxHeight: 200, overflowY: 'auto' }}>
                         {suggestionsLoading && <div style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Searching RxNav...</div>}
@@ -409,15 +410,15 @@ export default function MedicineMasterPage() {
                       </div>
                     )}
                   </div>
-                  <div style={{ marginTop: 5, fontSize: '0.74rem', color: 'var(--text-muted)' }}>💡 Type 2+ characters to get RxNav suggestions</div>
+                  <div style={{ marginTop: 5, fontSize: '0.74rem', color: 'var(--text-muted)' }}><Glyph icon="💡" /> Type 2+ characters to get RxNav suggestions</div>
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: 5, fontSize: '0.82rem', fontWeight: 600 }}>Brand Names <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.75rem' }}>(press Enter to add)</span></label>
                   {formData.brandNames.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
                       {formData.brandNames.map(b => (
-                        <span key={b} style={{ background: 'linear-gradient(135deg, #0d9488, #0f766e)', color: '#fff', padding: '5px 12px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                          {b} <span onClick={() => removeBrand(b)} style={{ cursor: 'pointer', width: 18, height: 18, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>✕</span>
+                        <span key={b} style={{ background: 'var(--primary)', color: '#fff', padding: '5px 12px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          {b} <span onClick={() => removeBrand(b)} style={{ cursor: 'pointer', width: 18, height: 18, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="✕" /></span>
                         </span>
                       ))}
                     </div>
@@ -428,8 +429,8 @@ export default function MedicineMasterPage() {
 
               <div style={{ marginBottom: 22 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(99,102,241,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>📋</span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#6366f1' }}>Classification & Form</span>
+                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(99,102,241,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="📋" /></span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--primary)' }}>Classification & Form</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                   <div>
@@ -445,7 +446,7 @@ export default function MedicineMasterPage() {
 
               <div style={{ marginBottom: 22 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(245,158,11,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>⚖️</span>
+                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(245,158,11,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="⚖️" /></span>
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#d97706' }}>Dosage & Packaging</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 14 }}>
@@ -466,7 +467,7 @@ export default function MedicineMasterPage() {
 
               <div style={{ marginBottom: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(239,68,68,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>🏷️</span>
+                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(239,68,68,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="🏷️" /></span>
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#dc2626' }}>Tax & Compliance</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
@@ -493,7 +494,7 @@ export default function MedicineMasterPage() {
 
               <div style={{ marginBottom: 22, marginTop: 10, padding: '16px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(16, 185, 129, 0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>📦</span>
+                  <span style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(16, 185, 129, 0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}><Glyph icon="📦" /></span>
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#10b981' }}>{editingId ? 'Update Inventory & Pricing' : 'Initial Inventory (Optional)'}</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -512,7 +513,7 @@ export default function MedicineMasterPage() {
 
             <div style={{ padding: '16px 28px', borderTop: '1px solid var(--border, #e2e8f0)', background: 'var(--surface-2, #f8fafc)', display: 'flex', justifyContent: 'flex-end', gap: 10, flexShrink: 0 }}>
               <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-ghost" style={{ minWidth: 100 }}>Cancel</button>
-              <button type="submit" className="btn btn-primary" style={{ minWidth: 160, background: 'linear-gradient(135deg, #0d9488, #0f766e)', border: 'none' }}>
+              <button type="submit" className="btn btn-primary" style={{ minWidth: 160, background: 'var(--primary)', border: 'none' }}>
                 {editingId ? '💾 Update Medicine' : '💊 Save Medicine'}
               </button>
             </div>

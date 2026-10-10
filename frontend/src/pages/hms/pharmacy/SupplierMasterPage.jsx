@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 const emptyForm = {
   name: '',
@@ -90,7 +91,7 @@ export default function SupplierMasterPage() {
       <div className="container py-4">
         <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h1>🏭 Supplier Master</h1>
+            <h1><Glyph icon="🏭" /> Supplier Master</h1>
             <p style={{ color: 'var(--text-secondary)' }}>Manage vendor directory and procurement contacts.</p>
           </div>
           <button className="btn btn-primary" onClick={openCreate}>+ Add Supplier</button>

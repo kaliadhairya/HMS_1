@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import { useAuth } from '../../../context/AuthContext';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function LabWorkloadPage() {
   const [stats, setStats] = useState(null);
@@ -21,7 +22,7 @@ export default function LabWorkloadPage() {
       <div className="container py-4">
         <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h1>📈 My Workload</h1>
+            <h1><Glyph icon="📈" /> My Workload</h1>
             <p style={{ color: 'var(--text-secondary)' }}>Personal daily stats and shift summary for {user?.name || 'Lab Tech'}.</p>
           </div>
           <div>
@@ -79,7 +80,7 @@ export default function LabWorkloadPage() {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>
-                    ⚠️
+                    <Glyph icon="⚠️" />
                   </div>
                   <div>
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Critical Results Flagged</div>

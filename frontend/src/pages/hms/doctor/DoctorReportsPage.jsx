@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function DoctorReportsPage() {
   const [reports, setReports] = useState(null);
@@ -32,9 +33,9 @@ export default function DoctorReportsPage() {
   const metricsCards = reports ? [
     { icon: '👨‍⚕️', label: 'Patients Seen (Month)', value: reports.monthly_patients, color: '#3b82f6' },
     { icon: '⏱️', label: 'Avg Consultation Time', value: reports.avg_consultation_time, color: '#10b981' },
-    { icon: '💊', label: 'Prescriptions Written', value: reports.prescriptions_written, color: '#8b5cf6' },
+    { icon: '💊', label: 'Prescriptions Written', value: reports.prescriptions_written, color: 'var(--primary)' },
     { icon: '🔄', label: 'Referrals Made', value: reports.referrals_made, color: '#f59e0b' },
-    { icon: '🛏️', label: 'IPD Admissions', value: reports.ipd_admissions, color: '#ec4899' },
+    { icon: '🛏️', label: 'IPD Admissions', value: reports.ipd_admissions, color: 'var(--primary)' },
   ] : [];
 
   return (
@@ -45,7 +46,7 @@ export default function DoctorReportsPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">📈</span>
+              <span className="header-icon"><Glyph icon="📈" /></span>
               Performance Metrics
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -80,7 +81,7 @@ export default function DoctorReportsPage() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '1.6rem', margin: '0 auto 16px',
                 }}>
-                  {c.icon}
+                  <Glyph icon={c.icon} />
                 </div>
                 <div style={{
                   fontSize: '2rem', fontWeight: 900, color: 'var(--text-primary)',

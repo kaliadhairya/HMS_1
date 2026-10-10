@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function AdminBedManagementPage() {
   const [wards, setWards] = useState([]);
@@ -72,7 +73,7 @@ export default function AdminBedManagementPage() {
         <div className="hms-page-header" style={{ marginBottom: 24 }}>
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.25)' }}>⚙️</span>
+              <span className="header-icon" style={{ background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.25)' }}><Glyph icon="⚙️" /></span>
               Admin Bed Management
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -238,7 +239,7 @@ function AddWardModal({ onClose, onSuccess }) {
       }}>
         {/* Modal Header */}
         <div style={{ 
-          background: 'linear-gradient(135deg, #f0fdf4, #ffffff)',
+          background: 'var(--surface)',
           padding: '20px 24px', borderBottom: '1px solid #e2e8f0',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center'
         }}>
@@ -247,7 +248,7 @@ function AddWardModal({ onClose, onSuccess }) {
               width: 36, height: 36, borderRadius: '10px', background: '#3b82f6', 
               color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem',
               boxShadow: '0 4px 10px rgba(59,130,246,0.2)'
-            }}>🏥</div>
+            }}><Glyph icon="🏥" /></div>
             <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>Add New Ward</h3>
           </div>
           <button type="button" onClick={onClose} style={{
@@ -353,7 +354,7 @@ function AddBedsModal({ ward, onClose, onSuccess }) {
       }}>
         {/* Modal Header */}
         <div style={{ 
-          background: 'linear-gradient(135deg, #f0fdf4, #ffffff)',
+          background: 'var(--surface)',
           padding: '20px 24px', borderBottom: '1px solid #e2e8f0',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center'
         }}>
@@ -362,7 +363,7 @@ function AddBedsModal({ ward, onClose, onSuccess }) {
               width: 36, height: 36, borderRadius: '10px', background: '#10b981', 
               color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem',
               boxShadow: '0 4px 10px rgba(16,185,129,0.2)'
-            }}>🛏️</div>
+            }}><Glyph icon="🛏️" /></div>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0f172a' }}>Add Beds</h3>
               <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2, fontWeight: 500 }}>{ward.NAME}</div>

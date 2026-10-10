@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function IPDBillingPage() {
   const { admissionId } = useParams();
@@ -144,7 +145,7 @@ export default function IPDBillingPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <h1 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span className="header-icon" style={{ background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.25)' }}>💰</span>
+                <span className="header-icon" style={{ background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.25)' }}><Glyph icon="💰" /></span>
                 IPD Billing
               </h1>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -233,7 +234,7 @@ export default function IPDBillingPage() {
             {/* Search */}
             <div className="card hms-anim-2" style={{ padding: '20px 24px', marginBottom: 20 }}>
               <h3 style={{ margin: '0 0 14px 0', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: '1.1rem' }}>💊</span> Add Medicines / Consumables
+                <span style={{ fontSize: '1.1rem' }}><Glyph icon="💊" /></span> Add Medicines / Consumables
               </h3>
               <div style={{ position: 'relative' }}>
                 <input
@@ -282,7 +283,7 @@ export default function IPDBillingPage() {
                           <button onClick={() => { setAddingId(null); setAddQty(1); }} style={{
                             padding: '6px 10px', borderRadius: 6, background: '#f1f5f9', border: '1px solid #e2e8f0',
                             color: '#64748b', fontSize: '0.8rem', cursor: 'pointer',
-                          }}>✕</button>
+                          }}><Glyph icon="✕" /></button>
                         </div>
                       ) : (
                         <button onClick={() => setAddingId(med.id)} style={{
@@ -305,12 +306,12 @@ export default function IPDBillingPage() {
                 padding: '16px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
-                <h3 style={{ margin: 0, fontSize: '1.05rem' }}>📋 Added Items ({charges.length})</h3>
+                <h3 style={{ margin: 0, fontSize: '1.05rem' }}><Glyph icon="📋" /> Added Items ({charges.length})</h3>
               </div>
 
               {charges.length === 0 ? (
                 <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <div style={{ fontSize: '2rem', marginBottom: 8 }}>💊</div>
+                  <div style={{ fontSize: '2rem', marginBottom: 8 }}><Glyph icon="💊" /></div>
                   No medicines added yet. Use the search above to add items.
                 </div>
               ) : (
@@ -369,7 +370,7 @@ export default function IPDBillingPage() {
                 background: 'linear-gradient(135deg, #0f172a, #1e3a5f)',
                 color: '#fff',
               }}>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#fff' }}>🧾 Bill Summary</h3>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#fff' }}><Glyph icon="🧾" /> Bill Summary</h3>
                 <div style={{ fontSize: '0.78rem', opacity: 0.7, marginTop: 4 }}>{admission?.PATIENT_NAME || 'Patient'}</div>
               </div>
 
@@ -439,7 +440,7 @@ export default function IPDBillingPage() {
                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)', e.currentTarget.style.transform = 'translateY(-1px)')}
                   onMouseLeave={e => (e.currentTarget.style.background = '#fff', e.currentTarget.style.transform = 'none')}
                 >
-                  💾 Save Progress
+                  <Glyph icon="💾" /> Save Progress
                 </button>
 
                 {/* Generate Bill Button */}
@@ -448,7 +449,7 @@ export default function IPDBillingPage() {
                   disabled={generating}
                   style={{
                     width: '100%', padding: '14px 0', borderRadius: 10, border: 'none',
-                    background: generating ? '#94a3b8' : 'linear-gradient(135deg, #10b981, #059669)',
+                    background: generating ? '#94a3b8' : 'var(--primary)',
                     color: '#fff', fontWeight: 700, fontSize: '1rem', cursor: generating ? 'not-allowed' : 'pointer',
                     boxShadow: generating ? 'none' : '0 6px 20px rgba(16,185,129,0.3)',
                     transition: 'all 0.2s',
@@ -467,7 +468,7 @@ export default function IPDBillingPage() {
         <div style={{ padding: '20px', background: '#f1f5f9', minHeight: '100vh' }}>
           <div className="no-print" style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '30px' }}>
             <button className="btn btn-secondary" onClick={() => navigate('/ipd/billing')}>← Back to Admissions</button>
-            <button className="btn btn-primary" onClick={handlePrint} style={{ fontSize: '1.1rem', padding: '10px 24px' }}>🖨️ Print Bill</button>
+            <button className="btn btn-primary" onClick={handlePrint} style={{ fontSize: '1.1rem', padding: '10px 24px' }}><Glyph icon="🖨️" /> Print Bill</button>
           </div>
           
           <div className="print-section bill-preview-paper">

@@ -3,15 +3,16 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar,
 } from 'recharts';
+import Glyph from './ui/Glyph';
 
-const ACCENT = '#8b5cf6';
-const USER_ACCENT = '#0d9488';
+const ACCENT = 'var(--primary)';
+const USER_ACCENT = 'var(--primary)';
 const PALETTE = {
-  type: { corporate_employee: '#6366f1', other: '#94a3b8' },
+  type: { corporate_employee: 'var(--primary)', other: '#94a3b8' },
   flow: { OPD: '#3b82f6', Indoor: '#f59e0b' },
   gender: { Male: '#60a5fa', Female: '#a78bfa', Other: '#94a3b8' },
 };
-const USER_COLORS = ['#0d9488', '#6366f1', '#f59e0b', '#ef4444', '#14b8a6', '#8b5cf6', '#94a3b8'];
+const USER_COLORS = ['var(--primary)', 'var(--primary)', '#f59e0b', '#ef4444', 'var(--primary)', 'var(--primary)', '#94a3b8'];
 const TYPE_LABELS = { corporate_employee: 'Corporate', other: 'Other' };
 
 const SCOPE_TABS = [
@@ -403,7 +404,7 @@ export default function PatientAnalyticsModal({ isOpen, onClose, data, metric })
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '8px 14px', borderRadius: 9,
-                background: 'linear-gradient(135deg, #059669, #10b981)',
+                background: 'var(--primary)',
                 color: '#fff', border: 'none', cursor: 'pointer',
                 fontSize: '0.78rem', fontWeight: 700,
                 boxShadow: '0 2px 8px rgba(5,150,105,0.25)',
@@ -412,7 +413,7 @@ export default function PatientAnalyticsModal({ isOpen, onClose, data, metric })
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(5,150,105,0.35)'; }}
               onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(5,150,105,0.25)'; }}
             >
-              📥 Export Excel
+              <Glyph icon="📥" /> Export Excel
             </button>
             <button onClick={onClose} aria-label="Close" style={{
               background: 'var(--surface-2)', border: '1px solid var(--border)', width: 34, height: 34, borderRadius: 9,

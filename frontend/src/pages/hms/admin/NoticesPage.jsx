@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Navbar from '../../../components/Navbar';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function NoticesPage() {
   const [notices, setNotices] = useState([]);
@@ -44,7 +45,7 @@ export default function NoticesPage() {
         <div className="hms-page-header hms-anim-1" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(234,179,8,0.1)', borderColor: 'rgba(234,179,8,0.25)' }}>📢</span>
+              <span className="header-icon" style={{ background: 'rgba(234,179,8,0.1)', borderColor: 'rgba(234,179,8,0.25)' }}><Glyph icon="📢" /></span>
               Notices & Communication
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -59,7 +60,7 @@ export default function NoticesPage() {
         {showForm && (
           <div className="card hms-anim-2" style={{ marginBottom: 30, padding: 24, borderTop: '4px solid var(--blue)', boxShadow: 'var(--shadow-md)' }}>
             <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '1.2rem' }}>📝</span> Create Notice
+              <span style={{ fontSize: '1.2rem' }}><Glyph icon="📝" /></span> Create Notice
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div className="form-group" style={{ margin: 0, gridColumn: '1 / -1' }}>
@@ -94,7 +95,7 @@ export default function NoticesPage() {
               </div>
             </div>
             <div style={{ marginTop: 24, display: 'flex', gap: 12, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
-              <button className="btn btn-primary" onClick={create} style={{ padding: '0 24px' }}>📤 Publish Notice</button>
+              <button className="btn btn-primary" onClick={create} style={{ padding: '0 24px' }}><Glyph icon="📤" /> Publish Notice</button>
               <button className="btn btn-ghost" onClick={() => setShowForm(false)}>Cancel</button>
             </div>
           </div>
@@ -104,7 +105,7 @@ export default function NoticesPage() {
           <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>
         ) : notices.length === 0 ? (
           <div className="card hms-anim-3" style={{ textAlign: 'center', padding: 60, background: 'var(--surface-2)', border: '1px dashed var(--border)', borderRadius: 16 }}>
-            <div style={{ fontSize: '4rem', marginBottom: 16, filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.1))' }}>📭</div>
+            <div style={{ fontSize: '4rem', marginBottom: 16, filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.1))' }}><Glyph icon="📭" /></div>
             <h3 style={{ fontSize: '1.4rem', color: 'var(--text-primary)', marginBottom: 8 }}>No Notices</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>Create your first notice to communicate with departments across the hospital.</p>
           </div>
@@ -129,9 +130,9 @@ export default function NoticesPage() {
                   </div>
                   <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.6 }}>{n.message}</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                    <span style={{ background: 'var(--surface-2)', padding: '4px 8px', borderRadius: 4 }}>👤 By {n.created_by}</span>
+                    <span style={{ background: 'var(--surface-2)', padding: '4px 8px', borderRadius: 4 }}><Glyph icon="👤" /> By {n.created_by}</span>
                     <span>•</span>
-                    <span>🕒 {new Date(n.created_at).toLocaleString('en-IN')}</span>
+                    <span><Glyph icon="🕒" /> {new Date(n.created_at).toLocaleString('en-IN')}</span>
                   </div>
                 </div>
                 <button 
@@ -140,7 +141,7 @@ export default function NoticesPage() {
                   style={{ color: '#ef4444', flexShrink: 0, padding: 8, height: 'auto', background: 'rgba(239,68,68,0.1)' }}
                   title="Delete Notice"
                 >
-                  🗑
+                  <Glyph icon="🗑" />
                 </button>
               </div>
             ))}

@@ -4,6 +4,7 @@ import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import DischargeSummaryModal from '../../../components/DischargeSummaryModal';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function IPDDischargeSummariesPage() {
   const navigate = useNavigate();
@@ -60,7 +61,7 @@ export default function IPDDischargeSummariesPage() {
         <div className="hms-page-header" style={{ marginBottom: 28 }}>
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.25)' }}>📄</span>
+              <span className="header-icon" style={{ background: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.25)' }}><Glyph icon="📄" /></span>
               Discharge Summaries Hub
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -88,7 +89,7 @@ export default function IPDDischargeSummariesPage() {
             onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--green)'}
             onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}
           >
-            <span style={{ fontSize: '1.4rem', filter: 'grayscale(0.5)' }}>🔍</span>
+            <span style={{ fontSize: '1.4rem', filter: 'grayscale(0.5)' }}><Glyph icon="🔍" /></span>
             <input
               type="text"
               className="form-input"
@@ -180,7 +181,7 @@ export default function IPDDischargeSummariesPage() {
                           onClick={() => handleViewSummary(s)}
                           style={{ borderColor: '#3b82f6', color: '#3b82f6', padding: '4px 10px' }}
                         >
-                          👁️ View Summary
+                          <Glyph icon="👁️" /> View Summary
                         </button>
                       </td>
                     </tr>

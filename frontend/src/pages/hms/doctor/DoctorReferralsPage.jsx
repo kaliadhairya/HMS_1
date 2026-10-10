@@ -4,6 +4,7 @@ import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import { useAuth } from '../../../context/AuthContext';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 const PRIORITY_OPTIONS = ['Routine', 'Urgent', 'Emergency'];
 const SPECIALTY_OPTIONS = [
@@ -503,7 +504,7 @@ export default function DoctorReferralsPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">🔄</span>
+              <span className="header-icon"><Glyph icon="🔄" /></span>
               Referrals Hub
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -519,7 +520,7 @@ export default function DoctorReferralsPage() {
             onClick={() => setActiveTab('hub')}
             style={{ borderRadius: 0, borderRight: '1px solid var(--border)' }}
           >
-            📋 Referral List
+            <Glyph icon="📋" /> Referral List
           </button>
           <button
             className={`hms-tab-btn ${activeTab === 'create' && referralType === 'Outside' ? 'active' : ''}`}
@@ -567,7 +568,7 @@ export default function DoctorReferralsPage() {
                 onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-2)'}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>📥 Inbound Referrals <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(To You)</span></h3>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}><Glyph icon="📥" /> Inbound Referrals <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(To You)</span></h3>
                   <span className="badge" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', fontSize: '0.72rem', padding: '2px 8px' }}>{referrals.inbound.length}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -588,7 +589,7 @@ export default function DoctorReferralsPage() {
                       padding: '32px 24px', textAlign: 'center', borderRadius: 8,
                       background: 'rgba(0,0,0,0.03)', color: 'var(--text-secondary)',
                     }}>
-                      <span style={{ fontSize: '1.6rem' }}>📭</span>
+                      <span style={{ fontSize: '1.6rem' }}><Glyph icon="📭" /></span>
                       <p style={{ margin: '8px 0 0', fontSize: '0.875rem' }}>No inbound referrals at this time.</p>
                     </div>
                   ) : (
@@ -632,7 +633,7 @@ export default function DoctorReferralsPage() {
                 onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-2)'}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>📤 Outbound Referrals (Outside) <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(By You)</span></h3>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}><Glyph icon="📤" /> Outbound Referrals (Outside) <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(By You)</span></h3>
                   <span className="badge" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontSize: '0.72rem', padding: '2px 8px' }}>
                     {referrals.outbound.filter(r => r.referral_type !== 'Local').length}
                   </span>
@@ -648,7 +649,7 @@ export default function DoctorReferralsPage() {
                       padding: '32px 24px', textAlign: 'center', borderRadius: 8,
                       background: 'rgba(0,0,0,0.03)', color: 'var(--text-secondary)',
                     }}>
-                      <span style={{ fontSize: '1.6rem' }}>📬</span>
+                      <span style={{ fontSize: '1.6rem' }}><Glyph icon="📬" /></span>
                       <p style={{ margin: '8px 0 0', fontSize: '0.875rem' }}>No outside outbound referrals yet.</p>
                     </div>
                   ) : (
@@ -712,7 +713,7 @@ export default function DoctorReferralsPage() {
                 onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-2)'}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>📤 Outbound Referrals (Local) <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(By You)</span></h3>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}><Glyph icon="📤" /> Outbound Referrals (Local) <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(By You)</span></h3>
                   <span className="badge" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', fontSize: '0.72rem', padding: '2px 8px' }}>
                     {referrals.outbound.filter(r => r.referral_type === 'Local').length}
                   </span>
@@ -728,7 +729,7 @@ export default function DoctorReferralsPage() {
                       padding: '32px 24px', textAlign: 'center', borderRadius: 8,
                       background: 'rgba(0,0,0,0.03)', color: 'var(--text-secondary)',
                     }}>
-                      <span style={{ fontSize: '1.6rem' }}>📬</span>
+                      <span style={{ fontSize: '1.6rem' }}><Glyph icon="📬" /></span>
                       <p style={{ margin: '8px 0 0', fontSize: '0.875rem' }}>No local outbound referrals yet.</p>
                     </div>
                   ) : (
@@ -822,7 +823,7 @@ export default function DoctorReferralsPage() {
                 {/* Patient Search */}
                 <div style={{ marginBottom: 20 }}>
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(59,130,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>👤</span>
+                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(59,130,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}><Glyph icon="👤" /></span>
                     Patient <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <div style={{ position: 'relative' }}>
@@ -854,7 +855,7 @@ export default function DoctorReferralsPage() {
                           color: 'var(--text-muted)', lineHeight: 1,
                         }}
                         title="Clear patient"
-                      >✕</button>
+                      ><Glyph icon="✕" /></button>
                     )}
 
                     {showPatientDropdown && patientResults.length > 0 && !selectedPatient && (
@@ -904,7 +905,7 @@ export default function DoctorReferralsPage() {
                           )}
                         </div>
                       </div>
-                      <span style={{ fontSize: '1.2rem' }}>✅</span>
+                      <span style={{ fontSize: '1.2rem' }}><Glyph icon="✅" /></span>
                     </div>
                   )}
                 </div>
@@ -946,7 +947,7 @@ export default function DoctorReferralsPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 20 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0 }}>
-                      <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(139,92,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>🏥</span>
+                      <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(139,92,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}><Glyph icon="🏥" /></span>
                       Target Specialty
                     </label>
                     <select
@@ -1003,7 +1004,7 @@ export default function DoctorReferralsPage() {
                 {/* Hospital */}
                 <div style={{ marginBottom: 20 }}>
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(245,158,11,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>🏥</span>
+                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(245,158,11,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}><Glyph icon="🏥" /></span>
                     Referral Hospital <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <div style={{ position: 'relative' }}>
@@ -1028,7 +1029,7 @@ export default function DoctorReferralsPage() {
                         transition: 'color 0.2s', userSelect: 'none', zIndex: 2,
                       }}
                     >
-                      🔍
+                      <Glyph icon="🔍" />
                     </span>
                     {/* Hospital Dropdown */}
                     {showHospitalDropdown && (hospitalResults.length > 0 || searchingHospital || formData.hospital.trim().length >= 2) && (
@@ -1096,7 +1097,7 @@ export default function DoctorReferralsPage() {
                 {/* Reason */}
                 <div style={{ marginBottom: 20 }}>
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(239,68,68,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>📋</span>
+                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(239,68,68,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}><Glyph icon="📋" /></span>
                     Reason for Referral
                   </label>
                   <div style={{ position: 'relative' }}>
@@ -1153,7 +1154,7 @@ export default function DoctorReferralsPage() {
                 {/* Clinical Notes */}
                 <div style={{ marginBottom: 28 }}>
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(59,130,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}>📝</span>
+                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(59,130,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}><Glyph icon="📝" /></span>
                     Clinical Notes <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.78rem' }}>(optional)</span>
                   </label>
                   <textarea
@@ -1327,7 +1328,7 @@ export default function DoctorReferralsPage() {
               <div style={{ minWidth: 280, flex: '1 1 300px', animation: 'hmsFadeIn 0.3s ease' }}>
                 <div className="card" style={{ padding: '20px', position: 'sticky', top: 20 }}>
                   <h3 style={{ margin: '0 0 16px', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '1.2rem' }}>🕒</span> Patient History
+                    <span style={{ fontSize: '1.2rem' }}><Glyph icon="🕒" /></span> Patient History
                   </h3>
                   
                   {loadingHistory ? (
@@ -1365,14 +1366,14 @@ export default function DoctorReferralsPage() {
                             "{h.reason}"
                           </div>
                           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <span>👨‍⚕️</span> Dr. {h.doctor_name}
+                            <span><Glyph icon="👨‍⚕️" /></span> Dr. {h.doctor_name}
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
                     <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', background: 'var(--surface-1)', borderRadius: 8, border: '1px dashed var(--border)' }}>
-                      <span style={{ fontSize: '2rem', display: 'block', marginBottom: 12, opacity: 0.5 }}>📝</span>
+                      <span style={{ fontSize: '2rem', display: 'block', marginBottom: 12, opacity: 0.5 }}><Glyph icon="📝" /></span>
                       <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>No previous referrals</div>
                       <div style={{ fontSize: '0.8rem', marginTop: 4 }}>This patient has a clean slate.</div>
                     </div>
@@ -1401,7 +1402,7 @@ export default function DoctorReferralsPage() {
               <button className="btn btn-primary" onClick={handleSavePreviewChanges} disabled={isPreviewSaving}>
                 {isPreviewSaving ? '⏳ Saving...' : '💾 Save Changes'}
               </button>
-              <button className="btn btn-accent" onClick={handlePrintReferral}>🖨️ Print Referral Memo</button>
+              <button className="btn btn-accent" onClick={handlePrintReferral}><Glyph icon="🖨️" /> Print Referral Memo</button>
             </div>
 
             {/* Printable Memo */}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Navbar from '../../../components/Navbar';
 import api from '../../../api/axios';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function AdminPharmacyPage() {
   const [data, setData] = useState(null);
@@ -30,7 +31,7 @@ export default function AdminPharmacyPage() {
         <div className="hms-page-header hms-anim-1">
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(139,92,246,0.1)', borderColor: 'rgba(139,92,246,0.25)' }}>💊</span>
+              <span className="header-icon" style={{ background: 'rgba(139,92,246,0.1)', borderColor: 'rgba(139,92,246,0.25)' }}><Glyph icon="💊" /></span>
               Pharmacy Overview
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -49,7 +50,7 @@ export default function AdminPharmacyPage() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '1.5rem',
               }}>
-                {k.icon}
+                <Glyph icon={k.icon} />
               </div>
               <div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>{k.label}</div>
@@ -62,7 +63,7 @@ export default function AdminPharmacyPage() {
         {/* Low Stock Alerts */}
         <div className="card hms-anim-3" style={{ padding: 24, borderTop: '4px solid #ef4444', marginBottom: 30 }}>
           <h3 style={{ marginBottom: 20, fontSize: '1.1rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '1.2rem' }}>⚠️</span> Low Stock Alerts
+            <span style={{ fontSize: '1.2rem' }}><Glyph icon="⚠️" /></span> Low Stock Alerts
           </h3>
           {(data?.low_stock_items || []).length > 0 ? (
             <div className="table-wrapper hms-table-anim">
@@ -89,7 +90,7 @@ export default function AdminPharmacyPage() {
             </div>
           ) : (
             <div style={{ textAlign: 'center', padding: 40, background: 'var(--surface-2)', borderRadius: 12, border: '1px dashed var(--border)' }}>
-              <div style={{ fontSize: '3rem', marginBottom: 12, filter: 'drop-shadow(0 4px 6px rgba(16,185,129,0.3))' }}>✅</div>
+              <div style={{ fontSize: '3rem', marginBottom: 12, filter: 'drop-shadow(0 4px 6px rgba(16,185,129,0.3))' }}><Glyph icon="✅" /></div>
               <div style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>All medicines are well-stocked</div>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: 4 }}>No immediate procurement required</p>
             </div>
@@ -99,7 +100,7 @@ export default function AdminPharmacyPage() {
         {/* Quick Actions */}
         <div className="hms-anim-4">
           <h3 style={{ marginBottom: 16, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '1.2rem' }}>⚡</span> Pharmacy Management
+            <span style={{ fontSize: '1.2rem' }}><Glyph icon="⚡" /></span> Pharmacy Management
           </h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
             {[
@@ -114,7 +115,7 @@ export default function AdminPharmacyPage() {
                   onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
                 >
                   <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                    <span style={{ fontSize: '2rem', background: `${ql.color}15`, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12 }}>{ql.icon}</span>
+                    <span style={{ fontSize: '2rem', background: `${ql.color}15`, width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 12 }}><Glyph icon={ql.icon} /></span>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{ql.label}</div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 4 }}>{ql.desc}</div>

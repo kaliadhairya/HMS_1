@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function RestFormPrintPage() {
   const { id } = useParams();
@@ -201,8 +202,8 @@ export default function RestFormPrintPage() {
         position: 'sticky', top: 0, zIndex: 10
       }}>
         <button onClick={() => navigate(-1)} style={btnStyle('#334155', '#e2e8f0', '#475569')}>← Back</button>
-        <button onClick={() => navigate(`/doctor/rest-forms/edit/${id}`)} style={btnStyle('#334155', '#e2e8f0', '#475569')}>✏️ Edit</button>
-        <button onClick={handlePrint} style={btnStyle('#2563eb', '#fff', '#2563eb')}>🖨️ Print</button>
+        <button onClick={() => navigate(`/doctor/rest-forms/edit/${id}`)} style={btnStyle('#334155', '#e2e8f0', '#475569')}><Glyph icon="✏️" /> Edit</button>
+        <button onClick={handlePrint} style={btnStyle('#2563eb', '#fff', '#2563eb')}><Glyph icon="🖨️" /> Print</button>
       </div>
 
       {/* Preview */}

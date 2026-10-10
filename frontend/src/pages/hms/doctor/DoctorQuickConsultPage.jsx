@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import { toast } from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function DoctorQuickConsultPage() {
   const navigate = useNavigate();
@@ -197,7 +198,7 @@ export default function DoctorQuickConsultPage() {
         
         {!activePatient ? (
           <div>
-            <h2 style={{ fontSize: '1.25rem', marginBottom: 16 }}>🔍 Quick Consult Search</h2>
+            <h2 style={{ fontSize: '1.25rem', marginBottom: 16 }}><Glyph icon="🔍" /> Quick Consult Search</h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16 }}>
               Enter a patient's name, ID, or UHID to instantly pull their profile, lab reports, and begin consultation.
             </p>
@@ -376,7 +377,7 @@ export default function DoctorQuickConsultPage() {
                           <td><input type="text" className="result-input" value={item.route} onChange={e => updateItem(idx, 'route', e.target.value)} /></td>
                           <td><input type="text" className="result-input" value={item.frequency} onChange={e => updateItem(idx, 'frequency', e.target.value)} /></td>
                           <td><input type="number" className="result-input" value={item.duration_days} onChange={e => updateItem(idx, 'duration_days', e.target.value)} style={{width: 60}} /></td>
-                          <td><button className="btn btn-sm btn-ghost" onClick={() => removeRxItem(idx)}>❌</button></td>
+                          <td><button className="btn btn-sm btn-ghost" onClick={() => removeRxItem(idx)}><Glyph icon="❌" /></button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -392,7 +393,7 @@ export default function DoctorQuickConsultPage() {
               Consulting: <strong>{activePatient?.name}</strong> 
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn btn-primary" onClick={finalizeEncounter}>✔ Finalize & Close</button>
+              <button className="btn btn-primary" onClick={finalizeEncounter}><Glyph icon="✔" /> Finalize & Close</button>
             </div>
           </div>
 

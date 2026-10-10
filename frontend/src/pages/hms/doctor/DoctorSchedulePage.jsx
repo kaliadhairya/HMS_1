@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function DoctorSchedulePage() {
   const [schedule, setSchedule] = useState({ availability: [], leaves: [] });
@@ -21,7 +22,7 @@ export default function DoctorSchedulePage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">🗓️</span>
+              <span className="header-icon"><Glyph icon="🗓️" /></span>
               My Schedule
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -38,7 +39,7 @@ export default function DoctorSchedulePage() {
               padding: '18px 24px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)',
             }}>
               <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(59,130,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>📅</span>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(59,130,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="📅" /></span>
                 OPD Availability
               </h3>
               <button className="btn btn-sm btn-ghost" disabled title="Doctor self-service timing edits are not implemented in this build.">
@@ -53,7 +54,7 @@ export default function DoctorSchedulePage() {
               </div>
             ) : schedule.availability.length === 0 ? (
               <div className="hms-empty-state" style={{ margin: 24, border: 'none' }}>
-                <span className="empty-icon">📅</span>
+                <span className="empty-icon"><Glyph icon="📅" /></span>
                 <h3>No Schedule Data</h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                   No upcoming appointments are scheduled, so no live availability pattern can be derived.
@@ -106,7 +107,7 @@ export default function DoctorSchedulePage() {
               padding: '18px 24px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)',
             }}>
               <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(245,158,11,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>🏖️</span>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(245,158,11,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="🏖️" /></span>
                 Upcoming Leaves
               </h3>
               <button className="btn btn-sm btn-ghost" disabled title="Leave application is handled from the admin attendance workflow.">
@@ -121,7 +122,7 @@ export default function DoctorSchedulePage() {
                 </div>
               ) : schedule.leaves.length === 0 ? (
                 <div style={{ padding: 30, textAlign: 'center' }}>
-                  <span style={{ fontSize: '2rem', display: 'block', marginBottom: 8 }}>✅</span>
+                  <span style={{ fontSize: '2rem', display: 'block', marginBottom: 8 }}><Glyph icon="✅" /></span>
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No upcoming leaves scheduled.</p>
                 </div>
               ) : (

@@ -234,7 +234,7 @@ router.get('/recent', protect, checkPermission('billing', 'read'), async (req, r
     const limit = Math.max(1, Math.min(50, parseInt(req.query.limit, 10) || 10));
     const [rows] = await sequelize.query(`
       SELECT b.ID, b.BILL_NUMBER, b.BILL_TYPE, b.STATUS, b.TOTAL_AMOUNT, b.GST_AMOUNT,
-             b.NET_PAYABLE, b.CREATED_AT, p.NAME AS PATIENT_NAME, p.UHID,
+             b.NET_PAYABLE, b.CREATED_AT, b.PATIENT_ID, b.ENCOUNTER_ID, p.NAME AS PATIENT_NAME, p.UHID,
              u.NAME AS CREATED_BY_NAME
       FROM HMS_BILLS b
       JOIN HMS_PATIENTS p ON p.ID = b.PATIENT_ID

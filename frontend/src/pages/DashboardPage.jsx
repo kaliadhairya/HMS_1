@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import api from '../api/axios'; // Or standard axios
 import axios from 'axios';
+import Glyph from '../components/ui/Glyph';
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -36,8 +37,8 @@ export default function DashboardPage() {
             <p style={{ color: 'var(--text-secondary)', marginTop: 4 }}>Laboratory Information Management System (LIMS) Dashboard</p>
           </div>
           <div style={{ display: 'flex', gap: 12 }}>
-            <button className="btn" onClick={() => navigate('/lab/samples')}>🩸 Collect Sample</button>
-            <button className="btn btn-primary" onClick={() => navigate('/lab/queue')}>🧪 View Test Queue</button>
+            <button className="btn" onClick={() => navigate('/lab/samples')}><Glyph icon="🩸" /> Collect Sample</button>
+            <button className="btn btn-primary" onClick={() => navigate('/lab/queue')}><Glyph icon="🧪" /> View Test Queue</button>
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Glyph from './ui/Glyph';
 
 const NAV_LINKS = [
   { to: '/doctor/dashboard', label: 'Dashboard', icon: '🏠' },
@@ -81,7 +82,7 @@ export default function DoctorSidebar() {
           fontSize: '0.74rem', color: 'rgba(255,255,255,0.45)', fontWeight: 500,
           marginBottom: 14, paddingLeft: 2,
         }}>
-          📅 {dateStr}
+          <Glyph icon="📅" /> {dateStr}
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
@@ -89,7 +90,7 @@ export default function DoctorSidebar() {
             style={{
               flex: 1, padding: '9px 14px', fontSize: '0.78rem', fontWeight: 700,
               borderRadius: 10, color: '#fff', cursor: 'pointer',
-              background: 'linear-gradient(135deg, #0d9488, #0f766e)',
+              background: 'var(--primary)',
               border: '1px solid rgba(16,185,129,0.3)',
               boxShadow: '0 2px 10px rgba(13,148,136,0.3)',
               transition: 'all 0.2s', fontFamily: 'inherit',
@@ -151,7 +152,7 @@ export default function DoctorSidebar() {
                 }
               }}
             >
-              <span style={{ fontSize: '1.1rem', width: 24, textAlign: 'center', flexShrink: 0 }}>{link.icon}</span>
+              <span style={{ fontSize: '1.1rem', width: 24, textAlign: 'center', flexShrink: 0 }}><Glyph icon={link.icon} /></span>
               {link.label}
             </button>
           );

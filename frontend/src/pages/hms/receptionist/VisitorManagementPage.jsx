@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function VisitorManagementPage() {
   const [visitors, setVisitors] = useState([]);
@@ -55,7 +56,7 @@ export default function VisitorManagementPage() {
   const statsCards = [
     { icon: '🟢', label: 'Currently Inside', value: activeVisitors.length, color: '#10b981' },
     { icon: '🔵', label: 'Checked Out Today', value: checkedOut.length, color: '#3b82f6' },
-    { icon: '🟣', label: 'Patients With Visitors', value: Object.keys(patientCounts).length, color: '#8b5cf6' },
+    { icon: '🟣', label: 'Patients With Visitors', value: Object.keys(patientCounts).length, color: 'var(--primary)' },
   ];
 
   return (
@@ -66,7 +67,7 @@ export default function VisitorManagementPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">👥</span>
+              <span className="header-icon"><Glyph icon="👥" /></span>
               Visitor Management
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -107,7 +108,7 @@ export default function VisitorManagementPage() {
                   background: 'rgba(59,130,246,0.1)', fontSize: '0.85rem',
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  📋
+                  <Glyph icon="📋" />
                 </span>
                 New Visitor Pass
               </h3>
@@ -169,7 +170,7 @@ export default function VisitorManagementPage() {
                   display: 'flex', alignItems: 'center', gap: 8,
                   animation: 'hmsSlideUp 0.3s ease both',
                 }}>
-                  <span style={{ fontSize: '1.1rem' }}>⚠️</span>
+                  <span style={{ fontSize: '1.1rem' }}><Glyph icon="⚠️" /></span>
                   Maximum visitor limit ({MAX_VISITORS}) reached for {form.patient}. Cannot issue more passes.
                 </div>
               )}
@@ -180,7 +181,7 @@ export default function VisitorManagementPage() {
                 disabled={!form.visitor || !form.patient || (patientCounts[form.patient] >= MAX_VISITORS)}
                 style={{ position: 'relative', overflow: 'hidden' }}
               >
-                ✅ Issue Pass & Check In
+                <Glyph icon="✅" /> Issue Pass & Check In
               </button>
             </div>
           </div>
@@ -227,7 +228,7 @@ export default function VisitorManagementPage() {
                 background: 'rgba(16,185,129,0.1)', fontSize: '0.85rem',
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                📖
+                <Glyph icon="📖" />
               </span>
               Today's Visitor Log
             </h3>
@@ -247,7 +248,7 @@ export default function VisitorManagementPage() {
             </div>
           ) : visitors.length === 0 ? (
             <div className="hms-empty-state" style={{ margin: 24, border: 'none' }}>
-              <span className="empty-icon">📭</span>
+              <span className="empty-icon"><Glyph icon="📭" /></span>
               <h3>No Visitors Yet Today</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Issue a pass to start tracking.</p>
             </div>

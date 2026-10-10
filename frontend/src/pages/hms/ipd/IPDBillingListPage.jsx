@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function IPDBillingListPage() {
   const navigate = useNavigate();
@@ -24,7 +25,7 @@ export default function IPDBillingListPage() {
         <div className="hms-page-header" style={{ marginBottom: 28 }}>
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.25)' }}>💰</span>
+              <span className="header-icon" style={{ background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.25)' }}><Glyph icon="💰" /></span>
               IPD Billing
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -39,7 +40,7 @@ export default function IPDBillingListPage() {
           </div>
         ) : admissions.length === 0 ? (
           <div className="card" style={{ padding: '60px 40px', textAlign: 'center' }}>
-            <div style={{ fontSize: '3rem', marginBottom: 16 }}>🏥</div>
+            <div style={{ fontSize: '3rem', marginBottom: 16 }}><Glyph icon="🏥" /></div>
             <h3 style={{ color: 'var(--text-primary)', marginBottom: 8 }}>No Active Admissions</h3>
             <p style={{ color: 'var(--text-secondary)' }}>There are currently no admitted patients to bill.</p>
           </div>
@@ -107,7 +108,7 @@ export default function IPDBillingListPage() {
                       <div style={{ gridColumn: 'span 2', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
                         <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Primary Physician</div>
                         <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: '0.9rem' }}>👨‍⚕️</span> {adm.DOCTOR_NAME || 'N/A'}
+                          <span style={{ fontSize: '0.9rem' }}><Glyph icon="👨‍⚕️" /></span> {adm.DOCTOR_NAME || 'N/A'}
                         </div>
                       </div>
                     </div>
@@ -121,11 +122,11 @@ export default function IPDBillingListPage() {
                         width: '100%', textAlign: 'center', fontWeight: 700, display: 'flex', 
                         alignItems: 'center', justifyContent: 'center', gap: 10,
                         textDecoration: 'none', padding: '12px 0', borderRadius: 10,
-                        background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none',
+                        background: 'var(--primary)', border: 'none',
                         boxShadow: '0 4px 12px rgba(16,185,129,0.2)'
                       }}
                     >
-                      💰 Manage Billing
+                      <Glyph icon="💰" /> Manage Billing
                     </Link>
                   </div>
                 </div>

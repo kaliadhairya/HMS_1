@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function DoctorLabsPage() {
   const [labs, setLabs] = useState([]);
@@ -26,7 +27,7 @@ export default function DoctorLabsPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">🔬</span>
+              <span className="header-icon"><Glyph icon="🔬" /></span>
               Lab & Diagnostics
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -63,7 +64,7 @@ export default function DoctorLabsPage() {
             </button>
             <button className={`hms-tab-btn ${tab === 'completed' ? 'active' : ''}`}
               onClick={() => setTab('completed')} style={{ borderRadius: 0 }}>
-              ✅ Completed ({completed.length})
+              <Glyph icon="✅" /> Completed ({completed.length})
             </button>
           </div>
 

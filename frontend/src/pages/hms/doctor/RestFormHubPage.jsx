@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../../../components/Navbar';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function RestFormHubPage() {
   const [restForms, setRestForms] = useState([]);
@@ -52,7 +53,7 @@ export default function RestFormHubPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">🛏️</span>
+              <span className="header-icon"><Glyph icon="🛏️" /></span>
               Rest Forms Hub
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -69,7 +70,7 @@ export default function RestFormHubPage() {
         {/* Summary + Search */}
         <div className="hms-anim-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
           <div className="hms-stat-card" style={{ padding: 18, borderLeft: '4px solid #8b5cf6', cursor: 'default', display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' }}>📋</div>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' }}><Glyph icon="📋" /></div>
             <div>
               <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.08em' }}>Total Rest Forms</div>
               <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>{restForms.length}</div>
@@ -83,7 +84,7 @@ export default function RestFormHubPage() {
           onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--green)'}
           onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}
           >
-            <span style={{ fontSize: '1.1rem', filter: 'grayscale(0.5)' }}>🔍</span>
+            <span style={{ fontSize: '1.1rem', filter: 'grayscale(0.5)' }}><Glyph icon="🔍" /></span>
             <input
               type="text"
               className="form-input"
@@ -104,7 +105,7 @@ export default function RestFormHubPage() {
             </div>
           ) : filteredForms.length === 0 ? (
             <div className="hms-empty-state" style={{ margin: 24, border: 'none' }}>
-              <span className="empty-icon">📝</span>
+              <span className="empty-icon"><Glyph icon="📝" /></span>
               <h3>{searchQuery ? 'No Results' : 'No Rest Forms'}</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                 {searchQuery ? `No forms matching "${searchQuery}".` : 'No rest forms have been generated yet.'}
@@ -134,7 +135,7 @@ export default function RestFormHubPage() {
                       <td>
                         <span style={{
                           padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700,
-                          background: 'rgba(139,92,246,0.1)', color: '#7c3aed', border: '1px solid rgba(139,92,246,0.2)',
+                          background: 'rgba(139,92,246,0.1)', color: 'var(--primary)', border: '1px solid rgba(139,92,246,0.2)',
                         }}>
                           {f.advised_days || '-'} days
                         </span>
@@ -142,13 +143,13 @@ export default function RestFormHubPage() {
                       <td>
                         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                           <button className="btn btn-sm btn-blue" onClick={() => navigate(`/doctor/rest-forms/print/${f.id}`)}>
-                            🖨️ Print
+                            <Glyph icon="🖨️" /> Print
                           </button>
                           <button className="btn btn-sm btn-outline" onClick={() => navigate(`/doctor/rest-forms/edit/${f.id}`)}>
-                            ✏️ Edit
+                            <Glyph icon="✏️" /> Edit
                           </button>
                           <button className="btn btn-sm btn-danger" onClick={() => handleDelete(f.id)}>
-                            🗑️
+                            <Glyph icon="🗑️" />
                           </button>
                         </div>
                       </td>

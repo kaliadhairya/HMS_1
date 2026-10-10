@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function VitalsEntryPage() {
   const navigate = useNavigate();
@@ -166,7 +167,7 @@ export default function VitalsEntryPage() {
       <div className="hms-page-header" style={{ marginBottom: 28 }}>
         <div>
           <h1>
-            <span className="header-icon" style={{ background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.25)' }}>❤️</span>
+            <span className="header-icon" style={{ background: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.25)' }}><Glyph icon="❤️" /></span>
             Record Vitals
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -179,7 +180,7 @@ export default function VitalsEntryPage() {
       </div>
 
       {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
-      {success && <div style={{ padding: '14px 20px', borderRadius: 12, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', color: '#10b981', marginBottom: 16, fontWeight: 600, fontSize: '0.88rem' }}>✅ Vitals recorded successfully!</div>}
+      {success && <div style={{ padding: '14px 20px', borderRadius: 12, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', color: '#10b981', marginBottom: 16, fontWeight: 600, fontSize: '0.88rem' }}><Glyph icon="✅" /> Vitals recorded successfully!</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         {/* LEFT: Entry Form */}
@@ -187,7 +188,7 @@ export default function VitalsEntryPage() {
           {/* Patient Selection Card */}
           <div className="card" style={{ padding: 0, overflow: 'visible', marginBottom: 20 }}>
             <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, borderTopLeftRadius: 'inherit', borderTopRightRadius: 'inherit' }}>
-              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(59,130,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>👤</span>
+              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(59,130,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="👤" /></span>
               <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Patient</h3>
             </div>
             <div style={{ padding: '16px 24px' }}>
@@ -229,7 +230,7 @@ export default function VitalsEntryPage() {
           {/* Vitals Entry Form */}
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(239,68,68,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>🩺</span>
+              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(239,68,68,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="🩺" /></span>
               <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Vital Signs</h3>
               {alerts.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
@@ -319,10 +320,10 @@ export default function VitalsEntryPage() {
         <div>
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(139,92,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>📊</span>
+              <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(139,92,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="📊" /></span>
               <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Previous Vitals</h3>
               {vitalsHistory.length > 0 && (
-                <span style={{ marginLeft: 'auto', padding: '2px 10px', borderRadius: 10, background: 'rgba(139,92,246,0.08)', color: '#8b5cf6', fontSize: '0.72rem', fontWeight: 700 }}>
+                <span style={{ marginLeft: 'auto', padding: '2px 10px', borderRadius: 10, background: 'rgba(139,92,246,0.08)', color: 'var(--primary)', fontSize: '0.72rem', fontWeight: 700 }}>
                   {vitalsHistory.length} records
                 </span>
               )}
@@ -331,7 +332,7 @@ export default function VitalsEntryPage() {
             <div style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
               {!patient ? (
                 <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.4 }}>👤</div>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.4 }}><Glyph icon="👤" /></div>
                   <div style={{ fontSize: '0.88rem' }}>Select a patient to view vitals history</div>
                 </div>
               ) : historyLoading ? (
@@ -340,7 +341,7 @@ export default function VitalsEntryPage() {
                 </div>
               ) : vitalsHistory.length === 0 ? (
                 <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.4 }}>📋</div>
+                  <div style={{ fontSize: '2.5rem', marginBottom: 12, opacity: 0.4 }}><Glyph icon="📋" /></div>
                   <div style={{ fontSize: '0.88rem' }}>No previous vitals recorded</div>
                   <div style={{ fontSize: '0.78rem', marginTop: 6 }}>This will be the first entry for this patient</div>
                 </div>
@@ -367,7 +368,7 @@ export default function VitalsEntryPage() {
                         }}>
                           <div>
                             <div style={{ fontWeight: 700, fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                              📅 {formatDate(recordedAt)}
+                              <Glyph icon="📅" /> {formatDate(recordedAt)}
                               <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.78rem' }}>at {formatTime(recordedAt)}</span>
                             </div>
                             {recBy && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>By: {recBy}</div>}
@@ -377,7 +378,7 @@ export default function VitalsEntryPage() {
                             <span style={{
                               padding: '2px 8px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
                               background: (v.encounter_type || v.ENCOUNTER_TYPE) === 'IPD' ? 'rgba(139,92,246,0.08)' : (v.encounter_type || v.ENCOUNTER_TYPE) === 'ER' ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)',
-                              color: (v.encounter_type || v.ENCOUNTER_TYPE) === 'IPD' ? '#8b5cf6' : (v.encounter_type || v.ENCOUNTER_TYPE) === 'ER' ? '#ef4444' : '#10b981',
+                              color: (v.encounter_type || v.ENCOUNTER_TYPE) === 'IPD' ? 'var(--primary)' : (v.encounter_type || v.ENCOUNTER_TYPE) === 'ER' ? '#ef4444' : '#10b981',
                             }}>{v.encounter_type || v.ENCOUNTER_TYPE || 'OPD'}</span>
                           </div>
                         </div>
@@ -421,7 +422,7 @@ export default function VitalsEntryPage() {
                                   const parsed = typeof (v.alerts || v.ALERTS) === 'string' ? JSON.parse(v.alerts || v.ALERTS) : (v.alerts || v.ALERTS);
                                   if (Array.isArray(parsed) && parsed.length > 0) {
                                     return parsed.map(a => (
-                                      <span key={a} style={{ padding: '3px 8px', borderRadius: 6, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: '0.65rem', fontWeight: 700 }}>⚠ {a}</span>
+                                      <span key={a} style={{ padding: '3px 8px', borderRadius: 6, background: 'rgba(239,68,68,0.08)', color: '#ef4444', fontSize: '0.65rem', fontWeight: 700 }}><Glyph icon="⚠" /> {a}</span>
                                     ));
                                   }
                                 } catch(e) {}

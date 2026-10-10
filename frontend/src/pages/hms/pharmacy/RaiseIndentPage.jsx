@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function RaiseIndentPage() {
   const navigate = useNavigate();
@@ -185,7 +186,7 @@ export default function RaiseIndentPage() {
         {/* Action Buttons (Hidden in actual print) */}
         <div className="no-print" style={{ display: 'flex', gap: '15px', marginBottom: '30px', justifyContent: 'flex-end' }}>
           <button className="btn btn-outline" onClick={() => setShowPreview(false)}>← Back to Edit</button>
-          <button className="btn btn-primary" onClick={handlePrint}>🖨️ Print PR</button>
+          <button className="btn btn-primary" onClick={handlePrint}><Glyph icon="🖨️" /> Print PR</button>
         </div>
 
         {/* Formal Document */}
@@ -277,7 +278,7 @@ export default function RaiseIndentPage() {
       <div className="container py-4">
         <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h1>📄 Raise Indent (PR)</h1>
+            <h1><Glyph icon="📄" /> Raise Indent (PR)</h1>
             <p style={{ color: 'var(--text-secondary)' }}>Create a detailed Purchase Request with medicine items.</p>
           </div>
           <button 
@@ -341,7 +342,7 @@ export default function RaiseIndentPage() {
 
                     {selectedSupplier && (
                       <div style={{ padding: 12, background: 'rgba(52, 211, 153, 0.1)', border: '1px solid var(--green)', borderRadius: 8, color: 'var(--text-primary)' }}>
-                        <strong>✅ Supplier Selected: </strong> {selectedSupplier.name}
+                        <strong><Glyph icon="✅" /> Supplier Selected: </strong> {selectedSupplier.name}
                         <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 }}>
                           UID: {selectedSupplier.supplierNumber} | Ph: {selectedSupplier.phone}
                         </div>
@@ -485,7 +486,7 @@ export default function RaiseIndentPage() {
                               </td>
                               <td>
                                 <button type="button" className="btn btn-sm" style={{ background: 'var(--red)', color: 'white', padding: '6px 12px' }} onClick={() => removeItem(index)}>
-                                  ✕
+                                  <Glyph icon="✕" />
                                 </button>
                               </td>
                             </tr>
@@ -509,7 +510,7 @@ export default function RaiseIndentPage() {
                     }
                     setShowPreview(true);
                   }}>
-                    👁️ Preview & Print
+                    <Glyph icon="👁️" /> Preview & Print
                   </button>
                   <button type="submit" className="btn btn-primary" disabled={!selectedSupplier || items.length === 0}>
                     Submit Purchase Request

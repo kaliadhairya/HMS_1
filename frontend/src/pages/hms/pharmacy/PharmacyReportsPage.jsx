@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function PharmacyReportsPage() {
   const [report, setReport] = useState(null);
@@ -19,10 +20,10 @@ export default function PharmacyReportsPage() {
       <div className="container py-4">
         <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h1>📊 Pharmacy Operations Reports</h1>
+            <h1><Glyph icon="📊" /> Pharmacy Operations Reports</h1>
             <p style={{ color: 'var(--text-secondary)' }}>Daily sales, stock valuation, and slow-moving item tracking.</p>
           </div>
-          <button className="btn btn-outline">🖨️ Export PDF</button>
+          <button className="btn btn-outline"><Glyph icon="🖨️" /> Export PDF</button>
         </div>
 
         {loading ? <div className="spinner" /> : report && (

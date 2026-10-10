@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../../../components/Navbar';
 import { useSocket } from '../../../context/SocketContext';
 import { toast } from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function LabTestQueuePage() {
   const [queue, setQueue] = useState([]);
@@ -52,7 +53,7 @@ export default function LabTestQueuePage() {
       <div className="container py-4">
         <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h1>🧪 Test Queue</h1>
+            <h1><Glyph icon="🧪" /> Test Queue</h1>
             <p style={{ color: 'var(--text-secondary)' }}>Live pending investigations ordered by doctors.</p>
           </div>
           <button className="btn btn-outline" onClick={fetchQueue}>↻ Refresh Queue</button>

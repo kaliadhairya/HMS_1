@@ -3,6 +3,7 @@ import api from '../../../api/axios';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function InvestigationQueuePage() {
   const [orders, setOrders] = useState([]);
@@ -54,7 +55,7 @@ export default function InvestigationQueuePage() {
       <div className="card">
         {orders.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: 10 }}>🧪</div>
+            <div style={{ fontSize: '2.5rem', marginBottom: 10 }}><Glyph icon="🧪" /></div>
             <p>No pending laboratory orders at this time.</p>
           </div>
         ) : (

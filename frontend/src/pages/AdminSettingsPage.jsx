@@ -3,6 +3,7 @@ import api from '../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
+import Glyph from '../components/ui/Glyph';
 
 export default function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState(0);
@@ -24,7 +25,7 @@ export default function AdminSettingsPage() {
     <>
       <Navbar />
       <div className="page-wrapper fade-up">
-        <h2 style={{ marginBottom: 24 }}>⚙️ Settings</h2>
+        <h2 style={{ marginBottom: 24 }}><Glyph icon="⚙️" /> Settings</h2>
         <div style={{ display: 'flex', gap: 24 }}>
           {/* Sidebar */}
           <div className="card" style={{ width: 230, padding: 0, flexShrink: 0 }}>
@@ -167,13 +168,13 @@ function HospitalProfileTab() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {logoPreview && <img src={logoPreview} alt="" style={{ width: 50, height: 50, objectFit: 'contain' }} />}
           <div>
-            <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0f4c81' }}>{form.NAME || 'Hospital Name'}</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--primary)' }}>{form.NAME || 'Hospital Name'}</div>
             <div style={{ fontSize: '0.85rem', color: '#666' }}>{form.TAGLINE || ''}</div>
             <div style={{ fontSize: '0.75rem', color: '#888' }}>{form.ADDRESS || ''}, {form.CITY || ''} - {form.PIN || ''}</div>
             <div style={{ fontSize: '0.75rem', color: '#888' }}>Ph: {form.PHONE || ''} | Reg: {form.REG_NUMBER || ''}</div>
           </div>
         </div>
-        <div style={{ height: 3, background: '#0f4c81', marginTop: 12, borderRadius: 2 }}></div>
+        <div style={{ height: 3, background: 'var(--primary)', marginTop: 12, borderRadius: 2 }}></div>
       </div>
 
       <div style={{ marginTop: 24, textAlign: 'right' }}>
@@ -342,7 +343,7 @@ function DepartmentConfigTab() {
   return (
     <div className="card" style={{ padding: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h3>🏥 Department Configuration</h3>
+        <h3><Glyph icon="🏥" /> Department Configuration</h3>
       </div>
       <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16 }}>Manage hospital departments, assign HODs, and configure departmental settings.</p>
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -387,7 +388,7 @@ function WorkingHoursTab() {
 
   return (
     <div className="card" style={{ padding: 24 }}>
-      <h3 style={{ marginBottom: 16 }}>🕐 Working Hours & Shift Configuration</h3>
+      <h3 style={{ marginBottom: 16 }}><Glyph icon="🕐" /> Working Hours & Shift Configuration</h3>
       <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 16 }}>Define OPD timings, emergency availability, and daily shift counts.</p>
       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
         <thead>
@@ -446,7 +447,7 @@ function HolidayCalendarTab() {
   return (
     <div className="card" style={{ padding: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h3>📅 Holiday Calendar</h3>
+        <h3><Glyph icon="📅" /> Holiday Calendar</h3>
         <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>+ Add Holiday</button>
       </div>
 
@@ -481,7 +482,7 @@ function HolidayCalendarTab() {
                   <span style={{
                     padding: '3px 8px', borderRadius: 12, fontSize: '0.8rem',
                     background: h.type === 'National' ? '#60a5fa20' : h.type === 'Festival' ? '#f59e0b20' : '#a855f720',
-                    color: h.type === 'National' ? '#60a5fa' : h.type === 'Festival' ? '#f59e0b' : '#a855f7',
+                    color: h.type === 'National' ? '#60a5fa' : h.type === 'Festival' ? '#f59e0b' : 'var(--primary)',
                   }}>{h.type}</span>
                 </td>
                 <td style={{ padding: 10 }}>
@@ -518,7 +519,7 @@ function SecurityLogsTab() {
   return (
     <div className="card" style={{ padding: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h3>🔐 Security Logs</h3>
+        <h3><Glyph icon="🔐" /> Security Logs</h3>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.9rem' }}>
           <input type="checkbox" checked={failedOnly} onChange={e => setFailedOnly(e.target.checked)} /> Failed logins only
         </label>

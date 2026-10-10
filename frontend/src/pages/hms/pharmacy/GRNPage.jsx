@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function GRNPage() {
   const [suppliers, setSuppliers] = useState([]);
@@ -207,7 +208,7 @@ export default function GRNPage() {
     <div className="page-wrapper fade-up">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <h2>📥 Goods Receipt Note (GRN)</h2>
+          <h2><Glyph icon="📥" /> Goods Receipt Note (GRN)</h2>
           <p style={{ color: 'var(--text-secondary)' }}>Inward stock from Purchase Requests or direct purchases.</p>
         </div>
       </div>
@@ -216,7 +217,7 @@ export default function GRNPage() {
 
         {/* PR Fetch Section */}
         <div style={{ padding: 20, background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(16,185,129,0.08))', border: '1px solid var(--border)', borderRadius: 12, marginBottom: 24 }}>
-          <h3 style={{ margin: '0 0 12px 0', fontSize: '1.1rem' }}>📋 Fetch from Purchase Request</h3>
+          <h3 style={{ margin: '0 0 12px 0', fontSize: '1.1rem' }}><Glyph icon="📋" /> Fetch from Purchase Request</h3>
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
             <div style={{ flex: 1, maxWidth: 300 }}>
               <label style={{ display: 'block', marginBottom: 6, fontSize: '0.9rem' }}>PR Number (e.g. PR-2026-001 or just the ID)</label>
@@ -235,7 +236,7 @@ export default function GRNPage() {
             </button>
             {prData && (
               <button type="button" className="btn btn-outline" onClick={clearPR} style={{ padding: '10px 20px' }}>
-                ✕ Clear
+                <Glyph icon="✕" /> Clear
               </button>
             )}
           </div>
@@ -244,7 +245,7 @@ export default function GRNPage() {
           {prData && (
             <div style={{ marginTop: 16, padding: 16, background: 'rgba(16,185,129,0.1)', border: '1px solid var(--green)', borderRadius: 8, display: 'flex', gap: 32, flexWrap: 'wrap' }}>
               <div>
-                <strong style={{ color: 'var(--green)', fontSize: '1.1rem' }}>✅ {prData.prNumber}</strong>
+                <strong style={{ color: 'var(--green)', fontSize: '1.1rem' }}><Glyph icon="✅" /> {prData.prNumber}</strong>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 }}>
                   Status: <span style={{ fontWeight: 600 }}>{prData.status}</span> | Date: {prData.date}
                 </div>

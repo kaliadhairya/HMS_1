@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Navbar from '../../../components/Navbar';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 const Field = ({ label, children, span }) => (
   <div className="form-group" style={span ? { gridColumn: `span ${span}` } : {}}>
@@ -107,7 +108,7 @@ export default function RestFormEditorPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(139,92,246,0.1)', borderColor: 'rgba(139,92,246,0.25)' }}>🛏️</span>
+              <span className="header-icon" style={{ background: 'rgba(139,92,246,0.1)', borderColor: 'rgba(139,92,246,0.25)' }}><Glyph icon="🛏️" /></span>
               {isEditing ? 'Edit Rest Form' : 'New Rest & Light Duty Form'}
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -128,7 +129,7 @@ export default function RestFormEditorPage() {
             {/* Patient Card */}
             <div className="card" style={{ marginBottom: 24, padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(16,185,129,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>👤</span>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(16,185,129,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="👤" /></span>
                 <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Patient Identification</h3>
               </div>
               <div style={{ padding: '18px 24px' }}>
@@ -148,7 +149,7 @@ export default function RestFormEditorPage() {
                   </div>
                 ) : (
                   <div style={{ padding: 20, textAlign: 'center', color: 'var(--red)', fontSize: '0.85rem' }}>
-                    ⚠️ No patient selected. Please initiate from the Doctor Dashboard queue.
+                    <Glyph icon="⚠️" /> No patient selected. Please initiate from the Doctor Dashboard queue.
                   </div>
                 )}
               </div>
@@ -157,7 +158,7 @@ export default function RestFormEditorPage() {
             {/* Form Fields */}
             <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '14px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(139,92,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>📋</span>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(139,92,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="📋" /></span>
                 <h3 style={{ margin: 0, fontSize: '0.95rem' }}>Certificate Details</h3>
               </div>
               <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '18px 20px' }}>
@@ -227,7 +228,7 @@ export default function RestFormEditorPage() {
                             background: 'rgba(245,158,11,0.15)', color: '#d97706',
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: '0.8rem',
-                          }}>📅</span>
+                          }}><Glyph icon="📅" /></span>
                           <span style={{
                             fontSize: '0.72rem', fontWeight: 800,
                             textTransform: 'uppercase', letterSpacing: '0.1em',
@@ -248,7 +249,7 @@ export default function RestFormEditorPage() {
                           onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'none'; }}
                           title="Remove Extension"
                         >
-                          ✕
+                          <Glyph icon="✕" />
                         </button>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

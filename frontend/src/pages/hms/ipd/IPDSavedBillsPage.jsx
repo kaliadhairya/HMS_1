@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function IPDSavedBillsPage() {
   const [drafts, setDrafts] = useState([]);
@@ -30,7 +31,7 @@ export default function IPDSavedBillsPage() {
                   borderColor: 'rgba(99,102,241,0.25)',
                   fontSize: '1.5rem',
                   width: 54, height: 54
-                }}>📝</span>
+                }}><Glyph icon="📝" /></span>
                 Saved Billing Drafts
               </h1>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginTop: 8, marginLeft: 70 }}>
@@ -49,7 +50,7 @@ export default function IPDSavedBillsPage() {
           </div>
         ) : drafts.length === 0 ? (
           <div className="card" style={{ padding: '80px 40px', textAlign: 'center', borderRadius: 24 }}>
-            <div style={{ fontSize: '4rem', marginBottom: 24, opacity: 0.2 }}>📄</div>
+            <div style={{ fontSize: '4rem', marginBottom: 24, opacity: 0.2 }}><Glyph icon="📄" /></div>
             <h3 style={{ color: 'var(--text-primary)', marginBottom: 12, fontSize: '1.5rem' }}>No Saved Drafts</h3>
             <p style={{ color: 'var(--text-secondary)', maxWidth: 400, margin: '0 auto' }}>
               You haven't saved any billing drafts yet. Start by adding items to an active admission in IPD Billing.
@@ -76,7 +77,7 @@ export default function IPDSavedBillsPage() {
                     background: 'var(--surface-2)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '1.5rem'
-                  }}>👤</div>
+                  }}><Glyph icon="👤" /></div>
                   <div>
                     <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>{draft.PATIENT_NAME}</h3>
                     <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: '0.82rem', color: 'var(--text-muted)' }}>

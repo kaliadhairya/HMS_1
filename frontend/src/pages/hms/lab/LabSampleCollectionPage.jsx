@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import { toast } from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function LabSampleCollectionPage() {
   const [samples, setSamples] = useState([]);
@@ -40,7 +41,7 @@ export default function LabSampleCollectionPage() {
       <div className="container py-4">
         <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h1>🩸 Sample Collection</h1>
+            <h1><Glyph icon="🩸" /> Sample Collection</h1>
             <p style={{ color: 'var(--text-secondary)' }}>Log sample collection times, assign barcodes, and track storage.</p>
           </div>
           <button className="btn btn-outline" onClick={refreshSamples}>↻ Refresh</button>

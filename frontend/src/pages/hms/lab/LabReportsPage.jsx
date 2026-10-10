@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function LabReportsPage() {
   const [reports, setReports] = useState([]);
@@ -19,12 +20,12 @@ export default function LabReportsPage() {
       <div className="container py-4">
         <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h1>📄 Final Lab Reports</h1>
+            <h1><Glyph icon="📄" /> Final Lab Reports</h1>
             <p style={{ color: 'var(--text-secondary)' }}>Generate PDF, print, or share results with doctors and patients.</p>
           </div>
           <div style={{ display: 'flex', gap: 12 }}>
             <input type="text" className="form-input" placeholder="Search by Patient / Report ID" style={{ width: 250 }} />
-            <button className="btn btn-outline">🔍 Search</button>
+            <button className="btn btn-outline"><Glyph icon="🔍" /> Search</button>
           </div>
         </div>
 
@@ -60,9 +61,9 @@ export default function LabReportsPage() {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: 8 }}>
-                          <button className="btn btn-sm btn-primary" disabled={r.status !== 'Final'}>📄 PDF</button>
-                          <button className="btn btn-sm" disabled={r.status !== 'Final'} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)' }}>🖨️ Print</button>
-                          <button className="btn btn-sm" disabled={r.status !== 'Final'} style={{ background: 'rgba(52, 211, 153, 0.1)', border: '1px solid rgba(52, 211, 153, 0.2)', color: '#34d399' }} title="Send WhatsApp">💬</button>
+                          <button className="btn btn-sm btn-primary" disabled={r.status !== 'Final'}><Glyph icon="📄" /> PDF</button>
+                          <button className="btn btn-sm" disabled={r.status !== 'Final'} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)' }}><Glyph icon="🖨️" /> Print</button>
+                          <button className="btn btn-sm" disabled={r.status !== 'Final'} style={{ background: 'rgba(52, 211, 153, 0.1)', border: '1px solid rgba(52, 211, 153, 0.2)', color: '#34d399' }} title="Send WhatsApp"><Glyph icon="💬" /></button>
                         </div>
                       </td>
                     </tr>

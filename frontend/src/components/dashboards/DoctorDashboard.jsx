@@ -716,7 +716,7 @@ export default function DoctorDashboard() {
         const prescriptionAction = {
           label: 'Prescription',
           icon: '℞',
-          iconBg: '#0d9488',
+          iconBg: 'var(--primary)',
           onClick: () => navigate(`/hms/prescription-slip?patientId=${p.id}&encounterId=${p.encounter_id || ''}`),
         };
         const referralAction = {

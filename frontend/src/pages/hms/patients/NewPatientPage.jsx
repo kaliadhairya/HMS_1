@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import Barcode from 'react-barcode';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 const INITIAL_FORM_STATE = {
   patientType: 'other',
@@ -78,7 +79,7 @@ export default function NewPatientPage() {
         <Navbar />
         <div className="container py-4">
           <div className="card hms-anim-1" style={{ maxWidth: 650, margin: '40px auto', textAlign: 'center', padding: 40 }}>
-            <div style={{ fontSize: '4rem', marginBottom: 20, animation: 'hmsCountPop 0.6s ease both' }}>🎉</div>
+            <div style={{ fontSize: '4rem', marginBottom: 20, animation: 'hmsCountPop 0.6s ease both' }}><Glyph icon="🎉" /></div>
             <h2 style={{ fontSize: '2rem', marginBottom: 12 }}>Registration Complete</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: 32 }}>
               The patient has been added to the master directory and a unique UHID has been issued.
@@ -115,9 +116,9 @@ export default function NewPatientPage() {
             </div>
 
             <div style={{ display: 'flex', gap: 14, justifyContent: 'center' }}>
-              <button className="btn btn-primary btn-lg" onClick={handlePrint}>🖨️ Print Slip</button>
+              <button className="btn btn-primary btn-lg" onClick={handlePrint}><Glyph icon="🖨️" /> Print Slip</button>
               <button className="btn btn-outline btn-lg" onClick={() => navigate(`/hms/patients/${registeredPatient.id}`)}>
-                👤 View Profile
+                <Glyph icon="👤" /> View Profile
               </button>
               <button
                 className="btn btn-ghost btn-lg"
@@ -152,7 +153,7 @@ export default function NewPatientPage() {
                     color: 'var(--blue)',
                   }}
                 >
-                  📝
+                  <Glyph icon="📝" />
                 </span>
                 New Patient Intake
               </h1>
@@ -200,7 +201,7 @@ export default function NewPatientPage() {
                   border: '1px solid var(--blue-border)',
                 }}
               >
-                👨‍👩‍👧‍👦
+                <Glyph icon="👨‍👩‍👧‍👦" />
               </div>
               <h3 style={{ fontSize: '1.6rem', marginBottom: 12, fontWeight: 800, color: 'var(--text-primary)' }}>
                 General Patient (External)
@@ -237,7 +238,7 @@ export default function NewPatientPage() {
                   color: 'var(--blue)',
                 }}
               >
-                👨‍👩‍👧‍👦
+                <Glyph icon="👨‍👩‍👧‍👦" />
               </span>
               New Patient Intake
             </h1>
@@ -429,8 +430,8 @@ export default function NewPatientPage() {
                             flex: 1, padding: '10px 0', borderRadius: 10, fontWeight: 700, fontSize: '0.85rem',
                             cursor: 'pointer', transition: 'all 0.2s', border: '2px solid',
                             background: formData.payment_mode === mode ? (mode === 'Cash' ? 'rgba(16,185,129,0.08)' : mode === 'UPI' ? 'rgba(99,102,241,0.08)' : 'rgba(59,130,246,0.08)') : 'var(--surface-2)',
-                            borderColor: formData.payment_mode === mode ? (mode === 'Cash' ? '#10b981' : mode === 'UPI' ? '#6366f1' : '#3b82f6') : 'var(--border)',
-                            color: formData.payment_mode === mode ? (mode === 'Cash' ? '#10b981' : mode === 'UPI' ? '#6366f1' : '#3b82f6') : 'var(--text-muted)',
+                            borderColor: formData.payment_mode === mode ? (mode === 'Cash' ? '#10b981' : mode === 'UPI' ? 'var(--primary)' : '#3b82f6') : 'var(--border)',
+                            color: formData.payment_mode === mode ? (mode === 'Cash' ? '#10b981' : mode === 'UPI' ? 'var(--primary)' : '#3b82f6') : 'var(--text-muted)',
                           }}
                         >
                           {mode === 'Cash' ? '💵' : mode === 'UPI' ? '📱' : '💳'} {mode}

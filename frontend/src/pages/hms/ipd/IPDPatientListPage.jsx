@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function IPDPatientListPage() {
   const [admissions, setAdmissions] = useState([]);
@@ -42,7 +43,7 @@ export default function IPDPatientListPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">🏥</span>
+              <span className="header-icon"><Glyph icon="🏥" /></span>
               IPD Patients Hub
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -69,7 +70,7 @@ export default function IPDPatientListPage() {
           onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--blue)'}
           onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}
           >
-            <span style={{ fontSize: '1.4rem', filter: 'grayscale(0.5)' }}>🔍</span>
+            <span style={{ fontSize: '1.4rem', filter: 'grayscale(0.5)' }}><Glyph icon="🔍" /></span>
             <input
               type="text"
               className="form-input"
@@ -106,7 +107,7 @@ export default function IPDPatientListPage() {
           onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--green)'}
           onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}
           >
-            <span style={{ fontSize: '1.3rem', filter: 'grayscale(0.5)' }}>🛏️</span>
+            <span style={{ fontSize: '1.3rem', filter: 'grayscale(0.5)' }}><Glyph icon="🛏️" /></span>
             <select 
               className="form-input" 
               value={statusFilter} 
@@ -142,7 +143,7 @@ export default function IPDPatientListPage() {
             color: 'var(--blue)',
             background: 'rgba(59, 130, 246, 0.05)'
           }}>
-            <span style={{ fontSize: '1.3rem' }}>📄</span>
+            <span style={{ fontSize: '1.3rem' }}><Glyph icon="📄" /></span>
             Discharge Summaries Hub
           </Link>
         </div>
@@ -151,7 +152,7 @@ export default function IPDPatientListPage() {
         <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden' }}>
           {filteredAdmissions.length === 0 ? (
             <div className="hms-empty-state" style={{ margin: 24 }}>
-              <span className="empty-icon">🛏️</span>
+              <span className="empty-icon"><Glyph icon="🛏️" /></span>
               <h3>No admissions found</h3>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                 {searchQuery ? `We couldn't find any patient matching "${searchQuery}".` : 'There are no patients currently admitted matching this status.'}

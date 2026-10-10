@@ -139,3 +139,35 @@
 .tabular { font-variant-numeric: tabular-nums; }
 
 .page-loader { min-height: 60vh; display: flex; align-items: center; justify-content: center; }
+
+/* Panels, lists and small charts */
+.panel-pad { padding: 16px 18px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.panel-title { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; font-weight: 650; margin-bottom: 14px; }
+.panel-title svg { color: var(--text-muted); }
+.panel-subtitle { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin: 18px 0 8px; }
+.muted { color: var(--text-muted); font-size: 0.88rem; }
+.split-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.bar-list { list-style: none; display: grid; gap: 12px; }
+.bar-row { display: flex; justify-content: space-between; gap: 12px; font-size: 0.88rem; margin-bottom: 5px; }
+.bar-row span { color: var(--text-secondary); }
+.bar-track { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 3px; background: var(--primary); }
+
+.list-rows { list-style: none; display: grid; gap: 6px; }
+.list-row {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.list-row:hover { border-color: var(--border-dark); background: var(--surface-2); }
+
+/* Segmented control */
+.segmented { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.segmented button {
+  height: 30px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent;
+  font: inherit; font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); cursor: pointer;
+}
+.segmented button.is-active { background: var(--surface); color: var(--text-primary); font-weight: 600; box-shadow: 0 1px 2px rgba(33,43,50,0.12); }

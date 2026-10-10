@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import { toast } from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function LabResultsEntryPage() {
   const [pending, setPending] = useState([]);
@@ -59,7 +60,7 @@ export default function LabResultsEntryPage() {
       <div className="container py-4">
         <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
-            <h1>📝 Results Entry</h1>
+            <h1><Glyph icon="📝" /> Results Entry</h1>
             <p style={{ color: 'var(--text-secondary)' }}>Core lab work. Enter values, check against reference ranges, and auto-flag abnormal results.</p>
           </div>
         </div>
@@ -160,7 +161,7 @@ export default function LabResultsEntryPage() {
                 <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', borderTop: '1px solid var(--border)', paddingTop: 20 }}>
                   <button className="btn btn-outline" onClick={() => setSelected(null)}>Cancel</button>
                   <button className="btn btn-primary" onClick={handleSubmit}>
-                    ✓ Submit for Printing
+                    <Glyph icon="✓" /> Submit for Printing
                   </button>
                 </div>
               </div>

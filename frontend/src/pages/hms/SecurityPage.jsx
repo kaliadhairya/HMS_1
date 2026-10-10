@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
+import Glyph from '../../components/ui/Glyph';
 
 // ─── Priority Badges ──────────────────────────────────
 const PB = { Critical: '#ef4444', High: '#fbbf24', Medium: '#94a3b8' };
@@ -59,7 +60,7 @@ function SecurityCenterPanel() {
 
   return (
     <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🛡️ Security Center</h2>
+      <h2 style={{ marginBottom: 4 }}><Glyph icon="🛡️" /> Security Center</h2>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Real-time threat monitoring and access alerts</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 28 }}>
@@ -71,7 +72,7 @@ function SecurityCenterPanel() {
 
       {data.suspicious_ips?.length > 0 && (
         <>
-          <SectionTitle>⚠️ Suspicious IPs (3+ failures today)</SectionTitle>
+          <SectionTitle><Glyph icon="⚠️" /> Suspicious IPs (3+ failures today)</SectionTitle>
           <div className="table-wrapper" style={{ marginBottom: 24 }}>
             <table><thead><tr><th>IP Address</th><th>Attempts</th><th>Status</th></tr></thead>
               <tbody>{data.suspicious_ips.map((ip, i) => (
@@ -124,7 +125,7 @@ function SessionManagerPanel() {
   return (
     <div className="fade-up">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>🖥️ Session Manager</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Monitor and control active user sessions</p></div>
+        <div><h2 style={{ marginBottom: 4 }}><Glyph icon="🖥️" /> Session Manager</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Monitor and control active user sessions</p></div>
         <button className="btn btn-outline" onClick={load}>↻ Refresh</button>
       </div>
 
@@ -143,8 +144,8 @@ function SessionManagerPanel() {
                 <td>{s.FAILED_ATTEMPTS > 0 ? <span className="badge badge-amber">{s.FAILED_ATTEMPTS}</span> : '0'}</td>
                 <td style={{ display: 'flex', gap: 6 }}>
                   {isLocked
-                    ? <button className="btn btn-sm btn-outline" onClick={async () => { await api.post(`/security/users/${s.ID}/unlock`); load(); }}>🔓 Unlock</button>
-                    : <button className="btn btn-sm btn-ghost" style={{ color: '#ef4444' }} onClick={() => forceLogout(s.ID)}>⛔ End</button>}
+                    ? <button className="btn btn-sm btn-outline" onClick={async () => { await api.post(`/security/users/${s.ID}/unlock`); load(); }}><Glyph icon="🔓" /> Unlock</button>
+                    : <button className="btn btn-sm btn-ghost" style={{ color: '#ef4444' }} onClick={() => forceLogout(s.ID)}><Glyph icon="⛔" /> End</button>}
                 </td>
               </tr>
             );
@@ -185,7 +186,7 @@ function TwoFAPanel() {
   const roles = data?.role_breakdown || [];
   return (
     <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🔑 Two-Factor Authentication</h2>
+      <h2 style={{ marginBottom: 4 }}><Glyph icon="🔑" /> Two-Factor Authentication</h2>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Enforce 2FA per role to strengthen authentication</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 28 }}>
@@ -221,7 +222,7 @@ function TwoFAPanel() {
           );
         })}
       </div>
-      <button className="btn btn-primary" onClick={save}>💾 Save 2FA Configuration</button>
+      <button className="btn btn-primary" onClick={save}><Glyph icon="💾" /> Save 2FA Configuration</button>
     </div>
   );
 }
@@ -248,13 +249,13 @@ function IPRulesPanel() {
 
   return (
     <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🌐 IP Access Control</h2>
+      <h2 style={{ marginBottom: 4 }}><Glyph icon="🌐" /> IP Access Control</h2>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Restrict login access to trusted networks</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         {/* Whitelist */}
         <div className="card" style={{ borderTop: '3px solid var(--green)' }}>
-          <h3 style={{ color: 'var(--green)', marginBottom: 12 }}>✅ Whitelist ({whitelist.length})</h3>
+          <h3 style={{ color: 'var(--green)', marginBottom: 12 }}><Glyph icon="✅" /> Whitelist ({whitelist.length})</h3>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 16 }}>Only these IPs can access the system (empty = allow all)</p>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             <input className="form-input" placeholder="e.g. 10.2.111.0/24" value={newWL} onChange={e => setNewWL(e.target.value)} style={{ flex: 1 }} />
@@ -262,13 +263,13 @@ function IPRulesPanel() {
           </div>
           {whitelist.map((ip, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--surface-2)', borderRadius: 6, marginBottom: 6, fontFamily: 'monospace', fontSize: '0.85rem' }}>
-              {ip} <button className="btn btn-ghost btn-sm" onClick={() => setWhitelist(whitelist.filter((_, j) => j !== i))} style={{ color: '#ef4444', padding: '2px 6px' }}>✕</button>
+              {ip} <button className="btn btn-ghost btn-sm" onClick={() => setWhitelist(whitelist.filter((_, j) => j !== i))} style={{ color: '#ef4444', padding: '2px 6px' }}><Glyph icon="✕" /></button>
             </div>
           ))}
         </div>
         {/* Blacklist */}
         <div className="card" style={{ borderTop: '3px solid #ef4444' }}>
-          <h3 style={{ color: '#ef4444', marginBottom: 12 }}>🚫 Blacklist ({blacklist.length})</h3>
+          <h3 style={{ color: '#ef4444', marginBottom: 12 }}><Glyph icon="🚫" /> Blacklist ({blacklist.length})</h3>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 16 }}>These IPs are permanently blocked from accessing the system</p>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             <input className="form-input" placeholder="e.g. 192.168.1.100" value={newBL} onChange={e => setNewBL(e.target.value)} style={{ flex: 1 }} />
@@ -276,12 +277,12 @@ function IPRulesPanel() {
           </div>
           {blacklist.map((ip, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(239,68,68,0.05)', borderRadius: 6, marginBottom: 6, fontFamily: 'monospace', fontSize: '0.85rem', border: '1px solid rgba(239,68,68,0.15)' }}>
-              {ip} <button className="btn btn-ghost btn-sm" onClick={() => setBlacklist(blacklist.filter((_, j) => j !== i))} style={{ color: 'var(--text-muted)', padding: '2px 6px' }}>✕</button>
+              {ip} <button className="btn btn-ghost btn-sm" onClick={() => setBlacklist(blacklist.filter((_, j) => j !== i))} style={{ color: 'var(--text-muted)', padding: '2px 6px' }}><Glyph icon="✕" /></button>
             </div>
           ))}
         </div>
       </div>
-      <div style={{ marginTop: 20 }}><button className="btn btn-primary" onClick={save}>💾 Save IP Rules</button></div>
+      <div style={{ marginTop: 20 }}><button className="btn btn-primary" onClick={save}><Glyph icon="💾" /> Save IP Rules</button></div>
     </div>
   );
 }
@@ -306,7 +307,7 @@ function AuditTrailPanel() {
 
   return (
     <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>📋 Audit Trail</h2>
+      <h2 style={{ marginBottom: 4 }}><Glyph icon="📋" /> Audit Trail</h2>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Immutable log of every action — who, what, when, where</p>
 
       <div className="card" style={{ marginBottom: 20, padding: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -382,7 +383,7 @@ function SystemHealthPanel() {
   return (
     <div className="fade-up">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>💓 System Health</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Live server metrics — auto-refreshes every 15s</p></div>
+        <div><h2 style={{ marginBottom: 4 }}><Glyph icon="💓" /> System Health</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Live server metrics — auto-refreshes every 15s</p></div>
         <button className="btn btn-outline" onClick={load}>↻ Refresh</button>
       </div>
 
@@ -454,7 +455,7 @@ function BackupPanel() {
   return (
     <div className="fade-up">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>📦 Backup & Recovery</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Manage database backups and restore points</p></div>
+        <div><h2 style={{ marginBottom: 4 }}><Glyph icon="📦" /> Backup & Recovery</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Manage database backups and restore points</p></div>
         <button className="btn btn-primary" onClick={triggerBackup} disabled={triggering}>{triggering ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : '🔄 Trigger Manual Backup'}</button>
       </div>
 
@@ -501,7 +502,7 @@ function MaintenancePanel() {
 
   return (
     <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🔨 Maintenance Mode</h2>
+      <h2 style={{ marginBottom: 4 }}><Glyph icon="🔨" /> Maintenance Mode</h2>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 24 }}>Take the system offline for updates and show a downtime notice</p>
 
       <div className="card" style={{ maxWidth: 600, borderTop: `4px solid ${enabled ? '#ef4444' : 'var(--green)'}` }}>
@@ -534,7 +535,7 @@ function MaintenancePanel() {
           <textarea className="form-textarea" value={message} onChange={e => setMessage(e.target.value)} rows={3} />
         </div>
 
-        <button className="btn btn-primary" onClick={save}>💾 Save Changes</button>
+        <button className="btn btn-primary" onClick={save}><Glyph icon="💾" /> Save Changes</button>
       </div>
     </div>
   );
@@ -568,7 +569,7 @@ function APIManagerPanel() {
   return (
     <div className="fade-up">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>⚡ API Manager</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Generate, manage, and revoke API keys</p></div>
+        <div><h2 style={{ marginBottom: 4 }}><Glyph icon="⚡" /> API Manager</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Generate, manage, and revoke API keys</p></div>
         <button className="btn btn-primary" onClick={() => setShowCreate(!showCreate)}>+ Generate Key</button>
       </div>
 
@@ -590,7 +591,7 @@ function APIManagerPanel() {
       )}
 
       {keys.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 50 }}><div style={{ fontSize: '3rem', marginBottom: 12 }}>🔑</div><h3>No API Keys</h3><p style={{ color: 'var(--text-muted)' }}>Generate your first API key to enable integrations.</p></div>
+        <div className="card" style={{ textAlign: 'center', padding: 50 }}><div style={{ fontSize: '3rem', marginBottom: 12 }}><Glyph icon="🔑" /></div><h3>No API Keys</h3><p style={{ color: 'var(--text-muted)' }}>Generate your first API key to enable integrations.</p></div>
       ) : (
         <div className="table-wrapper">
           <table><thead><tr><th>Name</th><th>Key</th><th>Permissions</th><th>Created</th><th>Actions</th></tr></thead>
@@ -600,7 +601,7 @@ function APIManagerPanel() {
                 <td style={{ fontFamily: 'monospace', fontSize: '0.75rem', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.key?.substring(0, 20)}...</td>
                 <td>{k.permissions?.map(p => <span key={p} className="badge badge-blue" style={{ marginRight: 4 }}>{p}</span>)}</td>
                 <td style={{ fontSize: '0.82rem' }}>{new Date(k.created_at).toLocaleDateString()}</td>
-                <td><button className="btn btn-sm btn-ghost" style={{ color: '#ef4444' }} onClick={() => revoke(k.id)}>🗑 Revoke</button></td>
+                <td><button className="btn btn-sm btn-ghost" style={{ color: '#ef4444' }} onClick={() => revoke(k.id)}><Glyph icon="🗑" /> Revoke</button></td>
               </tr>
             ))}</tbody></table>
         </div>
@@ -635,7 +636,7 @@ function AnnouncementsPanel() {
   return (
     <div className="fade-up">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>📢 Announcements</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Broadcast notices to users across the hospital</p></div>
+        <div><h2 style={{ marginBottom: 4 }}><Glyph icon="📢" /> Announcements</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Broadcast notices to users across the hospital</p></div>
         <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>+ New Announcement</button>
       </div>
 
@@ -648,12 +649,12 @@ function AnnouncementsPanel() {
               <option value="info">Info</option><option value="warning">Warning</option><option value="critical">Critical</option>
             </select>
           </div>
-          <button className="btn btn-primary" onClick={create}>📤 Publish</button>
+          <button className="btn btn-primary" onClick={create}><Glyph icon="📤" /> Publish</button>
         </div>
       )}
 
       {items.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 50 }}><div style={{ fontSize: '3rem', marginBottom: 12 }}>📭</div><h3>No Announcements</h3></div>
+        <div className="card" style={{ textAlign: 'center', padding: 50 }}><div style={{ fontSize: '3rem', marginBottom: 12 }}><Glyph icon="📭" /></div><h3>No Announcements</h3></div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {items.map(a => (
@@ -663,7 +664,7 @@ function AnnouncementsPanel() {
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 6 }}>{a.message}</p>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>By {a.created_by} • {new Date(a.created_at).toLocaleString('en-IN')}</div>
               </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => remove(a.id)} style={{ color: '#ef4444' }}>🗑</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => remove(a.id)} style={{ color: '#ef4444' }}><Glyph icon="🗑" /></button>
             </div>
           ))}
         </div>
@@ -684,12 +685,12 @@ function ErrorLogsPanel() {
   return (
     <div className="fade-up">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>🐛 Error Logs</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Application errors, stack traces, API failures</p></div>
+        <div><h2 style={{ marginBottom: 4 }}><Glyph icon="🐛" /> Error Logs</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Application errors, stack traces, API failures</p></div>
         <button className="btn btn-outline" onClick={load}>↻ Refresh</button>
       </div>
 
       {logs.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: 50 }}><div style={{ fontSize: '3rem', marginBottom: 12 }}>✅</div><h3>No Errors</h3><p style={{ color: 'var(--text-muted)' }}>System is running clean.</p></div>
+        <div className="card" style={{ textAlign: 'center', padding: 50 }}><div style={{ fontSize: '3rem', marginBottom: 12 }}><Glyph icon="✅" /></div><h3>No Errors</h3><p style={{ color: 'var(--text-muted)' }}>System is running clean.</p></div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {logs.map(log => (
@@ -729,7 +730,7 @@ function IntegrationHubPanel() {
 
   return (
     <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🏥 Integration Hub</h2>
+      <h2 style={{ marginBottom: 4 }}><Glyph icon="🏥" /> Integration Hub</h2>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Connect third-party systems — HL7/FHIR, insurance portals, lab machines, gateways</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
@@ -786,7 +787,7 @@ function NotificationConfigPanel() {
   return (
     <div className="fade-up">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>🔔 Notification Config</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>System alert routing — who gets notified on failures, thresholds, escalations</p></div>
+        <div><h2 style={{ marginBottom: 4 }}><Glyph icon="🔔" /> Notification Config</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>System alert routing — who gets notified on failures, thresholds, escalations</p></div>
         <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>+ New Rule</button>
       </div>
 
@@ -847,7 +848,7 @@ function ComplianceCenterPanel() {
 
   return (
     <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>📑 Compliance Center</h2>
+      <h2 style={{ marginBottom: 4 }}><Glyph icon="📑" /> Compliance Center</h2>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>HIPAA/DPDP compliance status, data access policies, breach alerts</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 14, marginBottom: 28 }}>
@@ -864,7 +865,7 @@ function ComplianceCenterPanel() {
           <span style={{ fontWeight: 700, color: data.overall_score >= 80 ? 'var(--green)' : '#fbbf24' }}>{data.overall_score}%</span>
         </div>
         <div style={{ height: 12, background: 'var(--surface-3)', borderRadius: 6, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${data.overall_score}%`, borderRadius: 6, background: data.overall_score >= 80 ? 'var(--green)' : data.overall_score >= 60 ? 'linear-gradient(90deg, #fbbf24, #f59e0b)' : 'linear-gradient(90deg, #ef4444, #f87171)', transition: 'width 0.5s' }} />
+          <div style={{ height: '100%', width: `${data.overall_score}%`, borderRadius: 6, background: data.overall_score >= 80 ? 'var(--green)' : data.overall_score >= 60 ? 'linear-gradient(90deg, #fbbf24, #f59e0b)' : 'var(--red)', transition: 'width 0.5s' }} />
         </div>
       </div>
 
@@ -902,7 +903,7 @@ function DataGovernancePanel() {
 
   return (
     <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>📝 Data Governance</h2>
+      <h2 style={{ marginBottom: 4 }}><Glyph icon="📝" /> Data Governance</h2>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Retention policies, PII masking rules, data purge schedules</p>
 
       <SectionTitle>Data Retention Policies</SectionTitle>
@@ -965,7 +966,7 @@ function LicenseManagerPanel() {
   return (
     <div className="fade-up">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div><h2 style={{ marginBottom: 4 }}>🪪 License Manager</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Track software licenses, module subscriptions, expiry alerts</p></div>
+        <div><h2 style={{ marginBottom: 4 }}><Glyph icon="🪪" /> License Manager</h2><p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Track software licenses, module subscriptions, expiry alerts</p></div>
         <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>+ Add License</button>
       </div>
 
@@ -1027,7 +1028,7 @@ function RoleTemplatesPanel() {
 
   return (
     <div className="fade-up">
-      <h2 style={{ marginBottom: 4 }}>🏷️ Role Templates</h2>
+      <h2 style={{ marginBottom: 4 }}><Glyph icon="🏷️" /> Role Templates</h2>
       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: 20 }}>Pre-built permission sets for each role — Doctor, Nurse, Receptionist, Lab Tech, etc.</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
@@ -1037,10 +1038,10 @@ function RoleTemplatesPanel() {
               <div style={{ fontWeight: 800, fontSize: '1rem', color: tmpl.color, textTransform: 'capitalize' }}>{tmpl.label}</div>
               {editing === tmpl.id
                 ? <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-primary btn-sm" onClick={() => saveEdit(tmpl.id)}>💾 Save</button>
+                    <button className="btn btn-primary btn-sm" onClick={() => saveEdit(tmpl.id)}><Glyph icon="💾" /> Save</button>
                     <button className="btn btn-outline btn-sm" onClick={cancelEdit}>Cancel</button>
                   </div>
-                : <button className="btn btn-outline btn-sm" onClick={() => startEdit(tmpl)}>✏️ Edit</button>}
+                : <button className="btn btn-outline btn-sm" onClick={() => startEdit(tmpl)}><Glyph icon="✏️" /> Edit</button>}
             </div>
 
             {editing === tmpl.id ? (
@@ -1108,7 +1109,7 @@ export default function SecurityPage() {
           padding: '20px 0', overflowY: 'auto', flexShrink: 0,
         }}>
           <div style={{ padding: '0 20px 16px', borderBottom: '1px solid var(--border)', marginBottom: 8 }}>
-            <div style={{ fontWeight: 800, fontSize: '1rem' }}>🔐 Security</div>
+            <div style={{ fontWeight: 800, fontSize: '1rem' }}><Glyph icon="🔐" /> Security</div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>System Administration</div>
           </div>
 
@@ -1131,7 +1132,7 @@ export default function SecurityPage() {
                   onMouseEnter={e => { if (activePanel !== n.id) e.currentTarget.style.background = 'var(--surface-2)'; }}
                   onMouseLeave={e => { if (activePanel !== n.id) e.currentTarget.style.background = 'transparent'; }}
                 >
-                  <span style={{ fontSize: '1rem', width: 24, textAlign: 'center' }}>{n.icon}</span>
+                  <span style={{ fontSize: '1rem', width: 24, textAlign: 'center' }}><Glyph icon={n.icon} /></span>
                   {n.label}
                 </div>
               ))}

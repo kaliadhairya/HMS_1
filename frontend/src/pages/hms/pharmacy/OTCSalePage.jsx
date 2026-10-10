@@ -2,6 +2,7 @@ import { useState } from 'react';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
 import Navbar from '../../../components/Navbar';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function OTCSalePage() {
   const [patientId, setPatientId] = useState('');
@@ -184,7 +185,7 @@ export default function OTCSalePage() {
 
         <div style={{ marginTop: 24, display: 'flex', gap: 16 }} className="no-print">
           <button className="btn btn-outline" onClick={() => setReceiptData(null)}>New Sale</button>
-          <button className="btn btn-primary" onClick={() => window.print()}>🖨️ Print Receipt</button>
+          <button className="btn btn-primary" onClick={() => window.print()}><Glyph icon="🖨️" /> Print Receipt</button>
         </div>
 
         <style>{`

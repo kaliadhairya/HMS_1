@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Navbar from '../../../components/Navbar';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function AttendanceLeavePage() {
   const [data, setData] = useState(null);
@@ -35,7 +36,7 @@ export default function AttendanceLeavePage() {
         <div className="hms-page-header hms-anim-1">
           <div>
             <h1>
-              <span className="header-icon" style={{ background: 'rgba(20,184,166,0.1)', borderColor: 'rgba(20,184,166,0.25)' }}>📝</span>
+              <span className="header-icon" style={{ background: 'rgba(20,184,166,0.1)', borderColor: 'rgba(20,184,166,0.25)' }}><Glyph icon="📝" /></span>
               Attendance & Leave
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -60,7 +61,7 @@ export default function AttendanceLeavePage() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '1.5rem',
                 }}>
-                  {k.icon}
+                  <Glyph icon={k.icon} />
                 </div>
                 <div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>{k.label}</div>
@@ -92,7 +93,7 @@ export default function AttendanceLeavePage() {
             {tab === 'roster' ? (
               <>
                 <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: '1.2rem' }}>✅</span> Staff Present Today
+                  <span style={{ fontSize: '1.2rem' }}><Glyph icon="✅" /></span> Staff Present Today
                 </h3>
                 <div className="table-wrapper hms-table-anim" style={{ maxHeight: 500, overflowY: 'auto' }}>
                   <table>
@@ -118,7 +119,7 @@ export default function AttendanceLeavePage() {
             ) : (
               <>
                 <h3 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: '1.2rem' }}>📝</span> Leave Requests
+                  <span style={{ fontSize: '1.2rem' }}><Glyph icon="📝" /></span> Leave Requests
                 </h3>
                 <div className="table-wrapper hms-table-anim">
                   <table>
@@ -136,8 +137,8 @@ export default function AttendanceLeavePage() {
                           <td>
                             {lr.status === 'Pending' ? (
                               <div style={{ display: 'flex', gap: 6 }}>
-                                <button className="btn btn-sm" style={{ background: '#10b981', color: 'white', border: 'none', width: 32, height: 32, padding: 0, borderRadius: 6 }} onClick={() => handleLeave(lr.id, 'Approved')}>✓</button>
-                                <button className="btn btn-sm" style={{ background: '#fee2e2', color: '#ef4444', border: 'none', width: 32, height: 32, padding: 0, borderRadius: 6 }} onClick={() => handleLeave(lr.id, 'Rejected')}>✕</button>
+                                <button className="btn btn-sm" style={{ background: '#10b981', color: 'white', border: 'none', width: 32, height: 32, padding: 0, borderRadius: 6 }} onClick={() => handleLeave(lr.id, 'Approved')}><Glyph icon="✓" /></button>
+                                <button className="btn btn-sm" style={{ background: '#fee2e2', color: '#ef4444', border: 'none', width: 32, height: 32, padding: 0, borderRadius: 6 }} onClick={() => handleLeave(lr.id, 'Rejected')}><Glyph icon="✕" /></button>
                               </div>
                             ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Resolved</span>}
                           </td>

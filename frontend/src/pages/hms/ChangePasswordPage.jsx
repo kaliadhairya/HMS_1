@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import Glyph from '../../components/ui/Glyph';
 
 export default function ChangePasswordPage() {
   const { user } = useAuth();
@@ -94,10 +95,10 @@ export default function ChangePasswordPage() {
       <div className="page-wrapper">
         <div className="fade-up" style={{ maxWidth: 460, margin: '0 auto' }}>
           <div className="card" style={{ padding: 32 }}>
-            <h2 style={{ marginBottom: 8 }}>🔐 Change Password</h2>
+            <h2 style={{ marginBottom: 8 }}><Glyph icon="🔐" /> Change Password</h2>
             {user?.first_login === 'Y' && (
               <div className="alert alert-success" style={{ marginBottom: 20 }}>
-                <span>👋</span> Welcome! Please set a new password to continue.
+                <span><Glyph icon="👋" /></span> Welcome! Please set a new password to continue.
               </div>
             )}
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: 24 }}>
@@ -106,7 +107,7 @@ export default function ChangePasswordPage() {
 
             {err && (
               <div className="alert alert-error" style={{ marginBottom: 16 }}>
-                <span>⚠️</span> {err}
+                <span><Glyph icon="⚠️" /></span> {err}
               </div>
             )}
 

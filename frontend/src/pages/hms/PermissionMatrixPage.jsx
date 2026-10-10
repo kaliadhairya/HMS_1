@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Navbar from '../../components/Navbar';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import Glyph from '../../components/ui/Glyph';
 
 const ROLES = ['super_admin', 'admin', 'doctor', 'lab_technician', 'receptionist', 'pharmacist', 'nurse'];
 const MODULES = ['auth', 'dashboard', 'patient', 'consultation', 'lab', 'radiology', 'pharmacy', 'ipd', 'billing', 'reports', 'admin'];
@@ -92,7 +93,7 @@ export default function PermissionMatrixPage() {
       <div className="page-wrapper">
         <div className="fade-up" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
-            <h1>🔐 Permission Matrix</h1>
+            <h1><Glyph icon="🔐" /> Permission Matrix</h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: 4 }}>
               Configure module access for each role. R=Read, W=Write, E=Edit, D=Delete
             </p>

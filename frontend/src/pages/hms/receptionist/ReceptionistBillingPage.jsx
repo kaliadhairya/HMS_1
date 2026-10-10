@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import toast from 'react-hot-toast';
+import Glyph from '../../../components/ui/Glyph';
 
 export default function ReceptionistBillingPage() {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export default function ReceptionistBillingPage() {
         <div className="hms-page-header">
           <div>
             <h1>
-              <span className="header-icon">💳</span>
+              <span className="header-icon"><Glyph icon="💳" /></span>
               Billing & Payments
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
@@ -64,7 +65,7 @@ export default function ReceptionistBillingPage() {
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '1.3rem', marginBottom: 10,
                   }}>
-                    {c.icon}
+                    <Glyph icon={c.icon} />
                   </div>
                   <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, marginBottom: 5 }}>
                     {c.label}
@@ -89,7 +90,7 @@ export default function ReceptionistBillingPage() {
                   onClick={() => setTab('recent')}
                   style={{ borderRadius: 0 }}
                 >
-                  ✅ Recent Payments ({billing.recent_payments?.length || 0})
+                  <Glyph icon="✅" /> Recent Payments ({billing.recent_payments?.length || 0})
                 </button>
               </div>
 
@@ -97,7 +98,7 @@ export default function ReceptionistBillingPage() {
                 {tab === 'unpaid' && (
                   (billing.unpaid_today || []).length === 0 ? (
                     <div className="hms-empty-state" style={{ margin: 24, border: 'none' }}>
-                      <span className="empty-icon">🎉</span>
+                      <span className="empty-icon"><Glyph icon="🎉" /></span>
                       <h3>All Bills Cleared!</h3>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No pending OPD bills for today.</p>
                     </div>
@@ -131,7 +132,7 @@ export default function ReceptionistBillingPage() {
                 {tab === 'recent' && (
                   (billing.recent_payments || []).length === 0 ? (
                     <div className="hms-empty-state" style={{ margin: 24, border: 'none' }}>
-                      <span className="empty-icon">📭</span>
+                      <span className="empty-icon"><Glyph icon="📭" /></span>
                       <h3>No Recent Payments</h3>
                       <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No payments recorded yet.</p>
                     </div>
@@ -146,7 +147,7 @@ export default function ReceptionistBillingPage() {
                             const methodColors = {
                               Cash: { bg: 'rgba(16,185,129,0.1)', color: '#059669', border: 'rgba(16,185,129,0.25)' },
                               UPI: { bg: 'rgba(59,130,246,0.1)', color: '#2563eb', border: 'rgba(59,130,246,0.25)' },
-                              Card: { bg: 'rgba(139,92,246,0.1)', color: '#7c3aed', border: 'rgba(139,92,246,0.25)' },
+                              Card: { bg: 'rgba(139,92,246,0.1)', color: 'var(--primary)', border: 'rgba(139,92,246,0.25)' },
                             };
                             const mc = methodColors[p.method] || methodColors.Cash;
                             return (
@@ -174,7 +175,7 @@ export default function ReceptionistBillingPage() {
                                       toast.success('Receipt number copied.');
                                     }}
                                   >
-                                    📋 Copy
+                                    <Glyph icon="📋" /> Copy
                                   </button>
                                 </td>
                               </tr>
