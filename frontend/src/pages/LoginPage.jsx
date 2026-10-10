@@ -11,6 +11,9 @@ const MODULES = [
   { icon: FlaskConical, title: 'Laboratory', desc: 'Orders, samples, results and reports' },
 ];
 
+// Two PQRST complexes on a flat baseline, drawn across the brand panel.
+const ECG_PATH = 'M0 44 H110 l10 -5 l9 5 h14 l6 9 l9 -40 l10 52 l8 -16 h18 l12 -7 l12 7 H330 l10 -5 l9 5 h14 l6 9 l9 -40 l10 52 l8 -16 h18 l12 -7 l12 7 H600';
+
 export default function LoginPage() {
   const { login, loading } = useAuth();
   const navigate = useNavigate();
@@ -62,6 +65,12 @@ export default function LoginPage() {
             </li>
           ))}
         </ul>
+
+        {/* Decorative heartbeat line; a soft pulse travels along it. */}
+        <svg className="login-ecg" viewBox="0 0 600 80" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          <path className="login-ecg-base" pathLength="1000" d={ECG_PATH} />
+          <path className="login-ecg-pulse" pathLength="1000" d={ECG_PATH} />
+        </svg>
 
         <p className="login-brand-foot">
           <ShieldCheck size={16} strokeWidth={1.75} />
