@@ -1,45 +1,50 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { BedDouble, CircleCheck, DoorOpen, Plus, Wallet } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
-import toast from 'react-hot-toast';
-import Glyph from '../../../components/ui/Glyph';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+import Modal from '../../../components/ui/Modal';
 
-function BedProgressBar({ pct, barColor }) {
-  return (
-    <div style={{ height: 7, background: 'var(--surface-3)', borderRadius: 4, overflow: 'hidden' }}>
-      <div style={{
-        height: '100%', width: `${pct}%`, background: barColor,
-        borderRadius: 4,
-        animation: 'hmsProgressFill 0.8s ease both',
-        transition: 'width 0.5s ease',
-      }} />
-    </div>
-  );
-}
+const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const occupancyTone = (pct) => (pct > 85 ? 'var(--red)' : pct > 60 ? 'var(--amber)' : 'var(--success)');
 
 export default function ReceptionistIPDPage() {
   const navigate = useNavigate();
   const [data, setData] = useState({ admissions: [], beds: [] });
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('admissions');
+  const [advanceTarget, setAdvanceTarget] = useState(null);
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [savingAdvance, setSavingAdvance] = useState(false);
 
   useEffect(() => {
     api.get('/receptionist/ipd-admissions')
       .then(res => setData(res.data.data))
-      .catch(console.error)
+      .catch((err) => { console.error(err); toast.error('Could not load admissions'); })
       .finally(() => setLoading(false));
   }, []);
 
-  const addAdvance = async (admission) => {
-    const amountRaw = window.prompt(`Enter advance amount for ${admission.patient}`);
-    if (!amountRaw) return;
-    const amount = Number(amountRaw);
+  const openAdvance = (admission) => {
+    setAdvanceAmount('');
+    setAdvanceTarget(admission);
+  };
+
+  const addAdvance = async (e) => {
+    e.preventDefault();
+    const admission = advanceTarget;
+    if (!admission || !advanceAmount) return;
+    const amount = Number(advanceAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('Enter a valid amount.');
+      toast.error('Enter a valid amount');
       return;
     }
 
+    setSavingAdvance(true);
     try {
       await api.post('/billing/advance', {
         patientId: admission.patient_id,
@@ -48,11 +53,14 @@ export default function ReceptionistIPDPage() {
         paymentMode: 'Cash',
         notes: 'Collected from receptionist IPD desk',
       });
-      toast.success('Advance recorded.');
+      toast.success('Advance recorded');
+      setAdvanceTarget(null);
       const res = await api.get('/receptionist/ipd-admissions');
       setData(res.data.data);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to record advance.');
+      toast.error(err.response?.data?.message || 'Could not record advance');
+    } finally {
+      setSavingAdvance(false);
     }
   };
 
@@ -61,167 +69,165 @@ export default function ReceptionistIPDPage() {
   const admittedCount = data.admissions.filter(a => a.status === 'Admitted').length;
   const dischargeCount = data.admissions.filter(a => a.status === 'Discharge Pending').length;
 
+  const rows = useMemo(
+    () => data.admissions.filter(a => (tab === 'admissions' ? a.status === 'Admitted' : a.status === 'Discharge Pending')),
+    [data.admissions, tab],
+  );
+
+  const columns = useMemo(() => [
+    {
+      id: 'id', header: 'Adm. ID', accessorFn: (a) => Number(a.id || 0), meta: { width: 100 },
+      cell: ({ getValue }) => <span className="mono">{getValue()}</span>,
+    },
+    {
+      id: 'patient', header: 'Patient', accessorFn: (a) => a.patient || '',
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="cell-primary">{row.original.patient || '—'}</span>
+          <span className="cell-secondary mono">{row.original.uhid || 'No UHID'}</span>
+        </span>
+      ),
+    },
+    { id: 'location', header: 'Ward / bed', accessorFn: (a) => `${a.ward} / ${a.bed}` },
+    { id: 'doctor', header: 'Doctor', accessorFn: (a) => a.doctor || '' },
+    {
+      id: 'admitted', header: 'Admitted', accessorFn: (a) => (a.admission_date ? new Date(a.admission_date).getTime() : 0), meta: { width: 130 },
+      cell: ({ row }) => <span className="tabular">{fmtDate(row.original.admission_date)}</span>,
+    },
+    {
+      id: 'advance', header: 'Advance', accessorFn: (a) => Number(a.advance_paid || 0), meta: { width: 120, align: 'right' },
+      cell: ({ getValue }) => <span className="tabular">{inr(getValue())}</span>,
+    },
+    {
+      id: 'status', header: 'Status', accessorFn: (a) => a.status || '', meta: { width: 150 },
+      cell: ({ getValue }) => <span className={`status ${getValue() === 'Admitted' ? 'status-success' : 'status-warning'}`}>{getValue()}</span>,
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 170, align: 'right' },
+      cell: ({ row }) => {
+        const a = row.original;
+        return (
+          <span className="inline-actions">
+            {a.status === 'Admitted' && (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => openAdvance(a)}>
+                <Wallet size={14} aria-hidden="true" /> Add advance
+              </button>
+            )}
+            {a.status === 'Discharge Pending' && (
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate(`/ipd/patient/${a.id}`)}>
+                Process discharge
+              </button>
+            )}
+          </span>
+        );
+      },
+    },
+  ], [navigate]);
+
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        {/* Page Header */}
-        <div className="hms-page-header">
-          <div>
-            <h1>
-              <span className="header-icon"><Glyph icon="🛏️" /></span>
-              IPD Admission Desk
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              New admissions, bed allotment, advance deposits, and discharge initiation.
-            </p>
-          </div>
-          <div className="header-actions">
-            <button className="btn btn-primary" onClick={() => navigate('/ipd/beds')}>+ New Admission</button>
-          </div>
-        </div>
-
-        {/* Bed Overview Grid */}
-        <div className="hms-anim-2" style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-          gap: 14, marginBottom: 24,
-        }}>
-          {data.beds.map((w, i) => {
-            const pct = w.total > 0 ? Math.round((w.occupied / w.total) * 100) : 0;
-            const barColor = pct > 85 ? '#ef4444' : pct > 60 ? '#f59e0b' : '#10b981';
-            return (
-              <div key={w.ward} className="hms-stat-card" style={{
-                padding: 18, cursor: 'default',
-                animation: `hmsSlideUp 0.5s ${0.1 + i * 0.06}s cubic-bezier(0.16,1,0.3,1) both`,
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <strong style={{ fontSize: '0.88rem' }}>{w.ward}</strong>
-                  <span style={{
-                    padding: '2px 10px', borderRadius: 12,
-                    background: `${barColor}15`, color: barColor,
-                    fontSize: '0.72rem', fontWeight: 700,
-                    border: `1px solid ${barColor}30`,
-                  }}>
-                    {w.available} free
-                  </span>
-                </div>
-                <BedProgressBar pct={pct} barColor={barColor} />
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 6, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{w.occupied}/{w.total} occupied</span>
-                  <span style={{ fontWeight: 600, color: barColor }}>{pct}%</span>
-                </div>
-              </div>
-            );
-          })}
-          {/* Total Summary Card */}
-          <div className="hms-stat-card hms-anim-4" style={{
-            padding: 18,
-            borderLeft: '4px solid #8b5cf6',
-            display: 'flex', flexDirection: 'column', justifyContent: 'center',
-            cursor: 'default',
-          }}>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.08em', marginBottom: 6 }}>
-              Total Available
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--primary)' }}>
-              {totalAvail} <span style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-muted)' }}>/ {totalBeds}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs + Table */}
-        <div className="card hms-anim-5" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)' }}>
-            <button
-              className={`hms-tab-btn ${tab === 'admissions' ? 'active' : ''}`}
-              onClick={() => setTab('admissions')}
-              style={{ borderRadius: 0, borderRight: '1px solid var(--border)' }}
-            >
-              <Glyph icon="🏥" /> Active Admissions ({admittedCount})
+      <main className="app-page">
+        <PageHeader
+          title="IPD admission desk"
+          description="New admissions, bed allotment, advance deposits and discharge initiation."
+          actions={(
+            <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/ipd/beds')}>
+              <Plus size={16} aria-hidden="true" /> New admission
             </button>
-            <button
-              className={`hms-tab-btn ${tab === 'discharge' ? 'active' : ''}`}
-              onClick={() => setTab('discharge')}
-              style={{ borderRadius: 0 }}
-            >
-              <Glyph icon="🚪" /> Discharge Pending ({dischargeCount})
-            </button>
-          </div>
-
-          {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60, gap: 12 }}>
-              <div className="spinner" style={{ width: 28, height: 28 }} />
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading admissions...</span>
-            </div>
-          ) : (
-            <div className="table-wrapper hms-table-anim" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Adm. ID</th><th>Patient</th><th>UHID</th>
-                    <th>Ward / Bed</th><th>Doctor</th><th>Adm. Date</th>
-                    <th>Advance</th><th>Status</th><th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.admissions
-                    .filter(a => tab === 'admissions' ? a.status === 'Admitted' : a.status === 'Discharge Pending')
-                    .map(a => (
-                    <tr key={a.id}>
-                      <td><strong style={{ color: 'var(--blue)' }}>{a.id}</strong></td>
-                      <td style={{ fontWeight: 600 }}>{a.patient}</td>
-                      <td style={{ color: 'var(--green)', fontWeight: 500 }}>{a.uhid}</td>
-                      <td>{a.ward} / {a.bed}</td>
-                      <td>{a.doctor}</td>
-                      <td style={{ fontSize: '0.83rem' }}>{new Date(a.admission_date).toLocaleDateString()}</td>
-                      <td><span style={{ color: '#10b981', fontWeight: 700 }}>₹ {a.advance_paid?.toLocaleString()}</span></td>
-                      <td>
-                        <span style={{
-                          padding: '3px 10px', borderRadius: 20,
-                          fontSize: '0.7rem', fontWeight: 700,
-                          background: a.status === 'Admitted' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-                          color: a.status === 'Admitted' ? '#059669' : '#f59e0b',
-                          border: `1px solid ${a.status === 'Admitted' ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}`,
-                        }}>
-                          {a.status}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          {a.status === 'Admitted' && (
-                            <button className="btn btn-sm btn-outline" onClick={() => addAdvance(a)}>
-                              <Glyph icon="💰" /> Add Advance
-                            </button>
-                          )}
-                          {a.status === 'Discharge Pending' && (
-                            <button className="btn btn-sm btn-primary" onClick={() => navigate(`/ipd/patient/${a.id}`)}>
-                              Process Discharge
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {data.admissions.filter(a => tab === 'admissions' ? a.status === 'Admitted' : a.status === 'Discharge Pending').length === 0 && (
-                    <tr>
-                      <td colSpan={9}>
-                        <div style={{ padding: 40, textAlign: 'center' }}>
-                          <span style={{ fontSize: '2rem', display: 'block', marginBottom: 8 }}>
-                            {tab === 'admissions' ? '🎉' : '✅'}
-                          </span>
-                          <p style={{ color: 'var(--text-muted)', margin: 0 }}>
-                            {tab === 'admissions' ? 'No active admissions.' : 'No pending discharges.'}
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
           )}
+        />
+
+        <div className="kpi-strip">
+          <div className="panel kpi">
+            <div className="kpi-label">Beds available</div>
+            <div className="kpi-value">{totalAvail} <span className="kpi-sub">/ {totalBeds}</span></div>
+          </div>
+          <div className="panel kpi"><div className="kpi-label">Active admissions</div><div className="kpi-value">{admittedCount}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Discharge pending</div><div className="kpi-value">{dischargeCount}</div></div>
         </div>
-      </div>
+
+        {data.beds.length > 0 && (
+          <section className="panel panel-pad" style={{ marginBottom: 16 }}>
+            <h2 className="panel-title"><BedDouble size={16} aria-hidden="true" /> Bed occupancy by ward</h2>
+            <ul className="bar-list" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', columnGap: 24 }}>
+              {data.beds.map((w) => {
+                const pct = w.total > 0 ? Math.round((w.occupied / w.total) * 100) : 0;
+                return (
+                  <li key={w.ward}>
+                    <div className="bar-row">
+                      <span>{w.ward}</span>
+                      <strong className="tabular">{w.available} free</strong>
+                    </div>
+                    <div className="bar-track"><div className="bar-fill" style={{ width: `${pct}%`, background: occupancyTone(pct) }} /></div>
+                    <div className="cell-secondary" style={{ marginTop: 4 }}>{w.occupied}/{w.total} occupied · {pct}%</div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
+        <section className="panel">
+          <div className="toolbar">
+            <div className="segmented" role="tablist" aria-label="Admission status">
+              <button type="button" role="tab" aria-selected={tab === 'admissions'} className={tab === 'admissions' ? 'is-active' : ''} onClick={() => setTab('admissions')}>
+                Active admissions <span className="seg-count">{admittedCount}</span>
+              </button>
+              <button type="button" role="tab" aria-selected={tab === 'discharge'} className={tab === 'discharge' ? 'is-active' : ''} onClick={() => setTab('discharge')}>
+                Discharge pending <span className="seg-count">{dischargeCount}</span>
+              </button>
+            </div>
+          </div>
+          <DataTable
+            columns={columns}
+            data={rows}
+            loading={loading}
+            getRowId={(a) => String(a.id)}
+            initialSorting={[{ id: 'admitted', desc: true }]}
+            empty={tab === 'admissions' ? (
+              <EmptyState icon={BedDouble} title="No active admissions" description="Admitted patients appear here with their ward, bed and advance paid." />
+            ) : (
+              <EmptyState icon={CircleCheck} title="No pending discharges" description="Patients marked for discharge appear here for processing." />
+            )}
+          />
+        </section>
+      </main>
+
+      <Modal
+        open={Boolean(advanceTarget)}
+        onOpenChange={(open) => { if (!open) setAdvanceTarget(null); }}
+        title="Add advance"
+        description={advanceTarget ? `Cash advance for ${advanceTarget.patient} (admission ${advanceTarget.id}).` : ''}
+        size="sm"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setAdvanceTarget(null)}>Cancel</button>
+            <button type="submit" form="advance-form" className="btn btn-primary btn-md" disabled={savingAdvance || !advanceAmount}>
+              {savingAdvance ? 'Saving…' : 'Record advance'}
+            </button>
+          </>
+        )}
+      >
+        <form id="advance-form" onSubmit={addAdvance}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="advance-amount">Amount (₹)</label>
+            <input
+              id="advance-amount"
+              className="form-input"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="any"
+              value={advanceAmount}
+              onChange={(e) => setAdvanceAmount(e.target.value)}
+              autoFocus
+              required
+            />
+            <p className="form-hint">Recorded as a cash payment against this admission.</p>
+          </div>
+        </form>
+      </Modal>
     </>
   );
 }

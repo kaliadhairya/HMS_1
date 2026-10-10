@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../../../api/axios';
 import toast from 'react-hot-toast';
+import { ArrowLeft, ClipboardList, Minus, Pill, Plus, Printer, Receipt, Save, Search, Trash2, X } from 'lucide-react';
+import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
-import Glyph from '../../../components/ui/Glyph';
+import PageHeader from '../../../components/ui/PageHeader';
+import EmptyState from '../../../components/ui/EmptyState';
 
 export default function IPDBillingPage() {
   const { admissionId } = useParams();
@@ -31,7 +33,7 @@ export default function IPDBillingPage() {
     try {
       const res = await api.get(`/ipd/admissions/${admissionId}`);
       setAdmission(res.data.data);
-    } catch { toast.error('Failed to load admission'); }
+    } catch { toast.error('Could not load admission'); }
   }, [admissionId]);
 
   const fetchCharges = useCallback(async () => {
@@ -42,7 +44,7 @@ export default function IPDBillingPage() {
       setWardInfo(d.wardInfo || {});
       setMedicineTotal(d.medicineTotal || 0);
       setGrandTotal(d.grandTotal || 0);
-    } catch { toast.error('Failed to load charges'); }
+    } catch { toast.error('Could not load charges'); }
   }, [admissionId]);
 
   useEffect(() => {
@@ -75,7 +77,7 @@ export default function IPDBillingPage() {
       setSearchTerm('');
       setSearchResults([]);
       fetchCharges();
-    } catch { toast.error('Failed to add'); }
+    } catch { toast.error('Could not add item'); }
   };
 
   const updateQty = async (charge, newQty) => {
@@ -83,15 +85,15 @@ export default function IPDBillingPage() {
     try {
       await api.patch(`/ipd/admissions/${admissionId}/charges/${charge.ID}`, { quantity: newQty });
       fetchCharges();
-    } catch { toast.error('Failed to update'); }
+    } catch { toast.error('Could not update quantity'); }
   };
 
   const removeCharge = async (charge) => {
     try {
       await api.delete(`/ipd/admissions/${admissionId}/charges/${charge.ID}`);
-      toast.success('Removed');
+      toast.success('Item removed');
       fetchCharges();
-    } catch { toast.error('Failed to remove'); }
+    } catch { toast.error('Could not remove item'); }
   };
 
   const generateBill = async () => {
@@ -101,7 +103,7 @@ export default function IPDBillingPage() {
       toast.success(`Bill generated: ${res.data.data.billNumber}`);
       setGeneratedBill(res.data.data);
       setPreviewMode(true);
-    } catch (err) { toast.error(err.response?.data?.message || 'Failed to generate bill'); }
+    } catch (err) { toast.error(err.response?.data?.message || 'Could not generate bill'); }
     finally { setGenerating(false); }
   };
 
@@ -110,14 +112,11 @@ export default function IPDBillingPage() {
   };
 
   if (loading) {
-    return (<><Navbar /><div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><div className="spinner" style={{ width: 36, height: 36 }} /></div></>);
+    return (<><Navbar /><main className="app-page"><p className="muted">Loading…</p></main></>);
   }
 
-  const inputStyle = {
-    width: '100%', padding: '12px 16px', borderRadius: '8px',
-    border: '1px solid #e2e8f0', background: '#f8fafc',
-    color: '#1e293b', fontSize: '0.95rem', transition: 'all 0.2s ease', outline: 'none',
-  };
+  const summaryRow = { display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '0.87rem' };
+  const summaryTotal = { ...summaryRow, borderTop: '1px dashed var(--border)', marginTop: 8, paddingTop: 8, fontWeight: 650 };
 
   return (
     <>
@@ -139,336 +138,253 @@ export default function IPDBillingPage() {
       `}</style>
 
       {!previewMode ? (
-        <div className="container py-4" style={{ maxWidth: '100%' }}>
-
-        {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <h1 style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span className="header-icon" style={{ background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.25)' }}><Glyph icon="💰" /></span>
-                IPD Billing
-              </h1>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-                <span>Patient Checkout</span>
-                <span style={{ opacity: 0.5 }}>•</span>
-                <span>Encounter ID: {admission?.ADMISSION_ID_FORMATTED}</span>
-              </div>
-            </div>
-            <div className="header-actions">
-              <button className="btn btn-ghost" onClick={() => navigate('/ipd/billing')} style={{ borderRadius: 10, border: '1px solid var(--border)' }}>
-                ← Back to List
+        <main className="app-page">
+          <PageHeader
+            title="IPD billing"
+            description={`Patient checkout · Admission ${admission?.ADMISSION_ID_FORMATTED || admissionId}`}
+            actions={(
+              <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/ipd/billing')}>
+                <ArrowLeft size={16} aria-hidden="true" /> Back to list
               </button>
-            </div>
-          </div>
+            )}
+          />
 
-        {/* Patient Profile Banner */}
-        <div className="card hms-anim-1" style={{
-          padding: '24px 32px', marginBottom: 32,
-          background: 'var(--surface)',
-          border: '1px solid var(--border)',
-          boxShadow: 'var(--shadow-md)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 32,
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
-          {/* Accent decoration */}
-          <div style={{ position: 'absolute', top: 0, left: 0, width: 6, height: '100%', background: 'var(--green)' }}></div>
-          
-          {/* Avatar Section */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-            <div style={{ 
-              width: 80, height: 80, borderRadius: '50%', 
-              background: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '2.4rem', border: '3px solid #fff', boxShadow: '0 4px 10px rgba(0,0,0,0.05)'
-            }}>
-              {admission?.GENDER === 'Female' ? '👩' : '👨'}
-            </div>
-            <span className="badge badge-teal" style={{ fontSize: '0.65rem' }}>ACTIVE IPD</span>
-          </div>
-
-          {/* Name & Basic Info */}
-          <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontSize: '1.6rem', color: 'var(--text-primary)', fontWeight: 800 }}>{admission?.PATIENT_NAME}</h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 15, marginTop: 8, color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><strong>UHID:</strong> {admission?.UHID}</span>
-              <span style={{ opacity: 0.3 }}>|</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><strong>Age/Sex:</strong> {admission?.AGE}Y / {admission?.GENDER?.[0]}</span>
-            </div>
-          </div>
-
-          {/* Admission Details Grid */}
-          <div style={{ 
-            display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px 40px',
-            background: 'var(--surface-2)', padding: '16px 24px', borderRadius: 12,
-            border: '1px solid var(--border)'
-          }}>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Location</span>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 2 }}>
-                {admission?.WARD_NAME} <span style={{ color: 'var(--green)', margin: '0 4px' }}>•</span> Bed {admission?.BED_NUMBER} ({admission?.ROOM_NUMBER})
+          {/* Patient and admission */}
+          <section className="panel panel-pad" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+              <span className="cell-avatar" aria-hidden="true">{(admission?.PATIENT_NAME || '?').charAt(0).toUpperCase()}</span>
+              <span className="cell-stack">
+                <span className="cell-primary" style={{ fontSize: '1.05rem' }}>{admission?.PATIENT_NAME}</span>
+                <span className="cell-secondary"><span className="mono">{admission?.UHID}</span> · {admission?.AGE} y / {admission?.GENDER?.[0]}</span>
               </span>
+              <span className="status status-info" style={{ marginLeft: 'auto' }}>Active IPD</span>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Duration</span>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 2 }}>{wardInfo.daysAdmitted || 0} Days <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.8rem' }}>(since {new Date(admission?.ADMISSION_DATE).toLocaleDateString()})</span></span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Consulting Doctor</span>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 2 }}>{admission?.DOCTOR_NAME}</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Dept. / Type</span>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: 2 }}>{admission?.DEPARTMENT} <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span> {admission?.ADMISSION_TYPE}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Main Layout */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24, alignItems: 'flex-start' }}>
-
-          {/* LEFT: Medicine Selection */}
-          <div>
-            {/* Search */}
-            <div className="card hms-anim-2" style={{ padding: '20px 24px', marginBottom: 20 }}>
-              <h3 style={{ margin: '0 0 14px 0', fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: '1.1rem' }}><Glyph icon="💊" /></span> Add Medicines / Consumables
-              </h3>
-              <div style={{ position: 'relative' }}>
-                <input
-                  style={inputStyle}
-                  placeholder="Search medicines by name..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  onFocus={e => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(16,185,129,0.15)'; e.currentTarget.style.background = '#fff'; }}
-                  onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.background = '#f8fafc'; }}
-                />
-                {searching && <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)' }}><div className="spinner" style={{ width: 18, height: 18 }} /></div>}
+            <div className="facts">
+              <div>
+                <div className="fact-label">Location</div>
+                <div className="fact-value">{admission?.WARD_NAME} · Bed {admission?.BED_NUMBER} ({admission?.ROOM_NUMBER})</div>
               </div>
-
-              {/* Search Results */}
-              {searchResults.length > 0 && (
-                <div style={{
-                  marginTop: 8, border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden',
-                  maxHeight: 280, overflowY: 'auto', background: '#fff',
-                }}>
-                  {searchResults.map(med => (
-                    <div key={med.id} style={{
-                      padding: '12px 16px', borderBottom: '1px solid #f1f5f9',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      transition: 'background 0.15s',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                    onMouseLeave={e => e.currentTarget.style.background = '#fff'}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.92rem', color: '#0f172a' }}>{med.genericName}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>
-                          {med.formulation}{med.strength ? ` • ${med.strength}${med.strengthUnit || ''}` : ''}{med.unitOfSale ? ` • ${med.unitOfSale}` : ''}
-                        </div>
-                      </div>
-
-                      {addingId === med.id ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <input type="number" min="1" max="99" value={addQty}
-                            onChange={e => setAddQty(Number(e.target.value))}
-                            style={{ width: 60, padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1', textAlign: 'center', fontSize: '0.88rem', outline: 'none' }}
-                          />
-                          <button onClick={() => addCharge(med)} style={{
-                            padding: '6px 14px', borderRadius: 6, background: '#10b981', border: 'none',
-                            color: '#fff', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer',
-                          }}>Add</button>
-                          <button onClick={() => { setAddingId(null); setAddQty(1); }} style={{
-                            padding: '6px 10px', borderRadius: 6, background: '#f1f5f9', border: '1px solid #e2e8f0',
-                            color: '#64748b', fontSize: '0.8rem', cursor: 'pointer',
-                          }}><Glyph icon="✕" /></button>
-                        </div>
-                      ) : (
-                        <button onClick={() => setAddingId(med.id)} style={{
-                          padding: '6px 14px', borderRadius: 6, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)',
-                          color: '#10b981', fontWeight: 600, fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.2s',
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#10b981'; e.currentTarget.style.color = '#fff'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.1)'; e.currentTarget.style.color = '#10b981'; }}
-                        >+ Select</button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Charges Table */}
-            <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{
-                padding: '16px 24px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}>
-                <h3 style={{ margin: 0, fontSize: '1.05rem' }}><Glyph icon="📋" /> Added Items ({charges.length})</h3>
+              <div>
+                <div className="fact-label">Duration</div>
+                <div className="fact-value">{wardInfo.daysAdmitted || 0} days <span className="cell-secondary">(since {new Date(admission?.ADMISSION_DATE).toLocaleDateString()})</span></div>
               </div>
+              <div>
+                <div className="fact-label">Consulting doctor</div>
+                <div className="fact-value">{admission?.DOCTOR_NAME}</div>
+              </div>
+              <div>
+                <div className="fact-label">Dept. / type</div>
+                <div className="fact-value">{admission?.DEPARTMENT} / {admission?.ADMISSION_TYPE}</div>
+              </div>
+            </div>
+          </section>
 
-              {charges.length === 0 ? (
-                <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <div style={{ fontSize: '2rem', marginBottom: 8 }}><Glyph icon="💊" /></div>
-                  No medicines added yet. Use the search above to add items.
+          {/* Main layout */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+
+            {/* LEFT: Medicine selection */}
+            <div className="stack" style={{ flex: '2 1 520px', minWidth: 0 }}>
+              {/* Search */}
+              <section className="panel panel-pad">
+                <h2 className="panel-title"><Pill size={16} aria-hidden="true" /> Add medicines and consumables</h2>
+                <label className="search-field" style={{ display: 'block' }}>
+                  <Search size={17} aria-hidden="true" />
+                  <span className="sr-only">Search medicines</span>
+                  <input
+                    placeholder="Search medicines by name"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                  />
+                </label>
+                {searching && <p className="muted" style={{ marginTop: 8 }}>Searching…</p>}
+
+                {/* Search results */}
+                {searchResults.length > 0 && (
+                  <ul className="list-rows" style={{ marginTop: 10, maxHeight: 300, overflowY: 'auto' }}>
+                    {searchResults.map(med => (
+                      <li key={med.id} className="list-row" style={{ cursor: 'default' }}>
+                        <span className="cell-stack">
+                          <span className="cell-primary">{med.genericName}</span>
+                          <span className="cell-secondary">
+                            {med.formulation}{med.strength ? ` · ${med.strength}${med.strengthUnit || ''}` : ''}{med.unitOfSale ? ` · ${med.unitOfSale}` : ''}
+                          </span>
+                        </span>
+
+                        {addingId === med.id ? (
+                          <span className="inline-actions">
+                            <label className="sr-only" htmlFor={`qty-${med.id}`}>Quantity</label>
+                            <input
+                              id={`qty-${med.id}`}
+                              className="form-input"
+                              type="number" min="1" max="99" value={addQty}
+                              onChange={e => setAddQty(Number(e.target.value))}
+                              style={{ width: 70, height: 32, textAlign: 'center' }}
+                            />
+                            <button type="button" className="btn btn-primary btn-sm" onClick={() => addCharge(med)}>Add</button>
+                            <button type="button" className="icon-btn" aria-label="Cancel" onClick={() => { setAddingId(null); setAddQty(1); }}>
+                              <X size={16} aria-hidden="true" />
+                            </button>
+                          </span>
+                        ) : (
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAddingId(med.id)}>
+                            <Plus size={14} aria-hidden="true" /> Select
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              {/* Charges */}
+              <section className="panel">
+                <div className="panel-head">
+                  <h2 className="panel-title" style={{ margin: 0 }}><ClipboardList size={16} aria-hidden="true" /> Added items</h2>
+                  <span className="cell-secondary">{charges.length} {charges.length === 1 ? 'item' : 'items'}</span>
                 </div>
-              ) : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--surface-2)' }}>
-                        <th style={thStyle}>#</th>
-                        <th style={{...thStyle, textAlign: 'left'}}>Medicine</th>
-                        <th style={thStyle}>Qty</th>
-                        <th style={thStyle}>Unit Price (₹)</th>
-                        <th style={thStyle}>Total (₹)</th>
-                        <th style={thStyle}>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {charges.map((c, i) => (
-                        <tr key={c.ID} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={tdStyle}>{i + 1}</td>
-                          <td style={{...tdStyle, textAlign: 'left'}}>
-                            <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{c.MEDICINE_NAME}</div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                              {c.FORMULATION}{c.STRENGTH ? ` • ${c.STRENGTH}` : ''}
-                            </div>
-                          </td>
-                          <td style={tdStyle}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                              <button onClick={() => updateQty(c, c.QUANTITY - 1)} style={qtyBtnStyle} disabled={c.QUANTITY <= 1}>−</button>
-                              <span style={{ minWidth: 28, textAlign: 'center', fontWeight: 700 }}>{c.QUANTITY}</span>
-                              <button onClick={() => updateQty(c, c.QUANTITY + 1)} style={qtyBtnStyle}>+</button>
-                            </div>
-                          </td>
-                          <td style={tdStyle}>₹{(c.UNIT_PRICE || 0).toFixed(2)}</td>
-                          <td style={{...tdStyle, fontWeight: 700, color: '#0f172a'}}>₹{(c.TOTAL_PRICE || 0).toFixed(2)}</td>
-                          <td style={tdStyle}>
-                            <button onClick={() => removeCharge(c)} style={{
-                              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
-                              color: '#ef4444', padding: '4px 10px', borderRadius: 6, fontSize: '0.72rem',
-                              fontWeight: 600, cursor: 'pointer',
-                            }}>Remove</button>
-                          </td>
+
+                {charges.length === 0 ? (
+                  <EmptyState icon={Pill} title="No items added yet" description="Search above to add medicines and consumables to this bill." />
+                ) : (
+                  <div className="dt-scroll">
+                    <table className="dt-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 44 }}>#</th>
+                          <th>Medicine</th>
+                          <th style={{ textAlign: 'center' }}>Qty</th>
+                          <th style={{ textAlign: 'right' }}>Unit price (₹)</th>
+                          <th style={{ textAlign: 'right' }}>Total (₹)</th>
+                          <th style={{ textAlign: 'right' }}><span className="sr-only">Actions</span></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+                      <tbody>
+                        {charges.map((c, i) => (
+                          <tr key={c.ID}>
+                            <td className="tabular cell-secondary">{i + 1}</td>
+                            <td>
+                              <span className="cell-stack">
+                                <span className="cell-primary">{c.MEDICINE_NAME}</span>
+                                <span className="cell-secondary">{c.FORMULATION}{c.STRENGTH ? ` · ${c.STRENGTH}` : ''}</span>
+                              </span>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                                <button type="button" className="icon-btn" style={{ width: 28, height: 28, border: '1px solid var(--border)' }} onClick={() => updateQty(c, c.QUANTITY - 1)} disabled={c.QUANTITY <= 1} aria-label={`Decrease quantity of ${c.MEDICINE_NAME}`}>
+                                  <Minus size={14} aria-hidden="true" />
+                                </button>
+                                <span className="tabular" style={{ minWidth: 28, textAlign: 'center', fontWeight: 600 }}>{c.QUANTITY}</span>
+                                <button type="button" className="icon-btn" style={{ width: 28, height: 28, border: '1px solid var(--border)' }} onClick={() => updateQty(c, c.QUANTITY + 1)} aria-label={`Increase quantity of ${c.MEDICINE_NAME}`}>
+                                  <Plus size={14} aria-hidden="true" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="tabular" style={{ textAlign: 'right' }}>₹{(c.UNIT_PRICE || 0).toFixed(2)}</td>
+                            <td className="tabular" style={{ textAlign: 'right', fontWeight: 600 }}>₹{(c.TOTAL_PRICE || 0).toFixed(2)}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeCharge(c)} aria-label={`Remove ${c.MEDICINE_NAME}`}>
+                                <Trash2 size={14} aria-hidden="true" /> Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
             </div>
-          </div>
 
-          {/* RIGHT: Bill Summary */}
-          <div className="hms-anim-2" style={{ position: 'sticky', top: 90 }}>
-            <div className="card" style={{ padding: 0, overflow: 'hidden', border: '2px solid var(--border)' }}>
-              <div style={{
-                padding: '18px 24px',
-                background: 'linear-gradient(135deg, #0f172a, #1e3a5f)',
-                color: '#fff',
-              }}>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#fff' }}><Glyph icon="🧾" /> Bill Summary</h3>
-                <div style={{ fontSize: '0.78rem', opacity: 0.7, marginTop: 4 }}>{admission?.PATIENT_NAME || 'Patient'}</div>
+            {/* RIGHT: Bill summary */}
+            <section className="panel" style={{ flex: '1 1 320px', position: 'sticky', top: 90 }}>
+              <div className="panel-head">
+                <div className="cell-stack">
+                  <h2 className="panel-title" style={{ margin: 0 }}><Receipt size={16} aria-hidden="true" /> Bill summary</h2>
+                  <span className="cell-secondary">{admission?.PATIENT_NAME || 'Patient'}</span>
+                </div>
               </div>
 
-              <div style={{ padding: '20px 24px' }}>
-                {/* Ward Charges */}
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, fontWeight: 700 }}>Ward Charges</div>
-                  <div style={{
-                    padding: '14px 16px', borderRadius: 10, background: 'rgba(59,130,246,0.04)',
-                    border: '1px solid rgba(59,130,246,0.1)',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+              <div className="panel-pad stack-sm">
+                {/* Ward charges */}
+                <div>
+                  <div className="fact-label" style={{ marginBottom: 6 }}>Ward charges</div>
+                  <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                    <div style={summaryRow}>
                       <span style={{ color: 'var(--text-secondary)' }}>{wardInfo.wardName || 'Ward'}</span>
-                      <span style={{ fontWeight: 600 }}>₹{wardInfo.wardRate || 0}/day</span>
+                      <span className="tabular">₹{wardInfo.wardRate || 0}/day</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginTop: 6 }}>
+                    <div style={{ ...summaryRow, marginTop: 6 }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Duration</span>
-                      <span style={{ fontWeight: 600 }}>{wardInfo.daysAdmitted || 1} day(s)</span>
+                      <span className="tabular">{wardInfo.daysAdmitted || 1} day(s)</span>
                     </div>
-                    <div style={{ borderTop: '1px dashed var(--border)', marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Ward Total</span>
-                      <span style={{ fontWeight: 800, color: '#3b82f6', fontSize: '1.05rem' }}>₹{Number(wardInfo.wardTotal || 0).toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Medicine Charges */}
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, fontWeight: 700 }}>Medicine / Consumables</div>
-                  <div style={{
-                    padding: '14px 16px', borderRadius: 10, background: 'rgba(16,185,129,0.04)',
-                    border: '1px solid rgba(16,185,129,0.1)',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                       <span style={{ color: 'var(--text-secondary)' }}>Items</span>
-                      <span style={{ fontWeight: 600 }}>{charges.length} item(s)</span>
-                    </div>
-                    <div style={{ borderTop: '1px dashed var(--border)', marginTop: 10, paddingTop: 10, display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Medicine Total</span>
-                      <span style={{ fontWeight: 800, color: '#10b981', fontSize: '1.05rem' }}>₹{Number(medicineTotal || 0).toFixed(2)}</span>
+                    <div style={summaryTotal}>
+                      <span>Ward total</span>
+                      <span className="tabular">₹{Number(wardInfo.wardTotal || 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Grand Total */}
+                {/* Medicine charges */}
+                <div>
+                  <div className="fact-label" style={{ marginBottom: 6 }}>Medicines and consumables</div>
+                  <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                    <div style={summaryRow}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Items</span>
+                      <span className="tabular">{charges.length} item(s)</span>
+                    </div>
+                    <div style={summaryTotal}>
+                      <span>Medicine total</span>
+                      <span className="tabular">₹{Number(medicineTotal || 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Grand total */}
                 <div style={{
-                  padding: '16px 18px', borderRadius: 12,
-                  background: 'linear-gradient(135deg, #0f172a, #1e3a5f)',
+                  padding: '14px 16px', borderRadius: 8,
+                  background: 'var(--primary-light)', border: '1px solid var(--primary-border)',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  marginBottom: 20,
                 }}>
-                  <span style={{ fontWeight: 800, color: '#fff', fontSize: '1rem' }}>Grand Total</span>
-                  <span style={{ fontWeight: 900, color: '#34d399', fontSize: '1.35rem' }}>₹{Number(grandTotal || 0).toFixed(2)}</span>
+                  <span style={{ fontWeight: 650 }}>Grand total</span>
+                  <span className="tabular" style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '1.3rem' }}>₹{Number(grandTotal || 0).toFixed(2)}</span>
                 </div>
 
-                {/* Save Draft Button */}
+                {/* Save draft */}
                 <button
+                  type="button"
+                  className="btn btn-secondary btn-md"
+                  style={{ width: '100%', justifyContent: 'center' }}
                   onClick={() => {
                     toast.success('Billing progress saved as draft');
                     navigate('/ipd/saved-bills');
                   }}
-                  style={{
-                    width: '100%', padding: '12px 0', borderRadius: 10, border: '1px solid var(--border)',
-                    background: '#fff', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.9rem', 
-                    cursor: 'pointer', marginBottom: 12, transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)', e.currentTarget.style.transform = 'translateY(-1px)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = '#fff', e.currentTarget.style.transform = 'none')}
                 >
-                  <Glyph icon="💾" /> Save Progress
+                  <Save size={16} aria-hidden="true" /> Save progress
                 </button>
 
-                {/* Generate Bill Button */}
+                {/* Generate bill */}
                 <button
+                  type="button"
+                  className="btn btn-primary btn-md"
+                  style={{ width: '100%', justifyContent: 'center' }}
                   onClick={generateBill}
                   disabled={generating}
-                  style={{
-                    width: '100%', padding: '14px 0', borderRadius: 10, border: 'none',
-                    background: generating ? '#94a3b8' : 'var(--primary)',
-                    color: '#fff', fontWeight: 700, fontSize: '1rem', cursor: generating ? 'not-allowed' : 'pointer',
-                    boxShadow: generating ? 'none' : '0 6px 20px rgba(16,185,129,0.3)',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={e => !generating && (e.currentTarget.style.transform = 'translateY(-2px)', e.currentTarget.style.boxShadow = '0 8px 24px rgba(16,185,129,0.4)')}
-                  onMouseLeave={e => !generating && (e.currentTarget.style.transform = 'none', e.currentTarget.style.boxShadow = '0 6px 20px rgba(16,185,129,0.3)')}
                 >
-                  {generating ? 'Generating...' : '🧾 Generate IPD Bill'}
+                  <Receipt size={16} aria-hidden="true" /> {generating ? 'Generating…' : 'Generate IPD bill'}
                 </button>
               </div>
-            </div>
+            </section>
           </div>
-        </div>
-      </div>
+        </main>
       ) : (
-        <div style={{ padding: '20px', background: '#f1f5f9', minHeight: '100vh' }}>
-          <div className="no-print" style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '30px' }}>
-            <button className="btn btn-secondary" onClick={() => navigate('/ipd/billing')}>← Back to Admissions</button>
-            <button className="btn btn-primary" onClick={handlePrint} style={{ fontSize: '1.1rem', padding: '10px 24px' }}><Glyph icon="🖨️" /> Print Bill</button>
+        <div style={{ padding: '20px', background: 'var(--surface-3)', minHeight: '100vh' }}>
+          <div className="no-print" style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 24 }}>
+            <button type="button" className="btn btn-secondary btn-md" onClick={() => navigate('/ipd/billing')}>
+              <ArrowLeft size={16} aria-hidden="true" /> Back to admissions
+            </button>
+            <button type="button" className="btn btn-primary btn-md" onClick={handlePrint}>
+              <Printer size={16} aria-hidden="true" /> Print bill
+            </button>
           </div>
           
           <div className="print-section bill-preview-paper">
@@ -584,18 +500,3 @@ export default function IPDBillingPage() {
   );
 }
 
-const thStyle = {
-  padding: '10px 14px', fontSize: '0.72rem', fontWeight: 700,
-  color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em',
-  textAlign: 'center', whiteSpace: 'nowrap',
-};
-
-const tdStyle = {
-  padding: '12px 14px', fontSize: '0.88rem', textAlign: 'center', whiteSpace: 'nowrap',
-};
-
-const qtyBtnStyle = {
-  width: 24, height: 24, borderRadius: 6, border: '1px solid var(--border)',
-  background: 'var(--surface-2)', cursor: 'pointer', display: 'flex',
-  alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 700,
-};

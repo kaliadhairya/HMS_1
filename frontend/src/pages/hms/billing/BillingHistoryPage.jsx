@@ -1,8 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import api from '../../../api/axios';
 import toast from 'react-hot-toast';
+import { Receipt, ArrowRight } from 'lucide-react';
+import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+
+const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const STATUS_TONE = { Paid: 'success', 'Partially Paid': 'warning', Pending: 'warning', Cancelled: 'neutral' };
 
 export default function BillingHistoryPage() {
   const { patientId } = useParams();
@@ -20,7 +28,7 @@ export default function BillingHistoryPage() {
         setBills(billsRes.data.data);
         setAdvance(advRes.data.data);
       } catch (err) {
-        toast.error('Failed to load billing history');
+        toast.error('Could not load billing history');
       } finally {
         setLoading(false);
       }
@@ -28,73 +36,77 @@ export default function BillingHistoryPage() {
     if (patientId) fetchData();
   }, [patientId]);
 
-  if (loading) return <div>Loading records...</div>;
+  const columns = useMemo(() => [
+    {
+      id: 'date', header: 'Date', accessorFn: (b) => (b.CREATED_AT ? new Date(b.CREATED_AT).getTime() : 0), meta: { width: 130 },
+      cell: ({ row }) => <span className="tabular">{fmtDate(row.original.CREATED_AT)}</span>,
+    },
+    {
+      id: 'bill', header: 'Bill no.', accessorFn: (b) => b.BILL_NUMBER || '', meta: { width: 180 },
+      cell: ({ getValue }) => <span className="mono">{getValue() || '—'}</span>,
+    },
+    { id: 'type', header: 'Type', accessorFn: (b) => b.BILL_TYPE || '', meta: { width: 90 } },
+    {
+      id: 'total', header: 'Total', accessorFn: (b) => Number(b.NET_PAYABLE || 0), meta: { width: 130, align: 'right' },
+      cell: ({ getValue }) => <span className="tabular">{inr(getValue())}</span>,
+    },
+    {
+      id: 'paid', header: 'Paid', accessorFn: (b) => Number(b.PAID_AMOUNT || 0), meta: { width: 130, align: 'right' },
+      cell: ({ getValue }) => <span className="tabular">{inr(getValue())}</span>,
+    },
+    {
+      id: 'status', header: 'Status', accessorFn: (b) => b.STATUS || '', meta: { width: 140 },
+      cell: ({ getValue }) => <span className={`status status-${STATUS_TONE[getValue()] || 'info'}`}>{getValue() || '—'}</span>,
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 130, align: 'right' },
+      cell: ({ row }) => {
+        const b = row.original;
+        if (!(b.BILL_TYPE === 'OPD' && b.ENCOUNTER_ID)) return null;
+        return (
+          <Link to={`/billing/opd/${b.ENCOUNTER_ID}`} className="btn btn-secondary btn-sm">
+            View or pay <ArrowRight size={14} aria-hidden="true" />
+          </Link>
+        );
+      },
+    },
+  ], []);
 
   return (
     <>
-    <Navbar />
-    <div className="page-wrapper fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2>Patient Financial Ledger</h2>
+      <Navbar />
+      <main className="app-page">
+        <PageHeader
+          title="Patient billing history"
+          description="Every bill raised for this patient, with payments and advance deposits."
+          meta={!loading && <span className="muted">{bills.length} {bills.length === 1 ? 'bill' : 'bills'}</span>}
+        />
+
         {advance && (
-          <div className="card" style={{ padding: '12px 24px', background: 'var(--surface-color)', display: 'flex', gap: 24 }}>
-             <div>
-               <small style={{ color: 'var(--text-secondary)' }}>Advance Deposited</small>
-               <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>₹{advance.totalAdvance}</div>
-             </div>
-             <div style={{ borderLeft: '1px solid var(--border)', paddingLeft: 24 }}>
-               <small style={{ color: 'var(--text-secondary)' }}>Available Balance</small>
-               <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--primary-color)' }}>₹{advance.availableAdvance}</div>
-             </div>
+          <div className="kpi-strip">
+            <div className="panel kpi">
+              <div className="kpi-label">Advance deposited</div>
+              <div className="kpi-value">{inr(advance.totalAdvance)}</div>
+            </div>
+            <div className="panel kpi">
+              <div className="kpi-label">Available balance</div>
+              <div className="kpi-value" style={{ color: 'var(--primary)' }}>{inr(advance.availableAdvance)}</div>
+            </div>
           </div>
         )}
-      </div>
 
-      <div className="card" style={{ padding: 24 }}>
-        <table className="table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-          <thead>
-            <tr style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)' }}>
-              <th style={{ padding: 16 }}>Date</th>
-              <th style={{ padding: 16 }}>Bill No.</th>
-              <th style={{ padding: 16 }}>Type</th>
-              <th style={{ padding: 16 }}>Total Amount</th>
-              <th style={{ padding: 16 }}>Paid</th>
-              <th style={{ padding: 16 }}>Status</th>
-              <th style={{ padding: 16 }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bills.length === 0 ? (
-              <tr><td colSpan="7" style={{ textAlign: 'center', padding: 24 }}>No bills generated yet.</td></tr>
-            ) : (
-              bills.map(b => (
-                <tr key={b.ID} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 16 }}>{new Date(b.CREATED_AT).toLocaleDateString()}</td>
-                  <td style={{ padding: 16 }}><strong>{b.BILL_NUMBER}</strong></td>
-                  <td style={{ padding: 16 }}>{b.BILL_TYPE}</td>
-                  <td style={{ padding: 16 }}>₹{b.NET_PAYABLE}</td>
-                  <td style={{ padding: 16, color: 'var(--blue)' }}>₹{b.PAID_AMOUNT || 0}</td>
-                  <td style={{ padding: 16 }}>
-                    <span className="badge" style={{
-                      background: b.STATUS === 'Paid' ? '#48bb7820' : b.STATUS === 'Pending' ? '#ecc94b20' : '#4299e120',
-                      color: b.STATUS === 'Paid' ? '#48bb78' : b.STATUS === 'Pending' ? '#d69e2e' : '#4299e1',
-                      padding: '4px 8px', borderRadius: 12, fontSize: '0.85rem'
-                    }}>{b.STATUS}</span>
-                  </td>
-                  <td style={{ padding: 16 }}>
-                    {b.BILL_TYPE === 'OPD' && b.ENCOUNTER_ID && (
-                       <Link to={`/billing/opd/${b.ENCOUNTER_ID}`} className="btn btn-outline" style={{ fontSize: '0.85rem', padding: '6px 12px' }}>
-                          View / Pay
-                       </Link>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+        <section className="panel">
+          <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><Receipt size={16} aria-hidden="true" /> Bills</h2></div>
+          <DataTable
+            columns={columns}
+            data={bills}
+            loading={loading}
+            getRowId={(b) => String(b.ID)}
+            initialSorting={[{ id: 'date', desc: true }]}
+            empty={<EmptyState icon={Receipt} title="No bills yet" description="Bills for this patient appear here once OPD or IPD billing is generated." />}
+          />
+        </section>
+      </main>
     </>
   );
 }

@@ -1,16 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { ArrowLeft, Eye, FileText, Search } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import DischargeSummaryModal from '../../../components/DischargeSummaryModal';
-import toast from 'react-hot-toast';
-import Glyph from '../../../components/ui/Glyph';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+const fmtTime = (v) => (v ? new Date(v).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '');
 
 export default function IPDDischargeSummariesPage() {
   const navigate = useNavigate();
   const [summaries, setSummaries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [openingId, setOpeningId] = useState(null);
 
   // Modal State
   const [selectedAdmission, setSelectedAdmission] = useState(null);
@@ -28,170 +35,125 @@ export default function IPDDischargeSummariesPage() {
       }
     } catch (err) {
       console.error(err);
-      toast.error('Failed to load discharge summaries');
+      toast.error('Could not load discharge summaries');
     } finally {
       setLoading(false);
     }
   };
 
   const handleViewSummary = async (summary) => {
+    setOpeningId(summary.ID);
     try {
-      toast('Loading summary...', { icon: '⏳', duration: 1000 });
       const res = await api.get(`/ipd/admissions/${summary.ADMISSION_ID}`);
       if (res.data.success) {
         setSelectedAdmission(res.data.data);
         setShowModal(true);
       } else {
-        toast.error('Failed to load admission details');
+        toast.error('Could not load admission details');
       }
     } catch (err) {
-      toast.error('Error fetching admission data');
+      toast.error('Could not load admission details');
+    } finally {
+      setOpeningId(null);
     }
   };
 
-  const filtered = summaries.filter(s => {
+  const filtered = useMemo(() => summaries.filter(s => {
     const q = search.toLowerCase();
     return (s.PATIENT_NAME?.toLowerCase().includes(q) || s.UHID?.toLowerCase().includes(q) || String(s.ADMISSION_ID).includes(q) || s.FINAL_DIAGNOSIS?.toLowerCase().includes(q));
-  });
+  }), [summaries, search]);
+
+  const columns = useMemo(() => [
+    {
+      id: 'discharged', header: 'Discharged', accessorFn: (s) => (s.DISCHARGE_DATE ? new Date(s.DISCHARGE_DATE).getTime() : 0), meta: { width: 150 },
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="tabular" style={{ fontWeight: 600 }}>{fmtDate(row.original.DISCHARGE_DATE)}</span>
+          <span className="cell-secondary">{fmtTime(row.original.DISCHARGE_DATE)}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'patient', header: 'Patient', accessorFn: (s) => s.PATIENT_NAME || '',
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span className="cell-primary">{row.original.PATIENT_NAME || '—'}</span>
+          <span className="cell-secondary mono">{row.original.UHID || 'Legacy'}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'admission', header: 'Admission', accessorFn: (s) => Number(s.ADMISSION_ID || 0), meta: { width: 130 },
+      cell: ({ row }) => <span className="mono">IPD-{row.original.ADMISSION_ID}</span>,
+    },
+    {
+      id: 'diagnosis', header: 'Final diagnosis', accessorFn: (s) => s.FINAL_DIAGNOSIS || '',
+      cell: ({ getValue }) => (
+        <span title={getValue()} style={{ display: 'block', maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {getValue() || '—'}
+        </span>
+      ),
+    },
+    { id: 'doctor', header: 'Consultant', accessorFn: (s) => s.DOCTOR_NAME || '', cell: ({ getValue }) => getValue() || '—' },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 150, align: 'right' },
+      cell: ({ row }) => (
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={openingId === row.original.ID}
+          onClick={() => handleViewSummary(row.original)}
+        >
+          <Eye size={14} aria-hidden="true" /> {openingId === row.original.ID ? 'Opening…' : 'View summary'}
+        </button>
+      ),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [openingId]);
 
   return (
     <>
       <Navbar />
-      <div className="container py-4" style={{ maxWidth: '100%' }}>
-        <div className="hms-page-header" style={{ marginBottom: 28 }}>
-          <div>
-            <h1>
-              <span className="header-icon" style={{ background: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.25)' }}><Glyph icon="📄" /></span>
-              Discharge Summaries Hub
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              View and print saved discharge summaries for past admissions.
-            </p>
-          </div>
-          <div className="header-actions">
-            <button className="btn btn-ghost" onClick={() => navigate('/ipd/patients')}>← Back to Admissions</button>
-          </div>
-        </div>
-
-        {/* Search Bar */}
-        <div className="hms-anim-2" style={{ marginBottom: 0 }}>
-          <div className="card" style={{
-            padding: '12px 20px',
-            borderRadius: 40,
-            boxShadow: 'var(--shadow-md)',
-            border: '2.5px solid var(--border)',
-            background: 'var(--surface)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-            transition: 'all 0.3s ease',
-          }}
-            onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--green)'}
-            onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}
-          >
-            <span style={{ fontSize: '1.4rem', filter: 'grayscale(0.5)' }}><Glyph icon="🔍" /></span>
-            <input
-              type="text"
-              className="form-input"
-              style={{
-                fontSize: '1.1rem',
-                border: 'none',
-                boxShadow: 'none',
-                background: 'transparent',
-                padding: '10px 0',
-                flex: 1,
-              }}
-              placeholder="Search by UHID, Patient Name, Admission ID, or Diagnosis..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              autoFocus
-            />
-          </div>
-        </div>
-
-        {/* Results count bar */}
-        {filtered.length > 0 && (
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 4px', marginTop: 16,
-          }}>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-              Showing <strong style={{ color: 'var(--text-primary)' }}>{filtered.length}</strong> discharge summar{filtered.length !== 1 ? 'ies' : 'y'}
-            </span>
-          </div>
-        )}
-
-        {/* Results Table */}
-        <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden', marginTop: filtered.length > 0 ? 0 : 24 }}>
-          {loading && filtered.length === 0 ? (
-            <div style={{ padding: 80, textAlign: 'center' }}>
-              <div className="spinner" style={{ width: 40, height: 40, margin: '0 auto 16px' }} />
-              <p style={{ color: 'var(--text-muted)' }}>Loading discharge summaries...</p>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="hms-empty-state" style={{ margin: 24 }}>
-              <span className="empty-icon">{search ? '👻' : '📄'}</span>
-              <h3>{search ? 'No records found' : 'No Discharge Summaries Found'}</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                {search ? `We couldn't find any summaries matching your search.` : 'No patients have been discharged with a summary yet.'}
-              </p>
-            </div>
-          ) : (
-            <div className="table-wrapper hms-table-anim" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Discharge Date</th>
-                    <th>Patient Info</th>
-                    <th>Admission ID</th>
-                    <th>Final Diagnosis</th>
-                    <th>Consultant</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(s => (
-                    <tr key={s.ID}>
-                      <td>
-                        <strong style={{ display: 'block' }}>
-                          {new Date(s.DISCHARGE_DATE).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </strong>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                          {new Date(s.DISCHARGE_DATE).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{s.PATIENT_NAME}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{s.UHID || 'Legacy'}</div>
-                      </td>
-                      <td>
-                        <strong style={{ color: 'var(--blue)' }}>
-                          IPD-{s.ADMISSION_ID}
-                        </strong>
-                      </td>
-                      <td>
-                        <div style={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500 }} title={s.FINAL_DIAGNOSIS}>
-                          {s.FINAL_DIAGNOSIS || '—'}
-                        </div>
-                      </td>
-                      <td>{s.DOCTOR_NAME || '—'}</td>
-                      <td>
-                        <button 
-                          className="btn btn-outline btn-sm"
-                          onClick={() => handleViewSummary(s)}
-                          style={{ borderColor: '#3b82f6', color: '#3b82f6', padding: '4px 10px' }}
-                        >
-                          <Glyph icon="👁️" /> View Summary
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      <main className="app-page">
+        <PageHeader
+          title="Discharge summaries"
+          description="View and print saved discharge summaries for past admissions."
+          meta={!loading && <span className="muted">{summaries.length} {summaries.length === 1 ? 'summary' : 'summaries'}</span>}
+          actions={(
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/ipd/patients')}>
+              <ArrowLeft size={16} aria-hidden="true" /> Back to admissions
+            </button>
           )}
-        </div>
-      </div>
+        />
+
+        <section className="panel">
+          <div className="toolbar">
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search discharge summaries</span>
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search UHID, patient name, admission ID or diagnosis"
+                autoFocus
+              />
+            </label>
+            {search && !loading && <span className="muted">{filtered.length} shown</span>}
+          </div>
+          <DataTable
+            columns={columns}
+            data={filtered}
+            loading={loading}
+            getRowId={(s) => String(s.ID)}
+            initialSorting={[{ id: 'discharged', desc: true }]}
+            empty={search ? (
+              <EmptyState icon={Search} title="No summaries match" description="Try another name, UHID, admission ID or diagnosis." />
+            ) : (
+              <EmptyState icon={FileText} title="No discharge summaries yet" description="Summaries appear here once a patient is discharged with a saved summary." />
+            )}
+          />
+        </section>
+      </main>
 
       {showModal && selectedAdmission && (
         <DischargeSummaryModal
