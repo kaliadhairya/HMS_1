@@ -14,6 +14,7 @@ export default function LabSampleCollectionPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
     api.get('/lab/samples')
@@ -32,13 +33,17 @@ export default function LabSampleCollectionPage() {
   };
 
   const handleLogSample = async (sample) => {
-    if (!sample?.itemId) return;
+    if (!sample?.itemId || busyId) return;
+    setBusyId(sample.itemId);
     try {
       await api.post('/lab/samples', { itemId: sample.itemId });
       toast.success(`Sample logged for ${sample.patient}`);
-      refreshSamples();
+      await refreshSamples();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to log sample');
+      refreshSamples();
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -65,7 +70,17 @@ export default function LabSampleCollectionPage() {
       ),
     },
     { id: 'patient', header: 'Patient', accessorFn: (s) => s.patient || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
-    { id: 'tests', header: 'Test', accessorFn: (s) => s.tests || '' },
+    {
+      id: 'tests', header: 'Test', accessorFn: (s) => s.tests || '',
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span>{row.original.tests}</span>
+          {row.original.priority && row.original.priority !== 'Routine' && (
+            <span><span className={`status status-${row.original.priority === 'STAT' ? 'danger' : 'warning'}`}>{row.original.priority}</span></span>
+          )}
+        </span>
+      ),
+    },
     {
       id: 'type', header: 'Sample details', accessorFn: (s) => s.type || '', meta: { width: 170 },
       cell: ({ row }) => (
@@ -84,13 +99,19 @@ export default function LabSampleCollectionPage() {
     {
       id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 130, align: 'right' },
       cell: ({ row }) => (row.original.status === 'Pending Collection' ? (
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => handleLogSample(row.original)}>
-          <TestTubes size={14} aria-hidden="true" /> Log sample
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          disabled={busyId === row.original.itemId}
+          aria-label={`Log sample for ${row.original.tests}, ${row.original.patient}`}
+          onClick={() => handleLogSample(row.original)}
+        >
+          <TestTubes size={14} aria-hidden="true" /> {busyId === row.original.itemId ? 'Logging…' : 'Log sample'}
         </button>
       ) : <span className="cell-secondary">Logged</span>),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  ], [busyId]);
 
   return (
     <>

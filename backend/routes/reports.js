@@ -4,7 +4,7 @@ const PDFDocument = require('pdfkit');
 const TestReport = require('../models/TestReport');
 const Patient = require('../models/Patient');
 const User = require('../models/User');
-const { protect } = require('../middleware/auth');
+const { protect, checkPermission } = require('../middleware/auth');
 const { sequelize } = require('../models/db');
 const path = require('path');
 const fs = require('fs');
@@ -29,8 +29,45 @@ const getResult = (val) => {
   return s === '—' ? '' : s;
 };
 
+const REPORT_SECTIONS = ['haematology', 'biochemistry', 'serology', 'urine', 'other'];
+
+// ─── POST /api/reports — Start a report for a patient ───────────────────────
+// Patients registered through the HMS front desk have no report row (only the legacy lab
+// registration created one), so the editor at /report/new?patient_id= creates it on first save.
+router.post('/', protect, checkPermission('lab', 'write'), async (req, res) => {
+  try {
+    const patientId = Number(req.body?.patientId ?? req.body?.patient_id);
+    if (!Number.isInteger(patientId) || patientId <= 0) {
+      return res.status(400).json({ success: false, message: 'patientId is required.' });
+    }
+    const patient = await Patient.findByPk(patientId, { attributes: ['id'] });
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient not found.' });
+
+    const [[{ NEXTVAL: reportId }]] = await sequelize.query("SELECT nextval('hms_test_reports_seq') AS \"NEXTVAL\"");
+    const fields = {
+      id: reportId,
+      patientId,
+      remarks: req.body?.remarks ?? null,
+      suggestions: req.body?.suggestions ?? null,
+      status: req.body?.status || 'Draft',
+      reportedBy: req.user.id,
+      reportDate: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    for (const section of REPORT_SECTIONS) {
+      if (req.body?.[section] && typeof req.body[section] === 'object') fields[section] = req.body[section];
+    }
+    const report = await TestReport.create(fields);
+    res.status(201).json({ success: true, message: 'Report created.', report });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+});
+
 // ─── PUT /api/reports/:id — Save test results ────────────────────────────────
-router.put('/:id(\\d+)', protect, async (req, res) => {
+router.put('/:id(\\d+)', protect, checkPermission('lab', 'write'), async (req, res) => {
   try {
     const report = await TestReport.findByPk(req.params.id);
     if (!report) return res.status(404).json({ success: false, message: 'Report not found.' });
@@ -509,7 +546,9 @@ router.get('/:id(\\d+)/pdf', protect, async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: err.stack || err.message });
+    // Never send the stack trace to the client; the PDF stream may already have started.
+    if (!res.headersSent) res.status(500).json({ success: false, message: 'Failed to generate the report PDF.' });
+    else res.end();
   }
 });
 

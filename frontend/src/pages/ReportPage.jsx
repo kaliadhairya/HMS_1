@@ -8,6 +8,11 @@ import Navbar from '../components/Navbar';
 import api from '../api/axios';
 import { openAuthenticatedBlob } from '../utils/authenticatedDownload';
 import PageHeader from '../components/ui/PageHeader';
+import { FlagTag, isAbnormal, fmtDateTime } from './hms/lab/labFlags';
+import { useAuth } from '../context/AuthContext';
+
+// Roles with lab read permission in the seeded permission table (the API enforces it).
+const LAB_READ_ROLES = ['super_admin', 'admin', 'lab_technician', 'doctor'];
 
 // ── Helper: nested path setter ─────────────────────
 function setNestedValue(obj, path, value) {
@@ -67,14 +72,16 @@ function TestSection({ title, icon: Icon, rows, reportData, onChange }) {
 }
 
 // ── Test definitions ───────────────────────────────
+// Normal values must match what the PDF prints (backend/routes/reports.js). Several were shifted
+// one row up (e.g. Eosinophils showed the lymphocyte range, VLDL showed the LDL range).
 const HAEMATOLOGY_ROWS = [
   { path: 'haematology.hb', label: 'Hb (Haemoglobin)', normal: 'M: 12-16 g%, F: 10-14 g%' },
   { path: 'haematology.tlc', label: 'TLC (Total Leucocyte Count)', normal: '4000-11000/CMM' },
-  { path: 'haematology.dlc.neutrophil', label: 'DLC — Neutrophil', normal: '', sub: true },
-  { path: 'haematology.dlc.polymorphs', label: 'DLC — Polymorphs', normal: '40-75%', sub: true },
-  { path: 'haematology.dlc.lymphocytes', label: 'DLC — Lymphocytes', normal: '', sub: true },
-  { path: 'haematology.dlc.eosinophils', label: 'DLC — Eosinophils', normal: '20-40%', sub: true },
-  { path: 'haematology.dlc.monocytes', label: 'DLC — Monocytes', normal: '1-6%', sub: true },
+  { path: 'haematology.dlc.neutrophil', label: 'DLC — Neutrophil', normal: '40-75%', sub: true },
+  { path: 'haematology.dlc.polymorphs', label: 'DLC — Polymorphs', normal: '', sub: true },
+  { path: 'haematology.dlc.lymphocytes', label: 'DLC — Lymphocytes', normal: '20-40%', sub: true },
+  { path: 'haematology.dlc.eosinophils', label: 'DLC — Eosinophils', normal: '1-6%', sub: true },
+  { path: 'haematology.dlc.monocytes', label: 'DLC — Monocytes', normal: '2-5%', sub: true },
   { path: 'haematology.dlc.basophils', label: 'DLC — Basophils', normal: '0-1%', sub: true },
   { path: 'haematology.esr', label: 'E.S.R.', normal: '0-20 mm 1st Hr' },
   { path: 'haematology.bt', label: 'B.T. (Bleeding Time)', normal: '1-5 Minutes' },
@@ -84,10 +91,10 @@ const HAEMATOLOGY_ROWS = [
 
 const BIOCHEMISTRY_ROWS = [
   { path: 'biochemistry.fbs', label: 'F.B.S. (Fasting Blood Sugar)', normal: '70-110 mg/dl' },
-  { path: 'biochemistry.ppbs', label: 'P.P.B.S. (Post Prandial Blood Sugar)', normal: '' },
-  { path: 'biochemistry.rbs', label: 'R.B.S. (Random Blood Sugar)', normal: '' },
+  { path: 'biochemistry.ppbs', label: 'P.P.B.S. (Post Prandial Blood Sugar)', normal: '150 mg/dl' },
+  { path: 'biochemistry.rbs', label: 'R.B.S. (Random Blood Sugar)', normal: '90-140 mg/dl' },
   { path: 'biochemistry.rft', label: 'R.F.T. (Renal Function Test)', normal: '' },
-  { path: 'biochemistry.bloodUrea', label: 'Blood Urea', normal: '150 mg/dl' },
+  { path: 'biochemistry.bloodUrea', label: 'Blood Urea', normal: '13-45 mg%' },
   { path: 'biochemistry.sCreatinine', label: 'S. Creatinine', normal: 'M: 0.7-1.4, F: 0.6-1.20 mg/dl' },
   { path: 'biochemistry.sUricAcid', label: 'S. Uric Acid', normal: 'M: 3.5-7.2, F: 2.5-6.2 mg/dl' },
   { path: 'biochemistry.sAlkPhosphatase', label: 'S. Alk. Phosphatase', normal: '15-112 U/L' },
@@ -101,9 +108,9 @@ const BIOCHEMISTRY_ROWS = [
   { path: 'biochemistry.lft.sgpt', label: 'SGPT', normal: '0-40 U/L', sub: true },
   { path: 'biochemistry.lipidogram.sCholesterol', label: 'Lipidogram — S. Cholesterol', normal: '140-250 mg/dl', sub: true },
   { path: 'biochemistry.lipidogram.hdl', label: 'Lipidogram — HDL', normal: 'M: 30-65, F: 35-80 mg/dl', sub: true },
-  { path: 'biochemistry.lipidogram.ldl', label: 'Lipidogram — LDL', normal: '', sub: true },
-  { path: 'biochemistry.lipidogram.vldl', label: 'Lipidogram — VLDL', normal: '150-190 mg/dl', sub: true },
-  { path: 'biochemistry.lipidogram.totalLipids', label: 'Lipidogram — Total Lipids', normal: '15-45 mg/dl', sub: true },
+  { path: 'biochemistry.lipidogram.ldl', label: 'Lipidogram — LDL', normal: '150-190 mg/dl', sub: true },
+  { path: 'biochemistry.lipidogram.vldl', label: 'Lipidogram — VLDL', normal: '15-45 mg/dl', sub: true },
+  { path: 'biochemistry.lipidogram.totalLipids', label: 'Lipidogram — Total Lipids', normal: '400-700 mg/dl', sub: true },
   { path: 'biochemistry.lipidogram.sTriglycerides', label: 'S. Triglycerides', normal: '25-160 mg/dl', sub: true },
 ];
 
@@ -196,6 +203,8 @@ export default function ReportPage() {
   const { reportId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+  const canReadLab = LAB_READ_ROLES.includes(user?.role);
 
   const [report, setReport] = useState(null);
   const [patient, setPatient] = useState(location.state?.patient || null);
@@ -206,6 +215,9 @@ export default function ReportPage() {
   const [saving, setSaving] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('haematology');
+  // The patient's investigation orders with results; null when this role cannot read lab data.
+  const [investigations, setInvestigations] = useState(null);
+  const isNew = reportId === 'new';
 
   useEffect(() => {
     const fetchReport = async () => {
@@ -238,23 +250,52 @@ export default function ReportPage() {
     fetchReport();
   }, [reportId, location.search]);
 
+  useEffect(() => {
+    if (!patient?.id || !canReadLab) return undefined;
+    let cancelled = false;
+    api.get(`/lab/patients/${patient.id}/orders`)
+      .then((res) => { if (!cancelled) setInvestigations(res.data.data || []); })
+      .catch(() => { if (!cancelled) setInvestigations(null); });
+    return () => { cancelled = true; };
+  }, [patient?.id, canReadLab]);
+
   const handleChange = useCallback((path, value) => {
     setReportData((prev) => setNestedValue(prev, path, value));
   }, []);
 
+  const reportPayload = () => ({
+    haematology: reportData.haematology,
+    biochemistry: reportData.biochemistry,
+    serology: reportData.serology,
+    urine: reportData.urine,
+    other: reportData.other,
+    remarks,
+    suggestions,
+    status: 'final',
+  });
+
+  // Saves the report and returns its id. A new report (/report/new?patient_id=) is created on its
+  // first save; it used to PUT /reports/new, which always failed.
+  const persistReport = async () => {
+    if (!isNew) {
+      await api.put(`/reports/${reportId}`, reportPayload());
+      return reportId;
+    }
+    if (!patient?.id) throw new Error('No patient selected');
+    const { data } = await api.post('/reports', { patientId: patient.id, ...reportPayload() });
+    const newId = data.report.id;
+    navigate(`/report/${newId}`, { replace: true, state: { patient } });
+    return newId;
+  };
+
   const handleSave = async () => {
+    if (isNew && !patient?.id) {
+      toast.error('Open the report from a patient record to start it.');
+      return;
+    }
     setSaving(true);
     try {
-      await api.put(`/reports/${reportId}`, {
-        haematology: reportData.haematology,
-        biochemistry: reportData.biochemistry,
-        serology: reportData.serology,
-        urine: reportData.urine,
-        other: reportData.other,
-        remarks,
-        suggestions,
-        status: 'final',
-      });
+      await persistReport();
       toast.success('Report saved');
     } catch {
       toast.error('Failed to save report.');
@@ -267,17 +308,8 @@ export default function ReportPage() {
     // Save first, then download
     setPdfLoading(true);
     try {
-      await api.put(`/reports/${reportId}`, {
-        haematology: reportData.haematology,
-        biochemistry: reportData.biochemistry,
-        serology: reportData.serology,
-        urine: reportData.urine,
-        other: reportData.other,
-        remarks,
-        suggestions,
-        status: 'final',
-      });
-      await openAuthenticatedBlob(`/reports/${reportId}/pdf?download=true`, { download: true, filename: `lab-report-${reportId}.pdf` });
+      const id = await persistReport();
+      await openAuthenticatedBlob(`/reports/${id}/pdf?download=true`, { download: true, filename: `lab-report-${id}.pdf` });
       toast.success('PDF downloading');
     } catch {
       toast.error('PDF generation failed.');
@@ -290,22 +322,21 @@ export default function ReportPage() {
     // Save first, then preview
     setPdfLoading(true);
     try {
-      await api.put(`/reports/${reportId}`, {
-        haematology: reportData.haematology,
-        biochemistry: reportData.biochemistry,
-        serology: reportData.serology,
-        urine: reportData.urine,
-        other: reportData.other,
-        remarks,
-        suggestions,
-        status: 'final',
-      });
-      await openAuthenticatedBlob(`/reports/${reportId}/pdf?preview=true`);
+      const id = await persistReport();
+      await openAuthenticatedBlob(`/reports/${id}/pdf?preview=true`);
       toast.success('PDF preview opened');
     } catch {
       toast.error('PDF preview failed.');
     } finally {
       setPdfLoading(false);
+    }
+  };
+
+  const handleOrderPdf = async (order) => {
+    try {
+      await openAuthenticatedBlob(`/pdf/lab-report/${order.orderId}?download=true`, { download: true, filename: `lab-report-${order.orderId}.pdf` });
+    } catch {
+      toast.error('Could not generate the PDF report');
     }
   };
 
@@ -349,7 +380,7 @@ export default function ReportPage() {
           meta={(
             <>
               <span className={`status ${isCorporate ? 'status-info' : 'status-neutral'}`}>{isCorporate ? 'Corporate beneficiary' : 'General patient'}</span>
-              <span className="status status-success">Report active</span>
+              <span className={`status ${isNew ? 'status-warning' : 'status-success'}`}>{isNew ? 'New report, not saved yet' : 'Report active'}</span>
             </>
           )}
           actions={(
@@ -376,6 +407,54 @@ export default function ReportPage() {
             ))}
           </div>
         </section>
+
+        {investigations && investigations.length > 0 && (
+          <section className="panel" style={{ marginBottom: 16 }} aria-labelledby="rp-investigations">
+            <div className="panel-head">
+              <h2 className="panel-title" id="rp-investigations" style={{ margin: 0 }}><FlaskConical size={16} aria-hidden="true" /> Ordered investigations</h2>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="mini-table">
+                <thead>
+                  <tr><th>Order</th><th>Investigation</th><th>Result</th><th>Reference range</th><th>Flag</th><th><span className="sr-only">Report</span></th></tr>
+                </thead>
+                <tbody>
+                  {investigations.flatMap((o) => {
+                    const tests = (o.tests || []).filter((t) => t.status !== 'Cancelled');
+                    const reported = tests.some((t) => t.status === 'Completed');
+                    return tests.map((t, i) => (
+                      <tr key={t.itemId}>
+                        <td>
+                          {i === 0 && (
+                            <span className="cell-stack">
+                              <span className="mono">ORD-{o.orderId}</span>
+                              <span className="cell-secondary">{fmtDateTime(o.orderedAt)} · {o.priority}</span>
+                            </span>
+                          )}
+                        </td>
+                        <td>{t.test}</td>
+                        <td>
+                          {t.status === 'Completed'
+                            ? <strong className="tabular" style={{ color: isAbnormal(t.flag) ? 'var(--red)' : undefined }}>{t.result}</strong>
+                            : <span className="cell-secondary">{t.status === 'Pending' ? 'Sample not collected' : 'Sample in lab'}</span>}
+                        </td>
+                        <td>{t.referenceRange || '—'}</td>
+                        <td><FlagTag flag={t.flag} /></td>
+                        <td className="text-right">
+                          {i === 0 && reported && (
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleOrderPdf(o)} aria-label={`Download PDF of order ORD-${o.orderId}`}>
+                              <FileDown size={14} aria-hidden="true" /> PDF
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ));
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         <div className="tabs" role="tablist" aria-label="Report sections">
           {TABS.map((tab) => {

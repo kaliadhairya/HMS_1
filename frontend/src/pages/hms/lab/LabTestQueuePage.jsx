@@ -8,6 +8,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import EmptyState from '../../../components/ui/EmptyState';
 import { useSocket } from '../../../context/SocketContext';
+import { fmtTime } from './labFlags';
 
 const PRIORITY_RANK = { STAT: 0, Urgent: 1, Routine: 2 };
 const PRIORITY_TONE = { STAT: 'danger', Urgent: 'warning', Routine: 'neutral' };
@@ -124,19 +125,27 @@ export default function LabTestQueuePage() {
         return (
           <span className="cell-stack" style={{ whiteSpace: 'nowrap' }}>
             <span className="tabular" style={{ fontWeight: 600, color: late ? 'var(--red)' : undefined }}>{fmtWait(m)}</span>
-            <span className="cell-secondary" title={`Ordered at ${row.original.time}`}><span className="mono">{row.original.id}</span> · {row.original.time}</span>
+            <span className="cell-secondary" title={`Ordered at ${fmtTime(row.original.ordered_at)}`}><span className="mono">{row.original.id}</span> · {fmtTime(row.original.ordered_at)}</span>
           </span>
         );
       },
     },
     {
-      id: 'status', header: 'Status', accessorFn: (o) => o.status || '', meta: { width: 120 },
-      cell: ({ getValue }) => <span className={`status status-${STATUS_TONE[getValue()] || 'neutral'}`}>{getValue()}</span>,
+      id: 'status', header: 'Status', accessorFn: (o) => o.status || '', meta: { width: 140 },
+      cell: ({ row, getValue }) => {
+        const total = (row.original.tests || []).length;
+        return (
+          <span className="cell-stack">
+            <span className={`status status-${STATUS_TONE[getValue()] || 'neutral'}`}>{getValue()}</span>
+            {total > 0 && <span className="cell-secondary tabular">{row.original.collected || 0} of {total} collected</span>}
+          </span>
+        );
+      },
     },
     {
       id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 130, align: 'right' },
-      cell: () => (
-        <button type="button" className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); navigate('/lab/samples'); }}>
+      cell: ({ row }) => (
+        <button type="button" className="btn btn-secondary btn-sm" aria-label={`Log samples for ${row.original.patient}`} onClick={(e) => { e.stopPropagation(); navigate('/lab/samples'); }}>
           <TestTubes size={14} aria-hidden="true" /> Log sample
         </button>
       ),

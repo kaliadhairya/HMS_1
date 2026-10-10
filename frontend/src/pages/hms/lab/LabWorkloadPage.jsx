@@ -3,12 +3,10 @@ import { Activity } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
-import { useAuth } from '../../../context/AuthContext';
 
 export default function LabWorkloadPage() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
 
   useEffect(() => {
     api.get('/lab/workload')
@@ -17,7 +15,7 @@ export default function LabWorkloadPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // testsStarted counts tests still in progress; completed tests are counted separately.
+  // testsStarted: samples collected and waiting for a result (now). testsCompleted: results entered today.
   const started = Number(stats?.testsStarted || 0);
   const completed = Number(stats?.testsCompleted || 0);
   const total = started + completed;
@@ -29,8 +27,8 @@ export default function LabWorkloadPage() {
       <Navbar />
       <main className="app-page">
         <PageHeader
-          title="My workload"
-          description={`Daily test counts and shift summary for ${user?.name || 'the lab team'}.`}
+          title="Workload"
+          description="Today's test counts and turnaround for the whole laboratory."
           meta={<span className="status status-neutral">Shift: {loading ? 'Loading…' : (stats?.shift || 'Not available')}</span>}
         />
 
@@ -40,16 +38,16 @@ export default function LabWorkloadPage() {
           <>
             <div className="kpi-strip">
               <div className="panel kpi"><div className="kpi-label">Tests in progress</div><div className="kpi-value tabular">{started}</div></div>
-              <div className="panel kpi"><div className="kpi-label">Tests completed</div><div className="kpi-value tabular">{completed}</div></div>
+              <div className="panel kpi"><div className="kpi-label">Completed today</div><div className="kpi-value tabular">{completed}</div></div>
               <div className="panel kpi">
                 <div className="kpi-label">Average turnaround</div>
-                <div className="kpi-value">{stats.avgTat}</div>
-                <div className="kpi-sub">Target {stats.targetTat}</div>
+                <div className="kpi-value" style={{ color: stats.avgTatMinutes > 60 ? 'var(--amber)' : undefined }}>{stats.avgTat}</div>
+                <div className="kpi-sub">Order to result, today. Target {stats.targetTat}</div>
               </div>
               <div className="panel kpi">
-                <div className="kpi-label">Critical results flagged</div>
+                <div className="kpi-label">Abnormal results today</div>
                 <div className="kpi-value tabular" style={{ color: Number(stats.criticalFlagged) > 0 ? 'var(--red)' : undefined }}>{stats.criticalFlagged}</div>
-                <div className="kpi-sub">Needs immediate doctor review</div>
+                <div className="kpi-sub">Outside the reference range</div>
               </div>
             </div>
 
