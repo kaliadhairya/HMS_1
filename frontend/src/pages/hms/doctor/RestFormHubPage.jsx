@@ -1,14 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BedDouble, Pencil, Plus, Printer, Search, Trash2 } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
+import Modal from '../../../components/ui/Modal';
+import RowMenu from '../../../components/ui/RowMenu';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
-import Glyph from '../../../components/ui/Glyph';
+
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-GB') : '—');
 
 export default function RestFormHubPage() {
   const [restForms, setRestForms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
 
   const loadRestForms = async () => {
@@ -28,139 +37,128 @@ export default function RestFormHubPage() {
   }, []);
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this rest form?')) return;
+    setDeleting(true);
     try {
       await api.delete(`/hms/rest-forms/${id}`);
       toast.success('Rest form deleted');
+      setPendingDelete(null);
       loadRestForms();
     } catch (e) {
       console.error(e);
       toast.error('Failed to delete rest form');
+    } finally {
+      setDeleting(false);
     }
   };
 
-  const filteredForms = restForms.filter(f => 
+  const filteredForms = (restForms || []).filter(f =>
     (f.patient_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (f.emp_number || '').includes(searchQuery) ||
-    (f.book_no || '').includes(searchQuery)
+    String(f.emp_number || '').includes(searchQuery) ||
+    String(f.book_no || '').includes(searchQuery)
   );
+
+  const columns = useMemo(() => [
+    {
+      id: 'date', header: 'Date', accessorFn: (f) => (f.created_at ? new Date(f.created_at).getTime() : 0), meta: { width: 120 },
+      cell: ({ row }) => <span className="tabular cell-secondary">{fmtDate(row.original.created_at)}</span>,
+    },
+    { id: 'patient', header: 'Patient', accessorFn: (f) => f.patient_name || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    { id: 'emp', header: 'Emp no.', accessorFn: (f) => f.emp_number || '', meta: { width: 120 }, cell: ({ getValue }) => <span className="mono">{getValue() || 'N/A'}</span> },
+    { id: 'book', header: 'Book no.', accessorFn: (f) => f.book_no || '', meta: { width: 100 }, cell: ({ getValue }) => getValue() || '—' },
+    { id: 'sr', header: 'Sr no.', accessorFn: (f) => f.sr_no || '', meta: { width: 100 }, cell: ({ getValue }) => <span className="mono">{getValue() || '—'}</span> },
+    {
+      id: 'disease', header: 'Disease', accessorFn: (f) => f.disease || '',
+      cell: ({ getValue }) => (
+        <span className="cell-secondary" title={getValue()} style={{ display: 'block', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {getValue() || '—'}
+        </span>
+      ),
+    },
+    {
+      id: 'days', header: 'Days', accessorFn: (f) => Number(f.advised_days || 0), meta: { width: 90, align: 'right' },
+      cell: ({ row }) => <span className="tabular">{row.original.advised_days || '—'} days</span>,
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 130, align: 'right' },
+      cell: ({ row }) => {
+        const f = row.original;
+        return (
+          <span className="inline-actions">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate(`/doctor/rest-forms/print/${f.id}`)}>
+              <Printer size={14} aria-hidden="true" /> Print
+            </button>
+            <RowMenu
+              label={`Actions for rest form of ${f.patient_name || 'patient'}`}
+              items={[
+                { label: 'Edit', icon: Pencil, onSelect: () => navigate(`/doctor/rest-forms/edit/${f.id}`) },
+                { label: 'Delete', icon: Trash2, onSelect: () => setPendingDelete(f), danger: true, separator: true },
+              ]}
+            />
+          </span>
+        );
+      },
+    },
+  ], [navigate]);
 
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        {/* Header */}
-        <div className="hms-page-header">
-          <div>
-            <h1>
-              <span className="header-icon"><Glyph icon="🛏️" /></span>
-              Rest Forms Hub
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Manage patient rest and light duty certification forms.
-            </p>
-          </div>
-          <div className="header-actions">
-            <button className="btn btn-primary" onClick={() => navigate('/doctor/rest-forms/new')}>
-              + Create Rest Form
+      <main className="app-page">
+        <PageHeader
+          title="Rest forms"
+          description="Rest and light duty certificates you have issued to patients."
+          meta={!loading && <span className="muted">{restForms.length} rest forms</span>}
+          actions={(
+            <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/doctor/rest-forms/new')}>
+              <Plus size={16} aria-hidden="true" /> Create rest form
             </button>
-          </div>
-        </div>
-
-        {/* Summary + Search */}
-        <div className="hms-anim-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
-          <div className="hms-stat-card" style={{ padding: 18, borderLeft: '4px solid #8b5cf6', cursor: 'default', display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem' }}><Glyph icon="📋" /></div>
-            <div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.08em' }}>Total Rest Forms</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>{restForms.length}</div>
-            </div>
-          </div>
-          <div className="card" style={{
-            padding: '10px 18px', borderRadius: 40,
-            display: 'flex', alignItems: 'center', gap: 12,
-            border: '2px solid var(--border)', transition: 'border-color 0.3s ease',
-          }}
-          onFocusCapture={e => e.currentTarget.style.borderColor = 'var(--green)'}
-          onBlurCapture={e => e.currentTarget.style.borderColor = 'var(--border)'}
-          >
-            <span style={{ fontSize: '1.1rem', filter: 'grayscale(0.5)' }}><Glyph icon="🔍" /></span>
-            <input
-              type="text"
-              className="form-input"
-              style={{ border: 'none', boxShadow: 'none', background: 'transparent', padding: '8px 0', flex: 1 }}
-              placeholder="Search by Patient, Emp No, or Book No..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {/* Table */}
-        <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden' }}>
-          {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 60, gap: 12 }}>
-              <div className="spinner" style={{ width: 28, height: 28 }} />
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading rest forms...</span>
-            </div>
-          ) : filteredForms.length === 0 ? (
-            <div className="hms-empty-state" style={{ margin: 24, border: 'none' }}>
-              <span className="empty-icon"><Glyph icon="📝" /></span>
-              <h3>{searchQuery ? 'No Results' : 'No Rest Forms'}</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                {searchQuery ? `No forms matching "${searchQuery}".` : 'No rest forms have been generated yet.'}
-              </p>
-            </div>
-          ) : (
-            <div className="table-wrapper hms-table-anim" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th><th>Patient</th><th>Emp No</th>
-                    <th>Book No</th><th>Sr No</th><th>Disease</th>
-                    <th>Days</th><th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredForms.map(f => (
-                    <tr key={f.id}>
-                      <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{new Date(f.created_at).toLocaleDateString('en-GB')}</td>
-                      <td style={{ fontWeight: 700 }}>{f.patient_name}</td>
-                      <td style={{ color: 'var(--green)', fontWeight: 500 }}>{f.emp_number || 'N/A'}</td>
-                      <td>{f.book_no || '-'}</td>
-                      <td>{f.sr_no || '-'}</td>
-                      <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)', fontSize: '0.83rem' }}>
-                        {f.disease || '-'}
-                      </td>
-                      <td>
-                        <span style={{
-                          padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700,
-                          background: 'rgba(139,92,246,0.1)', color: 'var(--primary)', border: '1px solid rgba(139,92,246,0.2)',
-                        }}>
-                          {f.advised_days || '-'} days
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                          <button className="btn btn-sm btn-blue" onClick={() => navigate(`/doctor/rest-forms/print/${f.id}`)}>
-                            <Glyph icon="🖨️" /> Print
-                          </button>
-                          <button className="btn btn-sm btn-outline" onClick={() => navigate(`/doctor/rest-forms/edit/${f.id}`)}>
-                            <Glyph icon="✏️" /> Edit
-                          </button>
-                          <button className="btn btn-sm btn-danger" onClick={() => handleDelete(f.id)}>
-                            <Glyph icon="🗑️" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           )}
-        </div>
-      </div>
+        />
+
+        <section className="panel">
+          <div className="toolbar">
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search rest forms</span>
+              <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search patient, emp no. or book no." />
+            </label>
+          </div>
+          <DataTable
+            columns={columns}
+            data={filteredForms}
+            loading={loading}
+            getRowId={(f) => String(f.id)}
+            empty={searchQuery ? (
+              <EmptyState icon={Search} title="No forms match" description={`No forms match "${searchQuery}".`} />
+            ) : (
+              <EmptyState
+                icon={BedDouble}
+                title="No rest forms yet"
+                description="Rest forms you create appear here for printing and editing."
+                action={<button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/doctor/rest-forms/new')}><Plus size={16} aria-hidden="true" /> Create rest form</button>}
+              />
+            )}
+          />
+        </section>
+      </main>
+
+      <Modal
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null); }}
+        title="Delete rest form"
+        description={pendingDelete ? `Rest form for ${pendingDelete.patient_name || 'this patient'}${pendingDelete.sr_no ? ` (${pendingDelete.sr_no})` : ''}. This cannot be undone.` : ''}
+        size="sm"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setPendingDelete(null)}>Cancel</button>
+            <button type="button" className="btn btn-danger btn-md" disabled={deleting} onClick={() => handleDelete(pendingDelete.id)}>
+              {deleting ? 'Deleting…' : 'Delete rest form'}
+            </button>
+          </>
+        )}
+      >
+        <p className="muted">The form is removed from your list and can no longer be printed.</p>
+      </Modal>
     </>
   );
 }

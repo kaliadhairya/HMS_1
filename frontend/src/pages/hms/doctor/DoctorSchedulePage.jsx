@@ -1,7 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { CalendarDays, Plane } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
-import Glyph from '../../../components/ui/Glyph';
+import PageHeader from '../../../components/ui/PageHeader';
+import DataTable from '../../../components/ui/DataTable';
+import EmptyState from '../../../components/ui/EmptyState';
 
 export default function DoctorSchedulePage() {
   const [schedule, setSchedule] = useState({ availability: [], leaves: [] });
@@ -9,150 +12,86 @@ export default function DoctorSchedulePage() {
 
   useEffect(() => {
     api.get('/doctor/schedule')
-      .then(res => setSchedule(res.data.data))
+      .then(res => setSchedule(res.data.data || { availability: [], leaves: [] }))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
+  const availability = schedule.availability || [];
+  const leaves = schedule.leaves || [];
+
+  const columns = useMemo(() => [
+    { id: 'day', header: 'Day', accessorFn: (a) => a.day || '', meta: { width: 130 }, enableSorting: false, cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
+    { id: 'slots', header: 'Session timing', accessorFn: (a) => a.slots || '', enableSorting: false, cell: ({ getValue }) => <span className="tag tabular">{getValue()}</span> },
+    {
+      id: 'dates', header: 'Upcoming dates', accessorFn: (a) => (a.upcoming_dates || []).join(', '), enableSorting: false,
+      cell: ({ getValue }) => <span className="cell-secondary tabular">{getValue() || '—'}</span>,
+    },
+    {
+      id: 'max', header: 'Booked patients', accessorFn: (a) => Number(a.max_patients || 0), meta: { width: 150, align: 'right' },
+      cell: ({ getValue }) => <span className="tabular" style={{ fontWeight: 600 }}>{getValue()}</span>,
+    },
+  ], []);
+
   return (
     <>
       <Navbar />
-      <div className="container py-4">
-        {/* Header */}
-        <div className="hms-page-header">
-          <div>
-            <h1>
-              <span className="header-icon"><Glyph icon="🗓️" /></span>
-              My Schedule
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Manage your OPD sessions, max patient limits, and apply for leaves.
-            </p>
-          </div>
-        </div>
+      <main className="app-page">
+        <PageHeader
+          title="My schedule"
+          description="Your OPD sessions derived from upcoming appointments, and planned leave."
+        />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 24, alignItems: 'start' }}>
-          {/* OPD Availability */}
-          <div className="card hms-anim-2" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '18px 24px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)',
-            }}>
-              <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(59,130,246,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="📅" /></span>
-                OPD Availability
-              </h3>
-              <button className="btn btn-sm btn-ghost" disabled title="Doctor self-service timing edits are not implemented in this build.">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+          <section className="panel" style={{ flex: '2 1 520px', minWidth: 0 }}>
+            <div className="panel-head">
+              <h2 className="panel-title" style={{ margin: 0 }}><CalendarDays size={16} aria-hidden="true" /> OPD availability</h2>
+              <button type="button" className="btn btn-ghost btn-sm" disabled title="Doctor self-service timing edits are not implemented in this build.">
                 Timings are read-only
               </button>
             </div>
+            <DataTable
+              columns={columns}
+              data={availability}
+              loading={loading}
+              getRowId={(a) => a.day}
+              empty={(
+                <EmptyState
+                  icon={CalendarDays}
+                  title="No schedule data"
+                  description="No upcoming appointments are scheduled, so no availability pattern can be derived."
+                />
+              )}
+            />
+          </section>
 
-            {loading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: 60, gap: 12 }}>
-                <div className="spinner" style={{ width: 28, height: 28 }} />
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading schedule...</span>
-              </div>
-            ) : schedule.availability.length === 0 ? (
-              <div className="hms-empty-state" style={{ margin: 24, border: 'none' }}>
-                <span className="empty-icon"><Glyph icon="📅" /></span>
-                <h3>No Schedule Data</h3>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                  No upcoming appointments are scheduled, so no live availability pattern can be derived.
-                </p>
-              </div>
-            ) : (
-              <div className="table-wrapper hms-table-anim" style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}>
-                <table>
-                  <thead>
-                    <tr><th>Day</th><th>Session Timing</th><th>Upcoming Dates</th><th>Max Patients</th></tr>
-                  </thead>
-                  <tbody>
-                    {schedule.availability.map((av, idx) => (
-                      <tr key={idx}>
-                        <td><strong>{av.day}</strong></td>
-                        <td>
-                          <span style={{
-                            padding: '3px 10px', borderRadius: 8,
-                            background: 'rgba(59,130,246,0.08)', color: '#2563eb',
-                            fontSize: '0.82rem', fontWeight: 600,
-                          }}>
-                            {av.slots}
-                          </span>
-                        </td>
-                        <td style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                          {(av.upcoming_dates || []).join(', ') || '—'}
-                        </td>
-                        <td>
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            width: 32, height: 32, borderRadius: '50%',
-                            background: 'rgba(16,185,129,0.1)', color: '#059669',
-                            fontWeight: 800, fontSize: '0.85rem', border: '1px solid rgba(16,185,129,0.2)',
-                          }}>
-                            {av.max_patients}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Upcoming Leaves */}
-          <div className="card hms-anim-3" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '18px 24px', borderBottom: '1px solid var(--border)', background: 'var(--surface-2)',
-            }}>
-              <h3 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-                <span style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(245,158,11,0.1)', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Glyph icon="🏖️" /></span>
-                Upcoming Leaves
-              </h3>
-              <button className="btn btn-sm btn-ghost" disabled title="Leave application is handled from the admin attendance workflow.">
-                Apply via Admin
+          <section className="panel" style={{ flex: '1 1 280px', minWidth: 0 }}>
+            <div className="panel-head">
+              <h2 className="panel-title" style={{ margin: 0 }}><Plane size={16} aria-hidden="true" /> Upcoming leave</h2>
+              <button type="button" className="btn btn-ghost btn-sm" disabled title="Leave application is handled from the admin attendance workflow.">
+                Apply via admin
               </button>
             </div>
-
-            <div style={{ padding: '16px 20px' }}>
-              {loading ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: 30 }}>
-                  <div className="spinner" />
-                </div>
-              ) : schedule.leaves.length === 0 ? (
-                <div style={{ padding: 30, textAlign: 'center' }}>
-                  <span style={{ fontSize: '2rem', display: 'block', marginBottom: 8 }}><Glyph icon="✅" /></span>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No upcoming leaves scheduled.</p>
-                </div>
+            <div className="panel-pad">
+              {loading ? <p className="muted">Loading…</p> : leaves.length === 0 ? (
+                <p className="muted">No upcoming leave scheduled.</p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {schedule.leaves.map((l, idx) => (
-                    <div key={idx} className="hms-stat-card" style={{
-                      padding: '14px 18px', cursor: 'default',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      animation: `hmsSlideRight 0.4s ${0.1 + idx * 0.06}s cubic-bezier(0.16,1,0.3,1) both`,
-                    }}>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{new Date(l.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 }}>{l.reason}</div>
-                      </div>
-                      <span style={{
-                        padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700,
-                        background: l.status === 'Approved' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-                        color: l.status === 'Approved' ? '#059669' : '#d97706',
-                        border: `1px solid ${l.status === 'Approved' ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)'}`,
-                      }}>
-                        {l.status}
+                <ul className="list-rows">
+                  {leaves.map((l, idx) => (
+                    <li key={idx} className="list-row" style={{ cursor: 'default' }}>
+                      <span className="cell-stack">
+                        <span className="cell-primary">{new Date(l.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                        <span className="cell-secondary">{l.reason}</span>
                       </span>
-                    </div>
+                      <span className={`status ${l.status === 'Approved' ? 'status-success' : 'status-warning'}`}>{l.status}</span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
             </div>
-          </div>
+          </section>
         </div>
-      </div>
+      </main>
     </>
   );
 }

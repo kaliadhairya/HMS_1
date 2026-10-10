@@ -4,7 +4,12 @@ import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import { useAuth } from '../../../context/AuthContext';
 import toast from 'react-hot-toast';
-import Glyph from '../../../components/ui/Glyph';
+import {
+  ArrowLeft, ChevronDown, CircleCheck, Eye, FilePlus2, History, Inbox, ListChecks, Pencil, Plus, Printer,
+  RefreshCw, Save, Search, Send, Stethoscope, Trash2, X,
+} from 'lucide-react';
+import PageHeader from '../../../components/ui/PageHeader';
+import Modal from '../../../components/ui/Modal';
 
 const PRIORITY_OPTIONS = ['Routine', 'Urgent', 'Emergency'];
 const SPECIALTY_OPTIONS = [
@@ -52,6 +57,8 @@ export default function DoctorReferralsPage() {
   const [inboundOpen, setInboundOpen] = useState(false);
   const [outboundOpen, setOutboundOpen] = useState(false);
   const [outboundLocalOpen, setOutboundLocalOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const printRef = useRef(null);
   const previewDraftRef = useRef(null);
 
@@ -322,14 +329,24 @@ export default function DoctorReferralsPage() {
     setActiveTab('create');
   };
 
-  const handleDeleteReferral = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this referral?")) return;
+  // Opens the confirmation dialog; the delete itself runs in confirmDeleteReferral.
+  const handleDeleteReferral = (id) => {
+    setPendingDeleteId(id);
+  };
+
+  const confirmDeleteReferral = async () => {
+    const id = pendingDeleteId;
+    if (id == null) return;
+    setDeleting(true);
     try {
       await api.delete(`/doctor/referrals/${id}`);
       toast.success('Referral deleted successfully');
+      setPendingDeleteId(null);
       fetchReferrals();
     } catch {
       toast.error('Failed to delete referral');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -478,52 +495,131 @@ export default function DoctorReferralsPage() {
     return new Date(dateStr).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  const statusBadge = (status) => {
-    const styles = {
-      Pending:   { bg: 'rgba(245,158,11,0.12)', color: '#d97706' },
-      Accepted:  { bg: 'rgba(16,185,129,0.12)', color: '#059669' },
-      Completed: { bg: 'rgba(59,130,246,0.12)', color: '#2563eb' },
-      Declined:  { bg: 'rgba(239,68,68,0.12)',  color: '#dc2626' },
-    };
-    const s = styles[status] || styles.Pending;
-    return (
-      <span style={{
-        padding: '3px 12px', borderRadius: 20, fontSize: '0.75rem', fontWeight: 700,
-        background: s.bg, color: s.color, letterSpacing: '0.02em',
-      }}>
-        {status || 'Pending'}
-      </span>
-    );
+  const STATUS_TONE = { Pending: 'warning', Accepted: 'success', Completed: 'info', Declined: 'danger' };
+  const statusBadge = (status) => (
+    <span className={`status status-${STATUS_TONE[status] || 'warning'}`}>{status || 'Pending'}</span>
+  );
+
+  const HISTORY_ACCENT = { Completed: 'var(--success)', Declined: 'var(--red)', Accepted: 'var(--primary)' };
+
+  const dropdownStyle = {
+    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, marginTop: 4,
+    background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8,
+    boxShadow: 'var(--shadow-md)', overflowY: 'auto',
   };
+  const dropdownItemStyle = { padding: '10px 14px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.86rem' };
+  const hoverOn = (e) => { e.currentTarget.style.background = 'var(--surface-2)'; };
+  const hoverOff = (e) => { e.currentTarget.style.background = 'transparent'; };
+
+  const outsideReferrals = referrals.outbound.filter(r => r.referral_type !== 'Local');
+  const localReferrals = referrals.outbound.filter(r => r.referral_type === 'Local');
+  const pendingDeleteRef = pendingDeleteId != null ? referrals.outbound.find(r => r.id === pendingDeleteId) : null;
+
+  const collapsibleHead = (open, toggle, title, subtitle, count, controlsId, extra) => (
+    <div className="panel-head" style={{ padding: 0, borderBottom: open ? '1px solid var(--border)' : 0 }}>
+      <h2 style={{ flex: 1, margin: 0, fontSize: 'inherit' }}>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={open}
+          aria-controls={controlsId}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            padding: '14px 16px', background: 'none', border: 0, font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer',
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span className="panel-title" style={{ margin: 0 }}>{title}</span>
+            <span className="muted">{subtitle}</span>
+            <span className="count-pill">{count}</span>
+          </span>
+          <ChevronDown size={18} aria-hidden="true" style={{ color: 'var(--text-muted)', transform: open ? 'rotate(180deg)' : 'none' }} />
+        </button>
+      </h2>
+      {extra}
+    </div>
+  );
+
+  const outboundTable = (list, isLocal) => (
+    <div style={{ overflowX: 'auto' }}>
+      <table className="mini-table">
+        <thead>
+          <tr><th>Date</th><th>Patient</th><th>Specialty</th><th>Reason</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr>
+        </thead>
+        <tbody>
+          {list.map((ref, idx) => (
+            <tr key={idx}>
+              <td className="tabular" style={{ whiteSpace: 'nowrap' }}>{formatDate(ref.date)}</td>
+              <td>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {ref.referral_type && <span className="tag">{isLocal ? 'Local' : 'Outside'}</span>}
+                  <span className="cell-primary">{ref.patient}</span>
+                </span>
+              </td>
+              <td>{ref.to_specialty}</td>
+              <td style={{ maxWidth: isLocal ? 260 : 200 }}>
+                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ref.reason || '-'}</div>
+                {isLocal && ref.clinical_notes && (
+                  <div
+                    className="cell-secondary"
+                    style={{ marginTop: 4, lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                    title={ref.clinical_notes}
+                  >
+                    <strong>Clinical:</strong> {ref.clinical_notes}
+                  </div>
+                )}
+              </td>
+              <td>{statusBadge(ref.status)}</td>
+              <td className="text-right">
+                <span className="inline-actions" style={{ flexWrap: 'nowrap' }}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => handlePreview(ref)}>
+                    <Eye size={14} aria-hidden="true" /> Preview
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleEditReferral(ref)}>
+                    <Pencil size={14} aria-hidden="true" /> Edit
+                  </button>
+                  <button type="button" className="icon-btn" onClick={() => handleDeleteReferral(ref.id)} aria-label={`Delete referral for ${ref.patient}`} title="Delete">
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
     <>
       <Navbar />
-      <div className="container py-4" style={{ maxWidth: 1200 }}>
-        {/* Header */}
-        <div className="hms-page-header">
-          <div>
-            <h1>
-              <span className="header-icon"><Glyph icon="🔄" /></span>
-              Referrals Hub
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Send patients to specialists or manage inward referrals.
-            </p>
-          </div>
-        </div>
+      <main className="app-page" style={{ maxWidth: 1240 }}>
+        <PageHeader
+          title="Referrals"
+          description="Refer patients to specialists outside or within the hospital, and review referrals sent to you."
+          actions={activeTab === 'hub' && (
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => fetchReferrals()}>
+              <RefreshCw size={16} aria-hidden="true" /> Refresh
+            </button>
+          )}
+        />
 
         {/* Tabs */}
-        <div className="hms-anim-2" style={{ display: 'flex', gap: 0, marginBottom: 24, borderBottom: '2px solid var(--border, #e2e8f0)' }}>
+        <div className="tabs" role="tablist" aria-label="Referral views">
           <button
-            className={`hms-tab-btn ${activeTab === 'hub' ? 'active' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'hub'}
+            className={`tab${activeTab === 'hub' ? ' is-active' : ''}`}
             onClick={() => setActiveTab('hub')}
-            style={{ borderRadius: 0, borderRight: '1px solid var(--border)' }}
           >
-            <Glyph icon="📋" /> Referral List
+            <ListChecks size={16} aria-hidden="true" /> Referral list
           </button>
           <button
-            className={`hms-tab-btn ${activeTab === 'create' && referralType === 'Outside' ? 'active' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'create' && referralType === 'Outside'}
+            className={`tab${activeTab === 'create' && referralType === 'Outside' ? ' is-active' : ''}`}
             onClick={() => {
               setActiveTab('create');
               setReferralType('Outside');
@@ -531,12 +627,16 @@ export default function DoctorReferralsPage() {
               setFormData(buildEmptyReferralForm('Outside'));
               clearSelectedPatient();
             }}
-            style={{ borderRadius: 0, borderRight: '1px solid var(--border)' }}
           >
-            {editReferralId && referralType === 'Outside' ? '✏️ Edit Outside Referral' : '＋ Create Outside Referral'}
+            {editReferralId && referralType === 'Outside'
+              ? <><Pencil size={16} aria-hidden="true" /> Edit outside referral</>
+              : <><Plus size={16} aria-hidden="true" /> Create outside referral</>}
           </button>
           <button
-            className={`hms-tab-btn ${activeTab === 'create' && referralType === 'Local' ? 'active' : ''}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'create' && referralType === 'Local'}
+            className={`tab${activeTab === 'create' && referralType === 'Local' ? ' is-active' : ''}`}
             onClick={() => {
               setActiveTab('create');
               setReferralType('Local');
@@ -544,70 +644,48 @@ export default function DoctorReferralsPage() {
               setFormData(buildEmptyReferralForm('Local'));
               clearSelectedPatient();
             }}
-            style={{ borderRadius: 0 }}
           >
-            {editReferralId && referralType === 'Local' ? '✏️ Edit Local Referral' : '＋ Create Local Referral'}
+            {editReferralId && referralType === 'Local'
+              ? <><Pencil size={16} aria-hidden="true" /> Edit local referral</>
+              : <><Plus size={16} aria-hidden="true" /> Create local referral</>}
           </button>
         </div>
 
-        {/* Tab: Referral List */}
+        {/* Tab: Referral list */}
         {activeTab === 'hub' && (
-          <div className="hms-anim-3" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          <div className="stack">
             {/* Inbound */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <button
-                type="button"
-                onClick={() => setInboundOpen(!inboundOpen)}
-                style={{
-                  width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '18px 24px', background: 'var(--surface-2)', border: 'none',
-                  borderBottom: inboundOpen ? '1px solid var(--border)' : 'none',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-3, rgba(0,0,0,0.04))'}
-                onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-2)'}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}><Glyph icon="📥" /> Inbound Referrals <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(To You)</span></h3>
-                  <span className="badge" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', fontSize: '0.72rem', padding: '2px 8px' }}>{referrals.inbound.length}</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span
-                    onClick={(e) => { e.stopPropagation(); fetchReferrals(); }}
-                    style={{ fontSize: '0.8rem', color: 'var(--text-muted)', cursor: 'pointer' }}
-                    title="Refresh"
-                  >↻ Refresh</span>
-                  <span style={{ fontSize: '1.1rem', transition: 'transform 0.25s', transform: inboundOpen ? 'rotate(180deg)' : 'rotate(0deg)', color: 'var(--text-muted)' }}>▼</span>
-                </div>
-              </button>
+            <section className="panel">
+              {collapsibleHead(
+                inboundOpen,
+                () => setInboundOpen(!inboundOpen),
+                <><Inbox size={16} aria-hidden="true" /> Inbound referrals</>,
+                'To you',
+                referrals.inbound.length,
+                'ref-inbound',
+              )}
               {inboundOpen && (
-                <div style={{ padding: 24 }}>
+                <div id="ref-inbound" className="panel-pad">
                   {loading ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><div className="spinner" /></div>
+                    <p className="muted">Loading…</p>
                   ) : referrals.inbound.length === 0 ? (
-                    <div style={{
-                      padding: '32px 24px', textAlign: 'center', borderRadius: 8,
-                      background: 'rgba(0,0,0,0.03)', color: 'var(--text-secondary)',
-                    }}>
-                      <span style={{ fontSize: '1.6rem' }}><Glyph icon="📭" /></span>
-                      <p style={{ margin: '8px 0 0', fontSize: '0.875rem' }}>No inbound referrals at this time.</p>
-                    </div>
+                    <p className="muted">No inbound referrals at this time.</p>
                   ) : (
-                    <div className="table-wrapper">
-                      <table>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="mini-table">
                         <thead>
-                          <tr><th>Date</th><th>Patient</th><th>From Doctor</th><th>Reason</th><th>Action</th></tr>
+                          <tr><th>Date</th><th>Patient</th><th>From doctor</th><th>Reason</th><th><span className="sr-only">Actions</span></th></tr>
                         </thead>
                         <tbody>
                           {referrals.inbound.map((ref, idx) => (
                             <tr key={idx}>
-                              <td>{formatDate(ref.date)}</td>
-                              <td><strong>{ref.patient}</strong></td>
+                              <td className="tabular" style={{ whiteSpace: 'nowrap' }}>{formatDate(ref.date)}</td>
+                              <td className="cell-primary">{ref.patient}</td>
                               <td>{ref.from_doctor}</td>
                               <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {ref.reason || '-'}
                               </td>
-                              <td><button className="btn btn-sm btn-outline">Review</button></td>
+                              <td className="text-right"><button type="button" className="btn btn-secondary btn-sm">Review</button></td>
                             </tr>
                           ))}
                         </tbody>
@@ -616,272 +694,123 @@ export default function DoctorReferralsPage() {
                   )}
                 </div>
               )}
-            </div>
+            </section>
 
             {/* Outbound - Outside */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <button
-                type="button"
-                onClick={() => setOutboundOpen(!outboundOpen)}
-                style={{
-                  width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '18px 24px', background: 'var(--surface-2)', border: 'none',
-                  borderBottom: outboundOpen ? '1px solid var(--border)' : 'none',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-3, rgba(0,0,0,0.04))'}
-                onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-2)'}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}><Glyph icon="📤" /> Outbound Referrals (Outside) <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(By You)</span></h3>
-                  <span className="badge" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontSize: '0.72rem', padding: '2px 8px' }}>
-                    {referrals.outbound.filter(r => r.referral_type !== 'Local').length}
-                  </span>
-                </div>
-                <span style={{ fontSize: '1.1rem', transition: 'transform 0.25s', transform: outboundOpen ? 'rotate(180deg)' : 'rotate(0deg)', color: 'var(--text-muted)' }}>▼</span>
-              </button>
+            <section className="panel">
+              {collapsibleHead(
+                outboundOpen,
+                () => setOutboundOpen(!outboundOpen),
+                <><Send size={16} aria-hidden="true" /> Outbound referrals, outside</>,
+                'By you',
+                outsideReferrals.length,
+                'ref-outside',
+              )}
               {outboundOpen && (
-                <div style={{ padding: 24 }}>
+                <div id="ref-outside" className="panel-pad">
                   {loading ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><div className="spinner" /></div>
-                  ) : referrals.outbound.filter(r => r.referral_type !== 'Local').length === 0 ? (
-                    <div style={{
-                      padding: '32px 24px', textAlign: 'center', borderRadius: 8,
-                      background: 'rgba(0,0,0,0.03)', color: 'var(--text-secondary)',
-                    }}>
-                      <span style={{ fontSize: '1.6rem' }}><Glyph icon="📬" /></span>
-                      <p style={{ margin: '8px 0 0', fontSize: '0.875rem' }}>No outside outbound referrals yet.</p>
-                    </div>
-                  ) : (
-                    <div className="table-wrapper">
-                      <table>
-                        <thead>
-                          <tr><th>Date</th><th>Patient</th><th>Specialty Target</th><th>Reason</th><th>Status</th><th>Action</th></tr>
-                        </thead>
-                        <tbody>
-                          {referrals.outbound.filter(r => r.referral_type !== 'Local').map((ref, idx) => (
-                            <tr key={idx}>
-                              <td>{formatDate(ref.date)}</td>
-                              <td>
-                                {ref.referral_type && (
-                                  <span style={{ 
-                                    display: 'inline-block', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, 
-                                    background: 'rgba(245,158,11,0.1)',
-                                    color: '#f59e0b',
-                                    border: '1px solid rgba(245,158,11,0.2)',
-                                    marginRight: '6px', verticalAlign: 'middle'
-                                  }}>
-                                    OUTSIDE
-                                  </span>
-                                )}
-                                <strong>{ref.patient}</strong>
-                              </td>
-                              <td>{ref.to_specialty}</td>
-                              <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {ref.reason || '-'}
-                              </td>
-                              <td>{statusBadge(ref.status)}</td>
-                              <td>
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                  <button className="btn btn-sm btn-outline" onClick={() => handlePreview(ref)} style={{ color: '#2563eb', borderColor: 'rgba(37,99,235,0.2)' }}>Preview</button>
-                                  <button className="btn btn-sm btn-outline" onClick={() => handleEditReferral(ref)}>Edit</button>
-                                  <button className="btn btn-sm btn-outline" style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)' }} onClick={() => handleDeleteReferral(ref.id)}>Delete</button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                    <p className="muted">Loading…</p>
+                  ) : outsideReferrals.length === 0 ? (
+                    <p className="muted">No outside outbound referrals yet.</p>
+                  ) : outboundTable(outsideReferrals, false)}
                 </div>
               )}
-            </div>
+            </section>
 
             {/* Outbound - Local */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <button
-                type="button"
-                onClick={() => setOutboundLocalOpen(!outboundLocalOpen)}
-                style={{
-                  width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '18px 24px', background: 'var(--surface-2)', border: 'none',
-                  borderBottom: outboundLocalOpen ? '1px solid var(--border)' : 'none',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-3, rgba(0,0,0,0.04))'}
-                onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-2)'}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}><Glyph icon="📤" /> Outbound Referrals (Local) <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.85rem' }}>(By You)</span></h3>
-                  <span className="badge" style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', fontSize: '0.72rem', padding: '2px 8px' }}>
-                    {referrals.outbound.filter(r => r.referral_type === 'Local').length}
-                  </span>
-                </div>
-                <span style={{ fontSize: '1.1rem', transition: 'transform 0.25s', transform: outboundLocalOpen ? 'rotate(180deg)' : 'rotate(0deg)', color: 'var(--text-muted)' }}>▼</span>
-              </button>
+            <section className="panel">
+              {collapsibleHead(
+                outboundLocalOpen,
+                () => setOutboundLocalOpen(!outboundLocalOpen),
+                <><Send size={16} aria-hidden="true" /> Outbound referrals, local</>,
+                'By you',
+                localReferrals.length,
+                'ref-local',
+              )}
               {outboundLocalOpen && (
-                <div style={{ padding: 24 }}>
+                <div id="ref-local" className="panel-pad">
                   {loading ? (
-                    <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><div className="spinner" /></div>
-                  ) : referrals.outbound.filter(r => r.referral_type === 'Local').length === 0 ? (
-                    <div style={{
-                      padding: '32px 24px', textAlign: 'center', borderRadius: 8,
-                      background: 'rgba(0,0,0,0.03)', color: 'var(--text-secondary)',
-                    }}>
-                      <span style={{ fontSize: '1.6rem' }}><Glyph icon="📬" /></span>
-                      <p style={{ margin: '8px 0 0', fontSize: '0.875rem' }}>No local outbound referrals yet.</p>
-                    </div>
-                  ) : (
-                    <div className="table-wrapper">
-                      <table>
-                        <thead>
-                          <tr><th>Date</th><th>Patient</th><th>Specialty Target</th><th>Reason</th><th>Status</th><th>Action</th></tr>
-                        </thead>
-                        <tbody>
-                          {referrals.outbound.filter(r => r.referral_type === 'Local').map((ref, idx) => (
-                            <tr key={idx}>
-                              <td>{formatDate(ref.date)}</td>
-                              <td>
-                                {ref.referral_type && (
-                                  <span style={{ 
-                                    display: 'inline-block', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 700, 
-                                    background: 'rgba(59,130,246,0.1)',
-                                    color: '#3b82f6',
-                                    border: '1px solid rgba(59,130,246,0.2)',
-                                    marginRight: '6px', verticalAlign: 'middle'
-                                  }}>
-                                    LOCAL
-                                  </span>
-                                )}
-                                <strong>{ref.patient}</strong>
-                              </td>
-                              <td>{ref.to_specialty}</td>
-                              <td style={{ maxWidth: 260 }}>
-                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ref.reason || '-'}</div>
-                                {ref.clinical_notes && (
-                                  <div
-                                    style={{
-                                      marginTop: 4,
-                                      color: 'var(--text-muted)',
-                                      fontSize: '0.75rem',
-                                      lineHeight: 1.35,
-                                      display: '-webkit-box',
-                                      WebkitLineClamp: 2,
-                                      WebkitBoxOrient: 'vertical',
-                                      overflow: 'hidden',
-                                    }}
-                                    title={ref.clinical_notes}
-                                  >
-                                    <strong>Clinical:</strong> {ref.clinical_notes}
-                                  </div>
-                                )}
-                              </td>
-                              <td>{statusBadge(ref.status)}</td>
-                              <td>
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                  <button className="btn btn-sm btn-outline" onClick={() => handlePreview(ref)} style={{ color: '#2563eb', borderColor: 'rgba(37,99,235,0.2)' }}>Preview</button>
-                                  <button className="btn btn-sm btn-outline" onClick={() => handleEditReferral(ref)}>Edit</button>
-                                  <button className="btn btn-sm btn-outline" style={{ color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)' }} onClick={() => handleDeleteReferral(ref.id)}>Delete</button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                    <p className="muted">Loading…</p>
+                  ) : localReferrals.length === 0 ? (
+                    <p className="muted">No local outbound referrals yet.</p>
+                  ) : outboundTable(localReferrals, true)}
                 </div>
               )}
-            </div>
+            </section>
           </div>
         )}
 
-        {/* Tab: Create Referral */}
+        {/* Tab: Create referral */}
         {activeTab === 'create' && (
-          <div className="hms-anim-3" style={{
-            display: 'flex', flexWrap: 'wrap', gap: 24, maxWidth: selectedPatient ? 1140 : 760, margin: '0 auto',
-            alignItems: 'flex-start', transition: 'max-width 0.3s ease'
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 16, maxWidth: selectedPatient ? 1140 : 760, margin: '0 auto',
+            alignItems: 'flex-start',
           }}>
-            <div className="card" style={{ flex: 1, padding: 0, overflow: 'hidden', minWidth: 0 }}>
-              <div style={{ padding: '18px 28px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem' }}>
-                  {editReferralId ? '✏️' : '📝'}
-                </span>
+            <section className="panel" style={{ flex: '2 1 480px', minWidth: 0 }}>
+              <div className="panel-head">
                 <div>
-                  <h2 style={{ margin: 0, fontSize: '1.15rem' }}>
-                    {editReferralId ? `Edit ${referralType} Referral` : `New ${referralType} Referral`}
+                  <h2 className="panel-title" style={{ margin: 0 }}>
+                    {editReferralId ? <Pencil size={16} aria-hidden="true" /> : <FilePlus2 size={16} aria-hidden="true" />}
+                    {editReferralId ? `Edit ${referralType.toLowerCase()} referral` : `New ${referralType.toLowerCase()} referral`}
                   </h2>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: 0 }}>
+                  <p className="muted" style={{ margin: '2px 0 0' }}>
                     {editReferralId ? `Update the details for this ${referralType.toLowerCase()} referral.` : `Fill in the details to refer a patient to ${referralType === 'Local' ? 'another department' : 'an outside specialist'}.`}
                   </p>
                 </div>
               </div>
-              <div style={{ padding: '28px 28px 24px' }}>
+              <div className="panel-pad">
 
-              <form onSubmit={handleCreateReferral}>
-                {/* Patient Search */}
-                <div style={{ marginBottom: 20 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(59,130,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}><Glyph icon="👤" /></span>
-                    Patient <span style={{ color: '#ef4444' }}>*</span>
+              <form id="referral-form" onSubmit={handleCreateReferral} className="stack">
+                {/* Patient search */}
+                <div className="form-group">
+                  <label className="form-label" htmlFor="ref-patient">
+                    Patient <span style={{ color: 'var(--red)' }} aria-hidden="true">*</span>
                   </label>
                   <div style={{ position: 'relative' }}>
                     <input
+                      id="ref-patient"
                       type="text"
                       className="form-input"
-                      placeholder="Search by name, UHID, or phone..."
+                      placeholder="Search by name, UHID or phone"
                       value={patientQuery}
                       onChange={(e) => {
                         setPatientQuery(e.target.value);
                         if (selectedPatient) clearSelectedPatient();
                       }}
                       onFocus={() => { if (patientResults.length) setShowPatientDropdown(true); }}
-                      style={{ paddingRight: selectedPatient ? 36 : 12 }}
+                      style={{ paddingRight: selectedPatient || searchingPatient ? 96 : 12 }}
+                      autoComplete="off"
                     />
                     {searchingPatient && (
-                      <div className="spinner" style={{
-                        position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                        width: 18, height: 18,
-                      }} />
+                      <span className="muted" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}>
+                        Searching…
+                      </span>
                     )}
                     {selectedPatient && (
                       <button
                         type="button"
+                        className="icon-btn"
                         onClick={clearSelectedPatient}
-                        style={{
-                          position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
-                          background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem',
-                          color: 'var(--text-muted)', lineHeight: 1,
-                        }}
+                        style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)' }}
+                        aria-label="Clear patient"
                         title="Clear patient"
-                      ><Glyph icon="✕" /></button>
+                      ><X size={16} aria-hidden="true" /></button>
                     )}
 
                     {showPatientDropdown && patientResults.length > 0 && !selectedPatient && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                        background: 'var(--surface-1, #fff)', border: '1.5px solid var(--green-border, #10b981)',
-                        borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.15)', maxHeight: 220,
-                        animation: 'hmsScaleIn 0.2s ease both',
-                        overflowY: 'auto',
-                      }}>
+                      <div style={{ ...dropdownStyle, zIndex: 50, maxHeight: 220 }}>
                         {patientResults.map((p) => (
                           <div
                             key={p.id}
                             onMouseDown={() => handleSelectPatient(p)}
-                            style={{
-                              padding: '10px 14px', cursor: 'pointer', fontSize: '0.85rem',
-                              borderBottom: '1px solid var(--border, #eee)',
-                              transition: 'background 0.15s',
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(16, 185, 129, 0.08)'}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            style={dropdownItemStyle}
+                            onMouseEnter={hoverOn}
+                            onMouseLeave={hoverOff}
                           >
-                            <div style={{ fontWeight: 600 }}>{p.name}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                              {p.uhid} • {p.age}y • {p.gender}
-                              {p.empNumber && <span> • Emp: {p.empNumber}</span>}
+                            <div className="cell-primary">{p.name}</div>
+                            <div className="cell-secondary" style={{ marginTop: 2 }}>
+                              <span className="mono">{p.uhid}</span> · {p.age}y · {p.gender}
+                              {p.empNumber && <span> · Emp {p.empNumber}</span>}
                             </div>
                           </div>
                         ))}
@@ -889,112 +818,84 @@ export default function DoctorReferralsPage() {
                     )}
                   </div>
 
-                  {/* Selected Patient Card */}
+                  {/* Selected patient */}
                   {selectedPatient && (
                     <div style={{
-                      marginTop: 10, padding: '10px 14px', borderRadius: 8,
-                      background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)',
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      marginTop: 8, padding: '10px 14px', borderRadius: 8,
+                      background: 'var(--success-light)', border: '1px solid var(--border)',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
                     }}>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{selectedPatient.name}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                          {selectedPatient.uhid} • {selectedPatient.age}y / {selectedPatient.gender}
+                      <div className="cell-stack">
+                        <span className="cell-primary">{selectedPatient.name}</span>
+                        <span className="cell-secondary">
+                          <span className="mono">{selectedPatient.uhid}</span> · {selectedPatient.age}y / {selectedPatient.gender}
                           {selectedPatient.patientType === 'corporate_employee' && (
-                            <span style={{ color: '#059669', fontWeight: 600 }}> • Corporate</span>
+                            <span style={{ color: 'var(--success)', fontWeight: 600 }}> · Corporate</span>
                           )}
-                        </div>
+                        </span>
                       </div>
-                      <span style={{ fontSize: '1.2rem' }}><Glyph icon="✅" /></span>
+                      <CircleCheck size={18} aria-label="Patient selected" style={{ color: 'var(--success)', flexShrink: 0 }} />
                     </div>
                   )}
                 </div>
 
-                {/* Dependent Info (AUTO-FILLED) */}
+                {/* Dependent info (auto-filled) */}
                 {selectedPatient?.patientType === 'corporate_employee' && (
-                  <div className="hms-anim-2" style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(3, 1fr)', 
-                    gap: 16, 
-                    marginBottom: 20,
-                    padding: '16px 20px',
-                    background: 'rgba(16, 185, 129, 0.04)',
-                    borderRadius: 12,
-                    border: '1px solid rgba(16, 185, 129, 0.15)'
-                  }}>
+                  <div className="facts" style={{ padding: '14px 16px', background: 'var(--surface-2)', borderRadius: 8, border: '1px solid var(--border)' }}>
                     <div>
-                      <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        Employee Number
-                      </label>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{formData.empNumber || '—'}</div>
+                      <div className="fact-label">Employee number</div>
+                      <div className="fact-value">{formData.empNumber || '—'}</div>
                     </div>
                     <div>
-                      <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        Employee Name
-                      </label>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{formData.empName || (formData.relationship === 'Self' ? selectedPatient.name : '—')}</div>
+                      <div className="fact-label">Employee name</div>
+                      <div className="fact-value">{formData.empName || (formData.relationship === 'Self' ? selectedPatient.name : '—')}</div>
                     </div>
                     <div>
-                      <label style={{ display: 'block', marginBottom: 4, fontWeight: 600, fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                        Relation
-                      </label>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{formData.relationship || '—'}</div>
+                      <div className="fact-label">Relation</div>
+                      <div className="fact-value">{formData.relationship || '—'}</div>
                     </div>
                   </div>
                 )}
 
-                {/* Specialty & Priority row */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 20 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0 }}>
-                      <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(139,92,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}><Glyph icon="🏥" /></span>
-                      Target Specialty
-                    </label>
+                {/* Specialty and priority */}
+                <div className="form-row-2">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="ref-specialty">Target specialty</label>
                     <select
-                      className="form-input"
+                      id="ref-specialty"
+                      className="form-select"
                       value={SPECIALTY_OPTIONS.includes(formData.toSpecialty) ? formData.toSpecialty : (formData.toSpecialty ? 'Other' : '')}
                       onChange={e => setFormData({ ...formData, toSpecialty: e.target.value })}
                     >
-                      <option value="">Select specialty...</option>
+                      <option value="">Select specialty</option>
                       {SPECIALTY_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                     {(formData.toSpecialty === 'Other' || (formData.toSpecialty && !SPECIALTY_OPTIONS.includes(formData.toSpecialty))) && (
                       <input
                         type="text"
                         className="form-input"
-                        placeholder="Please specify specialty..."
+                        aria-label="Specify specialty"
+                        placeholder="Specify the specialty"
                         value={formData.toSpecialty === 'Other' ? '' : formData.toSpecialty}
                         onChange={e => setFormData({ ...formData, toSpecialty: e.target.value || 'Other' })}
                         autoFocus
-                        style={{ animation: 'hmsScaleIn 0.2s ease both' }}
+                        style={{ marginTop: 8 }}
                       />
                     )}
                   </div>
-                  <div>
-                    <label className="form-label">
-                      Priority
-                    </label>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                  <div className="form-group">
+                    <span className="form-label" id="ref-priority-label">Priority</span>
+                    <div className="segmented" role="radiogroup" aria-labelledby="ref-priority-label">
                       {PRIORITY_OPTIONS.map(p => (
                         <button
                           key={p}
                           type="button"
+                          role="radio"
+                          aria-checked={formData.priority === p}
+                          className={formData.priority === p ? 'is-active' : ''}
                           onClick={() => setFormData({ ...formData, priority: p })}
-                          style={{
-                            flex: 1, padding: '8px 0', borderRadius: 6, fontWeight: 600, fontSize: '0.8rem',
-                            cursor: 'pointer', transition: 'all 0.2s', border: '1.5px solid',
-                            background: formData.priority === p
-                              ? (p === 'Emergency' ? 'rgba(239,68,68,0.12)' : p === 'Urgent' ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)')
-                              : 'transparent',
-                            borderColor: formData.priority === p
-                              ? (p === 'Emergency' ? '#ef4444' : p === 'Urgent' ? '#f59e0b' : '#10b981')
-                              : 'var(--border, #ddd)',
-                            color: formData.priority === p
-                              ? (p === 'Emergency' ? '#dc2626' : p === 'Urgent' ? '#d97706' : '#059669')
-                              : 'var(--text-secondary)',
-                          }}
                         >
-                          {p === 'Emergency' ? '🔴' : p === 'Urgent' ? '🟡' : '🟢'} {p}
+                          {p}
                         </button>
                       ))}
                     </div>
@@ -1002,13 +903,13 @@ export default function DoctorReferralsPage() {
                 </div>
 
                 {/* Hospital */}
-                <div style={{ marginBottom: 20 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(245,158,11,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}><Glyph icon="🏥" /></span>
-                    Referral Hospital <span style={{ color: '#ef4444' }}>*</span>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="ref-hospital">
+                    Referral hospital <span style={{ color: 'var(--red)' }} aria-hidden="true">*</span>
                   </label>
                   <div style={{ position: 'relative' }}>
                     <input
+                      id="ref-hospital"
                       type="text"
                       className="form-input"
                       value={formData.hospital}
@@ -1017,30 +918,21 @@ export default function DoctorReferralsPage() {
                         if (formData.hospital && formData.hospital.length >= 2) setShowHospitalDropdown(true);
                       }}
                       onBlur={() => setTimeout(() => setShowHospitalDropdown(false), 200)}
-                      placeholder="e.g. PGI Chandigarh, AIIMS Delhi, DMC Ludhiana..."
+                      placeholder="e.g. PGI Chandigarh, AIIMS Delhi, DMC Ludhiana"
                       required
-                      style={{ paddingLeft: 38 }}
+                      style={{ paddingLeft: 36 }}
                       autoComplete="off"
                     />
-                    <span
-                      style={{
-                        position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-                        fontSize: '1.05rem', cursor: 'pointer', color: 'var(--text-muted)',
-                        transition: 'color 0.2s', userSelect: 'none', zIndex: 2,
-                      }}
-                    >
-                      <Glyph icon="🔍" />
-                    </span>
-                    {/* Hospital Dropdown */}
+                    <Search
+                      size={16}
+                      aria-hidden="true"
+                      style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }}
+                    />
+                    {/* Hospital dropdown */}
                     {showHospitalDropdown && (hospitalResults.length > 0 || searchingHospital || formData.hospital.trim().length >= 2) && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, right: 0,
-                        background: '#fff', border: '1px solid var(--border, #ddd)',
-                        borderRadius: 8, marginTop: 4, zIndex: 10,
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)', overflow: 'hidden'
-                      }}>
+                      <div style={{ ...dropdownStyle, overflow: 'hidden' }}>
                         {searchingHospital ? (
-                          <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)' }}>Searching...</div>
+                          <div className="muted" style={{ padding: 16, textAlign: 'center' }}>Searching…</div>
                         ) : (
                           <ul style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: 250, overflowY: 'auto' }}>
                             {hospitalResults.map((hosp, idx) => {
@@ -1053,15 +945,12 @@ export default function DoctorReferralsPage() {
                                     setFormData(prev => ({ ...prev, hospital: isCustomized ? prev.hospital : hosp.name }));
                                     setShowHospitalDropdown(false);
                                   }}
-                                  style={{
-                                    padding: '12px 16px', borderBottom: '1px solid #f1f5f9',
-                                    cursor: 'pointer', transition: 'background 0.2s',
-                                  }}
-                                  onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
-                                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                  style={dropdownItemStyle}
+                                  onMouseEnter={hoverOn}
+                                  onMouseLeave={hoverOff}
                                 >
-                                  <div style={{ fontWeight: 600 }}>{hospitalLabel}</div>
-                                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                  <div className="cell-primary">{hospitalLabel}</div>
+                                  <div className="cell-secondary">
                                     {isCustomized ? 'Type the desired hospital name in the field above' : hosp.place || 'Unknown location'}
                                   </div>
                                 </li>
@@ -1074,17 +963,10 @@ export default function DoctorReferralsPage() {
                                   setFormData(prev => ({ ...prev, hospital: prev.hospital.trim() }));
                                   setShowHospitalDropdown(false);
                                 }}
-                                style={{
-                                  padding: '12px 16px',
-                                  cursor: 'pointer',
-                                  transition: 'background 0.2s',
-                                  background: 'rgba(37, 99, 235, 0.04)',
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(37, 99, 235, 0.08)'}
-                                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(37, 99, 235, 0.04)'}
+                                style={{ ...dropdownItemStyle, borderBottom: 0, background: 'var(--primary-light)' }}
                               >
-                                <div style={{ fontWeight: 700, color: '#1d4ed8' }}>Customized</div>
-                                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Use "{formData.hospital.trim()}" as referral hospital</div>
+                                <div style={{ fontWeight: 650, color: 'var(--primary)' }}>Customized</div>
+                                <div className="cell-secondary">Use &quot;{formData.hospital.trim()}&quot; as the referral hospital</div>
                               </li>
                             )}
                           </ul>
@@ -1095,14 +977,12 @@ export default function DoctorReferralsPage() {
                 </div>
 
                 {/* Reason */}
-                <div style={{ marginBottom: 20 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(239,68,68,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}><Glyph icon="📋" /></span>
-                    Reason for Referral
-                  </label>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="ref-reason">Reason for referral</label>
                   <div style={{ position: 'relative' }}>
                     <textarea
-                      className="form-input"
+                      id="ref-reason"
+                      className="form-textarea"
                       rows="3"
                       value={formData.reason}
                       onChange={e => {
@@ -1111,16 +991,10 @@ export default function DoctorReferralsPage() {
                       }}
                       onFocus={() => setShowReasonDropdown(true)}
                       onBlur={() => setTimeout(() => setShowReasonDropdown(false), 200)}
-                      placeholder="e.g. Persistent chest pain not responding to initial management..."
-                      style={{ resize: 'vertical' }}
+                      placeholder="e.g. Persistent chest pain not responding to initial management"
                     />
                     {showReasonDropdown && formData.reason && formData.reason.length > 0 && (
-                      <div style={{
-                        position: 'absolute', top: '100%', left: 0, right: 0,
-                        background: '#fff', border: '1px solid var(--border, #ddd)',
-                        borderRadius: 8, marginTop: 4, zIndex: 10,
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto'
-                      }}>
+                      <div style={{ ...dropdownStyle, maxHeight: 200 }}>
                         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                           {reasonSuggestions.filter(r => r.toLowerCase().includes((formData.reason || '').toLowerCase())).map((reason, idx) => (
                             <li
@@ -1129,20 +1003,16 @@ export default function DoctorReferralsPage() {
                                 setFormData(prev => ({ ...prev, reason: reason }));
                                 setShowReasonDropdown(false);
                               }}
-                              style={{
-                                padding: '10px 14px', borderBottom: '1px solid #f1f5f9',
-                                cursor: 'pointer', transition: 'background 0.2s',
-                                fontSize: '0.85rem'
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                              style={dropdownItemStyle}
+                              onMouseEnter={hoverOn}
+                              onMouseLeave={hoverOff}
                             >
                               {reason}
                             </li>
                           ))}
                           {reasonSuggestions.filter(r => r.toLowerCase().includes((formData.reason || '').toLowerCase())).length === 0 && (
-                            <li style={{ padding: '10px 14px', fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                              Press Enter or save to use this new reason.
+                            <li className="muted" style={{ padding: '10px 14px', textAlign: 'center' }}>
+                              Save the referral to use this new reason.
                             </li>
                           )}
                         </ul>
@@ -1151,69 +1021,54 @@ export default function DoctorReferralsPage() {
                   </div>
                 </div>
 
-                {/* Clinical Notes */}
-                <div style={{ marginBottom: 28 }}>
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(59,130,246,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem' }}><Glyph icon="📝" /></span>
-                    Clinical Notes <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.78rem' }}>(optional)</span>
+                {/* Clinical notes */}
+                <div className="form-group">
+                  <label className="form-label" htmlFor="ref-notes">
+                    Clinical notes <span className="muted" style={{ fontWeight: 400 }}>(optional)</span>
                   </label>
                   <textarea
-                    className="form-input"
+                    id="ref-notes"
+                    className="form-textarea"
                     rows="2"
                     value={formData.clinicalNotes}
                     onChange={e => setFormData({ ...formData, clinicalNotes: e.target.value })}
-                    placeholder="Relevant history, examination findings, investigation results..."
-                    style={{ resize: 'vertical' }}
+                    placeholder="Relevant history, examination findings, investigation results"
                   />
                 </div>
 
                 {referralType === "Outside" && (
-                  <div style={{
-                    marginBottom: 28,
-                    padding: "18px 20px",
-                    border: "1px solid rgba(245,158,11,0.22)",
-                    borderRadius: 12,
-                    background: "rgba(245,158,11,0.04)",
-                  }}>
-                    <div style={{
-                      fontSize: "0.78rem",
-                      fontWeight: 800,
-                      color: "#b45309",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      marginBottom: 16,
-                    }}>
-                      Outside Referral Details
-                    </div>
+                  <div className="stack-sm" style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)' }}>
+                    <h3 className="toolbar-caption" style={{ margin: 0 }}>Outside referral details</h3>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-                      <div>
-                        <label className="form-label">Treatment already from HMS Hospital</label>
+                    <div className="form-row-2">
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="ref-treat-hms">Treatment already given at HMS Hospital</label>
                         <textarea
-                          className="form-input"
+                          id="ref-treat-hms"
+                          className="form-textarea"
                           rows="2"
                           value={formData.treatmentHospital}
                           onChange={e => setFormData({ ...formData, treatmentHospital: e.target.value })}
-                          placeholder="Treatment, medicines, investigations already given at HMS Hospital..."
-                          style={{ resize: "vertical" }}
+                          placeholder="Treatment, medicines and investigations already given at HMS Hospital"
                         />
                       </div>
-                      <div>
-                        <label className="form-label">Treatment already from Local Hospital</label>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="ref-treat-local">Treatment already taken at a local hospital</label>
                         <textarea
-                          className="form-input"
+                          id="ref-treat-local"
+                          className="form-textarea"
                           rows="2"
                           value={formData.treatmentLocal}
                           onChange={e => setFormData({ ...formData, treatmentLocal: e.target.value })}
-                          placeholder="Treatment already taken from local hospital or specialist..."
-                          style={{ resize: "vertical" }}
+                          placeholder="Treatment already taken from a local hospital or specialist"
                         />
                       </div>
                     </div>
 
-                    <div style={{ marginBottom: 16 }}>
-                      <label className="form-label">Period of Treatment</label>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="ref-treat-period">Period of treatment</label>
                       <input
+                        id="ref-treat-period"
                         type="text"
                         className="form-input"
                         value={formData.treatmentPeriod}
@@ -1222,26 +1077,22 @@ export default function DoctorReferralsPage() {
                       />
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-                      <div>
-                        <label className="form-label">Escort allowed</label>
-                        <div style={{ display: "flex", gap: 8 }}>
+                    <div className="form-row-2">
+                      <div className="form-group">
+                        <span className="form-label" id="ref-escort-label">Escort allowed</span>
+                        <div className="segmented" role="radiogroup" aria-labelledby="ref-escort-label">
                           {["Yes", "No"].map(value => (
                             <button
                               key={value}
                               type="button"
+                              role="radio"
+                              aria-checked={formData.escortAllowed === value}
+                              className={formData.escortAllowed === value ? 'is-active' : ''}
                               onClick={() => setFormData({
                                 ...formData,
                                 escortAllowed: value,
                                 escortCount: value === "Yes" ? formData.escortCount : "",
                               })}
-                              className="btn btn-outline"
-                              style={{
-                                flex: 1,
-                                borderColor: formData.escortAllowed === value ? "var(--green)" : "var(--border)",
-                                background: formData.escortAllowed === value ? "rgba(16,185,129,0.1)" : "var(--surface)",
-                                color: formData.escortAllowed === value ? "var(--green)" : "var(--text-secondary)",
-                              }}
                             >
                               {value}
                             </button>
@@ -1249,9 +1100,10 @@ export default function DoctorReferralsPage() {
                         </div>
                       </div>
                       {formData.escortAllowed === "Yes" && (
-                        <div>
-                          <label className="form-label">Number of escort</label>
+                        <div className="form-group">
+                          <label className="form-label" htmlFor="ref-escort-count">Number of escorts</label>
                           <input
+                            id="ref-escort-count"
                             type="number"
                             min="1"
                             className="form-input"
@@ -1263,21 +1115,17 @@ export default function DoctorReferralsPage() {
                       )}
                     </div>
 
-                    <div style={{ marginBottom: 16 }}>
-                      <label className="form-label">Ambulance allowed</label>
-                      <div style={{ display: "flex", gap: 8 }}>
+                    <div className="form-group">
+                      <span className="form-label" id="ref-ambulance-label">Ambulance allowed</span>
+                      <div className="segmented" role="radiogroup" aria-labelledby="ref-ambulance-label">
                         {["Yes", "No"].map(value => (
                           <button
                             key={value}
                             type="button"
+                            role="radio"
+                            aria-checked={formData.ambulanceAllowed === value}
+                            className={formData.ambulanceAllowed === value ? 'is-active' : ''}
                             onClick={() => setFormData({ ...formData, ambulanceAllowed: value })}
-                            className="btn btn-outline"
-                            style={{
-                              flex: 1,
-                              borderColor: formData.ambulanceAllowed === value ? "var(--green)" : "var(--border)",
-                              background: formData.ambulanceAllowed === value ? "rgba(16,185,129,0.1)" : "var(--surface)",
-                              color: formData.ambulanceAllowed === value ? "var(--green)" : "var(--text-secondary)",
-                            }}
                           >
                             {value}
                           </button>
@@ -1285,15 +1133,15 @@ export default function DoctorReferralsPage() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="form-label">Justification for allowing Ambulance / Escorts</label>
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="ref-justification">Justification for allowing ambulance or escorts</label>
                       <textarea
-                        className="form-input"
+                        id="ref-justification"
+                        className="form-textarea"
                         rows="2"
                         value={formData.ambulanceEscortJustification}
                         onChange={e => setFormData({ ...formData, ambulanceEscortJustification: e.target.value })}
-                        placeholder="Medical justification for ambulance or escort permission..."
-                        style={{ resize: "vertical" }}
+                        placeholder="Medical justification for ambulance or escort permission"
                       />
                     </div>
                   </div>
@@ -1302,10 +1150,10 @@ export default function DoctorReferralsPage() {
                 {/* Actions */}
               </form>
               </div>
-              <div style={{ padding: '16px 28px', borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <div className="panel-pad" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button
                   type="button"
-                  className="btn btn-ghost"
+                  className="btn btn-ghost btn-md"
                   onClick={() => {
                     setFormData(buildEmptyReferralForm(referralType));
                     clearSelectedPatient();
@@ -1315,95 +1163,110 @@ export default function DoctorReferralsPage() {
                 >
                   Cancel
                 </button>
-                <button className="btn btn-primary" disabled={submitting} style={{ minWidth: 160 }}
+                <button type="button" className="btn btn-primary btn-md" disabled={submitting}
                   onClick={handleCreateReferral}
                 >
-                  {submitting ? (editReferralId ? '⏳ Updating...' : '⏳ Saving...') : (editReferralId ? '💾 Update Referral' : '💾 Save Referral')}
+                  {submitting
+                    ? (editReferralId ? 'Updating…' : 'Saving…')
+                    : <><Save size={16} aria-hidden="true" /> {editReferralId ? 'Update referral' : 'Save referral'}</>}
                 </button>
               </div>
-            </div>
+            </section>
 
-            {/* Right Column: Patient History Side Panel */}
+            {/* Right column: patient referral history */}
             {selectedPatient && (
-              <div style={{ minWidth: 280, flex: '1 1 300px', animation: 'hmsFadeIn 0.3s ease' }}>
-                <div className="card" style={{ padding: '20px', position: 'sticky', top: 20 }}>
-                  <h3 style={{ margin: '0 0 16px', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: '1.2rem' }}><Glyph icon="🕒" /></span> Patient History
-                  </h3>
-                  
+              <aside style={{ minWidth: 280, flex: '1 1 300px' }}>
+                <section className="panel panel-pad" style={{ position: 'sticky', top: 20 }}>
+                  <h2 className="panel-title"><History size={16} aria-hidden="true" /> Referral history</h2>
+
                   {loadingHistory ? (
-                    <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
-                      <div className="spinner" style={{ margin: '0 auto 10px' }} />
-                      <div style={{ fontSize: '0.85rem' }}>Loading history...</div>
-                    </div>
+                    <p className="muted">Loading history…</p>
                   ) : patientHistory.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 'calc(100vh - 120px)', overflowY: 'auto', paddingRight: 4 }}>
+                    <ul className="list-rows" style={{ maxHeight: 'calc(100vh - 120px)', overflowY: 'auto', paddingRight: 4 }}>
                       {patientHistory.map((h) => (
-                        <div key={h.id} style={{
+                        <li key={h.id} style={{
                           padding: '12px 14px',
-                          background: 'var(--surface-1)',
+                          background: 'var(--surface)',
                           border: '1px solid var(--border)',
+                          borderLeft: `3px solid ${HISTORY_ACCENT[h.status] || 'var(--amber)'}`,
                           borderRadius: 8,
-                          position: 'relative',
-                          borderLeft: `4px solid ${h.status === 'Completed' ? '#10b981' : h.status === 'Declined' ? '#ef4444' : h.status === 'Accepted' ? '#3b82f6' : '#f59e0b'}`,
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-                          transition: 'transform 0.2s',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.transform = 'translateX(2px)'}
-                        onMouseLeave={e => e.currentTarget.style.transform = 'translateX(0)'}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                              {formatDate(h.date)}
-                            </div>
-                            <div style={{ transform: 'scale(0.85)', transformOrigin: 'right top' }}>
-                              {statusBadge(h.status)}
-                            </div>
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                            <span className="cell-secondary tabular">{formatDate(h.date)}</span>
+                            {statusBadge(h.status)}
                           </div>
-                          <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: 4, color: 'var(--text-primary)', lineHeight: 1.3 }}>
-                            {h.to_specialty} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>at</span> {h.hospital}
+                          <div className="cell-primary" style={{ lineHeight: 1.3, marginBottom: 4 }}>
+                            {h.to_specialty} <span className="muted" style={{ fontWeight: 400 }}>at</span> {h.hospital}
                           </div>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
-                            "{h.reason}"
+                          <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.4, marginBottom: 8 }}>
+                            &ldquo;{h.reason}&rdquo;
                           </div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <span><Glyph icon="👨‍⚕️" /></span> Dr. {h.doctor_name}
+                          <div className="cell-secondary" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Stethoscope size={13} aria-hidden="true" /> Dr. {h.doctor_name}
                           </div>
-                        </div>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   ) : (
-                    <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', background: 'var(--surface-1)', borderRadius: 8, border: '1px dashed var(--border)' }}>
-                      <span style={{ fontSize: '2rem', display: 'block', marginBottom: 12, opacity: 0.5 }}><Glyph icon="📝" /></span>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>No previous referrals</div>
-                      <div style={{ fontSize: '0.8rem', marginTop: 4 }}>This patient has a clean slate.</div>
-                    </div>
+                    <p className="muted">No earlier referrals for this patient.</p>
                   )}
-                </div>
-              </div>
+                </section>
+              </aside>
             )}
           </div>
         )}
-      </div>
+      </main>
+
+      <Modal
+        open={pendingDeleteId != null}
+        onOpenChange={(open) => { if (!open && !deleting) setPendingDeleteId(null); }}
+        title="Delete referral"
+        description={pendingDeleteRef ? `Referral for ${pendingDeleteRef.patient} to ${pendingDeleteRef.to_specialty || 'a specialist'}. This cannot be undone.` : 'This cannot be undone.'}
+        size="sm"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setPendingDeleteId(null)} disabled={deleting}>Cancel</button>
+            <button type="button" className="btn btn-danger btn-md" onClick={confirmDeleteReferral} disabled={deleting}>
+              {deleting ? 'Deleting…' : 'Delete referral'}
+            </button>
+          </>
+        )}
+      >
+        <p className="muted">The referral is removed from your outbound list.</p>
+      </Modal>
 
       {/* ═══════════════ Referral Preview Modal ═══════════════ */}
       {previewReferral && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
-          background: 'rgb(100, 116, 139)',
-          display: 'flex', justifyContent: 'center', alignItems: 'flex-start',
-          overflowY: 'auto', padding: '40px 20px'
-        }} onClick={() => setPreviewReferral(null)}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Referral memo preview"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'var(--surface-3)',
+            display: 'flex', justifyContent: 'center', alignItems: 'flex-start',
+            overflowY: 'auto', padding: '40px 20px'
+          }}
+          onClick={() => setPreviewReferral(null)}
+        >
           <div style={{ maxWidth: 820, width: '100%' }} onClick={e => e.stopPropagation()}>
             {/* Controls */}
             <div className="no-print" style={{
-              display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 16
+              display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 16
             }}>
-              <button className="btn btn-secondary" onClick={() => setPreviewReferral(null)}>← Close</button>
-              <button className="btn btn-primary" onClick={handleSavePreviewChanges} disabled={isPreviewSaving}>
-                {isPreviewSaving ? '⏳ Saving...' : '💾 Save Changes'}
+              <button type="button" className="btn btn-ghost btn-md" style={{ background: 'var(--surface)' }} onClick={() => setPreviewReferral(null)}>
+                <ArrowLeft size={16} aria-hidden="true" /> Close
               </button>
-              <button className="btn btn-accent" onClick={handlePrintReferral}><Glyph icon="🖨️" /> Print Referral Memo</button>
+              <button type="button" className="btn btn-secondary btn-md" onClick={handleSavePreviewChanges} disabled={isPreviewSaving}>
+                {isPreviewSaving ? 'Saving…' : <><Save size={16} aria-hidden="true" /> Save changes</>}
+              </button>
+              <button type="button" className="btn btn-primary btn-md" onClick={handlePrintReferral}>
+                <Printer size={16} aria-hidden="true" /> Print referral memo
+              </button>
             </div>
+            {previewReferral.referral_type === 'Local' && (
+              <p className="muted" style={{ textAlign: 'center', marginBottom: 12 }}>Click a dotted field on the memo to edit it before saving or printing.</p>
+            )}
 
             {/* Printable Memo */}
             <div ref={printRef} style={{
