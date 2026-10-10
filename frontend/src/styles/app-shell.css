@@ -230,3 +230,6 @@ main:focus { outline: none; }
     transition-duration: 0.01ms !important; scroll-behavior: auto !important;
   }
 }
+
+/* Leave room under the last row for the floating quick-action button */
+body.has-app-shell .app-page { padding-bottom: 96px; }

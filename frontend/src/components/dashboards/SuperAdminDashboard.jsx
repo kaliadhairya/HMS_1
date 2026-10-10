@@ -1,11 +1,53 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BarChart3, ChevronRight, CircleAlert, ScrollText, Settings, ShieldCheck, Users } from 'lucide-react';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 import PatientAnalyticsModal from '../PatientAnalyticsModal';
-import Glyph from '../ui/Glyph';
+import PageHeader from '../ui/PageHeader';
+import DataTable from '../ui/DataTable';
+import EmptyState from '../ui/EmptyState';
 
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+};
+
+// First name, keeping a leading honorific ("Sister Mary", "Dr. Rao").
+const firstName = (name) => {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'there';
+  // Shared role accounts ("System Administrator") read oddly by first name alone.
+  if (/admin|system/i.test(name)) return parts.join(' ');
+  if (parts.length > 1 && /^(dr|mr|mrs|ms|miss|sister|sr|prof)\.?$/i.test(parts[0])) return `${parts[0]} ${parts[1]}`;
+  return parts[0];
+};
+
+const fmtDateTime = (v) => (v
+  ? new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })
+  : '—');
+
+// "LOGIN_FAILED" -> "Login failed"
+const humanize = (s) => {
+  const t = String(s || '').replace(/_/g, ' ').trim().toLowerCase();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : '—';
+};
+const ACTION_TONE = { LOGIN: 'success', LOGIN_FAILED: 'danger' };
+
+// A KPI tile that opens a page or dialog: same look as a static tile, but a real button.
+
+const ADMIN_LINKS = [
+  { label: 'User management', path: '/hms/admin/users', icon: Users },
+  { label: 'Reports & analytics', path: '/reports', icon: BarChart3 },
+  { label: 'System settings', path: '/admin/settings', icon: Settings },
+];
+
+// Super admin home: patient registrations, user access, system alerts and the audit trail.
 export default function SuperAdminDashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [analyticsMetric, setAnalyticsMetric] = useState(null);
@@ -17,217 +59,146 @@ export default function SuperAdminDashboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-        <div className="spinner" style={{ width: 36, height: 36 }} />
-      </div>
-    );
-  }
+  const columns = useMemo(() => [
+    {
+      id: 'user', header: 'User', accessorFn: (l) => l.user || '',
+      cell: ({ getValue }) => <span className="cell-primary">{getValue() || '—'}</span>,
+    },
+    {
+      id: 'action', header: 'Action', accessorFn: (l) => l.action || '', meta: { width: 200 },
+      cell: ({ getValue }) => <span className={`status status-${ACTION_TONE[getValue()] || 'neutral'}`}>{humanize(getValue())}</span>,
+    },
+    { id: 'module', header: 'Module', accessorFn: (l) => l.module || '', cell: ({ getValue }) => getValue() || '—' },
+    {
+      id: 'time', header: 'Time', meta: { width: 160 },
+      accessorFn: (l) => (l.created_at ? new Date(l.created_at).getTime() : 0),
+      cell: ({ row }) => <span className="tabular">{fmtDateTime(row.original.created_at)}</span>,
+    },
+  ], []);
+
+  const show = (v) => (loading ? '—' : v);
+  const failedLogins = Number(data?.alerts?.failed_logins_today || 0);
+  const lowStock = Number(data?.alerts?.low_stock_count || 0);
+  const criticalLabs = Number(data?.alerts?.critical_lab_count || 0);
 
   const kpis = [
-    { icon: '📋', label: "Today's Patients", value: data?.today_patients || 0, color: 'var(--green)', analytics: { kind: 'patients', scope: 'today', title: "Today's Patient Analytics" } },
-    { icon: '📊', label: 'This Week', value: data?.week_patients || 0, color: 'var(--blue)', analytics: { kind: 'patients', scope: 'week', title: 'Weekly Patient Analytics' } },
-    { icon: '📈', label: 'This Month', value: data?.month_patients || 0, color: 'var(--amber)', analytics: { kind: 'patients', scope: 'month', title: 'Monthly Patient Analytics' } },
-    { icon: '👥', label: 'Active Users', value: data?.active_users || 0, color: 'var(--teal)', analytics: { kind: 'users', scope: 'active', title: 'User Access Analytics' } },
+    { label: 'New patients today', value: data?.today_patients || 0, analytics: { kind: 'patients', scope: 'today', title: "Today's Patient Analytics" } },
+    { label: 'New patients this week', value: data?.week_patients || 0, analytics: { kind: 'patients', scope: 'week', title: 'Weekly Patient Analytics' } },
+    { label: 'New patients this month', value: data?.month_patients || 0, analytics: { kind: 'patients', scope: 'month', title: 'Monthly Patient Analytics' } },
+    { label: 'Active users', value: data?.active_users || 0, analytics: { kind: 'users', scope: 'active', title: 'User Access Analytics' } },
   ];
 
   const alerts = [
-    { icon: '🚨', label: 'Failed Logins Today', value: data?.alerts?.failed_logins_today || 0, color: 'var(--red)' },
-    { icon: '📦', label: 'Low Stock Items', value: data?.alerts?.low_stock_count || 0, color: 'var(--amber)' },
-    { icon: '⚠️', label: 'Critical Labs', value: data?.alerts?.critical_lab_count || 0, color: 'var(--red)' },
+    { label: 'Failed sign-ins today', value: failedLogins, color: failedLogins > 0 ? 'var(--amber)' : undefined },
+    { label: 'Low stock items', value: lowStock, color: lowStock > 0 ? 'var(--amber)' : undefined },
+    { label: 'Critical lab results', value: criticalLabs, color: criticalLabs > 0 ? 'var(--red)' : undefined },
   ];
 
   return (
     <>
-      <div className="container py-4">
-        {/* Premium Header */}
-        <div className="hms-page-header hms-anim-1">
-          <div>
-            <h1>
-              <span className="header-icon" style={{ background: 'rgba(139,92,246,0.1)', borderColor: 'rgba(139,92,246,0.25)' }}><Glyph icon="🛡️" /></span>
-              Super Admin Dashboard
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Hospital Management System — System-wide Overview & Controls
-            </p>
-          </div>
-        </div>
+      <PageHeader
+        title={`${greeting()}, ${firstName(user?.name)}`}
+        description="System-wide overview of patient registrations, user access and audit activity."
+        actions={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/reports')}>
+              <BarChart3 size={16} aria-hidden="true" /> Reports & analytics
+            </button>
+            <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/hms/admin/users')}>
+              <Users size={16} aria-hidden="true" /> User management
+            </button>
+          </>
+        )}
+      />
 
-        {/* KPI Cards */}
-        <div className="hms-anim-2" style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-          gap: 16, marginBottom: 30,
-        }}>
-          {kpis.map((k, i) => (
+      {!loading && criticalLabs > 0 && (
+        <div className="alert-strip alert-danger" role="status">
+          <CircleAlert size={16} aria-hidden="true" />
+          <span><strong>{criticalLabs} critical lab {criticalLabs === 1 ? 'result' : 'results'}</strong> reported. Make sure the treating doctors have been told.</span>
+        </div>
+      )}
+      {!loading && failedLogins > 0 && (
+        <div className="alert-strip alert-warning" role="status">
+          <ShieldCheck size={16} aria-hidden="true" />
+          <span><strong>{failedLogins} failed sign-in {failedLogins === 1 ? 'attempt' : 'attempts'}</strong> today. Check the audit log below for repeated attempts.</span>
+        </div>
+      )}
+
+      <div className="kpi-strip">
+        {kpis.map((k) => {
+          const body = (
+            <>
+              <div className="kpi-label">{k.label}</div>
+              <div className="kpi-value">{show(k.value)}</div>
+              {data && <div className="kpi-sub">View analytics</div>}
+            </>
+          );
+          return data ? (
             <button
               key={k.label}
               type="button"
-              className={`hms-stat-card anim-${i + 1}`}
+              className="panel kpi kpi-button"
               onClick={() => setAnalyticsMetric(k.analytics)}
-              title={`Open ${k.label} analytics`}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-3px)';
-                e.currentTarget.style.boxShadow = '0 14px 30px -10px rgba(139,92,246,0.4)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'none';
-                e.currentTarget.style.boxShadow = '';
-              }}
-              style={{
-                borderTop: `4px solid ${k.color}`,
-                padding: 0,
-                display: 'block',
-                position: 'relative',
-                cursor: 'pointer',
-                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                textAlign: 'left',
-                font: 'inherit',
-                color: 'inherit',
-                width: '100%',
-                minHeight: 136,
-                overflow: 'hidden',
-                background: 'var(--surface)',
-              }}
+              aria-label={`${k.label}: ${k.value}. Open ${k.label.toLowerCase()} analytics`}
             >
-              <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, height: '100%' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                  <div style={{
-                    width: 48, height: 48, borderRadius: 12,
-                    background: `${k.color}15`, color: k.color,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '1.5rem', flexShrink: 0,
-                  }}>
-                    <Glyph icon={k.icon} />
-                  </div>
-                  <span style={{
-                    borderRadius: 999,
-                    border: '1px solid var(--primary-border)',
-                    background: 'var(--primary-light)',
-                    color: 'var(--primary)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    fontSize: '0.62rem',
-                    fontWeight: 800,
-                    letterSpacing: '0.06em',
-                    lineHeight: 1,
-                    padding: '7px 9px',
-                    textTransform: 'uppercase',
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                  }}>
-                    Analytics <span style={{ fontSize: '0.82rem' }}>↗</span>
-                  </span>
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{
-                    color: 'var(--text-muted)',
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
-                    letterSpacing: '0.06em',
-                    lineHeight: 1.25,
-                    textTransform: 'uppercase',
-                    overflowWrap: 'anywhere',
-                  }}>
-                    {k.label}
-                  </div>
-                  <div style={{ fontSize: '1.7rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4, lineHeight: 1 }}>
-                    {k.value}
-                  </div>
-                </div>
-              </div>
+              {body}
             </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 24, marginBottom: 30 }}>
-          {/* System Alerts */}
-          <div className="card hms-anim-3" style={{ padding: 24 }}>
-            <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '1.2rem' }}><Glyph icon="🚨" /></span> System Alerts
-            </h2>
-            <div style={{ display: 'grid', gap: 12 }}>
-              {alerts.map(a => (
-                <div key={a.label} style={{
-                  background: 'var(--surface-2)', border: '1px solid var(--border)',
-                  borderRadius: 12, padding: '16px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  transition: 'transform 0.2s ease', cursor: 'default'
-                }}
-                onMouseEnter={e => e.currentTarget.style.transform = 'translateX(4px)'}
-                onMouseLeave={e => e.currentTarget.style.transform = 'none'}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: '1.2rem', background: 'var(--surface-1)', padding: 8, borderRadius: 8 }}><Glyph icon={a.icon} /></span>
-                    <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{a.label}</span>
-                  </div>
-                  <span style={{ fontSize: '1.2rem', fontWeight: 800, color: a.color }}>{a.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Quick Links */}
-          <div className="card hms-anim-4" style={{ padding: 24 }}>
-            <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '1.2rem' }}><Glyph icon="⚡" /></span> Admin Controls
-            </h2>
-            <div style={{ display: 'grid', gap: 12 }}>
-              <button className="hms-action-btn" onClick={() => navigate('/hms/admin/users')}>
-                <span><Glyph icon="👥" /> User Management</span>
-                <span className="arrow">→</span>
-              </button>
-              <button className="hms-action-btn" onClick={() => navigate('/reports')}>
-                <span><Glyph icon="📊" /> Reports & Analytics</span>
-                <span className="arrow">→</span>
-              </button>
-              <button className="hms-action-btn" onClick={() => navigate('/admin/settings')}>
-                <span><Glyph icon="⚙️" /> System Settings</span>
-                <span className="arrow">→</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Audit Log */}
-        <div className="card hms-anim-5" style={{ padding: 24 }}>
-          <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '1.2rem' }}><Glyph icon="📋" /></span> Recent Audit Log
-          </h2>
-          <div className="table-wrapper hms-table-anim" style={{ maxHeight: 320, overflowY: 'auto' }} tabIndex={0} role="region" aria-label="Recent audit log">
-            <table>
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Action</th>
-                  <th>Module</th>
-                  <th>Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data?.recent_audit || []).map((log, i) => (
-                  <tr key={i} style={{ animationDelay: `${i * 0.05}s` }}>
-                    <td style={{ fontWeight: 600 }}>{log.user}</td>
-                    <td>
-                      <span className={`badge ${log.action === 'LOGIN' ? 'badge-green' : log.action === 'LOGIN_FAILED' ? 'badge-red' : 'badge-blue'}`} style={{ padding: '4px 10px' }}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td>{log.module}</td>
-                    <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      {log.created_at ? new Date(log.created_at).toLocaleString('en-IN') : '—'}
-                    </td>
-                  </tr>
-                ))}
-                {(!data?.recent_audit || data.recent_audit.length === 0) && (
-                  <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 30 }}>No audit logs yet</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          ) : (
+            <div key={k.label} className="panel kpi">{body}</div>
+          );
+        })}
       </div>
+
+      <div className="split-2" style={{ marginBottom: 16 }}>
+        <section className="panel panel-pad">
+          <h2 className="panel-title"><CircleAlert size={16} aria-hidden="true" /> System alerts</h2>
+          <ul className="list-rows">
+            {alerts.map((a) => (
+              <li key={a.label}>
+                <div className="list-row list-row-static">
+                  <span>{a.label}</span>
+                  <strong className="tabular" style={{ color: a.color }}>{show(a.value)}</strong>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="panel panel-pad">
+          <h2 className="panel-title"><Settings size={16} aria-hidden="true" /> Admin controls</h2>
+          <ul className="list-rows">
+            {ADMIN_LINKS.map((l) => {
+              const Icon = l.icon;
+              return (
+                <li key={l.path}>
+                  <button type="button" className="list-row" onClick={() => navigate(l.path)}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                      <Icon size={16} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
+                      {l.label}
+                    </span>
+                    <ChevronRight size={16} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      </div>
+
+      <section className="panel">
+        <div className="panel-head">
+          <h2 className="panel-title" style={{ margin: 0 }}><ScrollText size={16} aria-hidden="true" /> Recent audit log</h2>
+        </div>
+        <DataTable
+          columns={columns}
+          data={data?.recent_audit || []}
+          loading={loading}
+          getRowId={(l, i) => String(l.id ?? i)}
+          pageSize={10}
+          initialSorting={[{ id: 'time', desc: true }]}
+          empty={<EmptyState icon={ScrollText} title="No audit entries yet" description="Sign-ins and changes to records appear here as people use the system." />}
+        />
+      </section>
 
       <PatientAnalyticsModal
         isOpen={!!analyticsMetric}

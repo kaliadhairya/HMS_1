@@ -444,10 +444,10 @@ router.get('/admin-ops', restrictTo('admin', 'super_admin'), async (req, res) =>
     `).catch(() => [[{ CNT: 0 }]]);
     const opdCount = opdRows[0]?.CNT || 0;
 
-    // IPD count (currently admitted)
+    // IPD count (currently admitted). Admissions live in HMS_ADMISSIONS with STATUS 'Active'.
     const [ipdRows] = await sequelize.query(`
-      SELECT COUNT(*) as CNT FROM HMS_IPD_ADMISSIONS
-      WHERE STATUS = 'Admitted'
+      SELECT COUNT(*) as CNT FROM HMS_ADMISSIONS
+      WHERE STATUS = 'Active'
     `).catch(() => [[{ CNT: 0 }]]);
     const ipdCount = ipdRows[0]?.CNT || 0;
 
@@ -460,10 +460,12 @@ router.get('/admin-ops', restrictTo('admin', 'super_admin'), async (req, res) =>
     `).catch(() => [[{ CNT: 0 }]]);
     const staffOnDuty = staffRows[0]?.CNT || 0;
 
-    // Pending discharges
+    // Pending discharges: marked for discharge, or admitted past their expected discharge date
     const [dischRows] = await sequelize.query(`
-      SELECT COUNT(*) as CNT FROM HMS_IPD_ADMISSIONS
-      WHERE STATUS = 'Discharge Pending'
+      SELECT COUNT(*) as CNT FROM HMS_ADMISSIONS
+      WHERE STATUS IN ('Discharge Pending', 'Pending Discharge')
+         OR (STATUS = 'Active' AND EXPECTED_DISCHARGE_DATE IS NOT NULL
+             AND trunc(EXPECTED_DISCHARGE_DATE) <= trunc(CURRENT_TIMESTAMP))
     `).catch(() => [[{ CNT: 0 }]]);
     const pendingDischarges = dischRows[0]?.CNT || 0;
 
@@ -489,8 +491,8 @@ router.get('/admin-ops', restrictTo('admin', 'super_admin'), async (req, res) =>
     // Recent admissions (last 10)
     const [recentAdmissions] = await sequelize.query(`
       SELECT a.ID, p.NAME as PATIENT_NAME, a.STATUS, a.ADMISSION_DATE,
-             w.WARD_NAME, b.BED_NUMBER
-      FROM HMS_IPD_ADMISSIONS a
+             w.NAME as WARD_NAME, b.BED_NUMBER
+      FROM HMS_ADMISSIONS a
       LEFT JOIN HMS_PATIENTS p ON p.ID = a.PATIENT_ID
       LEFT JOIN HMS_BEDS b ON b.ID = a.BED_ID
       LEFT JOIN HMS_WARDS w ON w.ID = b.WARD_ID

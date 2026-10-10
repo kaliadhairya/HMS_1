@@ -1,115 +1,96 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ReferralTypeModal from '../ReferralTypeModal';
-import { useAuth } from '../../context/AuthContext';
-import api from '../../api/axios';
-import { useSocket } from '../../context/SocketContext';
 import { toast } from 'react-hot-toast';
-import Glyph from '../ui/Glyph';
+import {
+  CalendarPlus, RefreshCw, Search, Stethoscope, Pill, Share2, BedSingle, FileBadge, FlaskConical, BedDouble,
+  UserRound, Play, ListOrdered, History, Users,
+} from 'lucide-react';
+import ReferralTypeModal from '../ReferralTypeModal';
+import PageHeader from '../ui/PageHeader';
+import DataTable from '../ui/DataTable';
+import EmptyState from '../ui/EmptyState';
+import RowMenu from '../ui/RowMenu';
+import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
+import api from '../../api/axios';
 
 const COMPLETED_PRESCRIPTION_STATUSES = new Set(['Consulted', 'Finalized', 'Dispensed']);
+const EXPIRES_AFTER_DAYS = 4;
 
-function isSavedPrescription(rx) {
-  return COMPLETED_PRESCRIPTION_STATUSES.has(rx.status) || Number(rx.medicine_count || 0) > 0;
-}
+const isSavedPrescription = (rx) => COMPLETED_PRESCRIPTION_STATUSES.has(rx.status) || Number(rx.medicine_count || 0) > 0;
 
 function isSameLocalDate(value, date = new Date()) {
   if (!value) return false;
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return false;
-  return parsed.getFullYear() === date.getFullYear()
-    && parsed.getMonth() === date.getMonth()
-    && parsed.getDate() === date.getDate();
+  return parsed.getFullYear() === date.getFullYear() && parsed.getMonth() === date.getMonth() && parsed.getDate() === date.getDate();
 }
 
-function getPatientTypeBadge(type) {
-  if (type === 'corporate_employee') return { label: 'Corporate', bg: 'rgba(16,185,129,0.1)', color: 'var(--green)', border: 'rgba(16,185,129,0.2)' };
-  return { label: 'General', bg: 'rgba(59,130,246,0.1)', color: 'var(--blue)', border: 'rgba(59,130,246,0.2)' };
+const categoryOf = (type) => (type === 'corporate_employee' ? { label: 'Corporate', tone: 'info' } : { label: 'General', tone: 'neutral' });
+const norm = (v) => String(v ?? '').trim().toLowerCase();
+const matchesSearch = (p, query) => {
+  const q = norm(query);
+  if (!q) return true;
+  return [p?.name, p?.uhid, p?.empNumber, p?.phoneNumber, p?.mobile, p?.age, p?.gender, categoryOf(p?.patientType).label, p?.consulting_doctor_name]
+    .map(norm).join(' ').includes(q);
+};
+const isPendingLabReview = (lab) => norm(lab?.status) !== 'completed';
+const fmtTime = (v) => (v ? new Date(v).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }) : '—');
+const fmtDayTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }) : '—');
+const withoutDr = (name) => String(name || '').replace(/^Dr\.?\s*/i, '');
+
+function PatientCell({ p }) {
+  const meta = [p.uhid, p.age ? `${p.age} y` : null, p.gender ? p.gender.charAt(0).toUpperCase() : null, p.empNumber ? `Emp ${p.empNumber}` : null]
+    .filter(Boolean).join(' · ');
+  return (
+    <span className="cell-person">
+      <span className="cell-avatar" aria-hidden="true">{(p.name || '?').charAt(0).toUpperCase()}</span>
+      <span className="cell-stack">
+        <span className="cell-primary">{p.name}</span>
+        <span className="cell-secondary">{meta}</span>
+      </span>
+    </span>
+  );
 }
 
-function normalizeDashboardSearch(value) {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function matchesDashboardPatientSearch(patient, query) {
-  const search = normalizeDashboardSearch(query);
-  if (!search) return true;
-
-  return [
-    patient?.name,
-    patient?.uhid,
-    patient?.empNumber,
-    patient?.phoneNumber,
-    patient?.mobile,
-    patient?.age,
-    patient?.gender,
-    patient?.patientType,
-    getPatientTypeBadge(patient?.patientType).label,
-    patient?.consulting_doctor_name,
-  ].map(normalizeDashboardSearch).join(' ').includes(search);
-}
-
-function isPendingLabReview(lab) {
-  return normalizeDashboardSearch(lab?.status) !== 'completed';
-}
-
-function getActionMenuPosition(rect, preferredWidth = 250, preferredHeight = 440) {
-  const safeGap = 8;
-  if (typeof window === 'undefined') {
-    return { top: rect.bottom + 6, left: Math.max(safeGap, rect.right - preferredWidth) };
-  }
-
-  const maxLeft = Math.max(safeGap, window.innerWidth - preferredWidth - safeGap);
-  const maxTop = Math.max(safeGap, window.innerHeight - preferredHeight);
-  return {
-    top: Math.min(rect.bottom + 6, maxTop),
-    left: Math.min(Math.max(safeGap, rect.right - preferredWidth), maxLeft),
-  };
-}
-
+// Doctor's clinical workspace: today's OPD queue, patients still waiting from previous days, and lab reviews.
 export default function DoctorDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const socket = useSocket();
   const [todayPatients, setTodayPatients] = useState([]);
-  const [myPatients, setMyPatients] = useState([]);
   const [pendingPatients, setPendingPatients] = useState([]);
   const [doctorPrescriptions, setDoctorPrescriptions] = useState([]);
   const [doctorLabs, setDoctorLabs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expandedRow, setExpandedRow] = useState(null);
-  const navigate = useNavigate();
-  const socket = useSocket();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
-  const [todayStatusFilter, setTodayStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [todaySearch, setTodaySearch] = useState('');
   const [pendingSearch, setPendingSearch] = useState('');
-
-  // State for Referral Modal
-  const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
-  const [selectedPatientForReferral, setSelectedPatientForReferral] = useState(null);
-
-  // Actions dropdown state — rendered as overlay outside the table
-  const [actionPatient, setActionPatient] = useState(null);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
-  const actionBtnRefs = useRef({});
+  const [pendingView, setPendingView] = useState('open');
+  const [startingId, setStartingId] = useState(null);
+  const [menuFor, setMenuFor] = useState(null);
+  const [referralPatient, setReferralPatient] = useState(null);
   const pendingActionId = useRef(null);
 
-  const openActions = (patient, e) => {
-    e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    setDropdownPos(getActionMenuPosition(rect, 250, 440));
-    setActionPatient(patient);
-    setExpandedRow(patient.id);
-  };
-
-  const closeActions = () => {
-    setActionPatient(null);
-    setExpandedRow(null);
-  };
-
-  useEffect(() => {
-    fetchDoctorData();
+  const fetchDoctorData = useCallback(async () => {
+    const [todayRes, pendingRes, prescriptionsRes, labsRes] = await Promise.allSettled([
+      api.get('/patients/hms/today-patients'),
+      api.get('/patients/hms/pending-consultation'),
+      api.get('/doctor/prescriptions'),
+      api.get('/doctor/labs'),
+    ]);
+    const dataOf = (r) => (r.status === 'fulfilled' ? r.value.data?.data || [] : []);
+    setTodayPatients(dataOf(todayRes));
+    setPendingPatients(dataOf(pendingRes));
+    setDoctorPrescriptions(dataOf(prescriptionsRes));
+    setDoctorLabs(dataOf(labsRes));
+    setLastRefreshedAt(new Date());
+    setLoading(false);
   }, []);
+
+  useEffect(() => { fetchDoctorData(); }, [fetchDoctorData]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -117,733 +98,308 @@ export default function DoctorDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!socket) return;
-    socket.on('lab_result_ready', (data) => {
-      toast.success(`Lab Result Ready for Item ID: ${data.itemId}`, { icon: '🔬', duration: 5000 });
-    });
-    socket.on('lab_status_change', (data) => {
-      if (data.status === 'In Progress') toast(`Lab Order ${data.orderId} is now In Progress`, { icon: '🧪' });
-    });
-    socket.on('prescription_dispensed', (data) => {
-      toast.success(`Prescription ${data.prescriptionId} has been dispensed`, { icon: '💊', duration: 5000 });
-    });
+    if (!socket) return undefined;
+    const onLabReady = (data) => toast.success(`Lab result ready for item ${data.itemId}`, { duration: 5000 });
+    const onLabStatus = (data) => { if (data.status === 'In Progress') toast(`Lab order ${data.orderId} is now in progress`); };
+    const onDispensed = (data) => toast.success(`Prescription ${data.prescriptionId} has been dispensed`, { duration: 5000 });
+    socket.on('lab_result_ready', onLabReady);
+    socket.on('lab_status_change', onLabStatus);
+    socket.on('prescription_dispensed', onDispensed);
     return () => {
-      socket.off('lab_result_ready');
-      socket.off('lab_status_change');
-      socket.off('prescription_dispensed');
+      socket.off('lab_result_ready', onLabReady);
+      socket.off('lab_status_change', onLabStatus);
+      socket.off('prescription_dispensed', onDispensed);
     };
   }, [socket]);
 
-  const fetchDoctorData = async () => {
+  const startConsultation = async (patient) => {
+    setStartingId(patient.id);
     try {
-      const [todayRes, patientsRes, pendingRes, prescriptionsRes, labsRes] = await Promise.allSettled([
-        api.get('/patients/hms/today-patients'),
-        api.get('/doctor/my-patients'),
-        api.get('/patients/hms/pending-consultation'),
-        api.get('/doctor/prescriptions'),
-        api.get('/doctor/labs'),
-      ]);
-
-      const failedRequests = [todayRes, patientsRes, pendingRes, prescriptionsRes, labsRes]
-        .filter((result) => result.status === 'rejected');
-      if (failedRequests.length > 0) {
-        console.error('Failed to fetch some doctor dashboard data:', failedRequests.map((result) => result.reason));
-      }
-
-      setTodayPatients(todayRes.status === 'fulfilled' ? todayRes.value.data?.data || [] : []);
-      setMyPatients(patientsRes.status === 'fulfilled' ? patientsRes.value.data?.data || [] : []);
-      setPendingPatients(pendingRes.status === 'fulfilled' ? pendingRes.value.data?.data || [] : []);
-      setDoctorPrescriptions(prescriptionsRes.status === 'fulfilled' ? prescriptionsRes.value.data?.data || [] : []);
-      setDoctorLabs(labsRes.status === 'fulfilled' ? labsRes.value.data?.data || [] : []);
-      setLastRefreshedAt(new Date());
-    } catch (err) {
-      console.error('Failed to fetch doctor data:', err);
-      setTodayPatients([]);
-      setMyPatients([]);
-      setPendingPatients([]);
-      setDoctorPrescriptions([]);
-      setDoctorLabs([]);
-      setLastRefreshedAt(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startConsultation = async (patient, e) => {
-    try {
-      // Capture button position for dropdown before the API call
-      if (e && e.currentTarget) {
-        const rect = e.currentTarget.getBoundingClientRect();
-        setDropdownPos(getActionMenuPosition(rect, 240));
-      }
-      const payload = { patient_id: patient.id, department_id: null, encounter_type: 'OPD' };
-      await api.post('/hms/encounters', payload);
-      toast.success('Consultation started!');
+      await api.post('/hms/encounters', { patient_id: patient.id, department_id: null, encounter_type: 'OPD' });
+      toast.success(`Consultation started for ${patient.name}`);
       pendingActionId.current = patient.id;
+      setStatusFilter('all');
       await fetchDoctorData();
-    } catch (err) {
-      console.error('Failed to start consultation:', err);
-      toast.error('Failed to start consultation');
+    } catch {
+      toast.error('Failed to start the consultation');
+    } finally {
+      setStartingId(null);
     }
   };
 
-  // Auto-open actions dropdown after startConsultation refreshes data
+  // After starting a consultation, open that patient's action menu so the doctor can pick the next step.
   useEffect(() => {
-    if (pendingActionId.current && todayPatients.length > 0) {
-      const pid = pendingActionId.current;
-      const patient = todayPatients.find(p => p.id === pid);
-      if (patient && patient.encounter_id) {
-        pendingActionId.current = null;
-        setActionPatient(patient);
-        setExpandedRow(patient.id);
-        // Recalculate position from ref if available
-        const btn = actionBtnRefs.current[pid];
-        if (btn) {
-          const rect = btn.getBoundingClientRect();
-          setDropdownPos(getActionMenuPosition(rect, 240));
-        }
-      }
+    const pid = pendingActionId.current;
+    if (!pid) return;
+    const patient = todayPatients.find((p) => p.id === pid);
+    if (patient?.encounter_id) {
+      pendingActionId.current = null;
+      setMenuFor(pid);
     }
   }, [todayPatients]);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 80, gap: 16 }}>
-        <div className="spinner" style={{ width: 40, height: 40 }} />
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading clinical workspace...</p>
-      </div>
-    );
-  }
+  const completedRxPatientIds = useMemo(() => new Set(
+    doctorPrescriptions.filter((rx) => isSavedPrescription(rx) && isSameLocalDate(rx.created_at)).map((rx) => Number(rx.patient_id)).filter(Boolean),
+  ), [doctorPrescriptions]);
 
-  const completedPrescriptionPatientIds = new Set(
-    doctorPrescriptions
-      .filter(rx => isSavedPrescription(rx) && isSameLocalDate(rx.created_at))
-      .map(rx => Number(rx.patient_id))
-      .filter(Boolean)
+  const statusOf = useCallback((p) => {
+    if (p.encounter_status === 'Finalized' || completedRxPatientIds.has(Number(p.id))) return 'completed';
+    return p.encounter_id ? 'consulting' : 'waiting';
+  }, [completedRxPatientIds]);
+
+  const counts = useMemo(() => {
+    const c = { all: todayPatients.length, waiting: 0, consulting: 0, completed: 0 };
+    todayPatients.forEach((p) => { c[statusOf(p)] += 1; });
+    return c;
+  }, [todayPatients, statusOf]);
+
+  const visibleToday = useMemo(
+    () => todayPatients.filter((p) => (statusFilter === 'all' || statusOf(p) === statusFilter) && matchesSearch(p, todaySearch)),
+    [todayPatients, statusFilter, todaySearch, statusOf],
   );
-  const isCompletedToday = (patient) => (
-    patient.encounter_status === 'Finalized' || completedPrescriptionPatientIds.has(Number(patient.id))
+  const isExpired = (p) => (Number(p.days_ago) || 0) >= EXPIRES_AFTER_DAYS;
+  const openPending = useMemo(() => pendingPatients.filter((p) => !isExpired(p)), [pendingPatients]);
+  const expiredPending = useMemo(() => pendingPatients.filter(isExpired), [pendingPatients]);
+  const visiblePending = useMemo(
+    () => (pendingView === 'open' ? openPending : expiredPending).filter((p) => matchesSearch(p, pendingSearch)),
+    [pendingView, openPending, expiredPending, pendingSearch],
   );
-  const waitingPatients = todayPatients.filter(p => !p.encounter_id);
-  const consultingPatients = todayPatients.filter(p => p.encounter_id && !isCompletedToday(p));
-  const completedPatients = todayPatients.filter(isCompletedToday);
-  const todayPatientsForStatus = todayStatusFilter === 'waiting'
-    ? waitingPatients
-    : todayStatusFilter === 'consulting'
-      ? consultingPatients
-      : todayStatusFilter === 'completed'
-        ? completedPatients
-        : todayPatients;
-  const visibleTodayPatients = todayPatientsForStatus.filter(p => matchesDashboardPatientSearch(p, todaySearch));
-  const visiblePendingPatients = pendingPatients.filter(p => matchesDashboardPatientSearch(p, pendingSearch));
   const pendingLabReviews = doctorLabs.filter(isPendingLabReview).length;
-  const todayQueueTabs = [
-    { key: 'all', label: 'All', count: todayPatients.length },
-    { key: 'waiting', label: 'Waiting', count: waitingPatients.length },
-    { key: 'consulting', label: 'Consulting', fullLabel: 'In Consultation', count: consultingPatients.length },
-    { key: 'completed', label: 'Completed', count: completedPatients.length },
-  ];
+
+  const actionsFor = useCallback((p) => [
+    { label: 'Open consultation', icon: Stethoscope, onSelect: () => navigate(`/hms/consultation/${p.encounter_id}`), hidden: !p.encounter_id },
+    { label: 'Prescription', icon: Pill, onSelect: () => navigate(`/hms/prescription-slip?patientId=${p.id}&encounterId=${p.encounter_id || ''}`) },
+    { label: 'Lab orders', icon: FlaskConical, onSelect: () => navigate(`/doctor/labs?patientId=${p.id}`) },
+    { label: 'Referral', icon: Share2, onSelect: () => setReferralPatient(p) },
+    { label: 'Rest form', icon: BedSingle, onSelect: () => navigate(`/doctor/rest-forms/new?patientId=${p.id}`) },
+    { label: 'Medical certificate', icon: FileBadge, onSelect: () => navigate(`/doctor/medical-certificate?patientId=${p.id}`) },
+    { label: 'Move to IPD', icon: BedDouble, onSelect: () => navigate(`/ipd/admission-form?patientId=${p.id}`), separator: true },
+    { label: 'Patient profile', icon: UserRound, onSelect: () => navigate(`/hms/patients/${p.id}`) },
+  ], [navigate]);
+
+  const STATUS_META = {
+    waiting: { label: 'Waiting', tone: 'warning' },
+    consulting: { label: 'In consultation', tone: 'info' },
+    completed: { label: 'Completed', tone: 'success' },
+  };
+
+  const todayColumns = useMemo(() => [
+    { id: 'patient', header: 'Patient', accessorFn: (p) => p.name || '', cell: ({ row }) => <PatientCell p={row.original} /> },
+    {
+      id: 'category', header: 'Category', accessorFn: (p) => categoryOf(p.patientType).label, meta: { width: 120 },
+      cell: ({ row }) => { const c = categoryOf(row.original.patientType); return <span className={`status status-${c.tone}`}>{c.label}</span>; },
+    },
+    {
+      id: 'registered', header: 'Registered', accessorFn: (p) => (p.created_at ? new Date(p.created_at).getTime() : 0), meta: { width: 120 },
+      cell: ({ row }) => <span className="tabular">{fmtTime(row.original.created_at)}</span>,
+    },
+    {
+      id: 'status', header: 'Status', accessorFn: (p) => STATUS_META[statusOf(p)].label, meta: { width: 190 },
+      cell: ({ row }) => {
+        const p = row.original;
+        const s = STATUS_META[statusOf(p)];
+        const otherDoctor = p.encounter_id && String(p.consulting_doctor_id) !== String(user?.id) && p.consulting_doctor_name;
+        return (
+          <span className="cell-stack">
+            <span className={`status status-${s.tone}`} style={{ alignSelf: 'flex-start' }}>{s.label}</span>
+            {otherDoctor && statusOf(p) === 'consulting' && <span className="cell-secondary">with Dr. {withoutDr(p.consulting_doctor_name)}</span>}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 230, align: 'right' },
+      cell: ({ row }) => {
+        const p = row.original;
+        if (!p.encounter_id) {
+          return (
+            <button type="button" className="btn btn-primary btn-sm" disabled={startingId === p.id} onClick={() => startConsultation(p)}>
+              <Play size={14} aria-hidden="true" /> {startingId === p.id ? 'Starting…' : 'Start consultation'}
+            </button>
+          );
+        }
+        if (String(p.consulting_doctor_id) !== String(user?.id)) return <span className="cell-secondary">View only</span>;
+        return (
+          <span className="inline-actions">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate(`/hms/consultation/${p.encounter_id}`)}>
+              <Stethoscope size={14} aria-hidden="true" /> Open
+            </button>
+            <RowMenu
+              label={`More actions for ${p.name}`}
+              items={actionsFor(p).filter((a) => a.label !== 'Open consultation')}
+              open={menuFor === p.id}
+              onOpenChange={(open) => setMenuFor(open ? p.id : null)}
+            />
+          </span>
+        );
+      },
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [statusOf, startingId, menuFor, user?.id, actionsFor]);
+
+  const pendingColumns = useMemo(() => [
+    { id: 'patient', header: 'Patient', accessorFn: (p) => p.name || '', cell: ({ row }) => <PatientCell p={row.original} /> },
+    {
+      id: 'category', header: 'Category', accessorFn: (p) => categoryOf(p.patientType).label, meta: { width: 120 },
+      cell: ({ row }) => { const c = categoryOf(row.original.patientType); return <span className={`status status-${c.tone}`}>{c.label}</span>; },
+    },
+    {
+      id: 'registered', header: 'Registered', accessorFn: (p) => Number(p.days_ago) || 0, meta: { width: 190 },
+      cell: ({ row }) => {
+        const p = row.original;
+        const days = Number(p.days_ago) || 0;
+        const tone = days >= EXPIRES_AFTER_DAYS ? 'var(--red)' : days >= 3 ? 'var(--amber)' : undefined;
+        return (
+          <span className="cell-stack">
+            <span style={{ fontWeight: 600, color: tone }}>{days === 1 ? 'Yesterday' : `${days} days ago`}</span>
+            <span className="cell-secondary tabular">{fmtDayTime(p.created_at)}</span>
+          </span>
+        );
+      },
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 170, align: 'right' },
+      cell: ({ row }) => {
+        const p = row.original;
+        if ((Number(p.days_ago) || 0) >= EXPIRES_AFTER_DAYS) return <span className="status status-neutral">Expired</span>;
+        return (
+          <button type="button" className="btn btn-secondary btn-sm" disabled={startingId === p.id} onClick={() => startConsultation(p)}>
+            <Play size={14} aria-hidden="true" /> {startingId === p.id ? 'Starting…' : 'Consult'}
+          </button>
+        );
+      },
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [startingId]);
 
   const hour = currentTime.getHours();
-  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const dateStr = currentTime.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const lastRefreshedLabel = lastRefreshedAt
-    ? lastRefreshedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-    : '--';
+  const doctorName = withoutDr(user?.name) || 'Doctor';
 
-  const majorCards = [
-    { icon: '👥', label: "Today's Patients", value: todayPatients.length, color: '#3b82f6', border: '#3b82f6' },
-    { icon: '⏳', label: 'Waiting', value: waitingPatients.length, color: waitingPatients.length > 0 ? '#f59e0b' : '#10b981', border: '#f59e0b' },
-    { icon: '🩺', label: 'In Consultation', value: consultingPatients.length, color: 'var(--primary)', border: 'var(--primary)' },
-    { icon: '✅', label: 'Completed', value: completedPatients.length, color: '#10b981', border: '#10b981' },
-    { icon: '🔬', label: 'Pending Lab Reviews', value: pendingLabReviews, color: pendingLabReviews > 0 ? '#eab308' : '#10b981', border: '#eab308' },
+  const kpis = [
+    { key: 'all', label: "Today's patients", value: counts.all },
+    { key: 'waiting', label: 'Waiting', value: counts.waiting, attention: counts.waiting > 0 ? 'var(--amber)' : undefined },
+    { key: 'consulting', label: 'In consultation', value: counts.consulting },
+    { key: 'completed', label: 'Completed', value: counts.completed },
   ];
 
-  const cleanDoctorName = (user?.name || 'Doctor').replace(/^Dr\.?\s*/i, '');
-
   return (
-    <div className="doctor-dashboard-shell" style={{
-      display: 'grid', gridTemplateColumns: 'minmax(260px, 290px) minmax(0, 1fr)',
-      minHeight: 'calc(100vh - 72px)',
-      overflow: 'visible',
-      background: 'var(--bg)',
-    }}>
-
-      {/* ── LEFT PANEL (Doctor Profile + Stats) ── */}
-      <div className="doctor-dashboard-sidebar" style={{
-        display: 'flex', flexDirection: 'column',
-        background: 'transparent',
-        borderRight: 'none',
-        overflow: 'visible',
-        padding: '20px 16px',
-        gap: 14,
-      }}>
-
-        {/* ── Doctor Profile Card ── */}
-        <div className="doctor-dashboard-profile-card" style={{
-          padding: '20px',
-          borderRadius: 16,
-          background: 'var(--surface)',
-          boxShadow: 'var(--shadow-md)',
-          border: '1px solid var(--border)',
-          position: 'relative',
-          overflow: 'visible',
-          height: 'auto',
-          minHeight: 'auto',
-        }}>
-          {/* Gradient top accent */}
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, height: 4,
-            background: 'var(--primary)',
-            borderRadius: '16px 16px 0 0',
-          }} />
-
-          <div className="doctor-dashboard-profile-top" style={{ marginBottom: 12 }}>
-            <div style={{
-              fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase',
-              letterSpacing: '0.12em', color: 'var(--text-muted)', fontStyle: 'italic',
-            }}>
-              {greeting}
-            </div>
-          </div>
-
-          <div className="doctor-dashboard-profile-name" style={{
-            fontFamily: 'var(--font-body, system-ui, -apple-system, sans-serif)',
-            fontSize: '1.3rem', fontWeight: 700, lineHeight: 1.25,
-            color: 'var(--text-primary)', marginBottom: 6, letterSpacing: '-0.01em',
-            overflowWrap: 'break-word', wordBreak: 'break-word',
-          }}>
-            Dr. {cleanDoctorName}
-          </div>
-          <div className="doctor-dashboard-profile-date" style={{
-            fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500,
-            marginBottom: 16, lineHeight: 1.4,
-          }}>
-            {dateStr} — Clinical Workspace
-          </div>
-
-          <div className="doctor-dashboard-profile-actions" style={{ display: 'flex', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary" onClick={() => navigate('/hms/appointments/book')}
-              style={{
-                flex: '1 1 auto', whiteSpace: 'nowrap', padding: '9px 12px', fontSize: '0.82rem', fontWeight: 700,
-                borderRadius: 10, color: 'var(--text-inverse)',
-                background: 'var(--green)',
-                border: 'none', boxShadow: '0 4px 12px rgba(15,118,110,0.2)',
-              }}>
-              + Book Follow-up
+    <>
+      <PageHeader
+        title={`${greeting}, Dr. ${doctorName}`}
+        description={`${dateStr}. Your OPD queue, patients still waiting from earlier days, and lab reviews.`}
+        meta={lastRefreshedAt && <span className="muted">Updated {fmtTime(lastRefreshedAt)}</span>}
+        actions={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => { fetchDoctorData(); toast.success('Dashboard refreshed', { id: 'doc-refresh' }); }}>
+              <RefreshCw size={16} aria-hidden="true" /> Refresh
             </button>
-            <button className="btn btn-outline" 
-              onClick={() => {
-                fetchDoctorData();
-                toast.success('Dashboard refreshed');
-              }}
-              style={{
-                flex: '1 1 auto', whiteSpace: 'nowrap', padding: '9px 12px', fontSize: '0.82rem', fontWeight: 600,
-                borderRadius: 10, color: 'var(--green)',
-                border: '1px solid var(--green)', background: 'transparent',
-              }}>
-              ↻ Refresh
+            <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/hms/appointments/book')}>
+              <CalendarPlus size={16} aria-hidden="true" /> Book follow-up
             </button>
-          </div>
-        </div>
-
-        {/* ── Stat Cards ── */}
-        {majorCards.map((c) => (
-          <div key={c.label} className="doctor-dashboard-stat-card" style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '12px 14px', borderRadius: 14,
-            background: 'var(--surface)',
-            boxShadow: 'var(--shadow-sm)',
-            border: '1px solid var(--border)',
-            borderLeft: `5px solid ${c.border || c.color}`,
-            boxSizing: 'border-box',
-            overflow: 'hidden',
-          }}>
-            <span style={{
-              width: 36, height: 36, minWidth: 36, borderRadius: '50%',
-              background: `${c.color}15`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.1rem', flexShrink: 0,
-            }}><Glyph icon={c.icon} /></span>
-            <span style={{
-              flex: 1, minWidth: 0, fontSize: '0.78rem', fontWeight: 700,
-              color: 'var(--text-secondary)', textTransform: 'uppercase',
-              letterSpacing: '0.02em', lineHeight: 1.25,
-              overflowWrap: 'break-word', wordBreak: 'break-word',
-            }}>{c.label}</span>
-            <span style={{
-              fontSize: '1.5rem', fontWeight: 800,
-              color: c.color, lineHeight: 1,
-              flexShrink: 0, textAlign: 'right',
-              marginLeft: 'auto',
-            }}>{c.value}</span>
-          </div>
-        ))}
-
-        {/* Credits */}
-        <div style={{ marginTop: 'auto', paddingTop: 16 }}>
-          <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.6 }}>
-            Designed, developed, and maintained by HMS IT Department © 2026.
-          </div>
-        </div>
-      </div>
-
-      {/* ── RIGHT CONTENT (Flexible responsive tables) ── */}
-      <div className="doctor-dashboard-content" style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))',
-        gap: '16px',
-        minHeight: 0,
-        overflow: 'visible',
-        padding: '16px',
-        alignContent: 'start',
-      }}>
-
-          {/* ── Today's Registered Patients ── */}
-          <div className="card hms-anim-5 doctor-dashboard-table-card doctor-dashboard-today-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0, height: 'auto' }}>
-            <div className="doctor-dashboard-card-header" style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '12px 16px',
-              borderBottom: '1px solid var(--border)',
-              background: 'var(--surface-2)',
-            }}>
-              <div className="doctor-dashboard-card-title-block">
-                <h2 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 30, height: 30, borderRadius: 8,
-                    background: 'rgba(59,130,246,0.1)', fontSize: '0.9rem',
-                  }}>
-                    <Glyph icon="📋" />
-                  </span>
-                  Today's Patients
-                </h2>
-                <span className="doctor-dashboard-last-refreshed">Last refreshed: {lastRefreshedLabel}</span>
-              </div>
-              <div className="doctor-dashboard-card-actions">
-                {todayPatients.length > 0 && (
-                  <label className="doctor-dashboard-list-search doctor-dashboard-header-search">
-                    <span aria-hidden="true"><Glyph icon="🔎" /></span>
-                    <input
-                      type="search"
-                      value={todaySearch}
-                      onChange={(e) => setTodaySearch(e.target.value)}
-                      placeholder="Search patient, UHID, phone"
-                      aria-label="Search today's patients"
-                    />
-                  </label>
-                )}
-                <button className="btn btn-sm btn-ghost" onClick={fetchDoctorData}>↻ Refresh</button>
-              </div>
-            </div>
-
-            {todayPatients.length > 0 && (
-              <div className="doctor-dashboard-list-tools">
-                <div className="doctor-dashboard-segmented" role="tablist" aria-label="Filter today patients">
-                  {todayQueueTabs.map((tab) => (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      className={todayStatusFilter === tab.key ? 'active' : ''}
-                      onClick={() => setTodayStatusFilter(tab.key)}
-                      title={tab.fullLabel || tab.label}
-                    >
-                      <span>{tab.label}</span>
-                      <strong>{tab.count}</strong>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {todayPatients.length === 0 ? (
-              <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', flex: 1 }}>
-                <Glyph icon="☕" /> No patients registered for consultation today.
-              </div>
-            ) : visibleTodayPatients.length === 0 ? (
-              <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', flex: 1 }}>
-                <Glyph icon="🔎" /> No matching patients in this queue.
-              </div>
-            ) : (
-              <div className="table-wrapper hms-table-anim doctor-dashboard-table-wrap doctor-dashboard-list-scroll" style={{ border: 'none', borderRadius: 0, boxShadow: 'none', flex: 1, overflow: 'auto' }}>
-                <table style={{ width: '100%', tableLayout: 'auto' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: 28, textAlign: 'center', padding: '10px 4px' }}>#</th>
-                      <th style={{ minWidth: 120, padding: '10px 8px' }}>Patient</th>
-                      <th style={{ width: 75, textAlign: 'center', padding: '10px 4px' }}>Type</th>
-                      <th style={{ width: 90, padding: '10px 6px' }}>Status</th>
-                      <th style={{ width: 100, textAlign: 'right', padding: '10px 8px' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleTodayPatients.map((p, idx) => {
-                      const isBeingConsulted = !!p.encounter_id;
-                      const isMyConsultation = isBeingConsulted && String(p.consulting_doctor_id) === String(user?.id);
-                      const isDone = isCompletedToday(p);
-                      const typeBadge = getPatientTypeBadge(p.patientType);
-                      const rowBg = isDone ? 'rgba(16,185,129,0.04)' : isMyConsultation ? 'rgba(59,130,246,0.05)' : isBeingConsulted ? 'rgba(245,158,11,0.04)' : 'transparent';
-
-                      return (
-                        <tr key={p.id} style={{ background: rowBg }}>
-                          <td style={{ textAlign: 'center', padding: '10px 4px' }}><strong>{idx + 1}</strong></td>
-                          <td style={{ padding: '10px 8px' }}>
-                            <div style={{ fontWeight: 600 }}>{p.name}</div>
-                            <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
-                              {p.uhid} • {p.age}y • {p.gender}
-                              {p.empNumber && <span> • ID: {p.empNumber}</span>}
-                            </div>
-                            {p.created_at && (
-                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                                Reg: {new Date(p.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                              </div>
-                            )}
-                          </td>
-                          <td style={{ textAlign: 'center', padding: '10px 4px' }}>
-                            <span style={{
-                              padding: '3px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700,
-                              textTransform: 'uppercase', letterSpacing: '0.04em',
-                              background: typeBadge.bg,
-                              color: typeBadge.color,
-                              border: `1px solid ${typeBadge.border}`,
-                            }}>
-                              {typeBadge.label}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 6px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-                              {isDone ? (
-                                <span className="badge badge-green"><Glyph icon="✓" /> Done</span>
-                              ) : isBeingConsulted ? (
-                                <span className="badge badge-blue">Consulting</span>
-                              ) : (
-                                <span className="badge badge-amber" style={{ animation: 'hmsPulseGlow 2s infinite' }}>⏳ Waiting</span>
-                              )}
-                              {isBeingConsulted && !isMyConsultation && (
-                                <span style={{
-                                  fontSize: '0.72rem', color: 'var(--text-secondary)', fontStyle: 'italic',
-                                  display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', marginTop: 2,
-                                  background: 'var(--surface-2)', padding: '2px 5px', borderRadius: 4, border: '1px solid var(--border)'
-                                }}>
-                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b', flexShrink: 0 }} />
-                                  Dr. {p.consulting_doctor_name}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td style={{ textAlign: 'right', padding: '10px 8px' }}>
-                            {(() => {
-                              const isExpanded = expandedRow === p.id;
-                              return (
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                                  {!isBeingConsulted ? (
-                                    <button ref={el => { actionBtnRefs.current[p.id] = el; }} className="btn btn-sm btn-primary" onClick={(e) => startConsultation(p, e)}
-                                      style={{ whiteSpace: 'nowrap', fontSize: '0.74rem', padding: '5px 10px', borderRadius: 8 }}>Start Consult</button>
-                                  ) : isMyConsultation ? (
-                                    <button
-                                      className={`btn btn-sm ${isExpanded ? '' : 'btn-primary'}`}
-                                      onClick={(e) => { if (isExpanded) { closeActions(); } else { openActions(p, e); } }}
-                                      style={{
-                                        whiteSpace: 'nowrap', fontSize: '0.74rem', padding: '5px 10px', borderRadius: 8,
-                                        display: 'inline-flex', alignItems: 'center', gap: 4,
-                                        ...(isExpanded ? { background: 'var(--red-light)', color: 'var(--red)', border: '1px solid var(--red-border)' } : {}),
-                                      }}>{isExpanded ? '\u2715 Close' : '\u25b8 Actions'}</button>
-                                  ) : (
-                                    <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '0 4px' }}>View Only</span>
-                                  )}
-                                </div>
-                              );
-                            })()}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* ── Pending Consultation (Unconsulted Past Patients) ── */}
-          <div className="card hms-anim-6 doctor-dashboard-table-card doctor-dashboard-pending-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0, height: 'auto' }}>
-            <div className="doctor-dashboard-card-header" style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '12px 16px',
-              borderBottom: '1px solid var(--border)',
-              background: 'var(--surface-2)',
-            }}>
-              <div className="doctor-dashboard-card-title-block">
-                <h2 style={{ fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 30, height: 30, borderRadius: 8,
-                    background: 'rgba(245,158,11,0.1)', fontSize: '0.9rem',
-                  }}>
-                    ⏰
-                  </span>
-                  Pending Consultation
-                  {pendingPatients.length > 0 && (
-                    <span style={{
-                      fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                      background: 'var(--amber-light)', color: 'var(--amber)', border: '1px solid var(--amber-border)',
-                    }}>{pendingPatients.length}</span>
-                  )}
-                </h2>
-                <span className="doctor-dashboard-last-refreshed">Last refreshed: {lastRefreshedLabel}</span>
-              </div>
-              <div className="doctor-dashboard-card-actions">
-                {pendingPatients.length > 0 && (
-                  <label className="doctor-dashboard-list-search doctor-dashboard-header-search">
-                    <span aria-hidden="true"><Glyph icon="🔎" /></span>
-                    <input
-                      type="search"
-                      value={pendingSearch}
-                      onChange={(e) => setPendingSearch(e.target.value)}
-                      placeholder="Search pending patient, UHID"
-                      aria-label="Search pending consultations"
-                    />
-                  </label>
-                )}
-                <button className="btn btn-sm btn-ghost" onClick={fetchDoctorData}>↻ Refresh</button>
-              </div>
-            </div>
-
-            {pendingPatients.length === 0 ? (
-              <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', flex: 1 }}>
-                <Glyph icon="✅" /> All registered patients have been consulted.
-              </div>
-            ) : visiblePendingPatients.length === 0 ? (
-              <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', flex: 1 }}>
-                <Glyph icon="🔎" /> No matching pending consultations.
-              </div>
-            ) : (
-              <div className="table-wrapper hms-table-anim doctor-dashboard-table-wrap doctor-dashboard-list-scroll" style={{ border: 'none', borderRadius: 0, boxShadow: 'none', flex: 1, overflow: 'auto' }}>
-                <table style={{ width: '100%', tableLayout: 'auto' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: 28, textAlign: 'center', padding: '10px 4px' }}>#</th>
-                      <th style={{ minWidth: 120, padding: '10px 8px' }}>Patient</th>
-                      <th style={{ width: 75, textAlign: 'center', padding: '10px 4px' }}>Type</th>
-                      <th style={{ width: 95, padding: '10px 6px' }}>Registered</th>
-                      <th style={{ width: 95, textAlign: 'right', padding: '10px 8px' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visiblePendingPatients.map((p, idx) => {
-                      const isExpired = p.days_ago >= 4;
-                      const regDate = p.created_at ? new Date(p.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-';
-                      const daysLabel = p.days_ago === 1 ? '1d ago' : `${p.days_ago}d ago`;
-                      const typeBadge = getPatientTypeBadge(p.patientType);
-
-                      return (
-                        <tr key={p.id} style={{
-                          opacity: isExpired ? 0.45 : 1,
-                          textDecoration: isExpired ? 'line-through' : 'none',
-                          background: isExpired ? 'rgba(148,163,184,0.07)' : 'transparent',
-                          pointerEvents: isExpired ? 'none' : 'auto',
-                        }}>
-                          <td style={{ textAlign: 'center', padding: '10px 4px' }}><strong>{idx + 1}</strong></td>
-                          <td style={{ padding: '10px 8px' }}>
-                            <div style={{ fontWeight: 600 }}>{p.name}</div>
-                            <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
-                              {p.uhid} • {p.age}y • {p.gender}
-                              {p.empNumber && <span> • ID: {p.empNumber}</span>}
-                            </div>
-                          </td>
-                          <td style={{ textAlign: 'center', padding: '10px 4px' }}>
-                            <span style={{
-                              padding: '3px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700,
-                              textTransform: 'uppercase', letterSpacing: '0.04em',
-                              background: typeBadge.bg,
-                              color: typeBadge.color,
-                              border: `1px solid ${typeBadge.border}`,
-                            }}>
-                              {typeBadge.label}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 6px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              <span style={{
-                                fontSize: '0.73rem', fontWeight: 700,
-                                color: isExpired ? 'var(--red)' : p.days_ago >= 3 ? 'var(--amber)' : 'var(--text-secondary)',
-                              }}>
-                                {daysLabel} • {regDate}
-                              </span>
-                              {p.created_at && (
-                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                                  {new Date(p.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td style={{ textAlign: 'right', padding: '10px 8px' }}>
-                            {isExpired ? (
-                              <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Expired</span>
-                            ) : (
-                              <button className="btn btn-sm btn-primary" onClick={() => startConsultation(p)}
-                                style={{ whiteSpace: 'nowrap', fontSize: '0.74rem', padding: '5px 10px', borderRadius: 8 }}>
-                                Consult →
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-        </div>
-      
-      {/* Global Modals for this view */}
-      <ReferralTypeModal 
-        isOpen={isReferralModalOpen} 
-        onClose={() => { setIsReferralModalOpen(false); setSelectedPatientForReferral(null); }} 
-        patient={selectedPatientForReferral} 
+          </>
+        )}
       />
 
-      {/* ── Patient Actions Dropdown Overlay ── */}
-      {actionPatient && (() => {
-        const p = actionPatient;
-        const consultAction = p.encounter_id ? {
-          label: 'Consultation',
-          icon: '🩺',
-          iconBg: 'var(--primary)',
-          onClick: () => navigate(`/hms/consultation/${p.encounter_id}`),
-        } : null;
-        const prescriptionAction = {
-          label: 'Prescription',
-          icon: '℞',
-          iconBg: 'var(--primary)',
-          onClick: () => navigate(`/hms/prescription-slip?patientId=${p.id}&encounterId=${p.encounter_id || ''}`),
-        };
-        const referralAction = {
-          label: 'Referral',
-          icon: '🔗',
-          iconBg: '#3b82f6',
-          onClick: () => { setSelectedPatientForReferral(p); setIsReferralModalOpen(true); },
-        };
-        const restFormAction = {
-          label: 'Rest Form',
-          icon: '🛌',
-          iconBg: '#d97706',
-          onClick: () => navigate(`/doctor/rest-forms/new?patientId=${p.id}`),
-        };
-        const medCertAction = {
-          label: 'Med Certificate',
-          icon: '📋',
-          iconBg: 'var(--primary)',
-          onClick: () => navigate(`/doctor/medical-certificate?patientId=${p.id}`),
-        };
-        const labAction = {
-          label: 'Lab Orders',
-          icon: '🔬',
-          iconBg: '#10b981',
-          onClick: () => navigate(`/doctor/labs?patientId=${p.id}`),
-        };
-        const ipdAction = {
-          label: 'Move to IPD',
-          icon: '🏥',
-          iconBg: 'var(--primary)',
-          onClick: () => navigate(`/ipd/admission-form?patientId=${p.id}`),
-        };
-        const patientProfileAction = {
-          label: 'Patient Profile',
-          icon: '👤',
-          iconBg: '#0284c7',
-          onClick: () => navigate(`/hms/patients/${p.id}`),
-        };
+      <div className="kpi-strip">
+        {kpis.map((k) => (
+          <button
+            key={k.key}
+            type="button"
+            className={`panel kpi kpi-button${statusFilter === k.key ? ' is-selected' : ''}`}
+            aria-pressed={statusFilter === k.key}
+            onClick={() => setStatusFilter(k.key)}
+          >
+            <span className="kpi-label">{k.label}</span>
+            <span className="kpi-value" style={{ color: k.attention }}>{loading ? '—' : k.value}</span>
+          </button>
+        ))}
+        <button type="button" className="panel kpi kpi-button" onClick={() => navigate('/doctor/labs')}>
+          <span className="kpi-label">Lab results to review</span>
+          <span className="kpi-value" style={{ color: pendingLabReviews ? 'var(--amber)' : undefined }}>{loading ? '—' : pendingLabReviews}</span>
+        </button>
+      </div>
 
-        // All clinical actions accessible for all patient categories
-        const actions = [
-          ...(consultAction ? [consultAction] : []),
-          prescriptionAction,
-          referralAction,
-          restFormAction,
-          medCertAction,
-          labAction,
-          ipdAction,
-          patientProfileAction,
-        ];
+      <section className="panel">
+        <div className="panel-head">
+          <h2 className="panel-title" style={{ margin: 0 }}><ListOrdered size={16} aria-hidden="true" /> Today's queue</h2>
+        </div>
+        <div className="toolbar">
+          <div className="segmented" role="tablist" aria-label="Filter today's queue">
+            {[['all', 'All'], ['waiting', 'Waiting'], ['consulting', 'In consultation'], ['completed', 'Completed']].map(([key, label]) => (
+              <button key={key} type="button" role="tab" aria-selected={statusFilter === key} className={statusFilter === key ? 'is-active' : ''} onClick={() => setStatusFilter(key)}>
+                {label} <span className="seg-count">{counts[key]}</span>
+              </button>
+            ))}
+          </div>
+          <label className="search-field">
+            <Search size={17} aria-hidden="true" />
+            <span className="sr-only">Search today's patients</span>
+            <input value={todaySearch} onChange={(e) => setTodaySearch(e.target.value)} placeholder="Search patient, UHID or phone" />
+          </label>
+        </div>
+        <DataTable
+          columns={todayColumns}
+          data={visibleToday}
+          loading={loading}
+          getRowId={(p) => String(p.id)}
+          initialSorting={[{ id: 'registered', desc: false }]}
+          pageSize={50}
+          empty={todayPatients.length === 0 ? (
+            <EmptyState icon={Users} title="No patients registered for you today" description="Patients appear here as soon as the front desk registers them for consultation." />
+          ) : (
+            <EmptyState icon={Search} title="No patients match" description="Clear the search or choose another status." />
+          )}
+        />
+      </section>
 
-        return (
-          <>
-            {/* Transparent backdrop */}
-            <div 
-              onClick={closeActions}
-              style={{
-                position: 'fixed', inset: 0, zIndex: 9998,
-                background: 'transparent',
-              }}
-            />
-            {/* Dropdown panel */}
-            <div className="doctor-dashboard-actions-menu" style={{
-              position: 'fixed',
-              top: dropdownPos.top,
-              left: dropdownPos.left,
-              width: 250,
-              maxHeight: 'min(85vh, 460px)',
-              display: 'flex',
-              flexDirection: 'column',
-              background: 'var(--surface, #fff)',
-              borderRadius: 14,
-              border: '1px solid var(--border, rgba(0,0,0,0.08))',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.08)',
-              zIndex: 9999,
-              overflow: 'hidden',
-              animation: 'hmsSlideDown 0.22s cubic-bezier(0.16,1,0.3,1) both',
-            }}>
-              {/* Header */}
-              <div style={{
-                padding: '11px 16px 9px',
-                fontSize: '0.65rem', fontWeight: 800,
-                textTransform: 'uppercase', letterSpacing: '0.12em',
-                color: 'var(--text-muted, #94a3b8)',
-                borderBottom: '1px solid var(--border, rgba(0,0,0,0.06))',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                flexShrink: 0,
-              }}>
-                <span>Patient Actions</span>
-                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'none', letterSpacing: 'normal' }}>{p.name}</span>
-              </div>
-
-              {/* Items */}
-              <div style={{ padding: '6px 0', overflowY: 'auto', flex: 1 }}>
-                {actions.map((a) => (
-                  <button
-                    key={a.label}
-                    onClick={() => { closeActions(); a.onClick(); }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      width: '100%', padding: '10px 16px',
-                      border: 'none', background: 'transparent',
-                      cursor: 'pointer', transition: 'all 0.15s',
-                      textAlign: 'left', fontFamily: 'inherit',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2, rgba(0,0,0,0.03))'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                  >
-                    <span style={{
-                      width: 32, height: 32, borderRadius: 8,
-                      background: `${a.iconBg}14`,
-                      border: `1px solid ${a.iconBg}25`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '1rem', flexShrink: 0, color: a.iconBg,
-                    }}>
-                      <Glyph icon={a.icon} />
-                    </span>
-                    <span style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--text-primary, #1e293b)' }}>
-                      {a.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="panel-head">
+          <h2 className="panel-title" style={{ margin: 0 }}>
+            <History size={16} aria-hidden="true" /> Waiting from previous days
+            {openPending.length > 0 && <span className="status status-warning">{openPending.length}</span>}
+          </h2>
+          <span className="muted">Registered but not yet seen. A visit expires after {EXPIRES_AFTER_DAYS - 1} days.</span>
+        </div>
+        {pendingPatients.length > 0 && (
+          <div className="toolbar">
+            <div className="segmented" role="tablist" aria-label="Filter earlier patients">
+              <button type="button" role="tab" aria-selected={pendingView === 'open'} className={pendingView === 'open' ? 'is-active' : ''} onClick={() => setPendingView('open')}>
+                Can still be seen <span className="seg-count">{openPending.length}</span>
+              </button>
+              <button type="button" role="tab" aria-selected={pendingView === 'expired'} className={pendingView === 'expired' ? 'is-active' : ''} onClick={() => setPendingView('expired')}>
+                Expired <span className="seg-count">{expiredPending.length}</span>
+              </button>
             </div>
-          </>
-        );
-      })()}
-    </div>
+            <label className="search-field">
+              <Search size={17} aria-hidden="true" />
+              <span className="sr-only">Search patients waiting from previous days</span>
+              <input value={pendingSearch} onChange={(e) => setPendingSearch(e.target.value)} placeholder="Search patient or UHID" />
+            </label>
+          </div>
+        )}
+        <DataTable
+          columns={pendingColumns}
+          data={visiblePending}
+          loading={loading}
+          getRowId={(p) => String(p.id)}
+          pageSize={10}
+          empty={(pendingView === 'open' ? openPending : expiredPending).length === 0 ? (
+            pendingView === 'open'
+              ? <EmptyState icon={Stethoscope} title="Nobody is waiting from earlier days" description="Every patient registered for you in the last few days has been seen." />
+              : <EmptyState icon={History} title="No expired visits" description="Visits that were never seen appear here once they expire." />
+          ) : (
+            <EmptyState icon={Search} title="No patients match" description="Try another name or UHID." />
+          )}
+        />
+      </section>
+
+      <p className="muted" style={{ textAlign: 'center', fontSize: '0.78rem', marginTop: 24 }}>
+        Designed, developed and maintained by HMS IT Department © 2026.
+      </p>
+
+      <ReferralTypeModal isOpen={Boolean(referralPatient)} onClose={() => setReferralPatient(null)} patient={referralPatient} />
+    </>
   );
 }

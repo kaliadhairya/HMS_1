@@ -268,3 +268,25 @@
 /* Data table hover: subtle on data rows, none on the empty-state and loading rows */
 .dt-table tbody tr:hover { background: var(--surface-2); }
 .dt-table tbody tr:has(.dt-empty-cell):hover, .dt-table tbody tr.dt-skeleton-row:hover { background: transparent; }
+
+/* KPI tiles that act as filters or links */
+.kpi.kpi-button { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.kpi.kpi-button .kpi-label, .kpi.kpi-button .kpi-value { display: block; }
+.kpi.kpi-button:hover { border-color: var(--border-dark); }
+.kpi.kpi-button.is-selected { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.list-row.list-row-static { cursor: default; }
+.list-row.list-row-static:hover { border-color: var(--border); background: var(--surface); }
+.dialog-xl { max-width: 1040px; }
+
+/* Chart series colours (validated categorical order: blue, orange, aqua) and a neutral for "rest" */
+:root { --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --chart-neutral: #b4bcc2; }
+[data-theme="dark"] { --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --chart-neutral: #55636c; }
+.chart-card { border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--surface); }
+.chart-card h3 { font-size: 0.92rem; font-weight: 650; }
+.chart-card .chart-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; margin-bottom: 10px; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center; margin-top: 10px; list-style: none; padding: 0; }
+.chart-legend li { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-secondary); }
+.chart-legend .swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.chart-tip { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; box-shadow: var(--shadow-lg); font-size: 0.8rem; }
+.chart-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.chart-grid .span-all { grid-column: 1 / -1; }
