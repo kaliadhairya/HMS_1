@@ -83,6 +83,7 @@ const AdminBillingPage = lazy(() => import('./pages/hms/admin/AdminBillingPage')
 const AdminPharmacyPage = lazy(() => import('./pages/hms/admin/AdminPharmacyPage'));
 const AttendanceLeavePage = lazy(() => import('./pages/hms/admin/AttendanceLeavePage'));
 const NoticesPage = lazy(() => import('./pages/hms/admin/NoticesPage'));
+const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
 const AdminBedManagementPage = lazy(() => import('./pages/hms/admin/AdminBedManagementPage'));
 
 // Doctor Module Pages
@@ -467,17 +468,7 @@ export default function App() {
             } />
 
             {/* Unauthorized */}
-            <Route path="/unauthorized" element={
-              <div style={{
-                minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'var(--bg)', flexDirection: 'column', gap: 16,
-              }}>
-                <div style={{ fontSize: '3rem' }}>🚫</div>
-                <h2>Access Denied</h2>
-                <p style={{ color: 'var(--text-secondary)' }}>You don't have permission to view this page.</p>
-                <a href="/login" className="btn btn-primary">← Back to Login</a>
-              </div>
-            } />
+            <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
             {/* Default redirects */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

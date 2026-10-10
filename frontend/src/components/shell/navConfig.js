@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Search, UserPlus, Pill, Users, BedDouble, Inbox, ChartColumn, CalendarDays, Hospital,
   Settings, Droplet, TestTube, ShoppingCart, Bell, ShieldCheck, Repeat, Package, ClipboardList, ChartLine,
-  FileText, CreditCard, Wallet, Factory, Ticket, HeartPulse, Clock, Undo2, ListOrdered, FilePlus2, Truck,
+  FileText, CreditCard, Wallet, Factory, Ticket, HeartPulse, Clock, Undo2, ListOrdered, FilePlus2, Truck, Megaphone,
 } from 'lucide-react';
 
 // Navigation per role. `group` drives the sidebar sections.
@@ -35,6 +35,8 @@ export const NAV_BY_ROLE = {
     { to: '/hms/admin/billing', label: 'Billing', icon: CreditCard, group: 'Finance' },
     { to: '/reports', label: 'Reports', icon: ChartColumn, group: 'Insights' },
     { to: '/hms/admin/staff', label: 'Staff', icon: Users, group: 'Administration' },
+    { to: '/hms/admin/attendance', label: 'Attendance & leave', icon: Clock, group: 'Administration' },
+    { to: '/hms/admin/notices', label: 'Notices', icon: Megaphone, group: 'Administration' },
     { to: '/admin/settings', label: 'Settings', icon: Settings, group: 'Administration' },
   ],
   doctor: [

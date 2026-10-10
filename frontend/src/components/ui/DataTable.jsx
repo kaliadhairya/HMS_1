@@ -74,7 +74,7 @@ export default function DataTable({
                 key={row.id}
                 className={onRowClick ? 'is-clickable' : undefined}
                 onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter') onRowClick(row.original); } : undefined}
+                onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' && e.target === e.currentTarget) onRowClick(row.original); } : undefined}
                 tabIndex={onRowClick ? 0 : undefined}
                 aria-label={onRowClick && rowLabel ? rowLabel(row.original) : undefined}
               >

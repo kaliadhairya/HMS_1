@@ -11,6 +11,9 @@
 
 body.has-app-shell { padding-left: var(--sidebar-w); transition: padding-left .18s ease; }
 body.has-app-shell.sidebar-collapsed { padding-left: var(--sidebar-w-collapsed); }
+/* Radix dialogs and menus lock scroll by zeroing body padding; keep the sidebar offset. */
+body.has-app-shell[data-scroll-locked] { padding-left: var(--sidebar-w) !important; }
+body.has-app-shell.sidebar-collapsed[data-scroll-locked] { padding-left: var(--sidebar-w-collapsed) !important; }
 
 /* ── Sidebar ──────────────────────────────────────────────────── */
 .app-sidebar {
@@ -195,7 +198,8 @@ body.has-app-shell.sidebar-collapsed { padding-left: var(--sidebar-w-collapsed);
 /* ── Responsive & print ───────────────────────────────────────── */
 .app-scrim { position: fixed; inset: 0; z-index: 110; background: rgba(17,24,28,0.4); }
 @media (max-width: 960px) {
-  body.has-app-shell, body.has-app-shell.sidebar-collapsed { padding-left: 0; }
+  body.has-app-shell, body.has-app-shell.sidebar-collapsed,
+  body.has-app-shell[data-scroll-locked], body.has-app-shell.sidebar-collapsed[data-scroll-locked] { padding-left: 0 !important; }
   .app-sidebar { width: var(--sidebar-w) !important; transform: translateX(-100%); box-shadow: var(--shadow-lg); }
   .app-sidebar.is-open { transform: none; }
   .sidebar-collapsed .nav-label, .sidebar-collapsed .nav-group-title, .sidebar-collapsed .sidebar-brand-text { display: revert; }
