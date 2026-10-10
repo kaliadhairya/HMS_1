@@ -1,9 +1,44 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  BarChart3, Building2, ChevronRight, CircleAlert, ClipboardList, LayoutGrid, Package, PackageCheck, Pill, Truck, Undo2,
+} from 'lucide-react';
 import api from '../../api/axios';
-import Glyph from '../ui/Glyph';
+import { useAuth } from '../../context/AuthContext';
+import PageHeader from '../ui/PageHeader';
 
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+};
+
+// First name, keeping a leading honorific ("Sister Mary", "Dr. Rao").
+const firstName = (name) => {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'there';
+  if (parts.length > 1 && /^(dr|mr|mrs|ms|miss|sister|sr|prof)\.?$/i.test(parts[0])) return `${parts[0]} ${parts[1]}`;
+  return parts[0];
+};
+
+const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+// A KPI tile that opens a page: same look as a static tile, but a real button.
+
+const QUICK_LINKS = [
+  { label: 'Dispense', to: '/pharmacy/dispense', icon: PackageCheck },
+  { label: 'Medicines', to: '/pharmacy/medicines', icon: Pill },
+  { label: 'Stock', to: '/pharmacy/stock', icon: Package },
+  { label: 'Purchase orders', to: '/pharmacy/pos', icon: ClipboardList },
+  { label: 'Goods received (GRN)', to: '/pharmacy/grn', icon: Truck },
+  { label: 'Suppliers', to: '/pharmacy/suppliers', icon: Building2 },
+  { label: 'Returns', to: '/pharmacy/returns', icon: Undo2 },
+];
+
+// Pharmacy home: dispensing queue, stock and expiry alerts, and the pharmacy's main pages.
 export default function PharmacistDashboard() {
+  const { user } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -16,146 +51,145 @@ export default function PharmacistDashboard() {
           pendingRx: raw.dispense_queue_count || 0,
           lowStockCount: raw.low_stock_count || 0,
           expiringCount: raw.expiring_count || 0,
-          returnsToday: raw.returns_today || 0,
-          fastMoving: raw.low_stock_items || [],
-          dispenseRatio: raw.dispense_ratio || { ipd: 0, opd: 0 },
+          todaysSales: raw.todays_sales || 0,
+          // Medicines with 10 or fewer units left, lowest first (the API sends at most 5).
+          lowStockItems: raw.low_stock_items || [],
+          // Not sent by /dashboard/pharmacist yet; the panel only appears once it is.
+          dispenseRatio: raw.dispense_ratio || null,
         });
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-        <div className="spinner" style={{ width: 36, height: 36 }} />
-      </div>
-    );
-  }
+  const show = (v) => (loading ? '—' : v);
+  const lowStock = Number(data?.lowStockCount || 0);
+  const expiring = Number(data?.expiringCount || 0);
+  const lowItems = data?.lowStockItems || [];
+  const ratio = data?.dispenseRatio;
 
-  const cards = [
-    { icon: '📝', label: 'Pending Rx', value: data?.pendingRx || 0, color: 'var(--blue)', link: '/pharmacy/dispense' },
-    { icon: '📦', label: 'Low Stock Alerts', value: data?.lowStockCount || 0, color: 'var(--amber)', link: '/pharmacy/stock' },
-    { icon: '⏰', label: 'Expiring Soon', value: data?.expiringCount || 0, color: 'var(--red)', link: '/pharmacy/expiry' },
-    { icon: '↩️', label: 'Returns Today', value: data?.returnsToday || 0, color: 'var(--green-mid)', link: '/pharmacy/returns' },
-  ];
-
-  const quickLinks = [
-    { icon: '💊', label: 'Medicines', to: '/pharmacy/medicines', color: '#60a5fa' },
-    { icon: '🏭', label: 'Suppliers', to: '/pharmacy/suppliers', color: '#818cf8' },
-    { icon: '📋', label: 'Purchase Orders', to: '/pharmacy/pos', color: '#c084fc' },
-    { icon: '📥', label: 'GRN', to: '/pharmacy/grn', color: '#a78bfa' },
-    { icon: '📦', label: 'Stock', to: '/pharmacy/stock', color: '#34d399' },
-    { icon: '📝', label: 'Dispense', to: '/pharmacy/dispense', color: '#f472b6' },
+  const tiles = [
+    { label: 'Prescriptions to dispense', value: data?.pendingRx || 0, to: '/pharmacy/dispense', action: 'Open the dispense queue' },
+    { label: 'Low stock medicines', value: lowStock, to: '/pharmacy/stock', action: 'Open stock', color: lowStock > 0 ? 'var(--amber)' : undefined },
+    { label: 'Batches expiring in 30 days', value: expiring, to: '/pharmacy/expiry', action: 'Open expiry alerts', color: expiring > 0 ? 'var(--amber)' : undefined },
   ];
 
   return (
-    <div style={{ padding: '28px 40px', maxWidth: 1600, margin: '0 auto', width: '100%' }}>
-      <div className="fade-up" style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1>Pharmacist Dashboard</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginTop: 4 }}>
-            Pharmacy operations & supply chain overview
-          </p>
-        </div>
-        <button className="btn btn-primary" onClick={() => navigate('/pharmacy/reports')}><Glyph icon="📊" /> Advanced Reports</button>
-      </div>
+    <>
+      <PageHeader
+        title={`${greeting()}, ${firstName(user?.name)}`}
+        description="Prescriptions waiting to be dispensed, stock levels and expiring batches."
+        actions={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/pharmacy/reports')}>
+              <BarChart3 size={16} aria-hidden="true" /> Reports
+            </button>
+            <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/pharmacy/dispense')}>
+              <PackageCheck size={16} aria-hidden="true" /> Open dispense queue
+            </button>
+          </>
+        )}
+      />
 
-      <div className="fade-up-2" style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 16, marginBottom: 28,
-      }}>
-        {cards.map(c => (
-          <div key={c.label} className="card" style={{
-            padding: '24px 20px', position: 'relative', overflow: 'hidden', cursor: 'pointer',
-            transition: 'transform 0.2s, box-shadow 0.2s',
-          }}
-          onClick={() => navigate(c.link)}
-          onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)'; }}
-          onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+      {!loading && lowStock > 0 && (
+        <div className="alert-strip alert-warning" role="status">
+          <CircleAlert size={16} aria-hidden="true" />
+          <span><strong>{lowStock} {lowStock === 1 ? 'medicine is' : 'medicines are'}</strong> at or below 10 units. Raise an indent or purchase order.</span>
+          <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => navigate('/pharmacy/stock')}>
+            Review stock
+          </button>
+        </div>
+      )}
+
+      <div className="kpi-strip">
+        {tiles.map((t) => (
+          <button
+            key={t.label}
+            type="button"
+            className="panel kpi kpi-button"
+            onClick={() => navigate(t.to)}
+            aria-label={`${t.label}: ${show(t.value)}. ${t.action}`}
           >
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: c.color }} />
-            <div style={{ fontSize: '1.8rem', marginBottom: 12 }}><Glyph icon={c.icon} /></div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6 }}>
-              {c.label}
-            </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: c.color }}>
-              {c.value}
-            </div>
-          </div>
+            <div className="kpi-label">{t.label}</div>
+            <div className="kpi-value" style={!loading && t.color ? { color: t.color } : undefined}>{show(t.value)}</div>
+          </button>
         ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 24, marginBottom: 28 }}>
-        {/* Fast Moving Items */}
-        <div className="card fade-up-3" style={{ padding: 24 }}>
-          <h2 style={{ marginBottom: 16, fontSize: '1.05rem' }}>Fast-Moving Medicines (30d)</h2>
-          <table style={{ width: '100%', textAlign: 'left' }}>
-            <thead>
-              <tr>
-                <th style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>Medicine</th>
-                <th style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Units Dispensed</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data?.fastMoving?.map((item, idx) => (
-                <tr key={idx}>
-                  <td style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>{item.name || item.GENERIC_NAME}</td>
-                  <td style={{ padding: '12px 0', borderBottom: '1px solid var(--border)', textAlign: 'right', fontWeight: 600, color: 'var(--green-mid)' }}>
-                    {item.sold ?? item.TOTAL_QTY ?? 0}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {/* IPD vs OPD Dispense Ratio */}
-        <div className="card fade-up-3" style={{ padding: 24 }}>
-          <h2 style={{ marginBottom: 24, fontSize: '1.05rem' }}>Dispense Ratio: IPD vs OPD</h2>
-          {data?.dispenseRatio && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Inpatient (IPD)</div>
-                  <div style={{ fontSize: '1.8rem', fontWeight: 600, color: 'var(--blue)' }}>{data.dispenseRatio.ipd}%</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Outpatient (OPD/OTC)</div>
-                  <div style={{ fontSize: '1.8rem', fontWeight: 600, color: 'var(--amber)' }}>{data.dispenseRatio.opd}%</div>
-                </div>
-              </div>
-              <div style={{ width: '100%', height: 12, borderRadius: 6, display: 'flex', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${data.dispenseRatio.ipd}%`, background: 'var(--blue)' }} />
-                <div style={{ height: '100%', width: `${data.dispenseRatio.opd}%`, background: 'var(--amber)' }} />
-              </div>
-            </div>
-          )}
+        <div className="panel kpi">
+          <div className="kpi-label">Sales today</div>
+          <div className="kpi-value">{show(inr(data?.todaysSales))}</div>
         </div>
       </div>
 
-      {/* Quick Links */}
-      <div className="fade-up-3" style={{ marginBottom: 28 }}>
-        <h2 style={{ marginBottom: 16, fontSize: '1.05rem' }}>Quick Launch</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 16 }}>
-          {quickLinks.map(link => (
-            <div
-              key={link.label}
-              className="card"
-              style={{
-                padding: '24px 16px', textAlign: 'center', cursor: 'pointer',
-                transition: 'transform 0.2s, box-shadow 0.2s',
-              }}
-              onClick={() => navigate(link.to)}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.12)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
-            >
-              <div style={{ fontSize: '1.8rem', marginBottom: 8 }}><Glyph icon={link.icon} /></div>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{link.label}</div>
-            </div>
-          ))}
-        </div>
+      <div className="split-2">
+        <section className="panel">
+          <div className="panel-head">
+            <h2 className="panel-title" style={{ margin: 0 }}><Package size={16} aria-hidden="true" /> Lowest stock</h2>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate('/pharmacy/stock')}>
+              View stock <ChevronRight size={14} aria-hidden="true" />
+            </button>
+          </div>
+          <div className="panel-pad">
+            {loading ? <p className="muted">Loading…</p> : lowItems.length === 0 ? (
+              <p className="muted">No medicines are running low.</p>
+            ) : (
+              <table className="mini-table">
+                <thead>
+                  <tr><th scope="col">Medicine</th><th scope="col" className="text-right">Units in stock</th></tr>
+                </thead>
+                <tbody>
+                  {lowItems.map((item, idx) => {
+                    const qty = Number(item.TOTAL_QTY ?? 0);
+                    return (
+                      <tr key={item.GENERIC_NAME || item.name || idx}>
+                        <td>{item.GENERIC_NAME || item.name || '—'}</td>
+                        <td className="text-right">
+                          {qty <= 0
+                            ? <span className="status status-danger">Out of stock</span>
+                            : <span className="tabular" style={{ fontWeight: 600 }}>{qty}</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
+
+        <section className="panel panel-pad">
+          <h2 className="panel-title"><LayoutGrid size={16} aria-hidden="true" /> Quick actions</h2>
+          <ul className="list-rows" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+            {QUICK_LINKS.map((link) => {
+              const Icon = link.icon;
+              return (
+                <li key={link.to}>
+                  <button type="button" className="list-row" onClick={() => navigate(link.to)}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                      <Icon size={16} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
+                      {link.label}
+                    </span>
+                    <ChevronRight size={16} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       </div>
-    </div>
+
+      {ratio && (
+        <section className="panel panel-pad" style={{ marginTop: 16 }}>
+          <h2 className="panel-title"><BarChart3 size={16} aria-hidden="true" /> Dispensing by patient type</h2>
+          <ul className="bar-list">
+            {[['Inpatient (IPD)', Number(ratio.ipd || 0)], ['Outpatient (OPD and OTC)', Number(ratio.opd || 0)]].map(([label, pct]) => (
+              <li key={label}>
+                <div className="bar-row"><span>{label}</span><strong className="tabular">{pct}%</strong></div>
+                <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} /></div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   );
 }

@@ -1,11 +1,37 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { BedDouble, ChevronRight, ClipboardList, HeartPulse, LayoutGrid, RefreshCw, Users } from 'lucide-react';
 import api from '../../api/axios';
-import toast from 'react-hot-toast';
-import Glyph from '../ui/Glyph';
+import { useAuth } from '../../context/AuthContext';
+import PageHeader from '../ui/PageHeader';
+import DataTable from '../ui/DataTable';
+import EmptyState from '../ui/EmptyState';
 
+// First name, keeping a leading honorific ("Sister Mary", "Dr. Rao").
+const firstName = (name) => {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'there';
+  if (parts.length > 1 && /^(dr|mr|mrs|ms|miss|sister|sr|prof)\.?$/i.test(parts[0])) return `${parts[0]} ${parts[1]}`;
+  return parts[0];
+};
+
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : null);
+const admissionId = (adm) => adm.ID || adm.id;
+const daysAdmitted = (adm) => Number(adm.DAYS_ADMITTED || 0);
+const LONG_STAY_DAYS = 5;
+
+// A KPI tile that opens a page: same look as a static tile, but a real button.
+
+const QUICK_LINKS = [
+  { label: 'Admission requests', to: '/ipd/requests', icon: ClipboardList },
+  { label: 'Bed management', to: '/ipd/beds', icon: BedDouble },
+  { label: 'Patient directory', to: '/ipd/patients', icon: Users },
+];
+
+// Nurse station: admitted patients, pending admission requests and the vitals round for this shift.
 export default function NurseDashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [admissions, setAdmissions] = useState([]);
   const [pendingRequests, setPendingRequests] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -26,256 +52,203 @@ export default function NurseDashboard() {
     ]).finally(() => setLoading(false));
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 80, gap: 16 }}>
-        <div className="spinner" style={{ width: 40, height: 40 }} />
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading nurse station...</p>
-      </div>
-    );
-  }
+  const recordVitals = useCallback(
+    (adm) => navigate('/hms/vitals/entry', { state: { patient: { id: adm.PATIENT_ID, name: adm.PATIENT_NAME, uhid: adm.UHID, age: adm.AGE, gender: adm.GENDER } } }),
+    [navigate],
+  );
+
+  const columns = useMemo(() => [
+    {
+      id: 'patient', header: 'Patient', accessorFn: (a) => a.PATIENT_NAME || '',
+      cell: ({ row }) => {
+        const a = row.original;
+        const demo = [a.GENDER?.[0], a.AGE ? `${a.AGE} y` : null].filter(Boolean).join(' / ');
+        return (
+          <span className="cell-stack">
+            <span className="cell-primary">{a.PATIENT_NAME || '—'}</span>
+            <span className="cell-secondary"><span className="mono">{a.UHID}</span>{demo ? ` · ${demo}` : ''}</span>
+          </span>
+        );
+      },
+    },
+    {
+      id: 'location', header: 'Ward / bed', accessorFn: (a) => `${a.WARD_NAME || ''} ${a.BED_NUMBER || ''}`,
+      cell: ({ row }) => (
+        <span className="cell-stack">
+          <span>{row.original.WARD_NAME || '—'} / <span className="mono">{row.original.BED_NUMBER || '—'}</span></span>
+          <span className="cell-secondary">Room {row.original.ROOM_NUMBER || '—'}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'doctor', header: 'Consultant', accessorFn: (a) => a.DOCTOR_NAME || '',
+      cell: ({ getValue }) => (getValue() ? `Dr. ${getValue()}` : '—'),
+    },
+    {
+      id: 'stay', header: 'Stay', accessorFn: daysAdmitted, meta: { width: 150 },
+      cell: ({ row }) => {
+        const d = daysAdmitted(row.original);
+        const since = fmtDate(row.original.ADMISSION_DATE);
+        return (
+          <span className="cell-stack">
+            {d > LONG_STAY_DAYS
+              ? <span><span className="status status-warning">{d} days</span></span>
+              : <span className="tabular">{d} {d === 1 ? 'day' : 'days'}</span>}
+            {since && <span className="cell-secondary">Since {since}</span>}
+          </span>
+        );
+      },
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 200, align: 'right' },
+      cell: ({ row }) => (
+        <span className="inline-actions">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate(`/ipd/patient/${admissionId(row.original)}`)} aria-label={`Open chart for ${row.original.PATIENT_NAME}`}>
+            Chart
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => recordVitals(row.original)} aria-label={`Record vitals for ${row.original.PATIENT_NAME}`}>
+            <HeartPulse size={14} aria-hidden="true" /> Vitals
+          </button>
+        </span>
+      ),
+    },
+  ], [navigate, recordVitals]);
 
   const hour = currentTime.getHours();
-  const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
-  const dateStr = currentTime.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const dateStr = currentTime.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' });
 
-  const sidebarStats = [
-    { icon: '🛏️', label: 'Active IPD Patients', value: admissions.length, color: '#3b82f6' },
-    { icon: '📋', label: 'Pending Admissions', value: pendingRequests, color: '#f59e0b', onClick: () => navigate('/ipd/requests') },
-    { icon: '❤️', label: 'Vitals Due (Shift)', value: admissions.length, color: '#ef4444' },
-    { icon: '💊', label: 'Pending MAR Tasks', value: admissions.length * 2, color: 'var(--primary)' },
-  ];
+  const show = (v) => (loading ? '—' : v);
+  const longStays = admissions.filter((a) => daysAdmitted(a) > LONG_STAY_DAYS).length;
 
   return (
-    <div style={{ 
-      display: 'flex', flexDirection: 'column',
-      height: 'calc(100vh - 60px)',
-      overflow: 'hidden',
-    }}>
-      
-      {/* ── MAIN GRID ── */}
-      <div className="nurse-dashboard-grid" style={{ 
-        display: 'grid', gridTemplateColumns: 'minmax(240px, 280px) minmax(0, 1fr) minmax(250px, 300px)', gap: '16px', 
-        alignItems: 'start', padding: '12px 16px',
-        flex: 1, minHeight: 0, overflow: 'auto',
-        width: '100%',
-      }}>
-        
-        {/* ── LEFT COLUMN: Profile & Stats ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minHeight: 0 }}>
-          
-          {/* Nurse Greeting Card */}
-          <div className="hms-anim-1" style={{
-            flexShrink: 0, background: 'var(--surface)', borderRadius: 16,
-            border: '1px solid var(--border)', overflow: 'hidden',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-          }}>
-            <div style={{ height: 4, background: 'var(--primary)', borderRadius: '16px 16px 0 0' }} />
-            <div style={{ padding: '18px 24px 16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                <div style={{
-                  width: 38, height: 38, borderRadius: 10,
-                  background: 'var(--primary-light)',
-                  border: '1px solid rgba(236,72,153,0.15)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.3rem'
-                }}><Glyph icon="👩‍⚕️" /></div>
-                <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: 'var(--text-muted)' }}>{greeting}</div>
-              </div>
-              <h1 style={{ margin: '0 0 4px', fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>Nurse Station</h1>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', margin: '0 0 14px', fontWeight: 500 }}>{dateStr} — Clinical Hub</p>
-              
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-primary" onClick={() => navigate('/ipd/beds')} style={{ flex: 1, padding: '9px 12px', fontSize: '0.82rem', fontWeight: 700, borderRadius: 10 }}>
-                  Bed Management
-                </button>
-                <button className="btn btn-outline" onClick={fetchNurseData} style={{ padding: '9px 14px', borderRadius: 10 }}>↻</button>
-              </div>
-            </div>
-          </div>
+    <>
+      <PageHeader
+        title={`${greeting}, ${firstName(user?.name)}`}
+        description="Your ward patients, pending admission requests and this shift's vitals round."
+        meta={<span className="muted">{dateStr}</span>}
+        actions={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={fetchNurseData} disabled={loading}>
+              <RefreshCw size={16} aria-hidden="true" /> Refresh
+            </button>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/ipd/requests')}>
+              <ClipboardList size={16} aria-hidden="true" /> Admission requests
+            </button>
+            <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/ipd/beds')}>
+              <BedDouble size={16} aria-hidden="true" /> Bed management
+            </button>
+          </>
+        )}
+      />
 
-          {/* Vertical Stats Sidebar */}
-          <div className="hms-anim-2" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingRight: 4 }}>
-            {sidebarStats.map((s, i) => (
-              <div key={s.label} className="card" onClick={s.onClick} style={{
-                padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 16,
-                borderLeft: `4px solid ${s.color}`, cursor: s.onClick ? 'pointer' : 'default',
-                transition: 'all 0.2s ease', background: 'var(--surface)',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-              }}
-              onMouseEnter={e => s.onClick && (e.currentTarget.style.transform = 'translateX(4px)', e.currentTarget.style.background = `${s.color}05`)}
-              onMouseLeave={e => s.onClick && (e.currentTarget.style.transform = 'none', e.currentTarget.style.background = 'var(--surface)')}
-              >
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: `${s.color}10`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}><Glyph icon={s.icon} /></div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>{s.label}</div>
-                  <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: -2 }}>{s.value}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── CENTER COLUMN: Monitoring Table ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <div className="card hms-anim-3" style={{ 
-            flex: 1, padding: 0, display: 'flex', flexDirection: 'column', 
-            overflow: 'hidden', border: '1px solid var(--border)',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
-            background: 'var(--surface)',
-            borderRadius: 16
-          }}>
-            <div style={{ 
-              padding: '18px 24px', background: 'var(--surface)', 
-              borderBottom: '1px solid var(--border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: '1.2rem' }}><Glyph icon="📋" /></span>
-                <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>My Ward Patients</h2>
-                <span className="badge badge-teal" style={{ padding: '4px 10px' }}>{admissions.length} Active</span>
-              </div>
-              <button onClick={() => navigate('/ipd/patients')} className="btn btn-ghost" style={{ fontSize: '0.85rem', fontWeight: 600 }}>View Patient Directory →</button>
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface-2)' }}>
-                  <tr>
-                    <th style={thS}>PATIENT</th>
-                    <th style={thS}>LOCATION</th>
-                    <th style={thS}>DOCTOR</th>
-                    <th style={thS}>STAY</th>
-                    <th style={{...thS, textAlign: 'right', paddingRight: 24}}>ACTIONS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {admissions.length === 0 ? (
-                    <tr><td colSpan="5" style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>
-                      <div style={{ fontSize: '3rem', marginBottom: 16 }}><Glyph icon="🏥" /></div>
-                      <h3 style={{ margin: 0, fontSize: '1rem' }}>No active patients in your ward</h3>
-                      <p style={{ fontSize: '0.85rem', marginTop: 8 }}>Use the IPD Requests to admit new patients.</p>
-                    </td></tr>
-                  ) : (
-                    admissions.map((adm, i) => (
-                      <tr key={adm.ID || adm.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'var(--surface)' : 'rgba(248,250,252,0.5)' }}>
-                        <td style={tdS}>
-                          <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.95rem' }}>{adm.PATIENT_NAME}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>{adm.UHID} • {adm.GENDER?.[0]} / {adm.AGE}Y</div>
-                        </td>
-                        <td style={tdS}>
-                          <div style={{ padding: '4px 10px', borderRadius: 8, background: 'rgba(59,130,246,0.06)', color: '#3b82f6', fontWeight: 700, fontSize: '0.82rem', display: 'inline-block' }}>
-                            {adm.WARD_NAME} / {adm.BED_NUMBER}
-                          </div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>Room: {adm.ROOM_NUMBER || '—'}</div>
-                        </td>
-                        <td style={tdS}>
-                          <div style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Dr. {adm.DOCTOR_NAME}</div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>Primary Consultant</div>
-                        </td>
-                        <td style={tdS}>
-                          <span style={{ 
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            padding: '4px 10px', borderRadius: 20, 
-                            background: (adm.DAYS_ADMITTED || 0) > 5 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
-                            color: (adm.DAYS_ADMITTED || 0) > 5 ? '#ef4444' : '#10b981',
-                            fontWeight: 700, fontSize: '0.8rem'
-                          }}>
-                            {adm.DAYS_ADMITTED || 0} Days
-                          </span>
-                        </td>
-                        <td style={{ ...tdS, textAlign: 'right', paddingRight: 24 }}>
-                          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                            <button onClick={() => navigate(`/ipd/patient/${adm.ID || adm.id}`)} className="btn btn-sm btn-outline" style={{ borderRadius: 8, padding: '6px 12px', fontSize: '0.75rem', fontWeight: 700 }}>Chart</button>
-                            <button onClick={() => navigate('/hms/vitals/entry', { state: { patient: { id: adm.PATIENT_ID, name: adm.PATIENT_NAME, uhid: adm.UHID, age: adm.AGE, gender: adm.GENDER } } })} className="btn btn-sm" style={{ borderRadius: 8, padding: '6px 12px', fontSize: '0.75rem', fontWeight: 700, background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none' }}>+ Vitals</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        {/* ── RIGHT COLUMN: Quick Actions & Vitals ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minHeight: 0 }}>
-          
-          {/* Quick Actions Panel */}
-          <div className="card hms-anim-4" style={{ padding: 0, overflow: 'hidden', borderRadius: 16, border: '1px solid var(--border)' }}>
-            <div style={{ padding: '16px 20px', background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '1rem' }}><Glyph icon="⚡" /></span>
-              <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800 }}>Quick Navigation</h2>
-            </div>
-            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {[
-                { label: 'Pending Admissions', icon: '📋', to: '/ipd/requests', color: 'var(--primary)' },
-                { label: 'Bed Management', icon: '🛏️', to: '/ipd/beds', color: 'var(--primary)' },
-                { label: 'Patient Directory', icon: '🏥', to: '/ipd/patients', color: '#3b82f6' },
-                { label: 'Nursing Roster', icon: '📅', to: '/dashboard', color: '#10b981' },
-              ].map(a => (
-                <button key={a.to} onClick={() => navigate(a.to)} style={{
-                  display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px',
-                  borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)',
-                  cursor: 'pointer', transition: 'all 0.2s ease', textAlign: 'left'
-                }}
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateX(4px)'; e.currentTarget.style.borderColor = a.color; e.currentTarget.style.background = `${a.color}05`; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)'; }}
-                >
-                  <span style={{ fontSize: '1.2rem', color: a.color }}><Glyph icon={a.icon} /></span>
-                  <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{a.label}</span>
-                  <span style={{ marginLeft: 'auto', color: 'var(--text-muted)' }}>→</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Vitals Queue */}
-          <div className="card hms-anim-5" style={{ flex: 1, padding: 0, overflow: 'hidden', borderRadius: 16, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '16px 20px', background: 'rgba(239,68,68,0.03)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: '1rem' }}><Glyph icon="💓" /></span>
-              <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#ef4444' }}>Vitals Due (This Shift)</h2>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
-              {admissions.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '30px 10px' }}>
-                  <div style={{ fontSize: '2rem', opacity: 0.2 }}><Glyph icon="🧘" /></div>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 10 }}>All vitals recorded ✓</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {admissions.slice(0, 8).map(adm => (
-                    <div key={adm.ID || adm.id} style={{
-                      padding: '12px', background: 'var(--surface-2)', border: '1px solid var(--border)',
-                      borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    }}>
-                      <div>
-                        <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{adm.PATIENT_NAME}</div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{adm.WARD_NAME} / {adm.BED_NUMBER}</div>
-                      </div>
-                      <button className="btn btn-sm"
-                        style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: 'none', borderRadius: 8, padding: '5px 12px', fontWeight: 700, fontSize: '0.72rem' }}
-                        onClick={() => navigate('/hms/vitals/entry', { state: { patient: { id: adm.PATIENT_ID, name: adm.PATIENT_NAME, uhid: adm.UHID, age: adm.AGE, gender: adm.GENDER } } })}>
-                        Enter
-                      </button>
-                    </div>
-                  ))}
-                  {admissions.length > 8 && <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', padding: 5 }}>+ {admissions.length - 8} more patients</div>}
-                </div>
-              )}
-            </div>
-          </div>
+      <div className="kpi-strip">
+        <button
+          type="button"
+          className="panel kpi kpi-button"
+          onClick={() => navigate('/ipd/patients')}
+          aria-label={`Active inpatients: ${show(admissions.length)}. Open the patient directory`}
+        >
+          <div className="kpi-label">Active inpatients</div>
+          <div className="kpi-value">{show(admissions.length)}</div>
+        </button>
+        <button
+          type="button"
+          className="panel kpi kpi-button"
+          onClick={() => navigate('/ipd/requests')}
+          aria-label={`Pending admission requests: ${show(pendingRequests)}. Open admission requests`}
+        >
+          <div className="kpi-label">Pending admission requests</div>
+          <div className="kpi-value" style={{ color: !loading && pendingRequests > 0 ? 'var(--amber)' : undefined }}>{show(pendingRequests)}</div>
+        </button>
+        <div className="panel kpi">
+          <div className="kpi-label">Stays over {LONG_STAY_DAYS} days</div>
+          <div className="kpi-value">{show(longStays)}</div>
         </div>
       </div>
-    </div>
+
+      <section className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel-head">
+          <h2 className="panel-title" style={{ margin: 0 }}>
+            <BedDouble size={16} aria-hidden="true" /> Ward patients
+            {!loading && <span className="status status-neutral">{admissions.length} active</span>}
+          </h2>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate('/ipd/patients')}>
+            Patient directory <ChevronRight size={14} aria-hidden="true" />
+          </button>
+        </div>
+        <DataTable
+          columns={columns}
+          data={admissions}
+          loading={loading}
+          getRowId={(a, i) => String(admissionId(a) ?? i)}
+          pageSize={15}
+          empty={(
+            <EmptyState
+              icon={BedDouble}
+              title="No active inpatients"
+              description="Patients admitted from IPD requests appear here."
+              action={(
+                <button type="button" className="btn btn-secondary btn-md" onClick={() => navigate('/ipd/requests')}>
+                  <ClipboardList size={16} aria-hidden="true" /> View admission requests
+                </button>
+              )}
+            />
+          )}
+        />
+      </section>
+
+      <div className="split-2">
+        <section className="panel panel-pad">
+          <h2 className="panel-title"><HeartPulse size={16} aria-hidden="true" /> Vitals round</h2>
+          {loading ? <p className="muted">Loading…</p> : admissions.length === 0 ? (
+            <p className="muted">No admitted patients on this shift's round.</p>
+          ) : (
+            <>
+              <ul className="list-rows">
+                {admissions.slice(0, 8).map((adm, i) => (
+                  <li key={admissionId(adm) ?? i}>
+                    <div className="list-row list-row-static">
+                      <span className="cell-stack">
+                        <span className="cell-primary">{adm.PATIENT_NAME}</span>
+                        <span className="cell-secondary">{adm.WARD_NAME} / {adm.BED_NUMBER}</span>
+                      </span>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => recordVitals(adm)} aria-label={`Record vitals for ${adm.PATIENT_NAME}`}>
+                        Record vitals
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {admissions.length > 8 && (
+                <p className="muted" style={{ marginTop: 10 }}>
+                  {admissions.length - 8} more {admissions.length - 8 === 1 ? 'patient' : 'patients'} in the ward patients list above.
+                </p>
+              )}
+            </>
+          )}
+        </section>
+
+        <section className="panel panel-pad">
+          <h2 className="panel-title"><LayoutGrid size={16} aria-hidden="true" /> Quick navigation</h2>
+          <ul className="list-rows">
+            {QUICK_LINKS.map((a) => {
+              const Icon = a.icon;
+              return (
+                <li key={a.to}>
+                  <button type="button" className="list-row" onClick={() => navigate(a.to)}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                      <Icon size={16} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
+                      {a.label}
+                    </span>
+                    <ChevronRight size={16} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      </div>
+    </>
   );
 }
-
-const thS = {
-  padding: '14px 24px', fontSize: '0.72rem', fontWeight: 700,
-  color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em',
-};
-
-const tdS = {
-  padding: '16px 24px', fontSize: '0.9rem', verticalAlign: 'middle',
-};

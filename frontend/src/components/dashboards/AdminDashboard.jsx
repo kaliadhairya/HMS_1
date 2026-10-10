@@ -1,11 +1,72 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  BedDouble, CalendarDays, ChevronRight, CircleAlert, ClipboardList, LayoutGrid, Pill, Receipt, UserCog, Users,
+} from 'lucide-react';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 import PatientAnalyticsModal from '../PatientAnalyticsModal';
-import Glyph from '../ui/Glyph';
+import PageHeader from '../ui/PageHeader';
+import DataTable from '../ui/DataTable';
+import EmptyState from '../ui/EmptyState';
 
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+};
+
+// First name, keeping a leading honorific ("Sister Mary", "Dr. Rao").
+const firstName = (name) => {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'there';
+  // Shared role accounts ("System Administrator") read oddly by first name alone.
+  if (/admin|system/i.test(name)) return parts.join(' ');
+  if (parts.length > 1 && /^(dr|mr|mrs|ms|miss|sister|sr|prof)\.?$/i.test(parts[0])) return `${parts[0]} ${parts[1]}`;
+  return parts[0];
+};
+
+const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
+const fmtDateTime = (v) => (v
+  ? new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })
+  : '—');
+
+const ADMISSION_TONE = { Active: 'info', Admitted: 'info', Discharged: 'success', 'Discharge Pending': 'warning', 'Pending Discharge': 'warning' };
+const ADMISSION_LABEL = { Active: 'Admitted' };
+
+// A KPI tile that opens a page or dialog: same look as a static tile, but a real button.
+
+function Kpi({ label, value, sub, color, onClick, actionLabel }) {
+  const body = (
+    <>
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value" style={color ? { color } : undefined}>{value}</div>
+      {sub && <div className="kpi-sub">{sub}</div>}
+    </>
+  );
+  if (!onClick) return <div className="panel kpi">{body}</div>;
+  return (
+    <button type="button" className="panel kpi kpi-button" onClick={onClick} aria-label={`${label}: ${value}. ${actionLabel}`}>
+      {body}
+    </button>
+  );
+}
+
+const QUICK_LINKS = [
+  { label: 'Staff management', path: '/hms/admin/staff', icon: UserCog },
+  { label: 'Patients', path: '/hms/admin/patients', icon: Users },
+  { label: 'Appointments', path: '/hms/appointments', icon: CalendarDays },
+  { label: 'Billing & finance', path: '/hms/admin/billing', icon: Receipt },
+  { label: 'Pharmacy', path: '/hms/admin/pharmacy', icon: Pill },
+  { label: 'Attendance & leave', path: '/hms/admin/attendance', icon: ClipboardList },
+  { label: 'Bed management', path: '/hms/admin/bed-management', icon: BedDouble },
+];
+
+// Hospital admin home: today's operations, patient registrations and recent admissions.
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [data, setData] = useState(null);
   const [analyticsData, setAnalyticsData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -21,275 +82,169 @@ export default function AdminDashboard() {
     }).finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-        <div className="spinner" style={{ width: 36, height: 36 }} />
-      </div>
-    );
-  }
+  const columns = useMemo(() => [
+    {
+      id: 'patient', header: 'Patient', accessorFn: (a) => a.PATIENT_NAME || '',
+      cell: ({ getValue }) => <span className="cell-primary">{getValue() || '—'}</span>,
+    },
+    { id: 'ward', header: 'Ward', accessorFn: (a) => a.WARD_NAME || '', cell: ({ getValue }) => getValue() || '—' },
+    {
+      id: 'bed', header: 'Bed', accessorFn: (a) => a.BED_NUMBER || '', meta: { width: 110 },
+      cell: ({ getValue }) => <span className="mono">{getValue() || '—'}</span>,
+    },
+    {
+      id: 'status', header: 'Status', accessorFn: (a) => a.STATUS || '', meta: { width: 170 },
+      cell: ({ getValue }) => <span className={`status status-${ADMISSION_TONE[getValue()] || 'info'}`}>{ADMISSION_LABEL[getValue()] || getValue() || '—'}</span>,
+    },
+    {
+      id: 'admitted', header: 'Admitted', meta: { width: 160 },
+      accessorFn: (a) => (a.ADMISSION_DATE ? new Date(a.ADMISSION_DATE).getTime() : 0),
+      cell: ({ row }) => <span className="tabular">{fmtDateTime(row.original.ADMISSION_DATE)}</span>,
+    },
+  ], []);
 
-  const analyticsKpis = [
-    { icon: '📋', label: "Today's Patients", value: analyticsData?.today_patients || 0, color: 'var(--green)', analytics: { kind: 'patients', scope: 'today', title: "Today's Patient Analytics" } },
-    { icon: '📊', label: 'This Week', value: analyticsData?.week_patients || 0, color: 'var(--blue)', analytics: { kind: 'patients', scope: 'week', title: 'Weekly Patient Analytics' } },
-    { icon: '📈', label: 'This Month', value: analyticsData?.month_patients || 0, color: 'var(--amber)', analytics: { kind: 'patients', scope: 'month', title: 'Monthly Patient Analytics' } },
-    { icon: '👥', label: 'Active Users', value: analyticsData?.active_users || 0, color: 'var(--teal)', analytics: { kind: 'users', scope: 'active', title: 'User Access Analytics' } },
+  const show = (v) => (loading ? '—' : v);
+  const occupancy = Number(data?.bed_occupancy || 0);
+  const lowStock = Number(data?.low_stock || 0);
+  const pendingDischarges = Number(data?.pending_discharges || 0);
+  const admissions = data?.recent_admissions || [];
+
+  const registrations = [
+    { label: 'New patients today', value: analyticsData?.today_patients || 0, analytics: { kind: 'patients', scope: 'today', title: "Today's Patient Analytics" } },
+    { label: 'New patients this week', value: analyticsData?.week_patients || 0, analytics: { kind: 'patients', scope: 'week', title: 'Weekly Patient Analytics' } },
+    { label: 'New patients this month', value: analyticsData?.month_patients || 0, analytics: { kind: 'patients', scope: 'month', title: 'Monthly Patient Analytics' } },
+    { label: 'Active users', value: analyticsData?.active_users || 0, analytics: { kind: 'users', scope: 'active', title: 'User Access Analytics' } },
   ];
 
-  const kpis = [
-    { icon: '💰', label: "Today's Revenue", value: `₹${Number(data?.revenue_today || 0).toLocaleString('en-IN')}`, color: 'var(--green)' },
-    { icon: '🛏️', label: 'Bed Occupancy', value: `${data?.bed_occupancy || 0}%`, sub: `${data?.occupied_beds || 0}/${data?.total_beds || 0} beds`, color: data?.bed_occupancy > 80 ? '#ef4444' : 'var(--blue)' },
-    { icon: '🏥', label: 'OPD / IPD', value: `${data?.opd_count || 0} / ${data?.ipd_count || 0}`, sub: 'Today', color: 'var(--amber)' },
-    { icon: '👨‍⚕️', label: 'Staff on Duty', value: data?.staff_on_duty || 0, color: 'var(--teal)' },
-  ];
-
-  const alerts = [
-    { icon: '📋', label: 'Pending Discharges', value: data?.pending_discharges || 0, color: data?.pending_discharges > 0 ? 'var(--amber)' : 'var(--green)' },
-    { icon: '📦', label: 'Low Stock Medicines', value: data?.low_stock || 0, color: data?.low_stock > 0 ? 'var(--red)' : 'var(--green)' },
-    { icon: '📅', label: "Today's Appointments", value: data?.todays_appointments || 0, color: 'var(--blue)' },
-  ];
-
-  const quickLinks = [
-    { icon: '👥', label: 'Staff Management', path: '/hms/admin/staff', color: 'var(--primary)' },
-    { icon: '🏥', label: 'Patients', path: '/hms/admin/patients', color: '#10b981' },
-    { icon: '📅', label: 'Appointments', path: '/hms/appointments', color: '#f59e0b' },
-    { icon: '💳', label: 'Billing & Finance', path: '/hms/admin/billing', color: '#ef4444' },
-    { icon: '💊', label: 'Pharmacy', path: '/hms/admin/pharmacy', color: 'var(--primary)' },
-    { icon: '📝', label: 'Attendance & Leave', path: '/hms/admin/attendance', color: 'var(--primary)' },
-    { icon: '🛏️', label: 'Bed Management', path: '/hms/admin/bed-management', color: '#0ea5e9' },
+  const attention = [
+    { label: 'Pending discharges', value: pendingDischarges, color: pendingDischarges > 0 ? 'var(--amber)' : undefined },
+    { label: 'Low stock medicines', value: lowStock, color: lowStock > 0 ? 'var(--amber)' : undefined, path: '/hms/admin/pharmacy' },
+    { label: "Today's appointments", value: Number(data?.todays_appointments || 0), path: '/hms/appointments' },
   ];
 
   return (
     <>
-      <div className="container py-4">
-        {/* Premium Header */}
-        <div className="hms-page-header hms-anim-1">
-          <div>
-            <h1>
-              <span className="header-icon" style={{ background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.25)' }}><Glyph icon="🏥" /></span>
-              Hospital Admin Dashboard
-            </h1>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 6, marginLeft: 56 }}>
-              Operations Overview — Real-time hospital management insights
-            </p>
-          </div>
-        </div>
-
-        {/* Patient Analytics KPI Cards (clickable, same as SuperAdmin) */}
-        {analyticsData && (
-          <div className="hms-anim-2" style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-            gap: 16, marginBottom: 30,
-          }}>
-            {analyticsKpis.map((k, i) => (
-              <button
-                key={k.label}
-                type="button"
-                className={`hms-stat-card anim-${i + 1}`}
-                onClick={() => setAnalyticsMetric(k.analytics)}
-                title={`Open ${k.label} analytics`}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-3px)';
-                  e.currentTarget.style.boxShadow = '0 14px 30px -10px rgba(59,130,246,0.4)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'none';
-                  e.currentTarget.style.boxShadow = '';
-                }}
-                style={{
-                  borderTop: `4px solid ${k.color}`,
-                  padding: 0,
-                  display: 'block',
-                  position: 'relative',
-                  cursor: 'pointer',
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                  textAlign: 'left',
-                  font: 'inherit',
-                  color: 'inherit',
-                  width: '100%',
-                  minHeight: 136,
-                  overflow: 'hidden',
-                  background: 'var(--surface)',
-                }}
-              >
-                <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, height: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                    <div style={{
-                      width: 48, height: 48, borderRadius: 12,
-                      background: `${k.color}15`, color: k.color,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '1.5rem', flexShrink: 0,
-                    }}>
-                      <Glyph icon={k.icon} />
-                    </div>
-                    <span style={{
-                      borderRadius: 999,
-                      border: '1px solid rgba(59,130,246,0.22)',
-                      background: 'rgba(59,130,246,0.08)',
-                      color: '#2563eb',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 5,
-                      fontSize: '0.62rem',
-                      fontWeight: 800,
-                      letterSpacing: '0.06em',
-                      lineHeight: 1,
-                      padding: '7px 9px',
-                      textTransform: 'uppercase',
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                    }}>
-                      Analytics <span style={{ fontSize: '0.82rem' }}>↗</span>
-                    </span>
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{
-                      color: 'var(--text-muted)',
-                      fontSize: '0.74rem',
-                      fontWeight: 700,
-                      letterSpacing: '0.06em',
-                      lineHeight: 1.25,
-                      textTransform: 'uppercase',
-                      overflowWrap: 'anywhere',
-                    }}>
-                      {k.label}
-                    </div>
-                    <div style={{ fontSize: '1.7rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4, lineHeight: 1 }}>
-                      {k.value}
-                    </div>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
+      <PageHeader
+        title={`${greeting()}, ${firstName(user?.name)}`}
+        description="Hospital operations for today: revenue, beds, patient flow and staff."
+        actions={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate('/hms/admin/bed-management')}>
+              <BedDouble size={16} aria-hidden="true" /> Bed management
+            </button>
+            <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/hms/admin/staff')}>
+              <UserCog size={16} aria-hidden="true" /> Staff management
+            </button>
+          </>
         )}
+      />
 
-        {/* Operational KPI Cards */}
-        <div className="hms-anim-2" style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-          gap: 16, marginBottom: 30,
-        }}>
-          {kpis.map((k, i) => (
-            <div key={k.label} className={`hms-stat-card anim-${i + 1}`} style={{
-              borderTop: `4px solid ${k.color}`,
-              padding: '20px',
-              display: 'flex', alignItems: 'center', gap: 14,
-            }}>
-              <div style={{
-                width: 48, height: 48, borderRadius: 12,
-                background: `${k.color}15`, color: k.color,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.5rem',
-              }}>
-                <Glyph icon={k.icon} />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
-                  {k.label}
-                </div>
-                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4 }}>
-                  {k.value}
-                </div>
-                {k.sub && <div style={{ fontSize: '0.75rem', color: k.color, marginTop: 4, fontWeight: 600 }}>{k.sub}</div>}
-              </div>
-            </div>
+      {!loading && lowStock > 0 && (
+        <div className="alert-strip alert-warning" role="status">
+          <CircleAlert size={16} aria-hidden="true" />
+          <span><strong>{lowStock} {lowStock === 1 ? 'medicine is' : 'medicines are'}</strong> at or below 10 units in stock.</span>
+          <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => navigate('/hms/admin/pharmacy')}>
+            Review pharmacy
+          </button>
+        </div>
+      )}
+
+      <div className="kpi-strip">
+        <Kpi
+          label="Revenue today"
+          value={show(inr(data?.revenue_today))}
+          onClick={() => navigate('/hms/admin/billing')}
+          actionLabel="Open billing & finance"
+        />
+        <Kpi
+          label="Bed occupancy"
+          value={show(`${occupancy}%`)}
+          sub={loading ? undefined : `${data?.occupied_beds || 0} of ${data?.total_beds || 0} beds occupied`}
+          color={occupancy > 80 ? 'var(--amber)' : undefined}
+          onClick={() => navigate('/hms/admin/bed-management')}
+          actionLabel="Open bed management"
+        />
+        <Kpi label="OPD / IPD" value={show(`${data?.opd_count || 0} / ${data?.ipd_count || 0}`)} sub="OPD tokens today, inpatients now" />
+        <Kpi label="Staff on duty" value={show(data?.staff_on_duty || 0)} sub="Signed in today" />
+      </div>
+
+      {(loading || analyticsData) && (
+        <div className="kpi-strip">
+          {registrations.map((k) => (
+            <Kpi
+              key={k.label}
+              label={k.label}
+              value={show(k.value)}
+              sub={analyticsData ? 'View analytics' : undefined}
+              onClick={analyticsData ? () => setAnalyticsMetric(k.analytics) : undefined}
+              actionLabel={`Open ${k.label.toLowerCase()} analytics`}
+            />
           ))}
         </div>
+      )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 24, marginBottom: 30 }}>
-          {/* Operational Alerts */}
-          <div className="card hms-anim-3" style={{ padding: 24 }}>
-            <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '1.2rem' }}><Glyph icon="⚠️" /></span> Operational Alerts
-            </h2>
-            <div style={{ display: 'grid', gap: 12 }}>
-              {alerts.map(a => (
-                <div key={a.label} style={{
-                  background: 'var(--surface-2)', border: '1px solid var(--border)',
-                  borderRadius: 12, padding: '16px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  transition: 'transform 0.2s ease', cursor: 'default'
-                }}
-                onMouseEnter={e => e.currentTarget.style.transform = 'translateX(4px)'}
-                onMouseLeave={e => e.currentTarget.style.transform = 'none'}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: '1.2rem', background: 'var(--surface-1)', padding: 8, borderRadius: 8 }}><Glyph icon={a.icon} /></span>
-                    <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{a.label}</span>
-                  </div>
-                  <span style={{ fontSize: '1.2rem', fontWeight: 800, color: a.color }}>{a.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+      <div className="split-2" style={{ marginBottom: 16 }}>
+        <section className="panel panel-pad">
+          <h2 className="panel-title"><CircleAlert size={16} aria-hidden="true" /> Needs attention</h2>
+          <ul className="list-rows">
+            {attention.map((a) => {
+              const content = (
+                <>
+                  <span>{a.label}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <strong className="tabular" style={{ color: a.color }}>{show(a.value)}</strong>
+                    {a.path && <ChevronRight size={16} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />}
+                  </span>
+                </>
+              );
+              return (
+                <li key={a.label}>
+                  {a.path ? (
+                    <button type="button" className="list-row" onClick={() => navigate(a.path)}>{content}</button>
+                  ) : (
+                    <div className="list-row list-row-static">{content}</div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
 
-          {/* Quick Links */}
-          <div className="card hms-anim-4" style={{ padding: 24 }}>
-            <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: '1.2rem' }}><Glyph icon="⚡" /></span> Quick Access
-            </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              {quickLinks.map(ql => (
-                <div
-                  key={ql.label}
-                  onClick={() => navigate(ql.path)}
-                  style={{
-                    background: 'var(--surface-2)', border: '1px solid var(--border)',
-                    borderRadius: 12, padding: '16px', cursor: 'pointer',
-                    transition: 'all 0.2s', display: 'flex', flexDirection: 'column', gap: 8,
-                    borderLeft: `4px solid ${ql.color}`,
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-3)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.transform = 'none'; }}
-                >
-                  <span style={{ fontSize: '1.4rem' }}><Glyph icon={ql.icon} /></span>
-                  <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{ql.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Admissions */}
-        <div className="card hms-anim-5" style={{ padding: 24 }}>
-          <h2 style={{ marginBottom: 20, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: '1.2rem' }}><Glyph icon="🛏️" /></span> Recent Admissions
-          </h2>
-          <div className="table-wrapper hms-table-anim" style={{ maxHeight: 320, overflowY: 'auto' }} tabIndex={0} role="region" aria-label="Recent admissions">
-            <table>
-              <thead>
-                <tr>
-                  <th>Patient</th>
-                  <th>Ward</th>
-                  <th>Bed</th>
-                  <th>Status</th>
-                  <th>Admitted</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data?.recent_admissions || []).map((adm, i) => (
-                  <tr key={i} style={{ animationDelay: `${i * 0.05}s` }}>
-                    <td style={{ fontWeight: 600 }}>{adm.PATIENT_NAME || '—'}</td>
-                    <td>{adm.WARD_NAME || '—'}</td>
-                    <td>{adm.BED_NUMBER || '—'}</td>
-                    <td>
-                      <span className={`badge ${adm.STATUS === 'Admitted' ? 'badge-green' : adm.STATUS === 'Discharge Pending' ? 'badge-amber' : 'badge-blue'}`} style={{ padding: '4px 10px' }}>
-                        {adm.STATUS}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      {adm.ADMISSION_DATE ? new Date(adm.ADMISSION_DATE).toLocaleString('en-IN') : '—'}
-                    </td>
-                  </tr>
-                ))}
-                {(!data?.recent_admissions || data.recent_admissions.length === 0) && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 30 }}>No recent admissions</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <section className="panel panel-pad">
+          <h2 className="panel-title"><LayoutGrid size={16} aria-hidden="true" /> Quick access</h2>
+          <ul className="list-rows" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+            {QUICK_LINKS.map((ql) => {
+              const Icon = ql.icon;
+              return (
+                <li key={ql.path}>
+                  <button type="button" className="list-row" onClick={() => navigate(ql.path)}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                      <Icon size={16} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
+                      {ql.label}
+                    </span>
+                    <ChevronRight size={16} aria-hidden="true" style={{ color: 'var(--text-muted)' }} />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       </div>
+
+      <section className="panel">
+        <div className="panel-head">
+          <h2 className="panel-title" style={{ margin: 0 }}><BedDouble size={16} aria-hidden="true" /> Recent admissions</h2>
+        </div>
+        <DataTable
+          columns={columns}
+          data={admissions}
+          loading={loading}
+          getRowId={(a, i) => String(a.ID ?? i)}
+          pageSize={10}
+          initialSorting={[{ id: 'admitted', desc: true }]}
+          empty={<EmptyState icon={BedDouble} title="No recent admissions" description="New inpatient admissions appear here as soon as they are recorded." />}
+        />
+      </section>
 
       <PatientAnalyticsModal
         isOpen={!!analyticsMetric}
