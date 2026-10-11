@@ -7,13 +7,18 @@ import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import EmptyState from '../../../components/ui/EmptyState';
+import { useAuth } from '../../../context/AuthContext';
 
 const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+// Roles that can open the inpatient billing page (matches the /ipd/billing/:admissionId route).
+const IPD_BILLING_ROLES = ['super_admin', 'admin', 'nurse'];
 const STATUS_TONE = { Paid: 'success', 'Partially Paid': 'warning', Pending: 'warning', Cancelled: 'neutral' };
 
 export default function BillingHistoryPage() {
   const { patientId } = useParams();
+  const { user } = useAuth();
+  const canOpenIpdBill = IPD_BILLING_ROLES.includes(user?.role);
   const [bills, setBills] = useState([]);
   const [advance, setAdvance] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -62,6 +67,13 @@ export default function BillingHistoryPage() {
       id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 130, align: 'right' },
       cell: ({ row }) => {
         const b = row.original;
+        if (b.BILL_TYPE === 'IPD' && b.ADMISSION_ID && canOpenIpdBill) {
+          return (
+            <Link to={`/ipd/billing/${b.ADMISSION_ID}`} className="btn btn-secondary btn-sm">
+              View bill <ArrowRight size={14} aria-hidden="true" />
+            </Link>
+          );
+        }
         if (!(b.BILL_TYPE === 'OPD' && b.ENCOUNTER_ID)) return null;
         return (
           <Link to={`/billing/opd/${b.ENCOUNTER_ID}`} className="btn btn-secondary btn-sm">
@@ -70,7 +82,7 @@ export default function BillingHistoryPage() {
         );
       },
     },
-  ], []);
+  ], [canOpenIpdBill]);
 
   return (
     <>

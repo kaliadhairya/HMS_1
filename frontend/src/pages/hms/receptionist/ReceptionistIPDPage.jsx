@@ -8,13 +8,19 @@ import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import EmptyState from '../../../components/ui/EmptyState';
 import Modal from '../../../components/ui/Modal';
+import { useAuth } from '../../../context/AuthContext';
 
 const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+// Roles with inpatient (IPD) API access. The front desk has none, so links into the bed board
+// and the inpatient chart are only offered to these roles (they used to end on an access error).
+const IPD_ROLES = ['super_admin', 'admin', 'nurse', 'doctor'];
 const occupancyTone = (pct) => (pct > 85 ? 'var(--red)' : pct > 60 ? 'var(--amber)' : 'var(--success)');
 
 export default function ReceptionistIPDPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canOpenIpd = IPD_ROLES.includes(user?.role);
   const [data, setData] = useState({ admissions: [], beds: [] });
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('admissions');
@@ -113,7 +119,7 @@ export default function ReceptionistIPDPage() {
                 <Wallet size={14} aria-hidden="true" /> Add advance
               </button>
             )}
-            {a.status === 'Discharge Pending' && (
+            {a.status === 'Discharge Pending' && canOpenIpd && (
               <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate(`/ipd/patient/${a.id}`)}>
                 Process discharge
               </button>
@@ -122,7 +128,7 @@ export default function ReceptionistIPDPage() {
         );
       },
     },
-  ], [navigate]);
+  ], [navigate, canOpenIpd]);
 
   return (
     <>
@@ -130,12 +136,12 @@ export default function ReceptionistIPDPage() {
       <main className="app-page">
         <PageHeader
           title="IPD admission desk"
-          description="New admissions, bed allotment, advance deposits and discharge initiation."
-          actions={(
+          description="Admitted patients, bed availability, advance deposits and discharges."
+          actions={canOpenIpd ? (
             <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/ipd/beds')}>
               <Plus size={16} aria-hidden="true" /> New admission
             </button>
-          )}
+          ) : null}
         />
 
         <div className="kpi-strip">

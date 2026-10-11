@@ -117,7 +117,7 @@ export default function VitalTrends({ vitals, height = 150 }) {
           </span>
         </div>
         <p className="chart-sub">
-          Normal {lines.map((l) => `${lines.length > 1 ? `${l.name.toLowerCase()} ` : ''}${l.low}–${l.high}`).join(', ')} {m.unit}
+          {latest ? <>Latest {fmtWhen(latest.t)} · </> : null}Normal {lines.map((l) => `${lines.length > 1 ? `${l.name.toLowerCase()} ` : ''}${l.low}–${l.high}`).join(', ')} {m.unit}
         </p>
         <div style={{ width: '100%', height }}>
           <ResponsiveContainer>

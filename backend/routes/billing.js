@@ -70,19 +70,35 @@ router.get('/advance/:patientId', protect, checkPermission('billing', 'read'), a
 // ── POST /api/billing/advance ──────────────────────────────
 router.post('/advance', protect, checkPermission('billing', 'write'), async (req, res) => {
   try {
-    const { patientId, admissionId, amount, paymentMode, notes } = req.body;
+    const { patientId, admissionId, paymentMode = 'Cash', notes } = req.body || {};
+    const amount = Number(req.body?.amount);
+    if (!patientId || !Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Valid Patient ID and Amount required' });
+    }
+    const patient = await Patient.findByPk(patientId, { attributes: ['id'] });
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient not found' });
+    if (admissionId) {
+      const [[admission]] = await sequelize.query(
+        'SELECT PATIENT_ID FROM HMS_ADMISSIONS WHERE ID = :admissionId',
+        { replacements: { admissionId: Number(admissionId) } }
+      );
+      if (!admission || Number(admission.PATIENT_ID) !== Number(patient.id)) {
+        return res.status(400).json({ success: false, message: 'The admission does not belong to this patient' });
+      }
+    }
+
     const id = await nextval('HMS_PATIENT_ADVANCES_SEQ');
     const advance = await PatientAdvance.create({
       id,
-      patientId,
+      patientId: patient.id,
       admissionId: admissionId || null,
       amount,
       paymentMode,
-      notes,
+      notes: notes || null,
       receivedBy: req.user.id
     });
     await logAction(req.user.id, 'CREATE', 'billing', advance.id, null, { action: 'collect_advance', amount }, req.ip);
-    res.json({ success: true, data: advance });
+    res.status(201).json({ success: true, data: advance });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Failed to record advance' });
@@ -433,40 +449,6 @@ async function recordPayment(req, res, billId) {
 router.post('/:billId/payment', protect, checkPermission('billing', 'write'), (req, res) => recordPayment(req, res, req.params.billId));
 
 // ── POST /api/billing/advance ─────────────────────────────────
-router.post('/advance', protect, checkPermission('billing', 'write'), async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const { patientId, admissionId, amount, paymentMode = 'Cash', notes } = req.body;
-
-    if (!patientId || !amount || Number(amount) <= 0) {
-      await t.rollback();
-      return res.status(400).json({ success: false, message: 'Valid Patient ID and Amount required' });
-    }
-
-    const advanceId = await nextval('hms_advances_seq', t);
-
-    const advance = await PatientAdvance.create({
-      id: advanceId,
-      patientId,
-      admissionId: admissionId || null,
-      amount: Number(amount),
-      paymentMode,
-      receivedBy: req.user.id,
-      notes: notes || null,
-      isRefunded: 0,
-    }, { transaction: t });
-
-    await t.commit();
-    await logAction(req.user.id, 'CREATE', 'billing', advance.id, null, { action: 'collect_advance', amount }, req.ip);
-
-    res.status(201).json({ success: true, data: advance });
-  } catch (err) {
-    await t.rollback();
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Failed to record advance payment' });
-  }
-});
-
 // ── POST /api/billing/payment ─────────────────────────────────
 router.post('/payment', protect, checkPermission('billing', 'write'), (req, res) => recordPayment(req, res, req.body.billId));
 
