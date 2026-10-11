@@ -17,8 +17,13 @@ export default function AdminPharmacyPage() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [billedToday, setBilledToday] = useState(null);
 
   useEffect(() => {
+    // Billed today (dispensing at MRP plus counter sales with GST), from the pharmacy report.
+    api.get('/pharmacist_lms/reports?days=1')
+      .then(r => setBilledToday(r.data.data?.dailySales ?? null))
+      .catch(() => setBilledToday(null));
     api.get('/dashboard/pharmacist')
       .then(r => setData(r.data.data))
       .catch((err) => {
@@ -57,7 +62,7 @@ export default function AdminPharmacyPage() {
           </div>
           <div className="panel kpi">
             <div className="kpi-label">Sales today</div>
-            <div className="kpi-value">{show(`₹${Number(data?.todays_sales || 0).toLocaleString('en-IN')}`)}</div>
+            <div className="kpi-value">{show(`₹${Number(billedToday ?? data?.todays_sales ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`)}</div>
           </div>
         </div>
 

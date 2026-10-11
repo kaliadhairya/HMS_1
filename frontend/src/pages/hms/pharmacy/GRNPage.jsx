@@ -35,7 +35,8 @@ export default function GRNPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    api.get('/pharmacist_lms/suppliers').then(res => setSuppliers(res.data.data)).catch(console.error);
+    // Active suppliers only (the legacy list also offered suppliers that had been marked inactive).
+    api.get('/suppliers').then(res => setSuppliers(res.data.data || [])).catch(console.error);
   }, []);
 
   // Fetch PR details
@@ -114,30 +115,28 @@ export default function GRNPage() {
     setItems([{ id: 1, medicineId: '', medicineSearch: '', batchNumber: '', expiryDate: '', quantity: '', purchaseRate: '', mrp: '', gstRate: 0, returnToVendor: false, suggestions: [] }]);
   };
 
+  // Immutable row updates: the old handler mutated rows in place and an earlier search could overwrite a later one.
   const handleItemChange = (index, field, value) => {
-    const newItems = [...items];
-    newItems[index][field] = value;
+    const rowId = items[index]?.id;
+    setItems((prev) => prev.map((it) => {
+      if (it.id !== rowId) return it;
+      // Typing a different name clears the medicine picked before, so a row cannot keep a stale medicine.
+      if (field === 'medicineSearch') return { ...it, medicineSearch: value, medicineId: '', suggestions: [] };
+      return { ...it, [field]: value };
+    }));
 
-    if (field === 'medicineSearch') {
-      if (value.length > 1) {
-        api.get(`/medicines/search?q=${value}`).then(res => {
-          newItems[index].suggestions = res.data;
-          setItems([...newItems]);
-        });
-      } else {
-        newItems[index].suggestions = [];
-      }
+    if (field === 'medicineSearch' && value.trim().length > 1) {
+      api.get(`/medicines/search?q=${encodeURIComponent(value.trim())}`).then(res => {
+        setItems((prev) => prev.map((it) => (it.id === rowId && it.medicineSearch === value ? { ...it, suggestions: res.data || [] } : it)));
+      }).catch(console.error);
     }
-    setItems(newItems);
   };
 
   const selectMedicine = (index, medicine) => {
-    const newItems = [...items];
-    newItems[index].medicineId = medicine.id;
-    newItems[index].medicineSearch = medicine.genericName;
-    newItems[index].gstRate = medicine.gstRate;
-    newItems[index].suggestions = [];
-    setItems(newItems);
+    const rowId = items[index]?.id;
+    setItems((prev) => prev.map((it) => (it.id === rowId ? {
+      ...it, medicineId: medicine.id, medicineSearch: medicine.genericName, gstRate: medicine.gstRate || 0, suggestions: [],
+    } : it)));
   };
 
   const addItem = () => {
@@ -173,7 +172,12 @@ export default function GRNPage() {
     e.preventDefault();
     if (!form.supplierId) return toast.error('Select a supplier or load a purchase request');
 
-    const validItems = items.filter(i => i.medicineId && i.batchNumber && i.quantity && i.purchaseRate);
+    // A row with a typed but unselected medicine used to be dropped silently, so the stock never arrived.
+    const unpicked = items.findIndex(i => !i.returnToVendor && String(i.medicineSearch || '').trim() && !i.medicineId);
+    if (unpicked >= 0) return toast.error(`Row ${unpicked + 1}: pick the medicine from the suggestions`);
+    const badQty = items.findIndex(i => !i.returnToVendor && i.medicineId && !(Number.isInteger(Number(i.quantity)) && Number(i.quantity) > 0));
+    if (badQty >= 0) return toast.error(`Row ${badQty + 1}: enter a whole-number quantity`);
+    const validItems = items.filter(i => i.medicineId && i.batchNumber && i.quantity && i.purchaseRate !== '' && i.expiryDate);
     if (validItems.length === 0) return toast.error('Add at least one complete item');
 
     try {
@@ -370,7 +374,7 @@ export default function GRNPage() {
                             <label className="sr-only" htmlFor={`grn-batch-${item.id}`}>Batch number for row {n}</label>
                             <input id={`grn-batch-${item.id}`} required type="text" placeholder="Batch" value={item.batchNumber} onChange={e => handleItemChange(index, 'batchNumber', e.target.value)} className="form-input" />
                             <label className="sr-only" htmlFor={`grn-exp-${item.id}`}>Expiry date for row {n}</label>
-                            <input id={`grn-exp-${item.id}`} required type="date" value={item.expiryDate} onChange={e => handleItemChange(index, 'expiryDate', e.target.value)} className="form-input" />
+                            <input id={`grn-exp-${item.id}`} required type="date" min={new Date().toISOString().slice(0, 10)} value={item.expiryDate} onChange={e => handleItemChange(index, 'expiryDate', e.target.value)} className="form-input" />
                           </div>
                         </td>
                         <td>
@@ -379,11 +383,11 @@ export default function GRNPage() {
                         </td>
                         <td>
                           <label className="sr-only" htmlFor={`grn-rate-${item.id}`}>Purchase rate for row {n}</label>
-                          <input id={`grn-rate-${item.id}`} required type="number" step="0.01" value={item.purchaseRate} onChange={e => handleItemChange(index, 'purchaseRate', e.target.value)} className="form-input" />
+                          <input id={`grn-rate-${item.id}`} required type="number" min="0" step="0.01" value={item.purchaseRate} onChange={e => handleItemChange(index, 'purchaseRate', e.target.value)} className="form-input" />
                         </td>
                         <td>
                           <label className="sr-only" htmlFor={`grn-mrp-${item.id}`}>MRP for row {n}</label>
-                          <input id={`grn-mrp-${item.id}`} required type="number" step="0.01" value={item.mrp} onChange={e => handleItemChange(index, 'mrp', e.target.value)} className="form-input" />
+                          <input id={`grn-mrp-${item.id}`} required type="number" min="0" step="0.01" value={item.mrp} onChange={e => handleItemChange(index, 'mrp', e.target.value)} className="form-input" />
                         </td>
                         <td>
                           <label className="sr-only" htmlFor={`grn-gst-${item.id}`}>GST rate for row {n}</label>

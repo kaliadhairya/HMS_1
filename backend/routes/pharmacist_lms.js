@@ -7,6 +7,8 @@ const {
   Bill, BillItem, Admission, StockLedger,
 } = require('../models');
 const { sequelize } = require('../models/db');
+const { checkPermission } = require('../middleware/auth');
+const pharmacy = require('./pharmacy');
 
 
 // ═══════════════════════════════════════════════════════════
@@ -159,164 +161,14 @@ router.get('/purchase-orders/:id', async (req, res) => {
 // ═══════════════════════════════════════════════════════════
 // 3. Dispense Queue — LIVE from Prescriptions table
 // ═══════════════════════════════════════════════════════════
-router.get('/dispense-queue', async (req, res) => {
-  try {
-    const pending = await Prescription.findAll({
-      where: { status: 'Pending' },
-      include: [
-        { model: Patient, as: 'patient', attributes: ['id', 'first_name', 'last_name', 'uhid'] },
-        { model: User, as: 'doctor', attributes: ['id', 'fullName'] },
-        { model: PrescriptionItem, as: 'items' },
-      ],
-      order: [['prescription_date', 'ASC']],
-    });
+// Same queue as GET /api/pharmacy/dispense-queue. (This copy looked for status 'Pending' and a
+// PRESCRIPTION_DATE column that does not exist, so it always answered an empty list.)
+router.get('/dispense-queue', checkPermission('pharmacy', 'read'), pharmacy.handlers.dispenseQueueHandler);
 
-    const queue = pending.map(p => ({
-      PRESCRIPTION_ID: p.id,
-      PATIENT_NAME: p.patient ? `${p.patient.first_name} ${p.patient.last_name}` : 'Unknown',
-      UHID: p.patient?.uhid || '---',
-      DOCTOR_NAME: p.doctor?.fullName || 'Unknown',
-      MEDICINE_COUNT: (p.items || []).length,
-      CREATED_AT: p.prescription_date,
-    }));
-
-    res.json({ status: 'success', data: queue, source: 'live' });
-  } catch (err) {
-    console.error('Dispense queue fetch failed:', err.message);
-    res.json({ status: 'success', data: [], source: 'live' });
-  }
-});
-
-// Dispense action — TRANSACTIONAL with Billing and Stock
-router.post('/dispense', async (req, res) => {
-  const t = await sequelize.transaction();
-  try {
-    const { prescriptionId, items } = req.body; // items: [{medicineId, batchId, quantity, rate, amount, medicineName}]
-    const userId = req.user?.id;
-
-    // 1. Fetch Prescription
-    const prescription = await Prescription.findByPk(prescriptionId, {
-      include: [{ model: Patient, as: 'patient' }],
-      transaction: t,
-    });
-    if (!prescription) throw new Error('Prescription not found');
-
-    const patientId = prescription.patient_id;
-
-    // 2. Identify Billing Context (IPD vs OPD)
-    const activeAdmissions = await Admission.findAll({
-      where: { patientId, status: 'Active' },
-      transaction: t,
-    });
-    const activeAdmission = activeAdmissions.length > 0 ? activeAdmissions[0] : null;
-
-    let billId = null;
-    if (activeAdmission) {
-      // IPD integration: Link to active admission bill
-      const [existingBill] = await Bill.findOrCreate({
-        where: { admissionId: activeAdmission.id, status: 'Pending' },
-        defaults: {
-          patientId,
-          admissionId: activeAdmission.id,
-          billType: 'IPD',
-          status: 'Pending',
-          totalAmount: 0,
-          netPayable: 0,
-        },
-        transaction: t,
-      });
-      billId = existingBill.id;
-    } else {
-      // OPD integration: Create a standalone bill
-      const newBill = await Bill.create({
-        patientId,
-        encounterId: prescription.encounter_id,
-        billType: 'OPD',
-        status: 'Pending',
-        totalAmount: 0,
-        netPayable: 0,
-      }, { transaction: t });
-      billId = newBill.id;
-    }
-
-    // 3. Create Dispensing Record
-    const totalDispenseAmount = (items || []).reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
-    const dispRecord = await DispensingRecord.create({
-      prescriptionId,
-      patientId,
-      dispensedBy: userId,
-      totalAmount: totalDispenseAmount,
-      billId,
-    }, { transaction: t });
-
-    // 4. Process Each Item (Stock + Bill Item)
-    if (items && items.length > 0) {
-      for (const item of items) {
-        // Deduct Stock
-        const batch = await MedicineBatch.findByPk(item.batchId, { transaction: t });
-        if (!batch || batch.quantity < item.quantity) {
-          throw new Error(`Insufficient stock for medicine: ${item.medicineName || 'ID ' + item.medicineId}`);
-        }
-        await batch.update({ quantity: batch.quantity - item.quantity }, { transaction: t });
-
-        // Create Stock Ledger entry
-        await StockLedger.create({
-          medicineId: item.medicineId,
-          batchId: item.batchId,
-          transactionType: 'OUT',
-          quantity: item.quantity,
-          referenceType: 'DISPENSING',
-          referenceId: dispRecord.id,
-          performedBy: userId,
-        }, { transaction: t });
-
-        // Create DispensingItem
-        await DispensingItem.create({
-          dispensingRecordId: dispRecord.id,
-          medicineId: item.medicineId,
-          batchId: item.batchId,
-          quantity: item.quantity,
-          rate: item.rate,
-          amount: item.amount,
-        }, { transaction: t });
-
-        // Add to Bill
-        await BillItem.create({
-          billId,
-          itemType: 'Medicine',
-          itemName: item.medicineName || 'Pharmacy Medicine',
-          quantity: item.quantity,
-          rate: item.rate,
-          amount: item.amount,
-        }, { transaction: t });
-      }
-    }
-
-    // 5. Update Bill Totals
-    const billItems = await BillItem.findAll({ where: { billId }, transaction: t });
-    const newTotal = billItems.reduce((sum, bi) => sum + parseFloat(bi.amount || 0), 0);
-    await Bill.update({ totalAmount: newTotal, netPayable: newTotal }, { where: { id: billId }, transaction: t });
-
-    // 6. Mark Prescription as Dispensed
-    await Prescription.update({ status: 'Dispensed' }, { where: { id: prescriptionId }, transaction: t });
-
-    await t.commit();
-
-    // 7. Real-time Events
-    const io = req.app.get('io');
-    if (io) {
-      io.to('pharmacist').emit('stock_updated', { reason: 'dispensed' });
-      io.to('receptionist').emit('billing_updated', { patientId, billId });
-      io.to('doctor').emit('prescription_dispensed', { prescriptionId });
-    }
-
-    res.json({ status: 'success', message: 'Prescription dispensed and billing updated successfully.' });
-  } catch (err) {
-    if (t) await t.rollback();
-    console.error('Dispensing Error:', err);
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-});
+// Dispense action — same handler as POST /api/pharmacy/dispense (prescription lock, one dispense per
+// prescription, MRP from the batch, not-dispensed lines recorded). This copy used to dispense any
+// prescription any number of times and trusted the client's rate and amount.
+router.post('/dispense', checkPermission('pharmacy', 'write'), pharmacy.handlers.dispenseHandler);
 
 // Get available batches for a medicine (FEFO: First Expiry First Out)
 router.get('/medicines/:id/batches', async (req, res) => {
@@ -325,11 +177,12 @@ router.get('/medicines/:id/batches', async (req, res) => {
     const { Op } = require('sequelize');
 
     const batches = await MedicineBatch.findAll({
-      where: { 
+      where: {
         medicineId: id,
-        quantity: { [Op.gt]: 0 }
+        quantity: { [Op.gt]: 0 },
+        expiryDate: { [Op.gte]: sequelize.literal('CURRENT_DATE') },
       },
-      order: [['EXPIRY_DATE', 'ASC']]
+      order: [['EXPIRY_DATE', 'ASC'], ['ID', 'ASC']]
     });
     res.json({ status: 'success', data: batches });
   } catch (err) {
@@ -338,69 +191,193 @@ router.get('/medicines/:id/batches', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════
-// 4. Returns Management
+// 4. Returns Management — stock ledger rows (see POST /api/pharmacy/return)
 // ═══════════════════════════════════════════════════════════
-router.get('/returns', async (req, res) => {
-  try {
-    res.json({ status: 'success', data: [] });
-  } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+router.get('/returns', checkPermission('pharmacy', 'read'), pharmacy.handlers.returnsListHandler);
+
+// { batchId, quantity, type: 'patient_return' | 'vendor_return', reason, patientId? }
+router.post('/returns', checkPermission('pharmacy', 'write'), (req, res, next) => {
+  if (!['patient_return', 'vendor_return'].includes(req.body?.type)) {
+    return res.status(400).json({ success: false, status: 'error', message: 'type must be patient_return or vendor_return.' });
   }
-});
-
-router.post('/returns', (req, res) => {
-  const io = req.app.get('io');
-  if (io) io.to('pharmacist').emit('return_processed', req.body);
-  res.status(201).json({ status: 'success', message: 'Return processed.' });
+  return pharmacy.handlers.stockMoveHandler(req, res, next);
 });
 
 // ═══════════════════════════════════════════════════════════
-// 5. Reports & Analytics
+// 5. Reports & Analytics — computed from dispensing, counter sales, batches and the stock ledger
 // ═══════════════════════════════════════════════════════════
-router.get('/reports', async (req, res) => {
+const LOW_STOCK_THRESHOLD = 10;
+const EXPIRY_WINDOW_DAYS = 30;
+const SLOW_MOVING_DAYS = 30;
+const money = (v) => Math.round(Number(v || 0) * 100) / 100;
+
+async function buildPharmacyReport(days) {
+  const run = async (sql, replacements = {}) => (await sequelize.query(sql, { replacements }))[0];
+  const since = { days };
+
+  const [[dispPeriod], [dispToday], [otcPeriod], [otcToday]] = await Promise.all([
+    run(`SELECT COUNT(*) AS RECORDS, COALESCE(SUM(dr.TOTAL_AMOUNT), 0) AS AMOUNT,
+                COALESCE((SELECT SUM(di.QUANTITY) FROM HMS_DISPENSING_ITEMS di
+                          JOIN HMS_DISPENSING_RECORDS d2 ON d2.ID = di.DISPENSING_RECORD_ID
+                          WHERE d2.DISPENSED_AT >= CURRENT_DATE - (:days - 1)), 0) AS UNITS
+         FROM HMS_DISPENSING_RECORDS dr WHERE dr.DISPENSED_AT >= CURRENT_DATE - (:days - 1)`, since),
+    run(`SELECT COUNT(*) AS RECORDS, COALESCE(SUM(TOTAL_AMOUNT), 0) AS AMOUNT
+         FROM HMS_DISPENSING_RECORDS WHERE DISPENSED_AT >= CURRENT_DATE`),
+    run(`SELECT COUNT(*) AS RECORDS, COALESCE(SUM(os.TOTAL_AMOUNT), 0) AS AMOUNT,
+                COALESCE((SELECT SUM(oi.QUANTITY) FROM HMS_OTC_ITEMS oi
+                          JOIN HMS_OTC_SALES o2 ON o2.ID = oi.OTC_SALE_ID
+                          WHERE o2.SOLD_AT >= CURRENT_DATE - (:days - 1)), 0) AS UNITS
+         FROM HMS_OTC_SALES os WHERE os.SOLD_AT >= CURRENT_DATE - (:days - 1)`, since),
+    run(`SELECT COUNT(*) AS RECORDS, COALESCE(SUM(TOTAL_AMOUNT), 0) AS AMOUNT
+         FROM HMS_OTC_SALES WHERE SOLD_AT >= CURRENT_DATE`),
+  ]);
+
+  const topMedicines = await run(`
+    SELECT m.ID, m.GENERIC_NAME, m.STRENGTH, m.STRENGTH_UNIT,
+           SUM(x.QTY) AS UNITS, SUM(x.AMOUNT) AS AMOUNT
+    FROM (
+      SELECT di.MEDICINE_ID, di.QUANTITY AS QTY, di.AMOUNT
+      FROM HMS_DISPENSING_ITEMS di
+      JOIN HMS_DISPENSING_RECORDS dr ON dr.ID = di.DISPENSING_RECORD_ID
+      WHERE dr.DISPENSED_AT >= CURRENT_DATE - (:days - 1)
+      UNION ALL
+      SELECT oi.MEDICINE_ID, oi.QUANTITY AS QTY, oi.AMOUNT
+      FROM HMS_OTC_ITEMS oi
+      JOIN HMS_OTC_SALES os ON os.ID = oi.OTC_SALE_ID
+      WHERE os.SOLD_AT >= CURRENT_DATE - (:days - 1)
+    ) x
+    JOIN HMS_MEDICINES m ON m.ID = x.MEDICINE_ID
+    GROUP BY m.ID, m.GENERIC_NAME, m.STRENGTH, m.STRENGTH_UNIT
+    ORDER BY UNITS DESC, AMOUNT DESC, m.GENERIC_NAME ASC
+    LIMIT 10
+  `, since);
+
+  // Same rule as the pharmacist dashboard: active medicines with 10 or fewer units across all batches.
+  const lowStock = await run(`
+    SELECT m.ID, m.GENERIC_NAME, m.STRENGTH, m.STRENGTH_UNIT, COALESCE(SUM(b.QUANTITY), 0) AS TOTAL_QTY
+    FROM HMS_MEDICINES m
+    LEFT JOIN HMS_MEDICINE_BATCHES b ON b.MEDICINE_ID = m.ID
+    WHERE m.IS_ACTIVE = 1
+    GROUP BY m.ID, m.GENERIC_NAME, m.STRENGTH, m.STRENGTH_UNIT
+    HAVING COALESCE(SUM(b.QUANTITY), 0) <= :threshold
+    ORDER BY TOTAL_QTY ASC, m.GENERIC_NAME ASC
+  `, { threshold: LOW_STOCK_THRESHOLD });
+
+  // Batches with stock that have expired or expire within 30 days.
+  const expiring = await run(`
+    SELECT b.ID AS BATCH_ID, b.BATCH_NUMBER, b.EXPIRY_DATE, b.QUANTITY, m.ID AS MEDICINE_ID, m.GENERIC_NAME,
+           (b.EXPIRY_DATE < CURRENT_DATE) AS IS_EXPIRED
+    FROM HMS_MEDICINE_BATCHES b
+    JOIN HMS_MEDICINES m ON m.ID = b.MEDICINE_ID
+    WHERE b.QUANTITY > 0 AND b.EXPIRY_DATE <= CURRENT_DATE + :window
+    ORDER BY b.EXPIRY_DATE ASC, b.ID ASC
+  `, { window: EXPIRY_WINDOW_DAYS });
+
+  const [[inventory]] = await Promise.all([
+    run(`SELECT COALESCE(SUM(QUANTITY * COALESCE(PURCHASE_RATE, 0)), 0) AS AT_COST,
+                COALESCE(SUM(QUANTITY * COALESCE(MRP, 0)), 0) AS AT_MRP,
+                COALESCE(SUM(QUANTITY), 0) AS UNITS
+         FROM HMS_MEDICINE_BATCHES WHERE QUANTITY > 0 AND EXPIRY_DATE >= CURRENT_DATE`),
+  ]);
+
+  // In-stock medicines that nothing has been dispensed or sold from in the last 30 days.
+  const slowMoving = await run(`
+    SELECT m.ID, m.GENERIC_NAME, m.STRENGTH, m.STRENGTH_UNIT,
+           SUM(b.QUANTITY) AS STOCK,
+           (SELECT MAX(sl.TRANSACTION_DATE) FROM HMS_STOCK_LEDGER sl
+            WHERE sl.MEDICINE_ID = m.ID AND sl.TRANSACTION_TYPE = 'OUT') AS LAST_MOVED
+    FROM HMS_MEDICINES m
+    JOIN HMS_MEDICINE_BATCHES b ON b.MEDICINE_ID = m.ID AND b.QUANTITY > 0
+    WHERE m.IS_ACTIVE = 1
+    GROUP BY m.ID, m.GENERIC_NAME, m.STRENGTH, m.STRENGTH_UNIT
+    HAVING NOT EXISTS (
+      SELECT 1 FROM HMS_STOCK_LEDGER sl
+      WHERE sl.MEDICINE_ID = m.ID AND sl.TRANSACTION_TYPE = 'OUT'
+        AND sl.TRANSACTION_DATE >= CURRENT_DATE - :slowDays
+    )
+    ORDER BY STOCK DESC, m.GENERIC_NAME ASC
+    LIMIT 50
+  `, { slowDays: SLOW_MOVING_DAYS });
+
+  const nameOf = (r) => [r.GENERIC_NAME, [r.STRENGTH, r.STRENGTH_UNIT].filter(Boolean).join(' ')].filter(Boolean).join(' ');
+  const expiredCount = expiring.filter((b) => b.IS_EXPIRED).length;
+  const expiringCount = expiring.length - expiredCount;
+  const dispensedAmount = money(dispPeriod.AMOUNT);
+  const otcAmount = money(otcPeriod.AMOUNT);
+
+  return {
+    period: { days },
+    dispensed: { prescriptions: Number(dispPeriod.RECORDS || 0), units: Number(dispPeriod.UNITS || 0), amount: dispensedAmount },
+    otc: { sales: Number(otcPeriod.RECORDS || 0), units: Number(otcPeriod.UNITS || 0), amount: otcAmount },
+    salesAmount: money(dispensedAmount + otcAmount),
+    today: {
+      dispensedAmount: money(dispToday.AMOUNT),
+      dispensedPrescriptions: Number(dispToday.RECORDS || 0),
+      otcAmount: money(otcToday.AMOUNT),
+      otcSales: Number(otcToday.RECORDS || 0),
+    },
+    // Fields the page has always read (kept for compatibility).
+    dailySales: money(Number(dispToday.AMOUNT || 0) + Number(otcToday.AMOUNT || 0)),
+    totalDispensed: Number(dispPeriod.UNITS || 0),
+    inventoryValue: money(inventory.AT_COST),
+    inventoryValueMrp: money(inventory.AT_MRP),
+    inventoryUnits: Number(inventory.UNITS || 0),
+    lowStockThreshold: LOW_STOCK_THRESHOLD,
+    lowStockCount: lowStock.length,
+    expiringCount,
+    expiredCount,
+    stockAlerts: lowStock.length + expiring.length,
+    topMedicines: topMedicines.map((r) => ({ id: r.ID, name: nameOf(r), units: Number(r.UNITS || 0), amount: money(r.AMOUNT) })),
+    lowStock: lowStock.slice(0, 50).map((r) => ({ id: r.ID, name: nameOf(r), stock: Number(r.TOTAL_QTY || 0) })),
+    expiringSoon: expiring.slice(0, 50).map((r) => ({
+      batchId: r.BATCH_ID, medicineId: r.MEDICINE_ID, name: r.GENERIC_NAME, batchNumber: r.BATCH_NUMBER,
+      expiryDate: r.EXPIRY_DATE, quantity: Number(r.QUANTITY || 0), expired: Boolean(r.IS_EXPIRED),
+    })),
+    slowMoving: slowMoving.map((r) => ({
+      id: r.ID, name: nameOf(r), stock: Number(r.STOCK || 0),
+      lastMoved: r.LAST_MOVED ? new Date(r.LAST_MOVED).toISOString().slice(0, 10) : null,
+    })),
+  };
+}
+
+// GET /reports?days=1|7|30|90 (default 1 = today)
+router.get('/reports', checkPermission('pharmacy', 'read'), async (req, res) => {
   try {
-    const totalDispensed = await DispensingRecord.count();
-    res.json({
-      status: 'success',
-      data: {
-        dailySales: 0,
-        totalDispensed: totalDispensed || 0,
-        inventoryValue: 0,
-        stockAlerts: 0,
-        slowMoving: []
-      }
-    });
+    const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 1));
+    res.json({ status: 'success', success: true, data: await buildPharmacyReport(days) });
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    console.error('Pharmacy report failed:', err);
+    res.status(500).json({ status: 'error', message: 'Could not build the pharmacy report.' });
   }
 });
 
 // ═══════════════════════════════════════════════════════════
 // 6. Dashboard KPIs
 // ═══════════════════════════════════════════════════════════
-router.get('/dashboard', async (req, res) => {
+router.get('/dashboard', checkPermission('pharmacy', 'read'), async (req, res) => {
   try {
-    const pendingRx = await Prescription.count({ where: { status: 'Pending' } });
+    const [[queue]] = await sequelize.query("SELECT COUNT(*) AS CNT FROM HMS_PRESCRIPTIONS WHERE STATUS = 'Finalized'");
+    const [[returns]] = await sequelize.query(`
+      SELECT COUNT(*) AS CNT FROM HMS_STOCK_LEDGER
+      WHERE TRANSACTION_DATE >= CURRENT_DATE
+        AND ((TRANSACTION_TYPE = 'RETURN' AND REFERENCE_TYPE = 'Patient Return')
+          OR (TRANSACTION_TYPE = 'DISCARD' AND REFERENCE_TYPE = 'Vendor Return'))
+    `);
+    const report = await buildPharmacyReport(1);
     res.json({
       status: 'success',
       data: {
-        pendingRx: pendingRx || 0,
-        lowStockAlerts: 0,
-        expiringSoon: 0,
-        returnsToday: 0,
-        fastMovers: [],
-        ipdRatio: 0,
-        opdRatio: 0,
-      }
+        pendingRx: Number(queue.CNT || 0),
+        lowStockAlerts: report.lowStockCount,
+        expiringSoon: report.expiringCount,
+        returnsToday: Number(returns.CNT || 0),
+        fastMovers: report.topMedicines.slice(0, 5),
+        salesToday: report.dailySales,
+      },
     });
   } catch (err) {
-    res.json({
-      status: 'success',
-      data: {
-        pendingRx: 0, lowStockAlerts: 0, expiringSoon: 0, returnsToday: 0,
-        fastMovers: [], ipdRatio: 0, opdRatio: 0,
-      }
-    });
+    console.error('Pharmacy dashboard KPIs failed:', err);
+    res.status(500).json({ status: 'error', message: 'Could not load pharmacy KPIs.' });
   }
 });
 

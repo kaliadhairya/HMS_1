@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { CalendarClock, RefreshCw, Search, ShieldAlert, Trash2, Undo2 } from 'lucide-react';
+import { CalendarClock, Info, RefreshCw, Search, Trash2, Undo2 } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
@@ -11,10 +11,11 @@ import RowMenu from '../../../components/ui/RowMenu';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOWS = [7, 30, 90];
+// Each action takes the units out of the batch and writes a stock ledger entry with the reason
+// (POST /pharmacy/return). Quarantine is not offered: batches have no quarantine flag to store it.
 const ACTIONS = {
-  return: { title: 'Return to supplier', verb: 'return', confirm: 'Confirm return' },
-  quarantine: { title: 'Quarantine stock', verb: 'quarantine', confirm: 'Confirm quarantine' },
-  discard: { title: 'Log disposal', verb: 'dispose of', confirm: 'Confirm disposal' },
+  return: { title: 'Return to supplier', verb: 'return', confirm: 'Confirm return', type: 'vendor_return', done: 'Returned to the supplier. Stock updated.' },
+  discard: { title: 'Log disposal', verb: 'dispose of', confirm: 'Confirm disposal', type: 'discard', done: 'Disposal logged. Stock updated.' },
 };
 
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
@@ -39,7 +40,8 @@ export default function ExpiryAlertsPage() {
   const [query, setQuery] = useState('');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [actionType, setActionType] = useState('return'); // return, discard, quarantine
+  const [actionType, setActionType] = useState('return'); // return, discard
+  const [saving, setSaving] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [reason, setReason] = useState('');
   const [quantity, setQuantity] = useState(0);
@@ -52,12 +54,7 @@ export default function ExpiryAlertsPage() {
     try {
       setLoading(true);
       const res = await api.get(`/pharmacy/stock/expiring?days=${days}`);
-      // Quarantine status comes from the API when it provides one
-      const enriched = (res.data.data || []).map(d => ({
-        ...d,
-        isQuarantined: Boolean(d.isQuarantined ?? d.IS_QUARANTINED),
-      }));
-      setData(enriched);
+      setData(res.data.data || []);
     } catch (err) {
       console.error(err);
       toast.error('Could not load expiry alerts');
@@ -76,21 +73,28 @@ export default function ExpiryAlertsPage() {
 
   const handleActionSubmit = async (e) => {
     e.preventDefault();
+    const qty = Number(quantity);
+    if (!Number.isInteger(qty) || qty <= 0 || qty > Number(selectedBatch.QUANTITY)) {
+      return toast.error('Enter a whole-number quantity between 1 and the available stock');
+    }
+    if (!reason.trim()) {
+      return toast.error(actionType === 'discard' ? 'Enter the disposal reason. Disposal needs a witness approval on record.' : 'Enter the reason for the return');
+    }
     try {
-      if (quantity <= 0 || quantity > selectedBatch.QUANTITY) {
-        return toast.error('Enter a quantity between 1 and the available stock');
-      }
-      if (actionType === 'discard' && !reason.trim()) {
-        return toast.error('Enter the disposal reason. Disposal needs a witness approval on record.');
-      }
-
-      // No API call is made for these actions yet; say so rather than confirming a change that was not saved.
-      toast(`${ACTIONS[actionType].title} noted, but not saved. This screen is not yet connected to stock records.`, { duration: 6000 });
+      setSaving(true);
+      await api.post('/pharmacy/return', {
+        batchId: selectedBatch.BATCH_ID,
+        quantity: qty,
+        type: ACTIONS[actionType].type,
+        reason: reason.trim(),
+      });
+      toast.success(ACTIONS[actionType].done);
       setIsModalOpen(false);
       fetchExpiring(activeTab);
     } catch (err) {
-      console.error(err);
-      toast.error(`Could not ${ACTIONS[actionType].verb} this stock`);
+      toast.error(err.response?.data?.message || `Could not ${ACTIONS[actionType].verb} this stock`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -141,7 +145,6 @@ export default function ExpiryAlertsPage() {
             {state === 'expired' && <span className="status status-danger">Expired</span>}
             {state === 'critical' && <span className="status status-warning">Within 7 days</span>}
             {state === 'soon' && <span className="status status-info">Expiring soon</span>}
-            {row.original.isQuarantined && <span className="status status-neutral">Quarantined</span>}
           </span>
         );
       },
@@ -157,8 +160,8 @@ export default function ExpiryAlertsPage() {
         <RowMenu
           label={`Actions for ${row.original.GENERIC_NAME} batch ${row.original.BATCH_NUMBER}`}
           items={[
-            { label: 'Return to supplier', icon: Undo2, onSelect: () => openActionModal(row.original, 'return') },
-            { label: 'Quarantine', icon: ShieldAlert, onSelect: () => openActionModal(row.original, 'quarantine') },
+            // A batch received without a supplier (opening stock) has no one to return it to.
+            { label: 'Return to supplier', icon: Undo2, onSelect: () => openActionModal(row.original, 'return'), hidden: !row.original.SUPPLIER_ID },
             { label: 'Log disposal', icon: Trash2, onSelect: () => openActionModal(row.original, 'discard'), danger: true, separator: true },
           ]}
         />
@@ -175,7 +178,7 @@ export default function ExpiryAlertsPage() {
       <main className="app-page">
         <PageHeader
           title="Expiry alerts"
-          description="Batches that have expired or expire soon. Quarantine them, return them to the supplier, or log their disposal."
+          description="Batches that have expired or expire soon. Return them to the supplier or log their disposal."
           actions={(
             <button type="button" className="btn btn-ghost btn-md" onClick={() => fetchExpiring(activeTab)}>
               <RefreshCw size={16} aria-hidden="true" /> Refresh
@@ -200,6 +203,11 @@ export default function ExpiryAlertsPage() {
             <div className="kpi-label">Units affected</div>
             <div className="kpi-value">{loading ? '—' : counts.units.toLocaleString('en-IN')}</div>
           </div>
+        </div>
+
+        <div className="alert-strip alert-info" role="note">
+          <Info size={16} aria-hidden="true" />
+          <span>Expired batches are never offered for dispensing or counter sales. Quarantining a batch that has not expired is not available yet: batches have no quarantine flag in the database.</span>
         </div>
 
         <section className="panel">
@@ -240,8 +248,8 @@ export default function ExpiryAlertsPage() {
         footer={(
           <>
             <button type="button" className="btn btn-ghost btn-md" onClick={() => setIsModalOpen(false)}>Cancel</button>
-            <button type="submit" form="expiry-action-form" className={`btn btn-md ${actionType === 'discard' ? 'btn-danger' : 'btn-primary'}`}>
-              {action.confirm}
+            <button type="submit" form="expiry-action-form" className={`btn btn-md ${actionType === 'discard' ? 'btn-danger' : 'btn-primary'}`} disabled={saving}>
+              {saving ? 'Saving…' : action.confirm}
             </button>
           </>
         )}
@@ -256,28 +264,30 @@ export default function ExpiryAlertsPage() {
           <div className="form-group">
             <label className="form-label" htmlFor="expiry-qty">Quantity to {action.verb}</label>
             <input
-              id="expiry-qty" className="form-input" required type="number" min="1" max={selectedBatch?.QUANTITY}
+              id="expiry-qty" className="form-input" required type="number" min="1" step="1" max={selectedBatch?.QUANTITY}
               value={quantity} onChange={e => setQuantity(e.target.value)}
             />
           </div>
 
-          {(actionType === 'discard' || actionType === 'quarantine') && (
-            <div className="form-group">
-              <label className="form-label" htmlFor="expiry-reason">Reason</label>
-              <textarea
-                id="expiry-reason" className="form-textarea" required rows="3"
-                placeholder="Give the reason for the audit trail"
-                value={reason} onChange={e => setReason(e.target.value)}
-              />
-            </div>
+          {selectedBatch && actionType === 'return' && (
+            <p className="form-hint" style={{ margin: 0 }}>Goes back to {selectedBatch.SUPPLIER_NAME || 'the supplier on the batch'}.</p>
           )}
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="expiry-reason">Reason</label>
+            <textarea
+              id="expiry-reason" className="form-textarea" required rows="3"
+              placeholder="Give the reason for the audit trail"
+              value={reason} onChange={e => setReason(e.target.value)}
+            />
+          </div>
 
           {actionType === 'discard' && (
             <div className="alert-strip alert-danger" role="note" style={{ marginBottom: 0 }}>
               Disposal needs witness approval under compliance rules and must be entered in the destruction register.
             </div>
           )}
-          <p className="form-hint">This action is not yet saved to stock records from this screen.</p>
+          <p className="form-hint">The quantity is taken out of this batch and recorded in the stock ledger with your reason.</p>
         </form>
       </Modal>
     </>

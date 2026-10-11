@@ -29,6 +29,17 @@ const qtyOf = (item) => Number(item?.TOTAL_QUANTITY || 0);
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const inr = (v) => `₹${Number(v || 0).toFixed(2)}`;
 const REF_LABEL = { DISPENSING: 'Prescription', OTC: 'Counter sale' };
+// Ledger quantities are positive with the type giving the direction, except ADJUSTMENT, which is signed.
+const ledgerSign = (e) => {
+  if (e.TRANSACTION_TYPE === 'ADJUSTMENT') return Number(e.QUANTITY) >= 0 ? 1 : -1;
+  return e.TRANSACTION_TYPE === 'IN' || e.TRANSACTION_TYPE === 'RETURN' ? 1 : -1;
+};
+const LEDGER_LABEL = {
+  'IN|GRN': 'Received', 'OUT|DISPENSING': 'Dispensed', 'OUT|OTC': 'Counter sale',
+  'RETURN|Patient Return': 'Patient return', 'DISCARD|Vendor Return': 'Vendor return', 'DISCARD|Disposal': 'Disposal',
+};
+const ledgerLabel = (e) => LEDGER_LABEL[`${e.TRANSACTION_TYPE}|${e.REFERENCE_TYPE}`]
+  || (e.TRANSACTION_TYPE === 'ADJUSTMENT' ? 'Adjustment' : e.TRANSACTION_TYPE);
 
 const suggestionBox = {
   position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20, maxHeight: 220, overflowY: 'auto',
@@ -99,7 +110,7 @@ export default function PharmacyStockPage() {
 
   // Edit Batch Modal
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ quantity: '', mrp: '', purchaseRate: '' });
+  const [editForm, setEditForm] = useState({ quantity: '', mrp: '', purchaseRate: '', reason: '' });
   const [editBatch, setEditBatch] = useState(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
 
@@ -246,6 +257,7 @@ export default function PharmacyStockPage() {
       quantity: String(batch.QUANTITY || 0),
       mrp: String(batch.MRP || 0),
       purchaseRate: String(batch.PURCHASE_RATE || 0),
+      reason: '',
     });
     setEditModalOpen(true);
   };
@@ -255,17 +267,15 @@ export default function PharmacyStockPage() {
     if (!editBatch) return;
     setEditSubmitting(true);
     try {
-      const oldQty = editBatch.QUANTITY || 0;
-      const newQty = parseInt(editForm.quantity) || 0;
+      const oldQty = Number(editBatch.QUANTITY || 0);
+      const newQty = parseInt(editForm.quantity, 10) || 0;
       const diff = newQty - oldQty;
+      const reason = editForm.reason.trim() || 'Stock count correction';
 
-      if (diff > 0) {
+      // Logged as a stock adjustment, so a count correction is not reported as a patient return or a disposal.
+      if (diff !== 0) {
         await api.post('/pharmacy/return', {
-          batchId: editBatch.BATCH_ID, quantity: diff, type: 'return', reason: 'Stock adjustment',
-        });
-      } else if (diff < 0) {
-        await api.post('/pharmacy/return', {
-          batchId: editBatch.BATCH_ID, quantity: Math.abs(diff), type: 'discard', reason: 'Stock adjustment',
+          batchId: editBatch.BATCH_ID, quantity: Math.abs(diff), type: diff > 0 ? 'adjust_in' : 'adjust_out', reason,
         });
       }
 
@@ -655,7 +665,7 @@ export default function PharmacyStockPage() {
           </div>
           <div className="form-group">
             <label className="form-label" htmlFor="stock-gst">GST rate (%)</label>
-            <input id="stock-gst" className="form-input" type="number" step="0.01" min="0" value={addForm.gstRate} onChange={e => setAddForm({ ...addForm, gstRate: e.target.value })} placeholder="12" />
+            <input id="stock-gst" className="form-input" type="number" step="1" min="0" max="100" value={addForm.gstRate} onChange={e => setAddForm({ ...addForm, gstRate: e.target.value })} placeholder="12" />
           </div>
         </div>
       </form>
@@ -693,8 +703,12 @@ export default function PharmacyStockPage() {
                   ({editDiff > 0 ? '+' : ''}{editDiff})
                 </strong>
               )}
-              . The difference is recorded in the stock ledger.
+              . The difference is recorded in the stock ledger as an adjustment.
             </p>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="edit-batch-reason">Reason (optional)</label>
+            <input id="edit-batch-reason" className="form-input" value={editForm.reason} onChange={e => setEditForm({ ...editForm, reason: e.target.value })} placeholder="For example, physical count on 1 Oct" />
           </div>
         </form>
       )}
@@ -721,11 +735,11 @@ export default function PharmacyStockPage() {
                 <tr key={entry.ID}>
                   <td className="tabular" style={{ whiteSpace: 'nowrap' }}>{new Date(entry.TRANSACTION_DATE).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                   <td>
-                    <span className={`status ${entry.TRANSACTION_TYPE === 'IN' || entry.TRANSACTION_TYPE === 'RETURN' ? 'status-success' : 'status-danger'}`}>
-                      {entry.TRANSACTION_TYPE}
+                    <span className={`status ${ledgerSign(entry) > 0 ? 'status-success' : 'status-danger'}`}>
+                      {ledgerLabel(entry)}
                     </span>
                   </td>
-                  <td className="text-right tabular" style={{ fontWeight: 600 }}>{entry.QUANTITY}</td>
+                  <td className="text-right tabular" style={{ fontWeight: 600 }}>{ledgerSign(entry) > 0 ? '+' : '−'}{Math.abs(Number(entry.QUANTITY || 0))}</td>
                   <td className="mono">{entry.BATCH_NUMBER}</td>
                   <td className="cell-secondary">{entry.REFERENCE_TYPE}{entry.REFERENCE_ID ? ` #${entry.REFERENCE_ID}` : ''}</td>
                   <td>{entry.PERFORMED_BY_NAME || '—'}</td>
