@@ -231,7 +231,8 @@ function RevenueTab() {
     const byDay = {};
     (data?.dailyCollection || []).forEach((d) => {
       if (!d.DATE_VAL) return;
-      const key = localKey(new Date(d.DATE_VAL));
+      // DATE_VAL is a calendar date ("2026-10-09"); new Date() would read it as UTC midnight and shift it a day west of UTC.
+      const key = /^\d{4}-\d{2}-\d{2}/.test(String(d.DATE_VAL)) ? String(d.DATE_VAL).slice(0, 10) : localKey(new Date(d.DATE_VAL));
       byDay[key] = (byDay[key] || 0) + (Number(d.DAILY_TOTAL) || 0);
     });
     const [from, to] = data?.range || [];
@@ -375,6 +376,8 @@ function PharmacySalesTab() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+const URGENCY_RANK = { STAT: 0, URGENT: 1, ROUTINE: 2 };
+
 function LabWorkloadTab() {
   const [startDate, setStartDate] = useState(daysAgo(7));
   const [endDate, setEndDate] = useState(localYmd());
@@ -395,8 +398,9 @@ function LabWorkloadTab() {
     { id: 'doctor', header: 'Doctor', accessorFn: (r) => r.DOCTOR_NAME || '' },
     { id: 'test', header: 'Test', accessorFn: (r) => r.ITEM_NAME || '' },
     {
-      id: 'urgency', header: 'Urgency', accessorFn: (r) => r.URGENCY || '', meta: { width: 120 },
-      cell: ({ getValue }) => <span className={`status ${getValue() === 'STAT' ? 'status-danger' : 'status-neutral'}`}>{getValue() || '—'}</span>,
+      // Sorts by clinical priority (STAT, Urgent, Routine), not alphabetically.
+      id: 'urgency', header: 'Urgency', accessorFn: (r) => URGENCY_RANK[String(r.URGENCY || '').toUpperCase()] ?? 3, meta: { width: 120 },
+      cell: ({ row }) => <span className={`status ${row.original.URGENCY === 'STAT' ? 'status-danger' : row.original.URGENCY === 'Urgent' ? 'status-warning' : 'status-neutral'}`}>{row.original.URGENCY || '—'}</span>,
     },
     {
       id: 'hours', header: 'Pending for', accessorFn: (r) => Number(r.AGE_HOURS || 0), meta: { width: 140, align: 'right' },
@@ -427,17 +431,18 @@ function LabWorkloadTab() {
               <div className="kpi-label">Pending</div>
               <div className="kpi-value" style={{ color: (data.pending_list || []).length > 0 ? 'var(--amber)' : undefined }}>{(data.pending_list || []).length}</div>
             </div>
+            <div className="panel kpi"><div className="kpi-label">Cancelled</div><div className="kpi-value">{data.total_cancelled ?? 0}</div></div>
           </div>
 
           <section className="panel">
-            <PanelTitle icon={ClipboardList}>Pending orders</PanelTitle>
+            <PanelTitle icon={ClipboardList}>Pending tests</PanelTitle>
             <DataTable
               columns={columns}
               data={data.pending_list || []}
               loading={loading}
-              getRowId={(r, i) => String(i)}
-              initialSorting={[{ id: 'hours', desc: true }]}
-              empty={<EmptyState icon={FlaskConical} title="No pending orders" description="Every lab order in this range has been completed." />}
+              getRowId={(r, i) => String(r.ITEM_ID ?? i)}
+              initialSorting={[{ id: 'urgency', desc: false }]}
+              empty={<EmptyState icon={FlaskConical} title="No pending tests" description="Every test ordered in this range has been completed or cancelled." />}
             />
           </section>
         </>
@@ -574,7 +579,7 @@ function DoctorPerformanceTab() {
 
       {data && (
         <div className="kpi-strip" style={{ marginBottom: 0 }}>
-          <div className="panel kpi"><div className="kpi-label">Patients seen</div><div className="kpi-value">{data.encounters}</div></div>
+          <div className="panel kpi"><div className="kpi-label">Consultations</div><div className="kpi-value">{data.encounters}</div></div>
           <div className="panel kpi"><div className="kpi-label">Prescriptions</div><div className="kpi-value">{data.prescriptions}</div></div>
           <div className="panel kpi"><div className="kpi-label">Lab orders</div><div className="kpi-value">{data.labOrders}</div></div>
           <div className="panel kpi"><div className="kpi-label">Revenue generated</div><div className="kpi-value">{inr(data.revenue)}</div></div>

@@ -12,6 +12,7 @@ import DataTable from '../../components/ui/DataTable';
 import EmptyState from '../../components/ui/EmptyState';
 import Modal from '../../components/ui/Modal';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 
 // ─── Navigation: areas (tabs) and their sections ──────
 const NAV = [
@@ -47,7 +48,8 @@ const failureDetail = (v) => {
   if (!v) return '—';
   try {
     const p = JSON.parse(v);
-    return p?.reason || `${p?.attempts} attempts`;
+    if (p?.reason) return sentence(p.reason);
+    return p?.attempts ? `Wrong password (attempt ${p.attempts})` : '—';
   } catch {
     return String(v);
   }
@@ -218,6 +220,7 @@ function SecurityCenterPanel() {
 // SESSION MANAGER PANEL
 // ═══════════════════════════════════════════════════════
 function SessionManagerPanel() {
+  const { user: me } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [endTarget, setEndTarget] = useState(null);
@@ -265,6 +268,7 @@ function SessionManagerPanel() {
         const st = getValue();
         if (st === 'Locked') return <span className="status status-danger">Locked</span>;
         if (st === 'Active') return <span className="status status-success">Active</span>;
+        if (st === 'Deactivated') return <span className="status status-neutral">Deactivated</span>;
         return <span className="status status-neutral">Inactive</span>;
       },
     },
@@ -276,15 +280,16 @@ function SessionManagerPanel() {
       id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 130, align: 'right' },
       cell: ({ row }) => {
         const s = row.original;
-        return s._state === 'Locked' ? (
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => unlock(s.ID)}><LockOpen size={14} aria-hidden="true" /> Unlock</button>
-        ) : (
-          <button type="button" className="btn btn-danger btn-sm" onClick={() => setEndTarget(s)}><LogOut size={14} aria-hidden="true" /> End session</button>
-        );
+        if (s._state === 'Locked') {
+          return <button type="button" className="btn btn-secondary btn-sm" onClick={() => unlock(s.ID)} aria-label={`Unlock ${s.USERNAME}`}><LockOpen size={14} aria-hidden="true" /> Unlock</button>;
+        }
+        // Your own session and deactivated accounts have nothing to end.
+        if (s._state === 'Deactivated' || Number(s.ID) === Number(me?.id)) return null;
+        return <button type="button" className="btn btn-danger btn-sm" onClick={() => setEndTarget(s)} aria-label={`End session for ${s.USERNAME}`}><LogOut size={14} aria-hidden="true" /> End session</button>;
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  ], [me?.id]);
 
   const rows = useMemo(() => {
     const now = new Date();
@@ -292,7 +297,8 @@ function SessionManagerPanel() {
       const lastLogin = s.LAST_LOGIN ? new Date(s.LAST_LOGIN) : null;
       const isRecent = lastLogin && (now - lastLogin < 8 * 3600000);
       const isLocked = s.LOCKED_UNTIL && new Date(s.LOCKED_UNTIL) > now;
-      return { ...s, _state: isLocked ? 'Locked' : isRecent ? 'Active' : 'Inactive' };
+      const deactivated = Number(s.IS_ACTIVE) === 0;
+      return { ...s, _state: isLocked ? 'Locked' : deactivated ? 'Deactivated' : isRecent ? 'Active' : 'Inactive' };
     });
   }, [data]);
 
@@ -423,7 +429,14 @@ function IPRulesPanel() {
   }, []);
 
   const save = async () => {
-    try { await api.put('/security/ip-rules', { whitelist, blacklist }); toast.success('IP rules saved'); } catch { toast.error('Failed to save IP rules'); }
+    try {
+      const { data } = await api.put('/security/ip-rules', { whitelist, blacklist });
+      setWhitelist(data.data.whitelist);
+      setBlacklist(data.data.blacklist);
+      toast.success('IP rules saved');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save IP rules');
+    }
   };
 
   if (loading) return <Loading />;
@@ -440,7 +453,7 @@ function IPRulesPanel() {
         <section className="panel">
           <PanelHead icon={ShieldCheck} title={`Allow list (${whitelist.length})`} />
           <div className="panel-pad stack-sm">
-            <p className="muted">Only these addresses can access the system. Leave empty to allow all.</p>
+            <p className="muted">Only these addresses can sign in. Leave empty to allow all. It must include your own address.</p>
             <form style={{ display: 'flex', gap: 8 }} onSubmit={(e) => { e.preventDefault(); if (newWL) { setWhitelist([...whitelist, newWL]); setNewWL(''); } }}>
               <label className="sr-only" htmlFor="ip-allow">IP address or range to allow</label>
               <input id="ip-allow" className="form-input mono" placeholder="e.g. 192.168.1.0/24" value={newWL} onChange={(e) => setNewWL(e.target.value)} style={{ flex: 1 }} />
@@ -464,9 +477,9 @@ function IPRulesPanel() {
         <section className="panel">
           <PanelHead icon={Ban} title={`Block list (${blacklist.length})`} />
           <div className="panel-pad stack-sm">
-            <p className="muted">These addresses are always blocked from accessing the system.</p>
+            <p className="muted">Sign-in from these addresses is always refused.</p>
             <form style={{ display: 'flex', gap: 8 }} onSubmit={(e) => { e.preventDefault(); if (newBL) { setBlacklist([...blacklist, newBL]); setNewBL(''); } }}>
-              <label className="sr-only" htmlFor="ip-block">IP address to block</label>
+              <label className="sr-only" htmlFor="ip-block">IP address or range to block</label>
               <input id="ip-block" className="form-input mono" placeholder="e.g. 192.168.1.100" value={newBL} onChange={(e) => setNewBL(e.target.value)} style={{ flex: 1 }} />
               <button type="submit" className="btn btn-danger btn-md"><Ban size={16} aria-hidden="true" /> Block</button>
             </form>
@@ -485,7 +498,7 @@ function IPRulesPanel() {
           </div>
         </section>
       </div>
-      <p className="form-hint">Changes to either list take effect after you save.</p>
+      <p className="form-hint">Changes to either list take effect after you save. Use single addresses (203.0.113.7) or IPv4 ranges (203.0.113.0/24).</p>
     </div>
   );
 }

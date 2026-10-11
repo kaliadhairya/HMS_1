@@ -91,7 +91,7 @@ export default function SuperAdminDashboard() {
   const alerts = [
     { label: 'Failed sign-ins today', value: failedLogins, color: failedLogins > 0 ? 'var(--amber)' : undefined },
     { label: 'Low stock items', value: lowStock, color: lowStock > 0 ? 'var(--amber)' : undefined },
-    { label: 'Critical lab results', value: criticalLabs, color: criticalLabs > 0 ? 'var(--red)' : undefined },
+    { label: 'Abnormal lab results today', value: criticalLabs, color: criticalLabs > 0 ? 'var(--amber)' : undefined },
   ];
 
   return (
@@ -112,9 +112,9 @@ export default function SuperAdminDashboard() {
       />
 
       {!loading && criticalLabs > 0 && (
-        <div className="alert-strip alert-danger" role="status">
+        <div className="alert-strip alert-warning" role="status">
           <CircleAlert size={16} aria-hidden="true" />
-          <span><strong>{criticalLabs} critical lab {criticalLabs === 1 ? 'result' : 'results'}</strong> reported. Make sure the treating doctors have been told.</span>
+          <span><strong>{criticalLabs} lab {criticalLabs === 1 ? 'result' : 'results'} outside the reference range</strong> reported today. Make sure the treating doctors have seen them.</span>
         </div>
       )}
       {!loading && failedLogins > 0 && (
