@@ -61,7 +61,7 @@ export default function BedManagementPage() {
   const roomKeys = Object.keys(roomsMap).sort();
 
   const totalBeds = beds.length;
-  const avail = beds.filter(b => (b.STATUS || b.status) === 'Available').length;
+  const avail = beds.filter(b => (b.STATUS || b.status) === 'Available' && !b.ADMISSION_ID && Number(b.IS_ACTIVE ?? 1) === 1).length;
   const occ = beds.filter(b => (b.STATUS || b.status) === 'Occupied').length;
   const occPct = totalBeds > 0 ? Math.round((occ / totalBeds) * 100) : 0;
 
@@ -158,29 +158,31 @@ export default function BedManagementPage() {
                   {/* Beds */}
                   <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
                     {roomBeds.map(bed => {
-                      const isOcc = bed.STATUS === 'Occupied';
+                      const isOcc = bed.STATUS === 'Occupied' || Boolean(bed.ADMISSION_ID);
+                      // Only a free, active bed opens the admit dialog (cleaning / maintenance / inactive beds used to as well).
+                      const canAdmit = !isOcc && (bed.STATUS || 'Available') === 'Available' && Number(bed.IS_ACTIVE ?? 1) === 1;
                       const isHovered = hoveredBed === bed.ID;
-                      const tone = TONE_VARS[bedTone(bed.STATUS)];
-                      const Tile = isOcc ? 'div' : 'button';
+                      const tone = TONE_VARS[bedTone(isOcc ? 'Occupied' : bed.STATUS)];
+                      const Tile = canAdmit ? 'button' : 'div';
                       const Icon = isOcc ? UserRound : BedDouble;
 
                       return (
                         <Tile
                           key={bed.ID}
-                          {...(isOcc ? {} : {
+                          {...(!canAdmit ? {} : {
                             type: 'button',
                             onClick: () => setAdmittingBed(bed),
                             'aria-label': `Admit a patient to bed ${bed.BED_NUMBER} (${bed.STATUS || 'Available'})`,
                           })}
                           onMouseEnter={() => setHoveredBed(bed.ID)}
                           onMouseLeave={() => setHoveredBed(null)}
-                          title={isOcc ? `${bed.BED_NUMBER}: ${bed.PATIENT_NAME || 'Occupied'}` : undefined}
+                          title={isOcc ? `${bed.BED_NUMBER}: ${bed.PATIENT_NAME || 'Occupied'}` : (canAdmit ? undefined : `${bed.BED_NUMBER}: ${Number(bed.IS_ACTIVE ?? 1) === 1 ? bed.STATUS : 'Inactive'}`)}
                           style={{
                             padding: '10px 8px',
                             borderRadius: 8,
                             background: tone.bg,
-                            border: `1px solid ${isHovered && !isOcc ? tone.fg : tone.border}`,
-                            cursor: isOcc ? 'default' : 'pointer',
+                            border: `1px solid ${isHovered && canAdmit ? tone.fg : tone.border}`,
+                            cursor: canAdmit ? 'pointer' : 'default',
                             textAlign: 'center',
                             minHeight: 84,
                             display: 'flex', flexDirection: 'column',
@@ -195,7 +197,7 @@ export default function BedManagementPage() {
                               {bed.PATIENT_NAME}
                             </div>
                           ) : (
-                            <div style={{ fontSize: '0.75rem', color: tone.fg }}>{bed.STATUS || 'Available'}</div>
+                            <div style={{ fontSize: '0.75rem', color: tone.fg }}>{Number(bed.IS_ACTIVE ?? 1) === 1 ? (bed.STATUS || 'Available') : 'Inactive'}</div>
                           )}
                           {isOcc && bed.ADMISSION_DATE && (
                             <div className="cell-secondary" style={{ fontSize: '0.7rem' }}>

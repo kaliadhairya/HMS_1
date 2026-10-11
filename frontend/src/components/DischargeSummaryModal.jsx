@@ -1,27 +1,19 @@
 import { useState, useEffect } from 'react';
-import api from '../api/axios';
 import toast from 'react-hot-toast';
+import {
+  ClipboardList, Eye, FileText, FlaskConical, Hospital, LogOut, Pencil, Pill, Plus, Printer, Stethoscope, X,
+} from 'lucide-react';
+import api from '../api/axios';
 import Glyph from './ui/Glyph';
+import Modal from './ui/Modal';
 
-const inputStyle = {
-  width: '100%', padding: '10px 14px', fontSize: '0.9rem', fontWeight: 500,
-  border: '1.5px solid #e2e8f0', borderRadius: '10px', outline: 'none',
-  background: '#fff', color: '#1a202c', transition: 'border-color 0.2s',
-  boxSizing: 'border-box',
-};
-const textareaStyle = { ...inputStyle, resize: 'vertical', lineHeight: 1.6, fontFamily: 'inherit' };
-const selectStyle = { ...inputStyle, cursor: 'pointer', appearance: 'auto' };
+// Styles below are used by the print preview only (print layout kept as designed).
 const sectionHeaderStyle = {
   fontSize: '0.82rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em',
   padding: '10px 16px', background: 'rgba(45,55,72,0.04)', borderRadius: '10px',
   marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px',
   color: '#2d3748', borderLeft: '3px solid #c6943e'
 };
-const sectionCardStyle = {
-  border: '1px solid #e2e8f0', borderRadius: '14px', padding: '20px',
-  background: '#fff',
-};
-const labelStyle = { display: 'block', marginBottom: '6px', fontWeight: 700, fontSize: '0.85rem', color: '#4a5568' };
 const previewLabelStyle = { fontSize: '0.75rem', fontWeight: 700, color: '#718096', textTransform: 'uppercase', letterSpacing: '0.04em' };
 const previewValueStyle = { margin: '4px 0 0', fontSize: '0.9rem', color: '#1a202c' };
 
@@ -33,8 +25,16 @@ const InfoRow = ({ label, value }) => (
   </div>
 );
 
-// Dynamic row list for medications / investigations / follow-up
-function DynamicTable({ columns, rows, setRows }) {
+// Section of the edit form.
+const FormSection = ({ icon: Icon, title, children }) => (
+  <section className="panel">
+    <div className="panel-head"><h3 className="panel-title" style={{ margin: 0 }}><Icon size={16} aria-hidden="true" /> {title}</h3></div>
+    <div className="panel-pad stack-sm">{children}</div>
+  </section>
+);
+
+// Dynamic row list for medications / investigations / follow-up. Each input is labelled "<Column> <row>".
+function DynamicTable({ columns, rows, setRows, addLabel }) {
   const addRow = () => setRows([...rows, columns.reduce((o, c) => ({ ...o, [c.key]: '' }), {})]);
   const removeRow = (i) => setRows(rows.filter((_, idx) => idx !== i));
   const updateRow = (i, key, val) => {
@@ -44,43 +44,57 @@ function DynamicTable({ columns, rows, setRows }) {
   };
 
   return (
-    <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+    <div>
+      <table className="mini-table">
         <thead>
-          <tr style={{ background: '#f7fafc' }}>
-            {columns.map(c => <th key={c.key} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 800, color: '#718096', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #e2e8f0' }}>{c.label}</th>)}
-            <th style={{ width: 36, borderBottom: '1px solid #e2e8f0' }}></th>
+          <tr>
+            {columns.map(c => <th key={c.key}>{c.label}</th>)}
+            <th style={{ width: 40 }}><span className="sr-only">Remove</span></th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+            <tr key={i}>
               {columns.map(c => (
-                <td key={c.key} style={{ padding: '6px 8px' }}>
-                  <input style={{ ...inputStyle, padding: '8px 10px', fontSize: '0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                    value={row[c.key]} onChange={e => updateRow(i, c.key, e.target.value)} placeholder={c.placeholder || ''} />
+                <td key={c.key}>
+                  <input
+                    className="form-input"
+                    aria-label={`${c.label} ${i + 1}`}
+                    value={row[c.key]}
+                    onChange={e => updateRow(i, c.key, e.target.value)}
+                    placeholder={c.placeholder || ''}
+                  />
                 </td>
               ))}
-              <td style={{ textAlign: 'center', padding: '6px 4px' }}>
-                <button type="button" onClick={() => removeRow(i)} style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: '1.2rem', fontWeight: 800, lineHeight: 1 }} title="Remove row">×</button>
+              <td>
+                <button type="button" className="icon-btn" onClick={() => removeRow(i)} aria-label={`Remove row ${i + 1}`}>
+                  <X size={16} aria-hidden="true" />
+                </button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <div style={{ padding: '8px 12px', borderTop: '1px solid #f1f5f9' }}>
-        <button type="button" onClick={addRow} style={{ background: '#f7fafc', border: '1px dashed #cbd5e0', borderRadius: 8, padding: '7px 20px', cursor: 'pointer', fontSize: '0.82rem', color: '#4a5568', fontWeight: 700, transition: 'all 0.15s' }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#edf2f7'; e.currentTarget.style.borderColor = '#a0aec0'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#f7fafc'; e.currentTarget.style.borderColor = '#cbd5e0'; }}
-        >+ Add Row</button>
-      </div>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={addRow} style={{ marginTop: 8 }}>
+        <Plus size={14} aria-hidden="true" /> {addLabel || 'Add row'}
+      </button>
     </div>
   );
 }
 
+const Field = ({ id, label, required, children }) => (
+  <div className="form-group">
+    <label className="form-label" htmlFor={id}>
+      {label}{required && <span style={{ color: 'var(--red)' }} aria-hidden="true"> *</span>}
+    </label>
+    {children}
+  </div>
+);
+
 export default function DischargeSummaryModal({ admission, onClose, onDischargeComplete, viewOnly = false }) {
   const [loading, setLoading] = useState(false);
   const [isPreview, setIsPreview] = useState(viewOnly);
+  const [confirming, setConfirming] = useState(false);
 
   // --- Form state ---
   const [form, setForm] = useState({
@@ -121,15 +135,18 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
             try { setInvestigations(JSON.parse(d.INVESTIGATIONS || '[]')); } catch { setInvestigations([]); }
             try { setFollowUps(JSON.parse(d.FOLLOW_UP_APPOINTMENTS || '[]')); } catch { setFollowUps([]); }
           }
-        }).catch(() => toast.error('Failed to load discharge summary'));
+        }).catch(() => toast.error('Could not load the discharge summary'));
     }
   }, [viewOnly, admission.ID]);
 
-  const handleSubmit = async (e) => {
+  // Submitting the form only asks for confirmation; the discharge itself happens in confirmDischarge.
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (viewOnly) return;
-    if (!window.confirm('Are you sure you want to finalize this discharge summary and discharge the patient?')) return;
+    setConfirming(true);
+  };
 
+  const confirmDischarge = async () => {
     setLoading(true);
     try {
       const payload = {
@@ -139,125 +156,123 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
         followUpAppointments: JSON.stringify(followUps.filter(f => f.department || f.date)),
       };
       await api.patch(`/ipd/admissions/${admission.ID}/discharge`, payload);
-      toast.success('Patient discharged and summary saved!');
+      toast.success('Patient discharged and summary saved');
+      setConfirming(false);
       if (onDischargeComplete) onDischargeComplete();
     } catch (err) {
-      toast.error('Failed to process discharge');
+      toast.error(err.response?.data?.message || 'Could not discharge the patient');
     } finally {
       setLoading(false);
     }
   };
 
   const handlePrint = () => window.print();
+  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
   // Build address string
   const address = [admission.HOUSE_NO, admission.STREET, admission.CITY, admission.STATE, admission.PIN].filter(Boolean).join(', ');
   const nextOfKin = admission.EMERGENCY_CONTACT_NAME
     ? `${admission.EMERGENCY_CONTACT_NAME} (${admission.EMERGENCY_CONTACT_RELATION || 'Relative'})`
     : '—';
+  const title = viewOnly ? 'Discharge summary' : 'Prepare discharge summary';
 
   return (
-    <div className="ds-modal-overlay" style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(0,0,0,0.55)', zIndex: 9999,
-      display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px'
-    }}>
-      <div className="ds-modal-content" style={{
-        background: '#fff', width: '100%', maxWidth: isPreview ? '900px' : '860px',
-        maxHeight: '92vh', borderRadius: '16px', overflowY: 'auto',
-        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column'
-      }}>
+    <>
+    <div className="ds-modal-overlay dialog-overlay" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px' }}>
+      <div
+        className="ds-modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ds-title"
+        style={{
+          background: 'var(--surface)', width: '100%', maxWidth: isPreview ? '900px' : '860px',
+          maxHeight: '92vh', borderRadius: 12, overflowY: 'auto', border: '1px solid var(--border)',
+          boxShadow: 'var(--shadow-lg)', display: 'flex', flexDirection: 'column'
+        }}
+      >
         {/* TOOLBAR */}
-        <div className="ds-toolbar" style={{ padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#fff', zIndex: 10 }}>
-          <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>
-            {viewOnly ? '📄 Discharge Summary' : '📋 Prepare Discharge Summary'}
+        <div className="ds-toolbar" style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 10 }}>
+          <h2 id="ds-title" className="dialog-title" style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            {viewOnly ? <FileText size={18} aria-hidden="true" /> : <ClipboardList size={18} aria-hidden="true" />} {title}
           </h2>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
             {!viewOnly && (
-              <button className="btn btn-outline" onClick={() => setIsPreview(!isPreview)} style={{ fontSize: '0.85rem' }}>
-                {isPreview ? '✏️ Edit' : '👁️ Preview'}
+              <button type="button" className="btn btn-secondary btn-md" onClick={() => setIsPreview(!isPreview)}>
+                {isPreview ? <><Pencil size={16} aria-hidden="true" /> Edit</> : <><Eye size={16} aria-hidden="true" /> Preview</>}
               </button>
             )}
-            {isPreview && <button className="btn btn-primary" onClick={handlePrint} style={{ fontSize: '0.85rem' }}><Glyph icon="🖨️" /> Print</button>}
-            <button className="btn btn-outline" style={{ border: 'none', background: '#f7fafc', fontSize: '1rem', padding: '6px 12px' }} onClick={onClose}><Glyph icon="✕" /></button>
+            {isPreview && (
+              <button type="button" className="btn btn-primary btn-md" onClick={handlePrint}>
+                <Printer size={16} aria-hidden="true" /> Print
+              </button>
+            )}
+            <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}><X size={18} aria-hidden="true" /></button>
           </div>
         </div>
 
         {/* CONTENT */}
-        <div style={{ padding: '24px', flex: 1 }}>
+        <div style={{ padding: 20, flex: 1 }}>
           {!isPreview ? (
             /* ═══════════════════ EDIT MODE ═══════════════════ */
-            <form id="discharge-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* Patient Info Banner */}
-              <div style={{ padding: '18px 20px', background: 'linear-gradient(135deg, #f7fafc, #edf2f7)', borderRadius: '14px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontWeight: 800, fontSize: '1.05rem', marginBottom: 4, color: '#1a202c' }}>{admission.PATIENT_NAME} ({admission.UHID})</div>
-                <div style={{ fontSize: '0.85rem', color: '#718096' }}>
-                  {admission.AGE} yrs / {admission.GENDER} &nbsp;·&nbsp; {admission.WARD_NAME} / Bed {admission.BED_NUMBER} &nbsp;·&nbsp; Dr. {admission.DOCTOR_NAME} &nbsp;·&nbsp; Admitted: {new Date(admission.ADMISSION_DATE).toLocaleDateString()}
+            <form id="discharge-form" onSubmit={handleSubmit} className="stack">
+              <div className="alert-strip alert-info" style={{ margin: 0 }}>
+                <span>
+                  <strong>{admission.PATIENT_NAME}</strong> <span className="mono">({admission.UHID})</span>
+                  <span className="cell-secondary"> · {admission.AGE} y / {admission.GENDER} · {admission.WARD_NAME} / bed {admission.BED_NUMBER} · {admission.DOCTOR_NAME} · admitted {new Date(admission.ADMISSION_DATE).toLocaleDateString('en-IN')}</span>
+                </span>
+              </div>
+
+              <FormSection icon={Stethoscope} title="Clinical information">
+                <Field id="ds-complaint" label="Chief complaint" required>
+                  <input id="ds-complaint" className="form-input" value={form.chiefComplaint} onChange={set('chiefComplaint')} required placeholder="E.g. fever, cough, breathlessness for 5 days" />
+                </Field>
+                <Field id="ds-diagnosis" label="Final diagnosis" required>
+                  <input id="ds-diagnosis" className="form-input" value={form.finalDiagnosis} onChange={set('finalDiagnosis')} required placeholder="E.g. community-acquired pneumonia, right lower lobe" />
+                </Field>
+                <div className="form-row-2">
+                  <Field id="ds-comorbid" label="Comorbidities">
+                    <input id="ds-comorbid" className="form-input" value={form.comorbidities} onChange={set('comorbidities')} placeholder="E.g. type 2 DM, hypertension (comma-separated)" />
+                  </Field>
+                  <Field id="ds-allergies" label="Allergies">
+                    <input id="ds-allergies" className="form-input" value={form.allergies} onChange={set('allergies')} placeholder="E.g. penicillin, rash (comma-separated)" />
+                  </Field>
                 </div>
-              </div>
-
-              {/* ── CLINICAL INFORMATION ── */}
-              <div style={sectionCardStyle}>
-                <div style={sectionHeaderStyle}><Glyph icon="⚕️" /> CLINICAL INFORMATION</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div>
-                    <label style={labelStyle}>Chief Complaint <span style={{ color: '#e53e3e' }}>*</span></label>
-                    <input style={inputStyle} value={form.chiefComplaint} onChange={e => setForm({ ...form, chiefComplaint: e.target.value })} required placeholder="E.g., Fever, cough, breathlessness for 5 days" onFocus={e => e.target.style.borderColor = '#c6943e'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Final Diagnosis <span style={{ color: '#e53e3e' }}>*</span></label>
-                    <input style={inputStyle} value={form.finalDiagnosis} onChange={e => setForm({ ...form, finalDiagnosis: e.target.value })} required placeholder="E.g., Community-Acquired Pneumonia (CAP), Right lower lobe" onFocus={e => e.target.style.borderColor = '#c6943e'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                    <div>
-                      <label style={labelStyle}>Comorbidities</label>
-                      <input style={inputStyle} value={form.comorbidities} onChange={e => setForm({ ...form, comorbidities: e.target.value })} placeholder="E.g., Type 2 DM, Hypertension (comma-separated)" onFocus={e => e.target.style.borderColor = '#c6943e'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Allergies</label>
-                      <input style={inputStyle} value={form.allergies} onChange={e => setForm({ ...form, allergies: e.target.value })} placeholder="E.g., Penicillin — Rash (comma-separated)" onFocus={e => e.target.style.borderColor = '#c6943e'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-                    </div>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>History of Present Illness</label>
-                    <textarea style={textareaStyle} rows="4" value={form.historyOfIllness} onChange={e => setForm({ ...form, historyOfIllness: e.target.value })} placeholder="Detailed history..." onFocus={e => e.target.style.borderColor = '#c6943e'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Condition at Discharge</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: '14px' }}>
-                      <select style={selectStyle} value={form.conditionAtDischarge} onChange={e => setForm({ ...form, conditionAtDischarge: e.target.value })}>
-                        <option>Stable</option><option>Improved</option><option>Against Medical Advice (AMA)</option><option>Transferred</option><option>Deceased</option>
-                      </select>
-                      <textarea style={textareaStyle} rows="2" value={form.adviceOnDischarge} onChange={e => setForm({ ...form, adviceOnDischarge: e.target.value })} placeholder="Afebrile for 48 hrs, SpO2 97% on room air, tolerating orals well..." onFocus={e => e.target.style.borderColor = '#c6943e'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-                    </div>
-                  </div>
+                <Field id="ds-history" label="History of present illness">
+                  <textarea id="ds-history" className="form-textarea" rows="4" value={form.historyOfIllness} onChange={set('historyOfIllness')} />
+                </Field>
+                <div className="form-row-2">
+                  <Field id="ds-condition" label="Condition at discharge">
+                    <select id="ds-condition" className="form-select" value={form.conditionAtDischarge} onChange={set('conditionAtDischarge')}>
+                      <option>Stable</option><option>Improved</option><option>Against Medical Advice (AMA)</option><option>Transferred</option><option>Deceased</option>
+                    </select>
+                  </Field>
+                  <Field id="ds-condition-notes" label="Condition details">
+                    <textarea id="ds-condition-notes" className="form-textarea" rows="2" value={form.adviceOnDischarge} onChange={set('adviceOnDischarge')} placeholder="Afebrile for 48 hours, SpO2 97% on room air, tolerating orals" />
+                  </Field>
                 </div>
-              </div>
+              </FormSection>
 
-              {/* ── COURSE IN HOSPITAL ── */}
-              <div style={sectionCardStyle}>
-                <div style={sectionHeaderStyle}><Glyph icon="🏥" /> COURSE IN HOSPITAL</div>
-                <textarea style={textareaStyle} rows="5" value={form.courseInHospital} onChange={e => setForm({ ...form, courseInHospital: e.target.value })} placeholder="Patient was managed with IV antibiotics, nebulisation, supplemental oxygen..." onFocus={e => e.target.style.borderColor = '#c6943e'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-              </div>
+              <FormSection icon={Hospital} title="Hospital course">
+                <Field id="ds-course" label="Course in hospital">
+                  <textarea id="ds-course" className="form-textarea" rows="5" value={form.courseInHospital} onChange={set('courseInHospital')} placeholder="Managed with IV antibiotics, nebulisation, supplemental oxygen" />
+                </Field>
+              </FormSection>
 
-              {/* ── INVESTIGATIONS ── */}
-              <div style={sectionCardStyle}>
-                <div style={sectionHeaderStyle}><Glyph icon="🔬" /> INVESTIGATIONS SUMMARY</div>
+              <FormSection icon={FlaskConical} title="Investigations summary">
                 <DynamicTable
                   columns={[
                     { key: 'test', label: 'Test', placeholder: 'Hb' },
-                    { key: 'admissionValue', label: 'Admission Value', placeholder: '11.2 g/dL' },
-                    { key: 'dischargeValue', label: 'Discharge Value', placeholder: '12.4 g/dL' },
+                    { key: 'admissionValue', label: 'Admission value', placeholder: '11.2 g/dL' },
+                    { key: 'dischargeValue', label: 'Discharge value', placeholder: '12.4 g/dL' },
                     { key: 'reference', label: 'Reference', placeholder: '13–17' },
                   ]}
                   rows={investigations}
                   setRows={setInvestigations}
+                  addLabel="Add investigation"
                 />
-              </div>
+              </FormSection>
 
-              {/* ── DISCHARGE MEDICATIONS ── */}
-              <div style={sectionCardStyle}>
-                <div style={sectionHeaderStyle}><Glyph icon="💊" /> DISCHARGE MEDICATIONS</div>
+              <FormSection icon={Pill} title="Discharge medications">
                 <DynamicTable
                   columns={[
                     { key: 'drug', label: 'Drug', placeholder: 'Tab. Azithromycin' },
@@ -268,36 +283,32 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
                   ]}
                   rows={medications}
                   setRows={setMedications}
+                  addLabel="Add medication"
                 />
-              </div>
+              </FormSection>
 
-              {/* ── INSTRUCTIONS & FOLLOW-UP ── */}
-              <div style={sectionCardStyle}>
-                <div style={sectionHeaderStyle}><Glyph icon="📋" /> DISCHARGE INSTRUCTIONS & FOLLOW-UP</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div>
-                    <label style={labelStyle}>Diet & Lifestyle Advice</label>
-                    <textarea style={textareaStyle} rows="3" value={form.dietLifestyle} onChange={e => setForm({ ...form, dietLifestyle: e.target.value })} placeholder="High-protein diet, adequate hydration, avoid cold food..." onFocus={e => e.target.style.borderColor = '#c6943e'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Warning Signs — Return Immediately If</label>
-                    <input style={inputStyle} value={form.warningSigns} onChange={e => setForm({ ...form, warningSigns: e.target.value })} placeholder="Fever >101°F, SpO2 <94%, Severe breathlessness (comma-separated)" onFocus={e => e.target.style.borderColor = '#c6943e'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Follow-up Appointments</label>
-                    <DynamicTable
-                      columns={[
-                        { key: 'department', label: 'Department', placeholder: 'Internal Medicine' },
-                        { key: 'doctor', label: 'Doctor', placeholder: 'Dr. Sharma' },
-                        { key: 'date', label: 'Date', placeholder: '29 Jun 2026' },
-                        { key: 'purpose', label: 'Purpose', placeholder: 'Review, repeat CXR' },
-                      ]}
-                      rows={followUps}
-                      setRows={setFollowUps}
-                    />
-                  </div>
+              <FormSection icon={ClipboardList} title="Discharge instructions and follow-up">
+                <Field id="ds-diet" label="Diet and lifestyle advice">
+                  <textarea id="ds-diet" className="form-textarea" rows="3" value={form.dietLifestyle} onChange={set('dietLifestyle')} placeholder="High-protein diet, adequate hydration" />
+                </Field>
+                <Field id="ds-warning" label="Warning signs (return immediately if)">
+                  <input id="ds-warning" className="form-input" value={form.warningSigns} onChange={set('warningSigns')} placeholder="Fever above 101°F, SpO2 below 94%, severe breathlessness (comma-separated)" />
+                </Field>
+                <div className="form-group">
+                  <span className="form-label">Follow-up appointments</span>
+                  <DynamicTable
+                    columns={[
+                      { key: 'department', label: 'Department', placeholder: 'Internal Medicine' },
+                      { key: 'doctor', label: 'Doctor', placeholder: 'Dr. Sharma' },
+                      { key: 'date', label: 'Date', placeholder: '29 Jun 2026' },
+                      { key: 'purpose', label: 'Purpose', placeholder: 'Review, repeat CXR' },
+                    ]}
+                    rows={followUps}
+                    setRows={setFollowUps}
+                    addLabel="Add follow-up"
+                  />
                 </div>
-              </div>
+              </FormSection>
             </form>
           ) : (
             /* ═══════════════════ PRINT PREVIEW ═══════════════════ */
@@ -541,10 +552,10 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
 
         {/* FOOTER ACTIONS */}
         {!isPreview && !viewOnly && (
-          <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#f7fafc', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-            <button className="btn btn-outline" onClick={onClose} disabled={loading}>Cancel</button>
-            <button type="submit" form="discharge-form" className="btn btn-primary" disabled={loading} style={{ fontWeight: 800 }}>
-              {loading ? 'Processing...' : '✓ Confirm Discharge & Save Summary'}
+          <div className="dialog-foot" style={{ position: 'sticky', bottom: 0 }}>
+            <button type="button" className="btn btn-ghost btn-md" onClick={onClose} disabled={loading}>Cancel</button>
+            <button type="submit" form="discharge-form" className="btn btn-primary btn-md" disabled={loading}>
+              <LogOut size={16} aria-hidden="true" /> Discharge patient
             </button>
           </div>
         )}
@@ -597,5 +608,28 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
         }
       `}</style>
     </div>
+
+    <Modal
+      open={confirming}
+      onOpenChange={(open) => { if (!open && !loading) setConfirming(false); }}
+      title="Discharge this patient?"
+      description="The admission is closed, the bed is released and this summary is saved. It cannot be edited afterwards."
+      size="sm"
+      footer={(
+        <>
+          <button type="button" className="btn btn-ghost btn-md" onClick={() => setConfirming(false)} disabled={loading}>Cancel</button>
+          <button type="button" className="btn btn-primary btn-md" onClick={confirmDischarge} disabled={loading}>
+            <LogOut size={16} aria-hidden="true" /> {loading ? 'Discharging…' : 'Confirm discharge'}
+          </button>
+        </>
+      )}
+    >
+      <div className="facts">
+        <div><div className="fact-label">Patient</div><div className="fact-value">{admission.PATIENT_NAME}</div></div>
+        <div><div className="fact-label">Final diagnosis</div><div className="fact-value">{form.finalDiagnosis || '—'}</div></div>
+        <div><div className="fact-label">Condition</div><div className="fact-value">{form.conditionAtDischarge}</div></div>
+      </div>
+    </Modal>
+    </>
   );
 }

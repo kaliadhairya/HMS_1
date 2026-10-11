@@ -52,8 +52,9 @@ export default function NurseDashboard() {
     ]).finally(() => setLoading(false));
   };
 
+  // Inpatient vitals are charted on the admission (with shift and fluid balance), not on the OPD triage page.
   const recordVitals = useCallback(
-    (adm) => navigate('/hms/vitals/entry', { state: { patient: { id: adm.PATIENT_ID, name: adm.PATIENT_NAME, uhid: adm.UHID, age: adm.AGE, gender: adm.GENDER } } }),
+    (adm) => navigate(`/ipd/patient/${admissionId(adm)}`, { state: { activeTab: 'vitals' } }),
     [navigate],
   );
 

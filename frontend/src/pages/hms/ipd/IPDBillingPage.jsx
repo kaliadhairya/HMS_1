@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ArrowLeft, ClipboardList, Minus, Pill, Plus, Printer, Receipt, Save, Search, Trash2, X } from 'lucide-react';
@@ -6,6 +6,38 @@ import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
 import EmptyState from '../../../components/ui/EmptyState';
+
+const money = (n) => Math.round(Number(n || 0) * 100) / 100;
+
+// Advances are used whole, oldest first, while each fits in what is still payable (same rule as the server).
+function applyAdvances(amounts, payable) {
+  let left = money(payable);
+  let used = 0;
+  for (const a of amounts || []) {
+    if (a > 0 && a <= left + 0.001) { used = money(used + a); left = money(left - a); }
+  }
+  return used;
+}
+
+// Bill shown in the preview: the one just generated, or the admission's existing bill when reopened.
+function billFromRecord(b) {
+  const items = b.items || [];
+  const ward = items.find((i) => (i.ITEM_TYPE || i.item_type) === 'Ward');
+  const meds = items.filter((i) => (i.ITEM_TYPE || i.item_type) === 'Medicine');
+  return {
+    billNumber: b.BILL_NUMBER,
+    status: b.STATUS,
+    createdAt: b.CREATED_AT,
+    totalAmount: Number(b.TOTAL_AMOUNT || 0),
+    discountAmount: Number(b.DISCOUNT_AMOUNT || 0),
+    advanceAdjusted: Number(b.ADVANCE_ADJUSTED || 0),
+    netPayable: Number(b.NET_PAYABLE || 0),
+    wardTotal: Number(ward?.AMOUNT || 0),
+    wardDays: Number(ward?.QUANTITY || 0),
+    medicineTotal: money(meds.reduce((t, i) => t + Number(i.AMOUNT || 0), 0)),
+    lines: meds.map((i) => ({ name: i.ITEM_NAME, quantity: Number(i.QUANTITY || 0), amount: Number(i.AMOUNT || 0) })),
+  };
+}
 
 export default function IPDBillingPage() {
   const { admissionId } = useParams();
@@ -15,6 +47,9 @@ export default function IPDBillingPage() {
   const [wardInfo, setWardInfo] = useState({});
   const [medicineTotal, setMedicineTotal] = useState(0);
   const [grandTotal, setGrandTotal] = useState(0);
+  const [advances, setAdvances] = useState([]);
+  const [canDiscount, setCanDiscount] = useState(false);
+  const [discount, setDiscount] = useState('');
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
 
@@ -44,6 +79,13 @@ export default function IPDBillingPage() {
       setWardInfo(d.wardInfo || {});
       setMedicineTotal(d.medicineTotal || 0);
       setGrandTotal(d.grandTotal || 0);
+      setAdvances(d.advances || []);
+      setCanDiscount(Boolean(d.canDiscount));
+      // Already billed: show that bill instead of letting it be billed a second time.
+      if (d.bill) {
+        setGeneratedBill(billFromRecord(d.bill));
+        setPreviewMode(true);
+      }
     } catch { toast.error('Could not load charges'); }
   }, [admissionId]);
 
@@ -77,7 +119,7 @@ export default function IPDBillingPage() {
       setSearchTerm('');
       setSearchResults([]);
       fetchCharges();
-    } catch { toast.error('Could not add item'); }
+    } catch (err) { toast.error(err.response?.data?.message || 'Could not add item'); }
   };
 
   const updateQty = async (charge, newQty) => {
@@ -85,7 +127,7 @@ export default function IPDBillingPage() {
     try {
       await api.patch(`/ipd/admissions/${admissionId}/charges/${charge.ID}`, { quantity: newQty });
       fetchCharges();
-    } catch { toast.error('Could not update quantity'); }
+    } catch (err) { toast.error(err.response?.data?.message || 'Could not update quantity'); }
   };
 
   const removeCharge = async (charge) => {
@@ -96,15 +138,39 @@ export default function IPDBillingPage() {
     } catch { toast.error('Could not remove item'); }
   };
 
+  const discountValue = money(discount);
+  const discountError = discount !== '' && (!Number.isFinite(Number(discount)) || Number(discount) < 0)
+    ? 'Enter zero or more.'
+    : discountValue > money(grandTotal) ? 'The discount is more than the bill total.' : '';
+  const advanceAdjusted = useMemo(
+    () => applyAdvances(advances, money(grandTotal) - (discountError ? 0 : discountValue)),
+    [advances, grandTotal, discountValue, discountError],
+  );
+  const advanceAvailable = money(advances.reduce((t, a) => t + a, 0));
+  const netPayable = Math.max(0, money(grandTotal - (discountError ? 0 : discountValue) - advanceAdjusted));
+
   const generateBill = async () => {
+    if (discountError) { toast.error(discountError); return; }
     setGenerating(true);
     try {
-      const res = await api.post(`/ipd/admissions/${admissionId}/generate-bill`);
-      toast.success(`Bill generated: ${res.data.data.billNumber}`);
-      setGeneratedBill(res.data.data);
+      // The items on screen are sent along: the server keeps unsaved items in memory only.
+      const res = await api.post(`/ipd/admissions/${admissionId}/generate-bill`, {
+        items: charges.map((c) => ({ medicineId: c.MEDICINE_ID, quantity: c.QUANTITY, strength: c.STRENGTH })),
+        discountAmount: canDiscount ? discountValue : 0,
+      });
+      const d = res.data.data;
+      toast.success(`Bill generated: ${d.billNumber}`);
+      setGeneratedBill({
+        ...d,
+        createdAt: new Date().toISOString(),
+        wardDays: wardInfo.daysAdmitted,
+        lines: charges.map((c) => ({ name: `${c.MEDICINE_NAME} ${c.STRENGTH || ''}`.trim(), quantity: c.QUANTITY, amount: c.TOTAL_PRICE })),
+      });
       setPreviewMode(true);
-    } catch (err) { toast.error(err.response?.data?.message || 'Could not generate bill'); }
-    finally { setGenerating(false); }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not generate bill');
+      if (err.response?.status === 409) fetchCharges();
+    } finally { setGenerating(false); }
   };
 
   const handlePrint = () => {
@@ -116,6 +182,8 @@ export default function IPDBillingPage() {
   }
 
   const summaryRow = { display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: '0.87rem' };
+  // Amount of the bill after discount (advances are a payment against it, shown separately).
+  const billAmount = money(Number(generatedBill?.totalAmount || 0) - Number(generatedBill?.discountAmount || 0));
   const summaryTotal = { ...summaryRow, borderTop: '1px dashed var(--border)', marginTop: 8, paddingTop: 8, fontWeight: 650 };
 
   return (
@@ -157,7 +225,9 @@ export default function IPDBillingPage() {
                 <span className="cell-primary" style={{ fontSize: '1.05rem' }}>{admission?.PATIENT_NAME}</span>
                 <span className="cell-secondary"><span className="mono">{admission?.UHID}</span> · {admission?.AGE} y / {admission?.GENDER?.[0]}</span>
               </span>
-              <span className="status status-info" style={{ marginLeft: 'auto' }}>Active IPD</span>
+              {admission?.STATUS === 'Active'
+                ? <span className="status status-info" style={{ marginLeft: 'auto' }}>In hospital</span>
+                : <span className="status status-neutral" style={{ marginLeft: 'auto' }}>Discharged {admission?.DISCHARGE_DATE ? new Date(admission.DISCHARGE_DATE).toLocaleDateString('en-IN') : ''}</span>}
             </div>
             <div className="facts">
               <div>
@@ -339,14 +409,48 @@ export default function IPDBillingPage() {
                   </div>
                 </div>
 
-                {/* Grand total */}
+                {/* Total, discount, advance */}
+                <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                  <div style={summaryRow}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Bill total</span>
+                    <span className="tabular">₹{Number(grandTotal || 0).toFixed(2)}</span>
+                  </div>
+                  {canDiscount ? (
+                    <div className="form-group" style={{ marginTop: 10 }}>
+                      <label className="form-label" htmlFor="bill-discount">Discount (₹)</label>
+                      <input
+                        id="bill-discount"
+                        className="form-input"
+                        type="number" min="0" step="0.01" inputMode="decimal"
+                        value={discount}
+                        onChange={(e) => setDiscount(e.target.value)}
+                        aria-invalid={Boolean(discountError)}
+                        aria-describedby="bill-discount-hint"
+                      />
+                      <p className="form-hint" id="bill-discount-hint" style={discountError ? { color: 'var(--red)' } : undefined}>
+                        {discountError || 'Approved by you as administrator.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="form-hint" style={{ marginTop: 8 }}>Discounts are approved by an administrator.</p>
+                  )}
+                  <div style={{ ...summaryRow, marginTop: 6 }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Advance adjusted</span>
+                    <span className="tabular">− ₹{advanceAdjusted.toFixed(2)}</span>
+                  </div>
+                  {advanceAvailable > advanceAdjusted && (
+                    <p className="form-hint">₹{money(advanceAvailable - advanceAdjusted).toFixed(2)} of advance stays with the patient for refund or adjustment at the cash desk.</p>
+                  )}
+                </div>
+
+                {/* Net payable */}
                 <div style={{
                   padding: '14px 16px', borderRadius: 8,
                   background: 'var(--primary-light)', border: '1px solid var(--primary-border)',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 }}>
-                  <span style={{ fontWeight: 650 }}>Grand total</span>
-                  <span className="tabular" style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '1.3rem' }}>₹{Number(grandTotal || 0).toFixed(2)}</span>
+                  <span style={{ fontWeight: 650 }}>Net payable</span>
+                  <span className="tabular" style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '1.3rem' }}>₹{netPayable.toFixed(2)}</span>
                 </div>
 
                 {/* Save draft */}
@@ -368,7 +472,7 @@ export default function IPDBillingPage() {
                   className="btn btn-primary btn-md"
                   style={{ width: '100%', justifyContent: 'center' }}
                   onClick={generateBill}
-                  disabled={generating}
+                  disabled={generating || Boolean(discountError)}
                 >
                   <Receipt size={16} aria-hidden="true" /> {generating ? 'Generating…' : 'Generate IPD bill'}
                 </button>
@@ -400,8 +504,8 @@ export default function IPDBillingPage() {
               </div>
               <div style={{ position: 'absolute', right: 0, top: 0, textAlign: 'right', fontSize: '12px', border: '1px solid #000', padding: '6px', background: '#fff', maxWidth: '200px' }}>
                 <div style={{ marginBottom: 4 }}>Receipt No. : <strong style={{ marginLeft: 4 }}>{generatedBill?.billNumber}</strong></div>
-                <div style={{ marginBottom: 4 }}>Final Bill Amt : <strong style={{ marginLeft: 4 }}>Rs {Number(generatedBill?.totalAmount || 0).toFixed(2)}/-</strong></div>
-                <div>Date : <strong style={{ marginLeft: 4 }}>{new Date().toLocaleDateString('en-IN')}</strong></div>
+                <div style={{ marginBottom: 4 }}>Final Bill Amt : <strong style={{ marginLeft: 4 }}>Rs {billAmount.toFixed(2)}/-</strong></div>
+                <div>Date : <strong style={{ marginLeft: 4 }}>{new Date(generatedBill?.createdAt || Date.now()).toLocaleDateString('en-IN')}</strong></div>
               </div>
             </div>
 
@@ -416,7 +520,7 @@ export default function IPDBillingPage() {
               </div>
               <div style={{ display: 'flex' }}>
                 <div style={{ flex: 1.2 }}>Dt. of Admn: <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px' }}>{admission?.ADMISSION_DATE ? new Date(admission.ADMISSION_DATE).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</strong></div>
-                <div style={{ flex: 1.2 }}>Dt. of Disch: <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px' }}>{new Date().toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</strong></div>
+                <div style={{ flex: 1.2 }}>Dt. of Disch: <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px' }}>{new Date(admission?.DISCHARGE_DATE || Date.now()).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</strong></div>
                 <div style={{ flex: 0.8 }}>Ward: <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px' }}>{admission?.WARD_NAME || admission?.WARD_TYPE || 'General'}</strong></div>
               </div>
               <div style={{ display: 'flex' }}>
@@ -424,7 +528,7 @@ export default function IPDBillingPage() {
               </div>
               <div style={{ display: 'flex', marginTop: 5 }}>
                 <div style={{ flex: 1 }}>Routine admission: <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px' }}>Yes</strong></div>
-                <div style={{ flex: 1 }}>Duration: <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px' }}>{wardInfo?.daysAdmitted || 1} days</strong></div>
+                <div style={{ flex: 1 }}>Duration: <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px' }}>{generatedBill?.wardDays || wardInfo?.daysAdmitted || 1} days</strong></div>
               </div>
             </div>
 
@@ -435,15 +539,27 @@ export default function IPDBillingPage() {
                   <div style={{ width: '60%' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '15px' }}>
                       <span>Stay charges</span>
-                      <span>{wardInfo?.wardTotal?.toFixed(2)}</span>
+                      <span>{Number(generatedBill?.wardTotal || 0).toFixed(2)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: '15px' }}>
                       <span>Medicines</span>
-                      <span>{generatedBill?.medicineTotal?.toFixed(2)}</span>
+                      <span>{Number(generatedBill?.medicineTotal || 0).toFixed(2)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000', marginTop: '10px', paddingTop: '10px', fontWeight: 'bold', fontSize: '16px' }}>
                       <span>Total</span>
-                      <span>{generatedBill?.totalAmount?.toFixed(2)}</span>
+                      <span>{Number(generatedBill?.totalAmount || 0).toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: '15px' }}>
+                      <span>Less discount</span>
+                      <span>{Number(generatedBill?.discountAmount || 0).toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: '15px' }}>
+                      <span>Less advance adjusted</span>
+                      <span>{Number(generatedBill?.advanceAdjusted || 0).toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000', marginTop: '10px', paddingTop: '10px', fontWeight: 'bold', fontSize: '16px' }}>
+                      <span>Net payable</span>
+                      <span>{Number(generatedBill?.netPayable || 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -456,16 +572,16 @@ export default function IPDBillingPage() {
                 <div style={{ fontWeight: 'bold', marginBottom: '15px', fontSize: '15px' }}>Hospital Medicines<br/><span style={{ fontWeight: 'normal' }}>अस्पताल दवाईयां</span></div>
                 <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
                   <tbody>
-                    {charges.map((c, i) => (
+                    {(generatedBill?.lines || []).map((c, i) => (
                       <tr key={i}>
-                        <td style={{ padding: '4px 0' }}>{c.MEDICINE_NAME} {c.STRENGTH}</td>
-                        <td style={{ padding: '4px 0', textAlign: 'center' }}>- {c.QUANTITY} -</td>
-                        <td style={{ padding: '4px 0', textAlign: 'right' }}>{c.TOTAL_PRICE?.toFixed(2)}</td>
+                        <td style={{ padding: '4px 0' }}>{c.name}</td>
+                        <td style={{ padding: '4px 0', textAlign: 'center' }}>- {c.quantity} -</td>
+                        <td style={{ padding: '4px 0', textAlign: 'right' }}>{Number(c.amount || 0).toFixed(2)}</td>
                       </tr>
                     ))}
                     <tr>
                       <td colSpan="2" style={{ borderTop: '1px solid #000', textAlign: 'right', padding: '8px 10px 0 0', fontWeight: 'bold' }}>Total</td>
-                      <td style={{ borderTop: '1px solid #000', textAlign: 'right', padding: '8px 0 0 0', fontWeight: 'bold' }}>{generatedBill?.medicineTotal?.toFixed(2)}</td>
+                      <td style={{ borderTop: '1px solid #000', textAlign: 'right', padding: '8px 0 0 0', fontWeight: 'bold' }}>{Number(generatedBill?.medicineTotal || 0).toFixed(2)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -484,7 +600,7 @@ export default function IPDBillingPage() {
             {/* Footer Signatures */}
             <div style={{ marginTop: '60px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
               <div style={{ fontSize: '16px' }}>
-                Approved for Rs. <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px', fontSize: '18px' }}>{generatedBill?.totalAmount?.toFixed(2)} /-</strong><br/>
+                Approved for Rs. <strong style={{ borderBottom: '1px dotted #000', padding: '0 10px', fontSize: '18px' }}>{billAmount.toFixed(2)} /-</strong><br/>
                 धन की स्वीकृति
               </div>
               <div style={{ textAlign: 'center', fontSize: '15px' }}>
