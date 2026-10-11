@@ -8,7 +8,8 @@ import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import EmptyState from '../../../components/ui/EmptyState';
 
-const daysAdmitted = (adm) => adm.DAYS_ADMITTED || Math.max(1, Math.ceil((Date.now() - new Date(adm.ADMISSION_DATE).getTime()) / 86400000));
+// Billed days: completed days of the stay (up to discharge), at least one, as the bill counts them.
+const daysAdmitted = (adm) => Math.max(1, Number(adm.DAYS_ADMITTED) || 0);
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
 export default function IPDBillingListPage() {
@@ -18,7 +19,7 @@ export default function IPDBillingListPage() {
   const [query, setQuery] = useState('');
 
   useEffect(() => {
-    api.get('/ipd/admissions?status=Active')
+    api.get('/ipd/admissions?billing=1')
       .then(res => setAdmissions(res.data.data || []))
       .catch(() => toast.error('Could not load admissions'))
       .finally(() => setLoading(false));
@@ -66,11 +67,17 @@ export default function IPDBillingListPage() {
       cell: ({ row }) => (
         <span className="cell-stack">
           <span className="tabular">{fmtDate(row.original.ADMISSION_DATE)}</span>
-          <span className="cell-secondary">Day {daysAdmitted(row.original)}</span>
+          <span className="cell-secondary">{daysAdmitted(row.original)} {Number(daysAdmitted(row.original)) === 1 ? 'day' : 'days'}</span>
         </span>
       ),
     },
     { id: 'doctor', header: 'Primary physician', accessorFn: (a) => a.DOCTOR_NAME || '', cell: ({ getValue }) => getValue() || '—' },
+    {
+      id: 'status', header: 'Status', accessorFn: (a) => a.STATUS || '', meta: { width: 170 },
+      cell: ({ getValue }) => (getValue() === 'Active'
+        ? <span className="status status-info">In hospital</span>
+        : <span className="status status-warning">Discharged, not billed</span>),
+    },
     {
       id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 160, align: 'right' },
       cell: ({ row }) => (
@@ -87,8 +94,8 @@ export default function IPDBillingListPage() {
       <main className="app-page">
         <PageHeader
           title="IPD billing"
-          description="Select an admitted patient to manage their charges and bill."
-          meta={!loading && <span className="muted">{admissions.length} active {admissions.length === 1 ? 'admission' : 'admissions'}</span>}
+          description="Patients in hospital, and discharged patients not billed yet. Select one to manage charges and the bill."
+          meta={!loading && <span className="muted">{admissions.length} {admissions.length === 1 ? 'admission' : 'admissions'} to bill</span>}
         />
 
         <section className="panel">
@@ -110,7 +117,7 @@ export default function IPDBillingListPage() {
             empty={admissions.length > 0 ? (
               <EmptyState icon={Search} title="No admissions match" description="Try another name, UHID or ward." />
             ) : (
-              <EmptyState icon={BedDouble} title="No active admissions" description="There are no admitted patients to bill right now." />
+              <EmptyState icon={BedDouble} title="Nothing to bill" description="There are no admitted or unbilled discharged patients right now." />
             )}
           />
         </section>

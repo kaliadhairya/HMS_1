@@ -44,14 +44,20 @@ export default function PharmacistDashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    api.get('/dashboard/pharmacist')
-      .then(res => {
+    // Sales today come from the pharmacy report: what was actually billed today (dispensing at MRP plus counter
+    // sales with GST). /dashboard/pharmacist estimates it as units out x current MRP, which leaves out GST.
+    Promise.all([
+      api.get('/dashboard/pharmacist'),
+      api.get('/pharmacist_lms/reports?days=1').catch(() => null),
+    ])
+      .then(([res, report]) => {
         const raw = res.data.data || {};
+        const billedToday = report?.data?.data?.dailySales;
         setData({
           pendingRx: raw.dispense_queue_count || 0,
           lowStockCount: raw.low_stock_count || 0,
           expiringCount: raw.expiring_count || 0,
-          todaysSales: raw.todays_sales || 0,
+          todaysSales: billedToday ?? raw.todays_sales ?? 0,
           // Medicines with 10 or fewer units left, lowest first (the API sends at most 5).
           lowStockItems: raw.low_stock_items || [],
           // Not sent by /dashboard/pharmacist yet; the panel only appears once it is.

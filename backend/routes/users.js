@@ -8,6 +8,70 @@ const AuditLog = require('../models/AuditLog');
 const { protect, restrictTo } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const { logAction } = require('../utils/auditLogger');
+const { sequelize } = require('../models/db');
+
+const ROLES = ['super_admin', 'admin', 'doctor', 'lab_technician', 'receptionist', 'pharmacist', 'nurse'];
+// Same rule as /api/auth/change-password, so an account never starts with a password the user could not set.
+const STRONG_PASSWORD = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
+const PASSWORD_RULE = 'Password must be min 8 chars with 1 uppercase, 1 number, and 1 special character.';
+
+// Only a super admin may create, change or remove super admin accounts, or hand out the super admin role.
+function superAdminGuard(req, targetRole, newRole) {
+  if (req.user.role === 'super_admin') return null;
+  if (targetRole === 'super_admin') return 'Only a super admin can change a super admin account.';
+  if (newRole === 'super_admin') return 'Only a super admin can assign the super admin role.';
+  return null;
+}
+
+// Columns that tie a staff account to clinical, billing or pharmacy records. No foreign keys exist in the
+// database, so deleting an account referenced here would silently orphan those records.
+const USER_REFERENCES = [
+  ['HMS_ENCOUNTERS', 'DOCTOR_ID', 'consultations'],
+  ['HMS_PRESCRIPTIONS', 'DOCTOR_ID', 'prescriptions'],
+  ['HMS_INVESTIGATION_ORDERS', 'DOCTOR_ID', 'investigation orders'],
+  ['HMS_APPOINTMENTS', 'DOCTOR_ID', 'appointments'],
+  ['HMS_APPOINTMENTS', 'BOOKED_BY', 'booked appointments'],
+  ['HMS_TOKENS', 'DOCTOR_ID', 'OPD tokens'],
+  ['HMS_TOKENS', 'GENERATED_BY', 'issued OPD tokens'],
+  ['HMS_ADMISSIONS', 'ADMITTING_DOCTOR_ID', 'admissions'],
+  ['HMS_ADMISSIONS', 'CREATED_BY', 'admissions recorded'],
+  ['HMS_IPD_REQUESTS', 'DOCTOR_ID', 'admission requests'],
+  ['HMS_PROGRESS_NOTES', 'DOCTOR_ID', 'progress notes'],
+  ['HMS_DISCHARGE_SUMMARIES', 'CREATED_BY', 'discharge summaries'],
+  ['HMS_REFERRALS', 'FROM_DOCTOR_ID', 'referrals'],
+  ['HMS_REST_FORMS', 'DOCTOR_ID', 'medical certificates'],
+  ['HMS_VITALS', 'RECORDED_BY', 'vitals'],
+  ['HMS_IPD_VITALS', 'RECORDED_BY', 'inpatient vitals'],
+  ['HMS_NURSING_NOTES', 'NURSE_ID', 'nursing notes'],
+  ['HMS_MAR_RECORDS', 'ADMINISTERED_BY', 'medication administrations'],
+  ['HMS_ALLERGIES', 'NOTED_BY', 'allergy records'],
+  ['HMS_TEST_REPORTS', 'REPORTED_BY', 'lab reports'],
+  ['HMS_PATIENT_DOCUMENTS', 'UPLOADED_BY', 'patient documents'],
+  ['HMS_BILLS', 'CREATED_BY', 'bills'],
+  ['HMS_BILLS', 'DISCOUNT_APPROVED_BY', 'approved discounts'],
+  ['HMS_PAYMENTS', 'RECEIVED_BY', 'payments'],
+  ['HMS_PATIENT_ADVANCES', 'RECEIVED_BY', 'advance receipts'],
+  ['HMS_DISPENSING_RECORDS', 'DISPENSED_BY', 'dispensing records'],
+  ['HMS_OTC_SALES', 'SOLD_BY', 'counter sales'],
+  ['HMS_STOCK_LEDGER', 'PERFORMED_BY', 'stock movements'],
+  ['HMS_PURCHASE_ORDERS', 'CREATED_BY', 'purchase orders'],
+  ['HMS_DEPARTMENTS', 'HEAD_DOCTOR_ID', 'department head roles'],
+  ['HMS_TARIFFS', 'DOCTOR_ID', 'tariffs'],
+];
+
+async function linkedRecords(userId) {
+  // Some older appointment/token rows store the doctor profile ID (HMS_DOCTORS.ID) instead of the user ID.
+  const profiles = await Doctor.findAll({ where: { user_id: userId }, attributes: ['id'] });
+  const doctorIds = [userId, ...profiles.map((d) => d.id)];
+  const selects = USER_REFERENCES.map(([table, column], i) => (
+    `(SELECT COUNT(*) FROM ${table} WHERE ${column} IN (${/DOCTOR_ID$/.test(column) ? ':doctorIds' : ':id'})) AS C${i}`
+  ));
+  const [rows] = await sequelize.query(`SELECT ${selects.join(', ')}`, { replacements: { id: userId, doctorIds } });
+  const row = rows[0] || {};
+  return USER_REFERENCES
+    .map(([, , label], i) => ({ label, count: Number(row[`C${i}`] ?? row[`c${i}`] ?? 0) }))
+    .filter((r) => r.count > 0);
+}
 
 // Apply protection — restrict to admin and super_admin
 router.use(protect);
@@ -40,6 +104,14 @@ router.post('/', async (req, res) => {
 
     if (!username || !password || !name) {
       return res.status(400).json({ success: false, message: 'Please provide username, password, and name.' });
+    }
+    if (role !== undefined && !ROLES.includes(role)) {
+      return res.status(400).json({ success: false, message: 'Unknown role.' });
+    }
+    const denied = superAdminGuard(req, null, role);
+    if (denied) return res.status(403).json({ success: false, message: denied });
+    if (!STRONG_PASSWORD.test(password)) {
+      return res.status(400).json({ success: false, message: PASSWORD_RULE });
     }
 
     const existingUser = await User.findOne({ where: { username: username.toLowerCase() } });
@@ -91,6 +163,22 @@ router.put('/:id(\\d+)', async (req, res) => {
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+    if (role !== undefined && role !== '' && !ROLES.includes(role)) {
+      return res.status(400).json({ success: false, message: 'Unknown role.' });
+    }
+    const denied = superAdminGuard(req, user.role, role);
+    if (denied) return res.status(403).json({ success: false, message: denied });
+    if (user.id === req.user.id) {
+      if (role && role !== user.role) {
+        return res.status(400).json({ success: false, message: 'You cannot change your own role.' });
+      }
+      if (isActive !== undefined && !Number(isActive)) {
+        return res.status(400).json({ success: false, message: 'You cannot deactivate your own account.' });
+      }
+    }
+    if (password && !STRONG_PASSWORD.test(password)) {
+      return res.status(400).json({ success: false, message: PASSWORD_RULE });
+    }
 
     const oldData = { name: user.name, username: user.username, role: user.role, isActive: user.isActive };
 
@@ -104,7 +192,7 @@ router.put('/:id(\\d+)', async (req, res) => {
 
     if (name) user.name = name;
     if (role) user.role = role;
-    if (isActive !== undefined) user.isActive = isActive;
+    if (isActive !== undefined) user.isActive = Number(isActive) ? 1 : 0;
     if (password) user.password = password;
     if (first_name !== undefined) user.first_name = first_name;
     if (last_name !== undefined) user.last_name = last_name;
@@ -148,10 +236,16 @@ router.put('/:id(\\d+)/password', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide a new password.' });
     }
 
+    if (!STRONG_PASSWORD.test(password)) {
+      return res.status(400).json({ success: false, message: PASSWORD_RULE });
+    }
+
     const user = await User.findByPk(req.params.id);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+    const denied = superAdminGuard(req, user.role);
+    if (denied) return res.status(403).json({ success: false, message: denied });
 
     user.password = password;
     user.first_login = 'Y';
@@ -168,11 +262,16 @@ router.put('/:id(\\d+)/password', async (req, res) => {
 });
 
 // ─── PATCH /api/users/:id/toggle-active ─────────────────────────
-router.patch('/:id/toggle-active', async (req, res) => {
+router.patch('/:id(\\d+)/toggle-active', async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    const denied = superAdminGuard(req, user.role);
+    if (denied) return res.status(403).json({ success: false, message: denied });
+    if (user.id === req.user.id) {
+      return res.status(400).json({ success: false, message: 'You cannot deactivate your own account.' });
     }
 
     const oldActive = user.isActive;
@@ -235,25 +334,29 @@ router.put('/permissions', restrictTo('super_admin'), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Permissions array required.' });
     }
 
-    for (const perm of permissions) {
-      const existing = await Permission.findAll({
-        where: { role: perm.role, module: perm.module },
-      });
-
-      if (existing.length > 0) {
-        await Permission.update(
-          {
-            can_read: perm.can_read,
-            can_write: perm.can_write,
-            can_edit: perm.can_edit,
-            can_delete: perm.can_delete,
-          },
-          { where: { role: perm.role, module: perm.module } }
-        );
-      } else {
-        await Permission.create(perm);
-      }
+    const FLAGS = ['can_read', 'can_write', 'can_edit', 'can_delete'];
+    const bad = permissions.find((p) => !ROLES.includes(p?.role) || !/^[a-z_]{2,50}$/.test(p?.module || '')
+      || FLAGS.some((f) => !['Y', 'N'].includes(p[f])));
+    if (bad) {
+      return res.status(400).json({ success: false, message: 'Each permission needs a known role, a module and Y/N flags.' });
     }
+
+    // All or nothing: a failure part-way used to leave the matrix half saved.
+    await sequelize.transaction(async (transaction) => {
+      for (const perm of permissions) {
+        const flags = { can_read: perm.can_read, can_write: perm.can_write, can_edit: perm.can_edit, can_delete: perm.can_delete };
+        const existing = await Permission.findAll({ where: { role: perm.role, module: perm.module }, transaction });
+        if (existing.length > 0) {
+          await Permission.update(flags, { where: { role: perm.role, module: perm.module }, transaction });
+          continue;
+        }
+        // No row means no access, so a row that grants nothing is not created.
+        if (FLAGS.every((f) => perm[f] === 'N')) continue;
+        // The Permission model's ID is not auto-increment (Sequelize sent NULL, so every new row failed).
+        const [[seq]] = await sequelize.query(`SELECT nextval('hms_permissions_seq') AS "ID"`, { transaction });
+        await Permission.create({ id: Number(seq.ID), role: perm.role, module: perm.module, ...flags }, { transaction });
+      }
+    });
 
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(req.user.id, 'UPDATE', 'admin', null, null, { action: 'permissions_updated', count: permissions.length }, ip);
@@ -276,22 +379,33 @@ router.delete('/:id(\\d+)', async (req, res) => {
     if (user.id === req.user.id) {
       return res.status(400).json({ success: false, message: 'You cannot delete your own account.' });
     }
+    const denied = superAdminGuard(req, user.role);
+    if (denied) return res.status(403).json({ success: false, message: denied });
 
-    const ip = req.ip || req.connection?.remoteAddress || null;
-    await logAction(req.user.id, 'DELETE', 'admin', user.id, { username: user.username, role: user.role }, null, ip);
-
-    // Cascade delete doctor profile if it exists
-    if (user.role === 'doctor') {
-      await Doctor.destroy({ where: { user_id: user.id } });
+    // Accounts that appear on clinical, billing or pharmacy records are kept so those records stay attributable.
+    const linked = await linkedRecords(user.id);
+    if (linked.length > 0) {
+      const summary = linked.map((r) => `${r.count} ${r.label}`).join(', ');
+      return res.status(409).json({
+        success: false,
+        message: `${user.name || user.username} cannot be deleted because the account is linked to existing records (${summary}). Deactivate the account instead.`,
+        linked,
+      });
     }
 
-    await user.destroy();
+    const ip = req.ip || req.connection?.remoteAddress || null;
+    await sequelize.transaction(async (transaction) => {
+      // The doctor profile goes with the account, in the same transaction.
+      await Doctor.destroy({ where: { user_id: user.id }, transaction });
+      await user.destroy({ transaction });
+    });
+    await logAction(req.user.id, 'DELETE', 'admin', user.id, { username: user.username, role: user.role }, null, ip);
     res.json({ success: true, message: 'User deleted.' });
   } catch (err) {
     console.error('Error deleting user:', err);
-    res.status(400).json({
+    res.status(500).json({
       success: false,
-      message: 'Failed to delete user. They may be linked to existing records. Consider deactivating the account instead.',
+      message: 'Failed to delete user. Consider deactivating the account instead.',
     });
   }
 });

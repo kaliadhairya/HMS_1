@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { sequelize, AuditLog } = require('../models');
 const { logAction } = require('../utils/auditLogger');
+const { restrictTo } = require('../middleware/auth');
 
 const VISITOR_MODULE = 'receptionist_visitor';
 const NOTIFICATION_MODULE = 'receptionist_notification';
@@ -66,8 +67,13 @@ async function buildNotifications() {
     SELECT a.ID, p.NAME AS PATIENT_NAME, u.NAME AS DOCTOR_NAME, a.APPOINTMENT_DATE
     FROM HMS_APPOINTMENTS a
     JOIN HMS_PATIENTS p ON p.ID = a.PATIENT_ID
-    JOIN HMS_DOCTORS d ON d.ID = a.DOCTOR_ID
-    JOIN HMS_USERS u ON u.ID = d.USER_ID
+    LEFT JOIN LATERAL (
+      SELECT d2.USER_ID FROM HMS_DOCTORS d2
+       WHERE d2.USER_ID = a.DOCTOR_ID OR d2.ID = a.DOCTOR_ID
+       ORDER BY CASE WHEN d2.USER_ID = a.DOCTOR_ID THEN 0 ELSE 1 END
+       LIMIT 1
+    ) d ON TRUE
+    JOIN HMS_USERS u ON u.ID = COALESCE(d.USER_ID, a.DOCTOR_ID)
     WHERE trunc(a.APPOINTMENT_DATE) = trunc(CURRENT_TIMESTAMP)
       AND a.STATUS IN ('Scheduled', 'Confirmed')
     ORDER BY a.APPOINTMENT_DATE ASC
@@ -89,7 +95,7 @@ async function buildNotifications() {
       AND e.STATUS = 'Finalized'
       AND (
         b.ID IS NULL
-        OR (b.STATUS = 'Pending' AND COALESCE(b.NET_PAYABLE, 0) > 0)
+        OR (b.STATUS IN ('Pending', 'Partially Paid') AND COALESCE(b.NET_PAYABLE, 0) > 0)
       )
     ORDER BY e.ENCOUNTER_DATE DESC
     LIMIT 10
@@ -137,6 +143,10 @@ async function buildNotifications() {
 
   return notifications.sort((a, b) => Number(!a.read) - Number(!b.read)).reverse();
 }
+
+// Front-desk endpoints (visitors, notifications, billing summary, IPD desk): front desk and admins only.
+// The mount in server.js only checks sign-in, so any role could read and change these before.
+router.use(restrictTo('receptionist', 'super_admin', 'admin'));
 
 router.get('/visitor-log', async (req, res) => {
   try {
@@ -251,7 +261,7 @@ router.get('/billing-summary', async (req, res) => {
         p.NAME AS PATIENT,
         u.NAME AS DOCTOR,
         COALESCE(d.NAME, e.ENCOUNTER_TYPE) AS DEPARTMENT,
-        COALESCE(b.NET_PAYABLE, 0) AS AMOUNT,
+        COALESCE(b.NET_PAYABLE, 0) - COALESCE((SELECT SUM(pm.AMOUNT) FROM HMS_PAYMENTS pm WHERE pm.BILL_ID = b.ID), 0) AS AMOUNT,
         e.ENCOUNTER_DATE AS ENCOUNTER_DATE
       FROM HMS_ENCOUNTERS e
       JOIN HMS_PATIENTS p ON p.ID = e.PATIENT_ID
@@ -262,7 +272,7 @@ router.get('/billing-summary', async (req, res) => {
         AND e.STATUS = 'Finalized'
         AND (
           b.ID IS NULL
-          OR (b.STATUS = 'Pending' AND COALESCE(b.NET_PAYABLE, 0) > 0)
+          OR (b.STATUS IN ('Pending', 'Partially Paid') AND COALESCE(b.NET_PAYABLE, 0) > 0)
         )
       ORDER BY e.ENCOUNTER_DATE DESC
     `);
@@ -289,9 +299,9 @@ router.get('/billing-summary', async (req, res) => {
     `);
 
     const [pendingRows] = await sequelize.query(`
-      SELECT COALESCE(SUM(NET_PAYABLE), 0) AS TOTAL
-      FROM HMS_BILLS
-      WHERE STATUS = 'Pending'
+      SELECT COALESCE(SUM(b.NET_PAYABLE - COALESCE((SELECT SUM(pm.AMOUNT) FROM HMS_PAYMENTS pm WHERE pm.BILL_ID = b.ID), 0)), 0) AS TOTAL
+      FROM HMS_BILLS b
+      WHERE b.STATUS IN ('Pending', 'Partially Paid')
     `);
 
     res.json({

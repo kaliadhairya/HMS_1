@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { BedDouble, FileText, Search, RefreshCw } from 'lucide-react';
+import { BedDouble, FileText, Lock, Search, RefreshCw } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
@@ -32,14 +32,17 @@ export default function IPDPatientListPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('Active');
   const [searchQuery, setSearchQuery] = useState('');
+  const [denied, setDenied] = useState(false);
 
   const fetchAdmissions = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get(`/ipd/admissions?status=${statusFilter}`);
       setAdmissions(res.data.data || []);
-    } catch {
-      toast.error('Failed to fetch admissions');
+    } catch (err) {
+      // Roles without inpatient access (e.g. reception) get an explanation instead of a failure toast.
+      if (err?.response?.status === 403) setDenied(true);
+      else toast.error('Could not load admissions');
       setAdmissions([]);
     } finally {
       setLoading(false);
@@ -189,7 +192,9 @@ export default function IPDPatientListPage() {
             onRowClick={openChart}
             rowLabel={(a) => `Open inpatient chart for ${a.PATIENT_NAME}`}
             initialSorting={[{ id: 'admitted', desc: true }]}
-            empty={searchQuery ? (
+            empty={denied ? (
+              <EmptyState icon={Lock} title="You do not have access to inpatient records" description="Ask an administrator if your role needs to see admitted patients." />
+            ) : searchQuery ? (
               <EmptyState icon={Search} title="No admissions match" description={`Nothing matches “${searchQuery}”.`} />
             ) : (
               <EmptyState

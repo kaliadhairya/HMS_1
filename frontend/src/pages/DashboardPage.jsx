@@ -34,8 +34,9 @@ export default function DashboardPage() {
   }, [stats]);
 
   const kpi = (v) => (loading ? '—' : (v ?? 0));
-  const critical = Number(stats?.criticalAlerts || 0);
+  const abnormal = Number(stats?.abnormalToday || 0);
   const delayed = Number(stats?.collectionDelayed || 0);
+  const statPending = Number(stats?.statPending || 0);
 
   return (
     <>
@@ -56,22 +57,27 @@ export default function DashboardPage() {
           )}
         />
 
-        {critical > 0 && (
+        {abnormal > 0 && (
           <div className="alert-strip alert-danger" role="status">
-            <strong>{critical} critical {critical === 1 ? 'value' : 'values'}</strong> outside the reference range. Review and notify the doctor.
+            <strong>{abnormal} {abnormal === 1 ? 'result' : 'results'}</strong> outside the reference range today. Review and notify the ordering doctor.
           </div>
         )}
 
         <div className="kpi-strip">
-          <div className="panel kpi"><div className="kpi-label">Awaiting results</div><div className="kpi-value">{kpi(stats?.pendingQueue)}</div></div>
-          <div className="panel kpi"><div className="kpi-label">Reports completed today</div><div className="kpi-value">{kpi(stats?.completedToday)}</div></div>
           <div className="panel kpi">
-            <div className="kpi-label">Critical values</div>
-            <div className="kpi-value" style={{ color: critical ? 'var(--red)' : undefined }}>{kpi(stats?.criticalAlerts)}</div>
+            <div className="kpi-label">Orders awaiting results</div>
+            <div className="kpi-value">{kpi(stats?.pendingQueue)}</div>
+            {!loading && statPending > 0 && <div className="kpi-sub" style={{ color: 'var(--red)' }}>{statPending} STAT</div>}
+          </div>
+          <div className="panel kpi"><div className="kpi-label">Orders completed today</div><div className="kpi-value">{kpi(stats?.completedToday)}</div></div>
+          <div className="panel kpi">
+            <div className="kpi-label">Abnormal results today</div>
+            <div className="kpi-value" style={{ color: abnormal ? 'var(--red)' : undefined }}>{kpi(stats?.abnormalToday)}</div>
           </div>
           <div className="panel kpi">
-            <div className="kpi-label">Samples delayed</div>
+            <div className="kpi-label">Samples overdue</div>
             <div className="kpi-value" style={{ color: delayed ? 'var(--amber)' : undefined }}>{kpi(stats?.collectionDelayed)}</div>
+            <div className="kpi-sub">Waiting over 1 h (STAT) or 4 h</div>
           </div>
         </div>
 

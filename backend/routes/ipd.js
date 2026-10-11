@@ -151,117 +151,212 @@ router.post('/beds', protect, checkPermission('admin', 'write'), async (req, res
   }
 });
 
+// ── Shared helpers for the inpatient workflow ──────────────
+const fail = (res, status, message) => res.status(status).json({ success: false, message });
+const isAdminRole = (user) => ['admin', 'super_admin'].includes(user?.role);
+const text = (v) => (v === undefined || v === null ? '' : String(v).trim());
+const posInt = (v) => { const n = Number(v); return Number.isInteger(n) && n > 0 ? n : null; };
+
+// Next primary key for an IPD table. Some tables were seeded with explicit ids, which left their
+// sequence behind the data (HMS_IPD_VITALS: every insert failed with a duplicate key). When that
+// happens the sequence is moved past the highest id instead of failing the insert.
+async function nextId(seq, table, transaction) {
+  const [[row]] = await sequelize.query(
+    `SELECT nextval('${seq}') AS "SEQ", (SELECT COALESCE(MAX(ID), 0) FROM ${table}) AS "MAX_ID"`,
+    { transaction },
+  );
+  const seqVal = Number(row.SEQ ?? row.seq);
+  const maxId = Number(row.MAX_ID ?? row.max_id);
+  if (seqVal > maxId) return seqVal;
+  const [[fixed]] = await sequelize.query(`SELECT setval('${seq}', :next) AS "ID"`, { replacements: { next: maxId + 1 }, transaction });
+  return Number(fixed.ID ?? fixed.id);
+}
+
+// Admission row (raw, both key cases), optionally locked for the rest of the transaction.
+async function findAdmission(id, transaction, lock = false) {
+  if (!posInt(id)) return null;
+  const [rows] = await sequelize.query(
+    `SELECT * FROM HMS_ADMISSIONS WHERE ID = :id${lock ? ' FOR UPDATE' : ''}`,
+    { replacements: { id: Number(id) }, transaction },
+  );
+  return rows[0] || null;
+}
+
+// Days charged / shown for a stay: completed days, at least one, counted up to discharge (not to today).
+const STAY_DAYS_SQL = `EXTRACT(DAY FROM (COALESCE(a.DISCHARGE_DATE, CURRENT_TIMESTAMP::timestamp) - a.ADMISSION_DATE))`;
+
+const URGENCY_LEVELS = ['Routine', 'Urgent', 'Emergency'];
+const DURATION_DAYS = { Days: 1, Weeks: 7, Months: 30 };
+
 // ── POST /api/ipd/admissions ───────────────────────────────
+// Admits a patient into a bed. The bed, the patient and the admission request are locked so two desks
+// cannot fill the same bed or admit the same patient twice; the request is marked Admitted in the same
+// transaction (it used to be a second call from the browser that could fail and leave it Pending).
 router.post('/admissions', protect, checkPermission('ipd', 'write'), async (req, res) => {
   const t = await sequelize.transaction();
+  const abort = async (status, message) => { await t.rollback(); return fail(res, status, message); };
   try {
-    const { patientId, admittingDoctorId, department, bedId, admissionType, expectedDischargeDate, patientName, uhid } = req.body;
+    const { admittingDoctorId, department, admissionType, expectedDischargeDate } = req.body;
+    const patientId = posInt(req.body.patientId);
+    const bedId = posInt(req.body.bedId);
+    if (!patientId) return abort(400, 'Select a patient.');
+    if (!bedId) return abort(400, 'Select a bed.');
 
-    // Check if bed is available
-    const [[bedRow]] = await sequelize.query(`SELECT STATUS FROM HMS_BEDS WHERE ID = :bedId`, { replacements: { bedId: Number(bedId) }, transaction: t });
-    if (bedRow && bedRow.status === 'Occupied') {
-      await t.rollback();
-      return res.status(400).json({ success: false, message: 'Selected bed is not available.' });
+    const [[patient]] = await sequelize.query(
+      'SELECT ID, NAME, UHID, GENDER, AGE FROM HMS_PATIENTS WHERE ID = :patientId FOR UPDATE',
+      { replacements: { patientId }, transaction: t },
+    );
+    if (!patient) return abort(404, 'Patient not found.');
+
+    const [[current]] = await sequelize.query(
+      "SELECT ADMISSION_ID_FORMATTED FROM HMS_ADMISSIONS WHERE PATIENT_ID = :patientId AND STATUS = 'Active' LIMIT 1",
+      { replacements: { patientId }, transaction: t },
+    );
+    if (current) return abort(409, `${patient.NAME} is already admitted (${current.ADMISSION_ID_FORMATTED}).`);
+
+    const [[bed]] = await sequelize.query(
+      'SELECT ID, BED_NUMBER, STATUS, IS_ACTIVE FROM HMS_BEDS WHERE ID = :bedId FOR UPDATE',
+      { replacements: { bedId }, transaction: t },
+    );
+    if (!bed) return abort(404, 'Bed not found.');
+    const [[inBed]] = await sequelize.query(
+      "SELECT ID FROM HMS_ADMISSIONS WHERE BED_ID = :bedId AND STATUS = 'Active' LIMIT 1",
+      { replacements: { bedId }, transaction: t },
+    );
+    const bedStatus = bed.STATUS || 'Available';
+    if (Number(bed.IS_ACTIVE) !== 1 || bedStatus !== 'Available' || inBed) {
+      return abort(409, `Bed ${bed.BED_NUMBER} is not available (${inBed ? 'Occupied' : Number(bed.IS_ACTIVE) !== 1 ? 'inactive' : bedStatus}).`);
     }
 
-    // Lookup patient
-    let patient = null;
-    try { patient = await Patient.findByPk(patientId, { transaction: t }); } catch (e) { /* ignore */ }
-    const pName = patient?.name || patientName || 'Unknown Patient';
-    const pUhid = patient?.uhid || uhid || 'N/A';
+    // The admission request being fulfilled: the one given, else the patient's pending request.
+    let request = null;
+    if (req.body.requestId !== undefined && req.body.requestId !== null && req.body.requestId !== '') {
+      const [[r]] = await sequelize.query(
+        'SELECT * FROM HMS_IPD_REQUESTS WHERE ID = :id FOR UPDATE',
+        { replacements: { id: posInt(req.body.requestId) || 0 }, transaction: t },
+      );
+      if (!r) return abort(404, 'Admission request not found.');
+      if (Number(r.PATIENT_ID) !== patientId) return abort(400, 'The admission request is for another patient.');
+      if (r.STATUS !== 'Pending') return abort(409, `This admission request is already ${String(r.STATUS).toLowerCase()}.`);
+      request = r;
+    } else {
+      const [[r]] = await sequelize.query(
+        "SELECT * FROM HMS_IPD_REQUESTS WHERE PATIENT_ID = :patientId AND STATUS = 'Pending' ORDER BY REQUEST_DATE DESC LIMIT 1 FOR UPDATE",
+        { replacements: { patientId }, transaction: t },
+      );
+      request = r || null;
+    }
 
-    // Lookup doctor name
-    let doctorName = 'Unknown Doctor';
-    try {
-      const doc = await User.findByPk(admittingDoctorId || req.user.id, { transaction: t });
-      if (doc) doctorName = `Dr. ${doc.name || doc.first_name || ''}`.trim();
-    } catch (e) { /* ignore */ }
+    // Admitting doctor: as chosen, else the requesting doctor, else the user admitting.
+    const doctorId = posInt(admittingDoctorId) || (request && posInt(request.DOCTOR_ID)) || req.user.id;
+    const [[doctor]] = await sequelize.query(
+      `SELECT u.ID, u.NAME, dp.NAME AS DEPARTMENT_NAME, d.SPECIALITY
+       FROM HMS_USERS u
+       LEFT JOIN HMS_DOCTORS d ON d.USER_ID = u.ID
+       LEFT JOIN HMS_DEPARTMENTS dp ON dp.ID = d.DEPARTMENT_ID
+       WHERE u.ID = :doctorId`,
+      { replacements: { doctorId }, transaction: t },
+    );
+    if (!doctor) return abort(400, 'Admitting doctor not found.');
+    // The department is the admitting doctor's (the requests page used to send the diagnosis here).
+    const dept = text(department) || doctor.DEPARTMENT_NAME || doctor.SPECIALITY || 'General';
+    const admType = text(admissionType) || (request && request.URGENCY_LEVEL) || 'Routine';
 
-    // Generate admission ID
-    const [[seqRow]] = await sequelize.query(`SELECT nextval('hms_admissions_seq') AS "ID"`, { transaction: t });
-    const admissionId = seqRow.ID || seqRow.id;
-    const year = new Date().getFullYear();
-    const formattedId = `ADM-${year}-${String(admissionId).padStart(6, '0')}`;
+    let expected = null;
+    if (expectedDischargeDate) {
+      const d = new Date(expectedDischargeDate);
+      if (Number.isNaN(d.getTime())) return abort(400, 'Expected discharge date is not a valid date.');
+      expected = d;
+    } else if (request && posInt(request.ESTIMATED_DURATION)) {
+      expected = new Date(Date.now() + Number(request.ESTIMATED_DURATION) * (DURATION_DAYS[request.DURATION_UNIT] || 1) * 86400000);
+    }
 
-    // Mark bed as occupied in DB
-    await sequelize.query(`UPDATE HMS_BEDS SET STATUS = 'Occupied' WHERE ID = :bedId`, {
-      replacements: { bedId: Number(bedId) },
-      transaction: t
-    });
+    const admissionId = await nextId('hms_admissions_seq', 'HMS_ADMISSIONS', t);
+    const formattedId = `ADM-${new Date().getFullYear()}-${String(admissionId).padStart(6, '0')}`;
 
-    // Persist admission to DB
     await sequelize.query(`
       INSERT INTO HMS_ADMISSIONS (
-        ID, PATIENT_ID, ADMITTING_DOCTOR_ID, DEPARTMENT, BED_ID,
-        ADMISSION_TYPE, ADMISSION_DATE, STATUS, ADMISSION_ID_FORMATTED, CREATED_BY, CREATED_AT
+        ID, PATIENT_ID, ADMITTING_DOCTOR_ID, DEPARTMENT, BED_ID, ADMISSION_TYPE, ADMISSION_DATE,
+        EXPECTED_DISCHARGE_DATE, STATUS, ADMISSION_ID_FORMATTED, CREATED_BY, CREATED_AT
       ) VALUES (
-        :id, :patientId, :doctorId, :department, :bedId,
-        :admType, CURRENT_TIMESTAMP, 'Active', :formatted, :createdBy, CURRENT_TIMESTAMP
+        :id, :patientId, :doctorId, :department, :bedId, :admType, CURRENT_TIMESTAMP,
+        :expected, 'Active', :formatted, :createdBy, CURRENT_TIMESTAMP
       )
     `, {
       replacements: {
-        id: admissionId,
-        patientId,
-        doctorId: admittingDoctorId || req.user.id,
-        department: department || 'General',
-        bedId: Number(bedId),
-        admType: admissionType || 'Routine',
-        formatted: formattedId,
-        createdBy: req.user.id,
+        id: admissionId, patientId, doctorId, department: dept, bedId, admType,
+        expected, formatted: formattedId, createdBy: req.user.id,
       },
-      transaction: t
+      transaction: t,
     });
-
+    await sequelize.query("UPDATE HMS_BEDS SET STATUS = 'Occupied' WHERE ID = :bedId", { replacements: { bedId }, transaction: t });
+    if (request) {
+      await sequelize.query(
+        "UPDATE HMS_IPD_REQUESTS SET STATUS = 'Admitted', ADMISSION_ID = :admissionId, UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = :id",
+        { replacements: { admissionId, id: request.ID }, transaction: t },
+      );
+    }
     await t.commit();
+    await logAction(req.user.id, 'CREATE', 'ipd', admissionId, null, { action: 'admit_patient', bedId, requestId: request?.ID || null }, req.ip);
 
-    const responseAdmission = {
+    const data = {
       id: admissionId, ID: admissionId,
-      PATIENT_ID: Number(patientId),
-      ADMITTING_DOCTOR_ID: Number(admittingDoctorId) || req.user.id,
-      BED_ID: Number(bedId),
-      DEPARTMENT: department,
-      ADMISSION_TYPE: admissionType,
+      PATIENT_ID: patientId,
+      ADMITTING_DOCTOR_ID: doctorId,
+      BED_ID: bedId,
+      BED_NUMBER: bed.BED_NUMBER,
+      DEPARTMENT: dept,
+      ADMISSION_TYPE: admType,
       ADMISSION_ID_FORMATTED: formattedId,
+      admissionIdFormatted: formattedId,
       ADMISSION_DATE: new Date().toISOString(),
+      EXPECTED_DISCHARGE_DATE: expected ? expected.toISOString() : null,
       STATUS: 'Active',
-      PATIENT_NAME: pName,
-      UHID: pUhid,
-      GENDER: patient?.gender || '',
-      AGE: patient?.age || '',
-      DOCTOR_NAME: doctorName,
+      REQUEST_ID: request ? Number(request.ID) : null,
+      PATIENT_NAME: patient.NAME,
+      UHID: patient.UHID,
+      GENDER: patient.GENDER || '',
+      AGE: patient.AGE || '',
+      DOCTOR_NAME: doctor.NAME,
       DAYS_ADMITTED: 0,
     };
-
-    console.log('✅ Admission saved to DB, ID:', admissionId);
-    return res.json({ success: true, data: responseAdmission });
-
+    return res.status(201).json({ success: true, data });
   } catch (err) {
-    if (t) await t.rollback();
-    console.error('❌ Admission failed:', err.message);
-    res.status(500).json({ success: false, message: 'Failed to admit patient' });
+    await t.rollback().catch(() => {});
+    console.error('Admission failed:', err.message);
+    return fail(res, 500, 'Failed to admit patient');
   }
 });
 
 // ── GET /api/ipd/admissions ────────────────────────────────
+// ?status=Active|Discharged filters by status. ?billing=1 lists what IPD billing works on: admissions still
+// in hospital plus discharged ones that have no IPD bill yet (they used to vanish from billing at discharge).
 router.get('/admissions', protect, checkPermission('ipd', 'read'), async (req, res) => {
-  const { status } = req.query;
-
+  const { status, billing } = req.query;
   try {
     let query = `
       SELECT a.*, p.NAME as PATIENT_NAME, p.UHID, p.GENDER, p.AGE,
              b.ROOM_NUMBER, b.BED_NUMBER, w.NAME as WARD_NAME,
              u.NAME as DOCTOR_NAME,
-             EXTRACT(DAY FROM (CURRENT_TIMESTAMP - a.ADMISSION_DATE)) as DAYS_ADMITTED,
-             r.REASON_FOR_ADMISSION, r.PRIMARY_DIAGNOSIS
+             ${STAY_DAYS_SQL} as DAYS_ADMITTED,
+             r.REASON_FOR_ADMISSION, r.PRIMARY_DIAGNOSIS,
+             bill.BILL_NUMBER
       FROM HMS_ADMISSIONS a
       LEFT JOIN HMS_PATIENTS p ON p.ID = a.PATIENT_ID
       LEFT JOIN HMS_BEDS b ON b.ID = a.BED_ID
       LEFT JOIN HMS_WARDS w ON w.ID = b.WARD_ID
       LEFT JOIN HMS_USERS u ON u.ID = a.ADMITTING_DOCTOR_ID
       LEFT JOIN HMS_IPD_REQUESTS r ON r.ADMISSION_ID = a.ID
+      LEFT JOIN LATERAL (
+        SELECT BILL_NUMBER FROM HMS_BILLS
+        WHERE ADMISSION_ID = a.ID AND BILL_TYPE = 'IPD' AND COALESCE(STATUS, '') <> 'Cancelled'
+        ORDER BY ID DESC LIMIT 1
+      ) bill ON TRUE
     `;
     const replacements = {};
-    if (status) {
+    if (billing) {
+      query += ` WHERE a.STATUS = 'Active' OR (a.STATUS = 'Discharged' AND bill.BILL_NUMBER IS NULL)`;
+    } else if (status) {
       query += ` WHERE a.STATUS = :status`;
       replacements.status = status;
     }
@@ -302,17 +397,45 @@ router.get('/requests', protect, checkPermission('ipd', 'read'), async (req, res
 });
 
 // ── POST /api/ipd/requests ────────────────────────────────
+// A doctor asks for a patient to be admitted. Required fields are checked here as well as in the form
+// (a request without a patient used to be stored), and a patient cannot have two open requests or a
+// request while already admitted.
 router.post('/requests', protect, checkPermission('ipd', 'write'), async (req, res) => {
-  console.log('📥 INCOMING IPD REQUEST from User ID:', req.user?.id);
   try {
-    const { patientId, reasonForAdmission, primaryDiagnosis, icd10Code, wardPreference, urgencyLevel, estimatedDuration, durationUnit, specialRequirements, initialOrders } = req.body;
-    
-    // Fetch patient details
+    const { icd10Code, durationUnit, specialRequirements, initialOrders } = req.body;
+    const patientId = posInt(req.body.patientId);
+    const reasonForAdmission = text(req.body.reasonForAdmission);
+    const primaryDiagnosis = text(req.body.primaryDiagnosis);
+    const wardPreference = text(req.body.wardPreference);
+    const urgencyLevel = text(req.body.urgencyLevel);
+    if (!patientId) return fail(res, 400, 'Select a patient.');
+    if (!reasonForAdmission || !primaryDiagnosis || !wardPreference || !urgencyLevel) {
+      return fail(res, 400, 'Reason for admission, primary diagnosis, ward preference and urgency are required.');
+    }
+    if (!URGENCY_LEVELS.includes(urgencyLevel)) return fail(res, 400, `Urgency must be one of ${URGENCY_LEVELS.join(', ')}.`);
+    let estimatedDuration = null;
+    if (req.body.estimatedDuration !== undefined && req.body.estimatedDuration !== null && req.body.estimatedDuration !== '') {
+      estimatedDuration = posInt(req.body.estimatedDuration);
+      if (!estimatedDuration || estimatedDuration > 365) return fail(res, 400, 'Estimated duration must be a whole number between 1 and 365.');
+    }
+    const unit = durationUnit && DURATION_DAYS[durationUnit] ? durationUnit : 'Days';
+
     const patient = await Patient.findByPk(patientId);
-    
-    const [[seqRow]] = await sequelize.query(`SELECT nextval('hms_ipd_req_seq') AS "ID"`);
-    const newId = seqRow.ID || seqRow.id;
-    
+    if (!patient) return fail(res, 404, 'Patient not found.');
+    const [[admitted]] = await sequelize.query(
+      "SELECT ADMISSION_ID_FORMATTED FROM HMS_ADMISSIONS WHERE PATIENT_ID = :patientId AND STATUS = 'Active' LIMIT 1",
+      { replacements: { patientId } },
+    );
+    if (admitted) return fail(res, 409, `This patient is already admitted (${admitted.ADMISSION_ID_FORMATTED}).`);
+    const [[open]] = await sequelize.query(
+      "SELECT ID FROM HMS_IPD_REQUESTS WHERE PATIENT_ID = :patientId AND STATUS = 'Pending' LIMIT 1",
+      { replacements: { patientId } },
+    );
+    if (open) return fail(res, 409, 'This patient already has a pending admission request.');
+
+    const newId = await nextId('hms_ipd_req_seq', 'HMS_IPD_REQUESTS');
+    const reqs = Array.isArray(specialRequirements) ? specialRequirements.map(text).filter(Boolean) : [];
+
     await sequelize.query(`
       INSERT INTO HMS_IPD_REQUESTS (
         ID, PATIENT_ID, DOCTOR_ID, REASON_FOR_ADMISSION, PRIMARY_DIAGNOSIS,
@@ -330,49 +453,46 @@ router.post('/requests', protect, checkPermission('ipd', 'write'), async (req, r
         id: newId,
         patientId,
         doctorId: req.user.id,
-        reason: reasonForAdmission || null,
-        diagnosis: primaryDiagnosis || null,
-        icd10: icd10Code || null,
-        ward: wardPreference || null,
-        urgency: urgencyLevel || null,
-        estDuration: estimatedDuration || null,
-        durUnit: durationUnit || null,
-        specialReq: JSON.stringify(specialRequirements || []),
-        orders: initialOrders || null,
-      }
+        reason: reasonForAdmission,
+        diagnosis: primaryDiagnosis,
+        icd10: text(icd10Code) || null,
+        ward: wardPreference,
+        urgency: urgencyLevel,
+        estDuration: estimatedDuration,
+        durUnit: unit,
+        specialReq: JSON.stringify(reqs),
+        orders: text(initialOrders) || null,
+      },
     });
 
     const requestData = {
       id: newId, ID: newId,
       PATIENT_ID: patientId,
       DOCTOR_ID: req.user.id,
-      PATIENT_NAME: patient ? patient.name : 'Unknown Patient',
-      UHID: patient ? patient.uhid : 'UNKNOWN',
+      PATIENT_NAME: patient.name,
+      UHID: patient.uhid,
       DOCTOR_NAME: req.user.name || 'Current Doctor',
       REASON_FOR_ADMISSION: reasonForAdmission,
       PRIMARY_DIAGNOSIS: primaryDiagnosis,
-      ICD10_CODE: icd10Code,
+      ICD10_CODE: text(icd10Code) || null,
       WARD_PREFERENCE: wardPreference,
       URGENCY_LEVEL: urgencyLevel,
       ESTIMATED_DURATION: estimatedDuration,
-      DURATION_UNIT: durationUnit,
-      SPECIAL_REQUIREMENTS: JSON.stringify(specialRequirements || []),
-      INITIAL_ORDERS: initialOrders,
+      DURATION_UNIT: unit,
+      SPECIAL_REQUIREMENTS: JSON.stringify(reqs),
+      INITIAL_ORDERS: text(initialOrders) || null,
       STATUS: 'Pending',
-      REQUEST_DATE: new Date().toISOString()
+      REQUEST_DATE: new Date().toISOString(),
     };
-    console.log('✅ IPD Request saved to DB, ID:', newId);
 
-    // Emit real-time notification to nurses
+    // Real-time notification to nurses
     const io = req.app.get('io');
-    if (io) {
-      io.to('nurse').emit('new_ipd_request', requestData);
-    }
+    if (io) io.to('nurse').emit('new_ipd_request', requestData);
 
-    return res.json({ success: true, data: requestData });
+    return res.status(201).json({ success: true, data: requestData });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: 'Failed to create IPD request' });
+    return fail(res, 500, 'Failed to create IPD request');
   }
 });
 
@@ -380,17 +500,16 @@ router.post('/requests', protect, checkPermission('ipd', 'write'), async (req, r
 router.patch('/requests/:id/status', protect, checkPermission('ipd', 'write'), async (req, res) => {
   try {
     const { status, admissionId } = req.body;
-    const reqId = req.params.id;
-
-    await sequelize.query(`
-      UPDATE HMS_IPD_REQUESTS SET STATUS = :status, ADMISSION_ID = :admissionId
+    if (!['Pending', 'Admitted', 'Cancelled'].includes(status)) return fail(res, 400, 'Status must be Pending, Admitted or Cancelled.');
+    const [, meta] = await sequelize.query(`
+      UPDATE HMS_IPD_REQUESTS SET STATUS = :status, ADMISSION_ID = :admissionId, UPDATED_AT = CURRENT_TIMESTAMP
       WHERE ID = :id
-    `, { replacements: { status, admissionId: admissionId || null, id: reqId }});
-
+    `, { replacements: { status, admissionId: admissionId || null, id: posInt(req.params.id) || 0 } });
+    if (!meta?.rowCount) return fail(res, 404, 'Admission request not found.');
     return res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: 'Failed to update request' });
+    return fail(res, 500, 'Failed to update request');
   }
 });
 
@@ -439,16 +558,17 @@ router.post('/requests/bulk-delete', protect, checkPermission('ipd', 'write'), a
 // ── GET /api/ipd/admissions/:id ────────────────────────────
 router.get('/admissions/:id', protect, checkPermission('ipd', 'read'), async (req, res) => {
   try {
-    const admissionId = req.params.id;
+    const admissionId = posInt(req.params.id);
+    if (!admissionId) return fail(res, 404, 'Admission record not found');
     const [adms] = await sequelize.query(`
       SELECT a.*, p.NAME as PATIENT_NAME, p.UHID, p.GENDER, p.AGE,
              p.DOB, p.BLOOD_GROUP, p.PHONENUMBER as CONTACT_NUMBER,
              p.HOUSE_NO, p.STREET, p.CITY, p.STATE, p.PIN,
              p.EMERGENCY_CONTACT_NAME, p.EMERGENCY_CONTACT_RELATION,
-             b.ROOM_NUMBER, b.BED_NUMBER, w.NAME as WARD_NAME,
+             b.ROOM_NUMBER, b.BED_NUMBER, w.NAME as WARD_NAME, w.TYPE as WARD_TYPE,
              u.NAME as DOCTOR_NAME,
-             EXTRACT(DAY FROM (CURRENT_TIMESTAMP - a.ADMISSION_DATE)) as DAYS_ADMITTED,
-             r.REASON_FOR_ADMISSION, r.PRIMARY_DIAGNOSIS, r.SPECIAL_REQUIREMENTS
+             ${STAY_DAYS_SQL} as DAYS_ADMITTED,
+             r.REASON_FOR_ADMISSION, r.PRIMARY_DIAGNOSIS, r.PRIMARY_DIAGNOSIS as DIAGNOSIS, r.SPECIAL_REQUIREMENTS
       FROM HMS_ADMISSIONS a
       JOIN HMS_PATIENTS p ON p.ID = a.PATIENT_ID
       LEFT JOIN HMS_BEDS b ON b.ID = a.BED_ID
@@ -457,7 +577,7 @@ router.get('/admissions/:id', protect, checkPermission('ipd', 'read'), async (re
       LEFT JOIN HMS_IPD_REQUESTS r ON r.ADMISSION_ID = a.ID
       WHERE a.ID = :admissionId
     `, { replacements: { admissionId } });
-    
+
     if (adms.length === 0) {
       return res.status(404).json({ success: false, message: 'Admission record not found' });
     }
@@ -470,87 +590,78 @@ router.get('/admissions/:id', protect, checkPermission('ipd', 'read'), async (re
 });
 
 // ── PATCH /api/ipd/admissions/:id/discharge ────────────────
+// Discharges the patient, frees the bed and stores the discharge summary in one transaction. A failed
+// summary insert used to be swallowed inside the transaction (Postgres then rolls the whole thing back
+// while the API still answered "discharged").
 router.patch('/admissions/:id/discharge', protect, checkPermission('ipd', 'write'), async (req, res) => {
   const t = await sequelize.transaction();
+  const abort = async (status, message) => { await t.rollback(); return fail(res, status, message); };
   try {
-    const admissionId = req.params.id;
-    const { finalDiagnosis, courseInHospital, conditionAtDischarge, adviceOnDischarge,
+    const { courseInHospital, conditionAtDischarge, adviceOnDischarge,
             chiefComplaint, comorbidities, allergies, historyOfIllness,
             investigations, dischargeMedications, dietLifestyle, warningSigns,
             followUpAppointments } = req.body;
-    let admission = await Admission.findByPk(admissionId, { transaction: t });
-    
-    if (!admission) {
-      await t.rollback();
-      return res.status(404).json({ success: false, message: 'Admission record not found' });
-    }
+    const finalDiagnosis = text(req.body.finalDiagnosis);
+    const admission = await findAdmission(req.params.id, t, true);
+    if (!admission) return abort(404, 'Admission record not found');
+    if (admission.STATUS !== 'Active') return abort(409, `This admission is already ${String(admission.STATUS).toLowerCase()}.`);
+    if (!finalDiagnosis) return abort(400, 'Final diagnosis is required to discharge.');
 
-    if (admission.status === 'Discharged') {
-      await t.rollback();
-      return res.status(400).json({ success: false, message: 'Already discharged' });
-    }
-
-    await sequelize.query(`
-      UPDATE HMS_ADMISSIONS 
-      SET DISCHARGE_DATE = CURRENT_TIMESTAMP, STATUS = 'Discharged' 
+    const [[updated]] = await sequelize.query(`
+      UPDATE HMS_ADMISSIONS SET DISCHARGE_DATE = CURRENT_TIMESTAMP, STATUS = 'Discharged'
       WHERE ID = :admissionId
-    `, { replacements: { admissionId }, transaction: t });
-
-    await sequelize.query(`
-      UPDATE HMS_BEDS SET STATUS = 'Available' WHERE ID = :bedId
-    `, { replacements: { bedId: admission.bedId }, transaction: t });
-
-    // Insert Discharge Summary
-    try {
-      const [[seqRow]] = await sequelize.query(`SELECT nextval('hms_discharge_seq') AS "ID"`, { transaction: t });
-      await sequelize.query(`
-        INSERT INTO HMS_DISCHARGE_SUMMARIES (
-          ID, ADMISSION_ID, FINAL_DIAGNOSIS, COURSE_IN_HOSPITAL, 
-          DISCHARGE_CONDITION, ADVICE_ON_DISCHARGE,
-          CHIEF_COMPLAINT, COMORBIDITIES, ALLERGIES, HISTORY_OF_ILLNESS,
-          INVESTIGATIONS, DISCHARGE_MEDICATIONS, DIET_LIFESTYLE,
-          WARNING_SIGNS, FOLLOW_UP_APPOINTMENTS,
-          CREATED_BY, CREATED_AT
-        ) VALUES (
-          :id, :admId, :fd, :cih, :dc, :aod,
-          :cc, :como, :allg, :hoi,
-          :inv, :dm, :dl,
-          :ws, :fua,
-          :createdBy, CURRENT_TIMESTAMP
-        )
-      `, {
-        replacements: {
-          id: seqRow.ID,
-          admId: admissionId,
-          fd: finalDiagnosis || null,
-          cih: courseInHospital || null,
-          dc: conditionAtDischarge || null,
-          aod: adviceOnDischarge || null,
-          cc: chiefComplaint || null,
-          como: comorbidities || null,
-          allg: allergies || null,
-          hoi: historyOfIllness || null,
-          inv: investigations || null,
-          dm: dischargeMedications || null,
-          dl: dietLifestyle || null,
-          ws: warningSigns || null,
-          fua: followUpAppointments || null,
-          createdBy: req.user.id
-        },
-        transaction: t
-      });
-    } catch (e) {
-      console.warn('Failed to insert discharge summary:', e.message);
+      RETURNING DISCHARGE_DATE AS "DISCHARGE_DATE"
+    `, { replacements: { admissionId: admission.ID }, transaction: t });
+    if (admission.BED_ID) {
+      await sequelize.query("UPDATE HMS_BEDS SET STATUS = 'Available' WHERE ID = :bedId", { replacements: { bedId: admission.BED_ID }, transaction: t });
     }
+
+    const summaryId = await nextId('hms_discharge_seq', 'HMS_DISCHARGE_SUMMARIES', t);
+    await sequelize.query(`
+      INSERT INTO HMS_DISCHARGE_SUMMARIES (
+        ID, ADMISSION_ID, FINAL_DIAGNOSIS, COURSE_IN_HOSPITAL,
+        DISCHARGE_CONDITION, ADVICE_ON_DISCHARGE,
+        CHIEF_COMPLAINT, COMORBIDITIES, ALLERGIES, HISTORY_OF_ILLNESS,
+        INVESTIGATIONS, DISCHARGE_MEDICATIONS, DIET_LIFESTYLE,
+        WARNING_SIGNS, FOLLOW_UP_APPOINTMENTS,
+        CREATED_BY, CREATED_AT
+      ) VALUES (
+        :id, :admId, :fd, :cih, :dc, :aod,
+        :cc, :como, :allg, :hoi,
+        :inv, :dm, :dl,
+        :ws, :fua,
+        :createdBy, CURRENT_TIMESTAMP
+      )
+    `, {
+      replacements: {
+        id: summaryId,
+        admId: admission.ID,
+        fd: finalDiagnosis,
+        cih: courseInHospital || null,
+        dc: conditionAtDischarge || null,
+        aod: adviceOnDischarge || null,
+        cc: chiefComplaint || null,
+        como: comorbidities || null,
+        allg: allergies || null,
+        hoi: historyOfIllness || null,
+        inv: investigations || null,
+        dm: dischargeMedications || null,
+        dl: dietLifestyle || null,
+        ws: warningSigns || null,
+        fua: followUpAppointments || null,
+        createdBy: req.user.id,
+      },
+      transaction: t,
+    });
 
     await t.commit();
-    await logAction(req.user.id, 'UPDATE', 'ipd', admissionId, null, { action: 'discharge_patient' }, req.ip);
+    await logAction(req.user.id, 'UPDATE', 'ipd', admission.ID, null, { action: 'discharge_patient', summaryId }, req.ip);
 
-    res.json({ success: true, message: 'Patient discharged successfully' });
+    return res.json({ success: true, message: 'Patient discharged successfully', data: { summaryId, dischargeDate: updated?.DISCHARGE_DATE || new Date() } });
   } catch (err) {
-    await t.rollback();
+    await t.rollback().catch(() => {});
     console.error(err);
-    res.status(500).json({ success: false, message: 'Failed to discharge patient' });
+    return fail(res, 500, 'Failed to discharge patient');
   }
 });
 
@@ -558,8 +669,8 @@ router.patch('/admissions/:id/discharge', protect, checkPermission('ipd', 'write
 router.get('/discharge-summaries', protect, checkPermission('ipd', 'read'), async (req, res) => {
   try {
     const [summaries] = await sequelize.query(`
-      SELECT s.ID, s.ADMISSION_ID, s.FINAL_DIAGNOSIS, s.CREATED_AT as DISCHARGE_DATE,
-             a.ADMISSION_DATE,
+      SELECT s.ID, s.ADMISSION_ID, s.FINAL_DIAGNOSIS, COALESCE(a.DISCHARGE_DATE, s.CREATED_AT) as DISCHARGE_DATE,
+             a.ADMISSION_DATE, a.ADMISSION_ID_FORMATTED,
              p.NAME as PATIENT_NAME, p.UHID, p.GENDER, p.AGE,
              u.NAME as DOCTOR_NAME
       FROM HMS_DISCHARGE_SUMMARIES s
@@ -580,7 +691,7 @@ router.get('/admissions/:id/discharge-summary', protect, checkPermission('ipd', 
   try {
     const admissionId = req.params.id;
     const [summaries] = await sequelize.query(`
-      SELECT s.*, u.NAME as DOCTOR_NAME 
+      SELECT s.*, u.NAME as DOCTOR_NAME
       FROM HMS_DISCHARGE_SUMMARIES s
       LEFT JOIN HMS_USERS u ON s.CREATED_BY = u.ID
       WHERE s.ADMISSION_ID = :admissionId
@@ -593,7 +704,7 @@ router.get('/admissions/:id/discharge-summary', protect, checkPermission('ipd', 
 
     const summary = summaries[0];
     // Convert all CLOB fields
-    const clobFields = ['COURSE_IN_HOSPITAL', 'ADVICE_ON_DISCHARGE', 'HISTORY_OF_ILLNESS', 
+    const clobFields = ['COURSE_IN_HOSPITAL', 'ADVICE_ON_DISCHARGE', 'HISTORY_OF_ILLNESS',
                         'INVESTIGATIONS', 'DISCHARGE_MEDICATIONS', 'DIET_LIFESTYLE', 'FOLLOW_UP_APPOINTMENTS'];
     for (const field of clobFields) {
       if (summary[field]) summary[field] = await clobToString(summary[field]);
@@ -607,19 +718,36 @@ router.get('/admissions/:id/discharge-summary', protect, checkPermission('ipd', 
 });
 
 // ── NOTES & VITALS ─────────────────────────────────────────
+// Clinical entries go only on an admission that is still active, and the patient is taken from the
+// admission rather than from the request body.
+async function activeAdmissionOr(res, id) {
+  const admission = await findAdmission(id);
+  if (!admission) { fail(res, 404, 'Admission record not found'); return null; }
+  if (admission.STATUS !== 'Active') { fail(res, 409, 'This patient has been discharged; the chart is read-only.'); return null; }
+  return admission;
+}
 
+// Progress (SOAP) notes are written by doctors; nursing notes by nurses (admins may write either).
 router.post('/progress-notes', protect, checkPermission('ipd', 'write'), async (req, res) => {
   try {
-    const payload = { ...req.body, doctorId: req.user.id };
-    if (!payload.id) {
-      const [[seqRow]] = await sequelize.query(`SELECT nextval('hms_progress_seq') AS "ID"`);
-      payload.id = seqRow.ID || seqRow.id;
-    }
-    const note = await ProgressNote.create(payload);
-    res.json({ success: true, data: note });
+    if (!['doctor', 'admin', 'super_admin'].includes(req.user.role)) return fail(res, 403, 'Only doctors write progress notes.');
+    const fields = ['subjective', 'objective', 'assessment', 'plan'];
+    const note = Object.fromEntries(fields.map((f) => [f, text(req.body[f])]));
+    if (fields.every((f) => !note[f])) return fail(res, 400, 'Write at least one part of the note.');
+    const admission = await activeAdmissionOr(res, req.body.admissionId);
+    if (!admission) return undefined;
+    const saved = await ProgressNote.create({
+      id: await nextId('hms_progress_seq', 'HMS_PROGRESS_NOTES'),
+      admissionId: Number(admission.ID),
+      patientId: Number(admission.PATIENT_ID),
+      doctorId: req.user.id,
+      noteDate: new Date(),
+      ...Object.fromEntries(fields.map((f) => [f, note[f] || null])),
+    });
+    return res.status(201).json({ success: true, data: saved });
   } catch (err) {
     console.error('Failed to save progress note:', err);
-    res.status(500).json({ success: false, message: 'Failed to save progress note' });
+    return fail(res, 500, 'Failed to save progress note');
   }
 });
 
@@ -628,16 +756,10 @@ router.get('/progress-notes/:admissionId', protect, checkPermission('ipd', 'read
     const [notes] = await sequelize.query(`
       SELECT n.*, u.NAME as DOCTOR_NAME
       FROM HMS_PROGRESS_NOTES n
-      JOIN HMS_USERS u ON u.ID = n.DOCTOR_ID
+      LEFT JOIN HMS_USERS u ON u.ID = n.DOCTOR_ID
       WHERE n.ADMISSION_ID = :admissionId
       ORDER BY n.NOTE_DATE DESC
     `, { replacements: { admissionId: req.params.admissionId } });
-    
-    for (let note of notes) {
-      if (note.NOTE_TEXT) {
-        note.NOTE_TEXT = await clobToString(note.NOTE_TEXT);
-      }
-    }
     res.json({ success: true, data: (notes || []).map(normalizeRowKeys) });
   } catch (err) {
     console.error(err);
@@ -647,27 +769,27 @@ router.get('/progress-notes/:admissionId', protect, checkPermission('ipd', 'read
 
 router.post('/nursing-notes', protect, checkPermission('ipd', 'write'), async (req, res) => {
   try {
-    const conditionNotes = req.body.conditionNotes || req.body.noteText || req.body.note_text || '';
-    const complaints = req.body.complaints || '';
-    const actionsTaken = req.body.actionsTaken || req.body.actions_taken || '';
-    const admissionId = req.body.admissionId || req.body.admission_id;
-
-    if (!admissionId) {
-      return res.status(400).json({ success: false, message: 'admissionId is required' });
-    }
+    if (!['nurse', 'admin', 'super_admin'].includes(req.user.role)) return fail(res, 403, 'Only nursing staff write nursing notes.');
+    const conditionNotes = text(req.body.conditionNotes || req.body.noteText || req.body.note_text);
+    const complaints = text(req.body.complaints);
+    const actionsTaken = text(req.body.actionsTaken || req.body.actions_taken);
+    if (!conditionNotes) return fail(res, 400, 'Condition summary is required.');
+    const admission = await activeAdmissionOr(res, req.body.admissionId || req.body.admission_id);
+    if (!admission) return undefined;
 
     const note = await NursingNote.create({
-      admissionId: Number(admissionId),
+      id: await nextId('hms_nursing_seq', 'HMS_NURSING_NOTES'),
+      admissionId: Number(admission.ID),
       nurseId: req.user.id,
       conditionNotes,
-      complaints,
-      actionsTaken,
+      complaints: complaints || null,
+      actionsTaken: actionsTaken || null,
       noteDate: new Date(),
     });
-    res.json({ success: true, data: note });
+    return res.status(201).json({ success: true, data: note });
   } catch (err) {
     console.error('Failed to save nursing note:', err);
-    res.status(500).json({ success: false, message: 'Failed to save nursing note' });
+    return fail(res, 500, 'Failed to save nursing note');
   }
 });
 
@@ -680,7 +802,7 @@ router.get('/nursing-notes/:admissionId', protect, checkPermission('ipd', 'read'
       WHERE n.ADMISSION_ID = :admissionId
       ORDER BY n.NOTE_DATE DESC
     `, { replacements: { admissionId: req.params.admissionId } });
-    
+
     for (let note of notes) {
       if (note.CONDITION_NOTES) {
         note.CONDITION_NOTES = await clobToString(note.CONDITION_NOTES);
@@ -700,27 +822,64 @@ router.get('/nursing-notes/:admissionId', protect, checkPermission('ipd', 'read'
   }
 });
 
+// Physiologically possible ranges (same idea as OPD vitals): values outside are typing or unit mistakes
+// and are refused instead of stored. Temperature is charted in °F on the inpatient chart.
+const IPD_VITAL_LIMITS = {
+  bpSystolic: [40, 300, 'Systolic BP', true],
+  bpDiastolic: [20, 200, 'Diastolic BP', true],
+  pulse: [20, 250, 'Pulse', true],
+  spo2: [40, 100, 'SpO2', true],
+  respiratoryRate: [4, 80, 'Respiratory rate', true],
+  painScore: [0, 10, 'Pain score', true],
+  temperature: [86, 113, 'Temperature (°F)', false],
+};
+const FLUID_FIELDS = { intakeOralMl: 'Oral intake', intakeIvMl: 'IV intake', outputUrineMl: 'Urine output', outputDrainMl: 'Drain output' };
+const SHIFTS = ['Morning', 'Afternoon', 'Night'];
+const blank = (v) => v === undefined || v === null || v === '';
+
 router.post('/vitals', protect, checkPermission('ipd', 'write'), async (req, res) => {
   try {
-    const payload = { ...req.body, recordedBy: req.user.id };
-    // Sanitize empty strings to null for numeric fields
-    const numericFields = ['bpSystolic', 'bpDiastolic', 'temperature', 'spo2', 'pulse', 'respiratoryRate', 'painScore', 'intakeOralMl', 'intakeIvMl', 'outputUrineMl', 'outputDrainMl'];
-    numericFields.forEach(field => {
-      if (payload[field] === '') payload[field] = null;
-      else if (payload[field] !== undefined && payload[field] !== null) payload[field] = Number(payload[field]);
-    });
+    const values = {};
+    for (const [key, [min, max, label, whole]] of Object.entries(IPD_VITAL_LIMITS)) {
+      if (blank(req.body[key])) { values[key] = null; continue; }
+      const n = Number(req.body[key]);
+      if (!Number.isFinite(n)) return fail(res, 400, `${label} must be a number.`);
+      if (whole && !Number.isInteger(n)) return fail(res, 400, `${label} must be a whole number.`);
+      if (n < min || n > max) return fail(res, 400, `${label} must be between ${min} and ${max}.`);
+      values[key] = n;
+    }
+    for (const [key, label] of Object.entries(FLUID_FIELDS)) {
+      if (blank(req.body[key])) { values[key] = 0; continue; }
+      const n = Number(req.body[key]);
+      if (!Number.isInteger(n) || n < 0 || n > 10000) return fail(res, 400, `${label} must be a whole number of mL between 0 and 10000.`);
+      values[key] = n;
+    }
+    const anyVital = Object.keys(IPD_VITAL_LIMITS).some((k) => values[k] !== null);
+    const anyFluid = Object.keys(FLUID_FIELDS).some((k) => values[k] > 0);
+    if (!anyVital && !anyFluid) return fail(res, 400, 'Enter at least one vital sign or fluid amount.');
 
-    const v = await IpdVitals.create(payload);
-    res.json({ success: true, data: v });
+    const admission = await activeAdmissionOr(res, req.body.admissionId);
+    if (!admission) return undefined;
+
+    const v = await IpdVitals.create({
+      id: await nextId('hms_ipd_vitals_seq', 'HMS_IPD_VITALS'),
+      admissionId: Number(admission.ID),
+      patientId: Number(admission.PATIENT_ID),
+      recordedBy: req.user.id,
+      recordedAt: new Date(),
+      shift: SHIFTS.includes(req.body.shift) ? req.body.shift : null,
+      ...values,
+    });
+    return res.status(201).json({ success: true, data: v });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: 'Failed to save vitals' });
+    return fail(res, 500, 'Failed to save vitals');
   }
 });
 
 router.get('/vitals/:admissionId', protect, checkPermission('ipd', 'read'), async (req, res) => {
   try {
-    const v = await IpdVitals.findAll({ 
+    const v = await IpdVitals.findAll({
       where: { admissionId: req.params.admissionId },
       order: [['recordedAt', 'DESC']]
     });
@@ -733,7 +892,7 @@ router.get('/vitals/:admissionId', protect, checkPermission('ipd', 'read'), asyn
 
 router.get('/vitals/patient/:patientId', protect, checkPermission('ipd', 'read'), async (req, res) => {
   try {
-    const v = await IpdVitals.findAll({ 
+    const v = await IpdVitals.findAll({
       where: { patientId: req.params.patientId },
       order: [['recordedAt', 'DESC']]
     });
@@ -744,30 +903,48 @@ router.get('/vitals/patient/:patientId', protect, checkPermission('ipd', 'read')
   }
 });
 
+// ── Medication administration record (MAR) ─────────────────
+// Scheduling a dose takes only the dose fields (status and "administered by" used to be accepted from the
+// request body).
 router.post('/mar', protect, checkPermission('ipd', 'write'), async (req, res) => {
   try {
-    const payload = { ...req.body };
-    if (!payload.id) {
-      const [[seqRow]] = await sequelize.query(`SELECT nextval('hms_mar_seq') AS "ID"`);
-      payload.id = seqRow.ID || seqRow.id;
-    }
-    const m = await MarRecord.create(payload); // For creating schedules
-    res.json({ success: true, data: m });
+    const medicineName = text(req.body.medicineName);
+    const scheduled = req.body.scheduledTime ? new Date(req.body.scheduledTime) : null;
+    if (!medicineName) return fail(res, 400, 'Medicine name is required.');
+    if (!scheduled || Number.isNaN(scheduled.getTime())) return fail(res, 400, 'Scheduled time is required.');
+    const admission = await activeAdmissionOr(res, req.body.admissionId);
+    if (!admission) return undefined;
+    const m = await MarRecord.create({
+      id: await nextId('hms_mar_seq', 'HMS_MAR_RECORDS'),
+      admissionId: Number(admission.ID),
+      prescriptionItemId: posInt(req.body.prescriptionItemId),
+      medicineName,
+      dose: text(req.body.dose) || null,
+      route: text(req.body.route) || null,
+      scheduledTime: scheduled,
+      status: 'Pending',
+      notes: text(req.body.notes) || null,
+    });
+    return res.status(201).json({ success: true, data: m });
   } catch (err) {
     console.error('Failed to save MAR:', err);
-    res.status(500).json({ success: false, message: 'Failed to save MAR' });
+    return fail(res, 500, 'Failed to save MAR');
   }
 });
 
+// Today's doses plus earlier doses still pending: an overdue dose no longer drops off the chart at midnight.
 router.get('/mar/:admissionId', protect, checkPermission('ipd', 'read'), async (req, res) => {
   try {
     const [mar] = await sequelize.query(`
-      SELECT * FROM HMS_MAR_RECORDS
-      WHERE ADMISSION_ID = :admissionId
-      AND TRUNC(SCHEDULED_TIME) = TRUNC(CURRENT_TIMESTAMP)
-      ORDER BY SCHEDULED_TIME ASC
+      SELECT m.*, u.NAME AS ADMINISTERED_BY_NAME
+      FROM HMS_MAR_RECORDS m
+      LEFT JOIN HMS_USERS u ON u.ID = m.ADMINISTERED_BY
+      WHERE m.ADMISSION_ID = :admissionId
+        AND (TRUNC(m.SCHEDULED_TIME) = TRUNC(CURRENT_TIMESTAMP)
+             OR (m.STATUS = 'Pending' AND m.SCHEDULED_TIME < CURRENT_TIMESTAMP))
+      ORDER BY m.SCHEDULED_TIME ASC, m.ID ASC
     `, { replacements: { admissionId: req.params.admissionId } });
-    
+
     res.json({ success: true, data: (mar || []).map(normalizeRowKeys) });
   } catch (err) {
     console.error('Failed to fetch MAR:', err);
@@ -775,18 +952,41 @@ router.get('/mar/:admissionId', protect, checkPermission('ipd', 'read'), async (
   }
 });
 
+// Give or hold a scheduled dose. The record is locked and must still be Pending: a second "Give" (another
+// nurse, a stale screen) used to overwrite the first administration, and unknown ids answered success.
 router.patch('/mar/:id/status', protect, checkPermission('ipd', 'write'), async (req, res) => {
+  const t = await sequelize.transaction();
+  const abort = async (status, message) => { await t.rollback(); return fail(res, status, message); };
   try {
-    const { status, holdReason } = req.body;
+    const { status } = req.body;
+    const holdReason = text(req.body.holdReason);
+    if (!['Given', 'Held'].includes(status)) return abort(400, 'Status must be Given or Held.');
+    if (status === 'Held' && !holdReason) return abort(400, 'Give a reason for holding the dose.');
+    const [[rec]] = await sequelize.query(`
+      SELECT m.ID, m.STATUS, m.MEDICINE_NAME, m.ADMISSION_ID, a.STATUS AS ADMISSION_STATUS, u.NAME AS BY_NAME
+      FROM HMS_MAR_RECORDS m
+      JOIN HMS_ADMISSIONS a ON a.ID = m.ADMISSION_ID
+      LEFT JOIN HMS_USERS u ON u.ID = m.ADMINISTERED_BY
+      WHERE m.ID = :id
+      FOR UPDATE OF m
+    `, { replacements: { id: posInt(req.params.id) || 0 }, transaction: t });
+    if (!rec) return abort(404, 'Medication record not found.');
+    if (rec.ADMISSION_STATUS !== 'Active') return abort(409, 'This patient has been discharged; the MAR is read-only.');
+    if (rec.STATUS !== 'Pending') {
+      return abort(409, `This dose of ${rec.MEDICINE_NAME} was already recorded as ${rec.STATUS}${rec.BY_NAME ? ` by ${rec.BY_NAME}` : ''}.`);
+    }
     await sequelize.query(`
-      UPDATE HMS_MAR_RECORDS 
+      UPDATE HMS_MAR_RECORDS
       SET STATUS = :status, ADMINISTERED_BY = :userId, ADMINISTERED_AT = CURRENT_TIMESTAMP, HOLD_REASON = :reason
       WHERE ID = :id
-    `, { replacements: { status, userId: req.user.id, reason: holdReason || null, id: req.params.id } });
-    res.json({ success: true });
+    `, { replacements: { status, userId: req.user.id, reason: status === 'Held' ? holdReason : null, id: rec.ID }, transaction: t });
+    await t.commit();
+    await logAction(req.user.id, 'UPDATE', 'ipd', rec.ID, null, { action: status === 'Given' ? 'mar_given' : 'mar_held', admissionId: rec.ADMISSION_ID }, req.ip);
+    return res.json({ success: true, data: { id: Number(rec.ID), status } });
   } catch (err) {
+    await t.rollback().catch(() => {});
     console.error(err);
-    res.status(500).json({ success: false });
+    return fail(res, 500, 'Failed to update medication');
   }
 });
 
@@ -799,56 +999,100 @@ const WARD_RATES = {
   'Maternity': 400,
 };
 
+// Medicines added to an admission's bill before it is generated. Held in memory (there is no draft table):
+// they are lost when the API restarts, so the billing page also sends its item list when generating.
 let activeDraftCharges = {};
+
+async function admissionForBilling(admissionId, transaction, lock = false) {
+  const [adms] = await sequelize.query(`
+    SELECT a.*, w.TYPE as WARD_TYPE, w.NAME as WARD_NAME, ${STAY_DAYS_SQL} as DAYS_ADMITTED
+    FROM HMS_ADMISSIONS a
+    LEFT JOIN HMS_BEDS b ON b.ID = a.BED_ID
+    LEFT JOIN HMS_WARDS w ON w.ID = b.WARD_ID
+    WHERE a.ID = :admissionId
+    ${lock ? 'FOR UPDATE OF a' : ''}
+  `, { replacements: { admissionId: posInt(admissionId) || 0 }, transaction });
+  return adms[0] || null;
+}
+
+function wardCharges(admission) {
+  const daysAdmitted = Math.max(1, Number(admission.DAYS_ADMITTED) || 1);
+  const wardType = admission.WARD_TYPE || 'General';
+  const wardRate = WARD_RATES[wardType] || 400;
+  return { wardName: admission.WARD_NAME, wardType, wardRate, daysAdmitted, wardTotal: daysAdmitted * wardRate };
+}
+
+// Price of a medicine: MRP of the batch issued first (earliest expiry with stock), else the last purchase MRP.
+async function medicineUnitPrice(medicineId, transaction) {
+  const [batches] = await sequelize.query(`
+    SELECT MRP FROM HMS_MEDICINE_BATCHES
+    WHERE MEDICINE_ID = :medicineId AND QUANTITY > 0
+    ORDER BY EXPIRY_DATE ASC
+    LIMIT 1
+  `, { replacements: { medicineId }, transaction });
+  if (batches.length > 0 && Number(batches[0].MRP) > 0) return Number(batches[0].MRP);
+  const [purchaseItems] = await sequelize.query(`
+    SELECT MRP FROM HMS_PURCHASE_ITEMS WHERE MEDICINE_ID = :medicineId ORDER BY ID DESC LIMIT 1
+  `, { replacements: { medicineId }, transaction }).catch(() => [[]]);
+  return purchaseItems.length > 0 ? Number(purchaseItems[0].MRP) || 0 : 0;
+}
+
+async function existingIpdBill(admissionId, transaction) {
+  const [[bill]] = await sequelize.query(`
+    SELECT * FROM HMS_BILLS
+    WHERE ADMISSION_ID = :admissionId AND BILL_TYPE = 'IPD' AND COALESCE(STATUS, '') <> 'Cancelled'
+    ORDER BY ID DESC LIMIT 1
+  `, { replacements: { admissionId: posInt(admissionId) || 0 }, transaction });
+  return bill || null;
+}
+
+async function availableAdvances(admissionId, transaction, lock = false) {
+  const [rows] = await sequelize.query(`
+    SELECT ID, AMOUNT FROM HMS_PATIENT_ADVANCES
+    WHERE ADMISSION_ID = :admissionId AND ADJUSTED_BILL_ID IS NULL AND COALESCE(IS_REFUNDED, 0) = 0
+    ORDER BY RECEIVED_AT ASC, ID ASC
+    ${lock ? 'FOR UPDATE' : ''}
+  `, { replacements: { admissionId: posInt(admissionId) || 0 }, transaction });
+  return rows.map((r) => ({ id: Number(r.ID), amount: Number(r.AMOUNT) || 0 }));
+}
+
+const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
 // ── GET /api/ipd/admissions/:id/charges ────────────────────
 router.get('/admissions/:id/charges', protect, checkPermission('ipd', 'read'), async (req, res) => {
   try {
     const admissionId = String(req.params.id);
-
-    // Get admission details for ward rate calculation
-    const [adms] = await sequelize.query(`
-      SELECT a.*, w.TYPE as WARD_TYPE, w.NAME as WARD_NAME,
-             EXTRACT(DAY FROM (CURRENT_TIMESTAMP - a.ADMISSION_DATE)) as DAYS_ADMITTED
-      FROM HMS_ADMISSIONS a
-      LEFT JOIN HMS_BEDS b ON b.ID = a.BED_ID
-      LEFT JOIN HMS_WARDS w ON w.ID = b.WARD_ID
-      WHERE a.ID = :admissionId
-    `, { replacements: { admissionId } });
-
-    if (adms.length === 0) {
+    const admission = await admissionForBilling(admissionId);
+    if (!admission) {
       return res.status(404).json({ success: false, message: 'Admission not found' });
     }
 
-    const admission = adms[0];
     const charges = activeDraftCharges[admissionId] || [];
-
-    // Calculate ward charges
-    const daysAdmitted = Math.max(1, Number(admission.DAYS_ADMITTED) || 1);
-    const wardType = admission.WARD_TYPE || 'General';
-    const wardRate = WARD_RATES[wardType] || 400;
-    const wardTotal = daysAdmitted * wardRate;
-
-    // Calculate medicine total
-    const medicineTotal = charges.reduce((sum, c) => sum + (c.TOTAL_PRICE || 0), 0);
+    const wardInfo = wardCharges(admission);
+    const medicineTotal = round2(charges.reduce((sum, c) => sum + (c.TOTAL_PRICE || 0), 0));
+    const advances = await availableAdvances(admissionId);
+    const bill = await existingIpdBill(admissionId);
+    let billItems = [];
+    if (bill) {
+      [billItems] = await sequelize.query('SELECT * FROM HMS_BILL_ITEMS WHERE BILL_ID = :billId ORDER BY ID', { replacements: { billId: bill.ID } });
+    }
 
     res.json({
       success: true,
       data: {
         charges,
-        wardInfo: {
-          wardName: admission.WARD_NAME,
-          wardType,
-          wardRate,
-          daysAdmitted,
-          wardTotal,
-        },
+        wardInfo,
         medicineTotal,
-        grandTotal: wardTotal + medicineTotal,
+        grandTotal: round2(wardInfo.wardTotal + medicineTotal),
+        advanceAvailable: round2(advances.reduce((s, a) => s + a.amount, 0)),
+        advances: advances.map((a) => a.amount),
+        canDiscount: isAdminRole(req.user),
+        admissionStatus: admission.STATUS,
+        bill: bill ? { ...normalizeRowKeys(bill), items: billItems.map(normalizeRowKeys) } : null,
       }
     });
   } catch (err) {
-    console.error('❌ Fetch charges failed:', err.message);
+    console.error('Fetch charges failed:', err.message);
     res.status(500).json({ success: false, message: 'Failed to fetch charges' });
   }
 });
@@ -857,42 +1101,18 @@ router.get('/admissions/:id/charges', protect, checkPermission('ipd', 'read'), a
 router.post('/admissions/:id/charges', protect, checkPermission('ipd', 'write'), async (req, res) => {
   try {
     const admissionId = String(req.params.id);
-    const { medicineId, medicineName, formulation, strength, quantity } = req.body;
-
-    if (!medicineId || !medicineName || !quantity) {
+    const { formulation, strength } = req.body;
+    const medicineId = posInt(req.body.medicineId);
+    const quantity = posInt(req.body.quantity);
+    if (!medicineId || !text(req.body.medicineName) || !quantity) {
       return res.status(400).json({ success: false, message: 'Medicine ID, name, and quantity are required' });
     }
+    if (quantity > 999) return fail(res, 400, 'Quantity must be 999 or less.');
+    if (!(await admissionForBilling(admissionId))) return fail(res, 404, 'Admission not found');
+    const bill = await existingIpdBill(admissionId);
+    if (bill) return fail(res, 409, `This admission is already billed (${bill.BILL_NUMBER}).`);
 
-    // Look up MRP from batches
-    let unitPrice = 0;
-    try {
-      const [batches] = await sequelize.query(`
-        SELECT MRP FROM HMS_MEDICINE_BATCHES
-        WHERE MEDICINE_ID = :medicineId AND QUANTITY > 0
-        ORDER BY EXPIRY_DATE ASC
-        LIMIT 1
-      `, { replacements: { medicineId } });
-      if (batches.length > 0) {
-        unitPrice = Number(batches[0].MRP) || 0;
-      }
-    } catch (e) {
-      console.warn('MRP lookup failed:', e.message);
-    }
-
-    if (unitPrice === 0) {
-      try {
-        const [purchaseItems] = await sequelize.query(`
-          SELECT MRP FROM HMS_PURCHASE_ITEMS
-          WHERE MEDICINE_ID = :medicineId
-          ORDER BY ID DESC
-          LIMIT 1
-        `, { replacements: { medicineId } });
-        if (purchaseItems.length > 0) {
-          unitPrice = Number(purchaseItems[0].MRP) || 0;
-        }
-      } catch (e) { /* ignore */ }
-    }
-
+    const unitPrice = await medicineUnitPrice(medicineId);
     if (!activeDraftCharges[admissionId]) {
       activeDraftCharges[admissionId] = [];
     }
@@ -901,13 +1121,13 @@ router.post('/admissions/:id/charges', protect, checkPermission('ipd', 'write'),
     const charge = {
       ID: chargeId,
       ADMISSION_ID: admissionId,
-      MEDICINE_ID: Number(medicineId),
-      MEDICINE_NAME: medicineName,
+      MEDICINE_ID: medicineId,
+      MEDICINE_NAME: text(req.body.medicineName),
       FORMULATION: formulation || '',
       STRENGTH: strength || '',
-      QUANTITY: Number(quantity),
+      QUANTITY: quantity,
       UNIT_PRICE: unitPrice,
-      TOTAL_PRICE: unitPrice * Number(quantity),
+      TOTAL_PRICE: round2(unitPrice * quantity),
       ADDED_BY: req.user.id,
       ADDED_AT: new Date().toISOString(),
     };
@@ -915,7 +1135,7 @@ router.post('/admissions/:id/charges', protect, checkPermission('ipd', 'write'),
     activeDraftCharges[admissionId].push(charge);
     res.json({ success: true, data: charge });
   } catch (err) {
-    console.error('❌ Add charge failed:', err.message);
+    console.error('Add charge failed:', err.message);
     res.status(500).json({ success: false, message: 'Failed to add charge' });
   }
 });
@@ -925,14 +1145,15 @@ router.patch('/admissions/:id/charges/:chargeId', protect, checkPermission('ipd'
   try {
     const admissionId = String(req.params.id);
     const chargeId = Number(req.params.chargeId);
-    const { quantity } = req.body;
-    
+    const quantity = posInt(req.body.quantity);
+    if (!quantity || quantity > 999) return fail(res, 400, 'Quantity must be a whole number from 1 to 999.');
+
     const charges = activeDraftCharges[admissionId] || [];
     const charge = charges.find(c => c.ID === chargeId);
     if (!charge) return res.status(404).json({ success: false, message: 'Charge not found' });
 
-    charge.QUANTITY = Number(quantity);
-    charge.TOTAL_PRICE = charge.UNIT_PRICE * charge.QUANTITY;
+    charge.QUANTITY = quantity;
+    charge.TOTAL_PRICE = round2(charge.UNIT_PRICE * charge.QUANTITY);
     res.json({ success: true, data: charge });
   } catch (err) {
     console.error(err);
@@ -958,50 +1179,76 @@ router.delete('/admissions/:id/charges/:chargeId', protect, checkPermission('ipd
 });
 
 // ── POST /api/ipd/admissions/:id/generate-bill ─────────────
+// One IPD bill per admission: bed days (up to discharge) + medicines, less an approved discount, less the
+// advances taken against the admission. Body: { items?: [{ medicineId, quantity, medicineName?, strength? }],
+// discountAmount? }. Prices are always looked up here, never taken from the browser.
 router.post('/admissions/:id/generate-bill', protect, checkPermission('ipd', 'write'), async (req, res) => {
   const t = await sequelize.transaction();
+  const abort = async (status, message) => { await t.rollback(); return fail(res, status, message); };
   try {
     const admissionId = String(req.params.id);
+    const admission = await admissionForBilling(admissionId, t, true);
+    if (!admission) return abort(404, 'Admission not found');
+    const existing = await existingIpdBill(admissionId, t);
+    if (existing) return abort(409, `This admission is already billed (${existing.BILL_NUMBER}).`);
 
-    // Get admission info
-    const [adms] = await sequelize.query(`
-      SELECT a.*, w.TYPE as WARD_TYPE, w.NAME as WARD_NAME,
-             EXTRACT(DAY FROM (CURRENT_TIMESTAMP - a.ADMISSION_DATE)) as DAYS_ADMITTED
-      FROM HMS_ADMISSIONS a
-      LEFT JOIN HMS_BEDS b ON b.ID = a.BED_ID
-      LEFT JOIN HMS_WARDS w ON w.ID = b.WARD_ID
-      WHERE a.ID = :admissionId
-    `, { replacements: { admissionId }, transaction: t });
+    const discountAmount = round2(req.body?.discountAmount || 0);
+    if (!Number.isFinite(discountAmount) || discountAmount < 0) return abort(400, 'Discount must be zero or more.');
+    if (discountAmount > 0 && !isAdminRole(req.user)) return abort(403, 'Only administrators can approve discounts.');
 
-    if (adms.length === 0) {
-      await t.rollback();
-      return res.status(404).json({ success: false, message: 'Admission not found' });
+    // Medicine lines: the list on the billing page when given, else the saved draft.
+    let lines = activeDraftCharges[admissionId] || [];
+    if (Array.isArray(req.body?.items)) {
+      lines = [];
+      for (const it of req.body.items) {
+        const medicineId = posInt(it.medicineId ?? it.MEDICINE_ID);
+        const quantity = posInt(it.quantity ?? it.QUANTITY);
+        if (!medicineId || !quantity || quantity > 999) return abort(400, 'Each item needs a medicine and a quantity from 1 to 999.');
+        const [[med]] = await sequelize.query('SELECT GENERIC_NAME FROM HMS_MEDICINES WHERE ID = :medicineId', { replacements: { medicineId }, transaction: t });
+        if (!med) return abort(400, `Medicine ${medicineId} not found.`);
+        const unitPrice = await medicineUnitPrice(medicineId, t);
+        lines.push({
+          MEDICINE_ID: medicineId,
+          MEDICINE_NAME: med.GENERIC_NAME,
+          STRENGTH: text(it.strength ?? it.STRENGTH),
+          QUANTITY: quantity,
+          UNIT_PRICE: unitPrice,
+          TOTAL_PRICE: round2(unitPrice * quantity),
+        });
+      }
     }
 
-    const admission = adms[0];
-    const charges = activeDraftCharges[admissionId] || [];
-    const daysAdmitted = Math.max(1, Number(admission.DAYS_ADMITTED) || 1);
-    const wardType = admission.WARD_TYPE || 'General';
-    const wardRate = WARD_RATES[wardType] || 400;
-    const wardTotal = daysAdmitted * wardRate;
-    const medicineTotal = charges.reduce((sum, c) => sum + (c.TOTAL_PRICE || 0), 0);
-    const totalAmount = wardTotal + medicineTotal;
+    const ward = wardCharges(admission);
+    const medicineTotal = round2(lines.reduce((sum, c) => sum + (c.TOTAL_PRICE || 0), 0));
+    const totalAmount = round2(ward.wardTotal + medicineTotal);
+    if (discountAmount > totalAmount) return abort(400, 'Discount cannot be more than the bill total.');
 
-    const year = new Date().getFullYear();
+    // Advances against this admission, oldest first, each used whole while it fits in what is still payable.
+    // One that does not fit stays available (refund or adjust at the cash desk) rather than being split.
+    let payable = round2(totalAmount - discountAmount);
+    const applied = [];
+    for (const adv of await availableAdvances(admissionId, t, true)) {
+      if (adv.amount > 0 && adv.amount <= payable + 0.001) {
+        applied.push(adv);
+        payable = round2(payable - adv.amount);
+      }
+    }
+    const advanceAdjusted = round2(applied.reduce((s, a) => s + a.amount, 0));
+    const advanceRemaining = round2((await availableAdvances(admissionId, t)).reduce((s, a) => s + a.amount, 0) - advanceAdjusted);
+    const netPayable = Math.max(0, payable);
+    const status = netPayable <= 0 ? 'Paid' : 'Pending';
 
-    // Generate bill ID and number
-    const [[billSeq]] = await sequelize.query(`SELECT nextval('hms_bills_seq') AS "ID"`, { transaction: t });
-    const billId = billSeq.ID || billSeq.id;
-    const billNumber = `IPD-${year}-${String(billId).padStart(6, '0')}`;
+    const billId = await nextId('hms_bills_seq', 'HMS_BILLS', t);
+    const billNumber = `IPD-${new Date().getFullYear()}-${String(billId).padStart(6, '0')}`;
 
     await sequelize.query(`
       INSERT INTO HMS_BILLS (
         ID, PATIENT_ID, ADMISSION_ID, BILL_TYPE, BILL_NUMBER, STATUS,
-        TOTAL_AMOUNT, DISCOUNT_AMOUNT, GST_AMOUNT, NET_PAYABLE, ADVANCE_ADJUSTED,
+        TOTAL_AMOUNT, DISCOUNT_AMOUNT, DISCOUNT_APPROVED_BY, GST_AMOUNT, NET_PAYABLE, ADVANCE_ADJUSTED,
         CREATED_BY, CREATED_AT, UPDATED_AT
       ) VALUES (
-        :id, :patientId, :admissionId, 'IPD', :billNumber, 'Pending',
-        :totalAmount, 0, 0, :totalAmount, 0,
+        :id, :patientId, :admissionId, 'IPD', :billNumber, :status,
+        :totalAmount, :discountAmount, :approvedBy, 0, :netPayable, :advanceAdjusted,
         :createdBy, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )
     `, {
@@ -1010,68 +1257,64 @@ router.post('/admissions/:id/generate-bill', protect, checkPermission('ipd', 'wr
         patientId: admission.PATIENT_ID,
         admissionId: Number(admissionId),
         billNumber,
+        status,
         totalAmount,
+        discountAmount,
+        approvedBy: discountAmount > 0 ? req.user.id : null,
+        netPayable,
+        advanceAdjusted,
         createdBy: req.user.id,
       },
       transaction: t,
     });
 
-    // Insert bill items — ward charges
-    const [[wardItemSeq]] = await sequelize.query(`SELECT nextval('hms_bill_items_seq') AS "ID"`, { transaction: t });
-    await sequelize.query(`
-      INSERT INTO HMS_BILL_ITEMS (ID, BILL_ID, ITEM_TYPE, ITEM_NAME, QUANTITY, RATE, AMOUNT, SERVICE_DATE)
-      VALUES (:id, :billId, 'Ward', :itemName, :qty, :rate, :amount, CURRENT_TIMESTAMP)
-    `, {
-      replacements: {
-        id: wardItemSeq.ID,
-        billId,
-        itemName: `${admission.WARD_NAME || wardType} Ward Charges (${daysAdmitted} days)`,
-        qty: daysAdmitted,
-        rate: wardRate,
-        amount: wardTotal,
-      },
-      transaction: t,
-    });
-
-    // Insert bill items — each medicine
-    for (const charge of charges) {
-      const [[medItemSeq]] = await sequelize.query(`SELECT nextval('hms_bill_items_seq') AS "ID"`, { transaction: t });
+    const items = [{
+      type: 'Ward',
+      name: `${admission.WARD_NAME || ward.wardType} Ward Charges (${ward.daysAdmitted} days)`,
+      qty: ward.daysAdmitted, rate: ward.wardRate, amount: ward.wardTotal,
+    }, ...lines.map((c) => ({
+      type: 'Medicine',
+      name: `${c.MEDICINE_NAME}${c.STRENGTH ? ' ' + c.STRENGTH : ''}`,
+      qty: c.QUANTITY, rate: c.UNIT_PRICE, amount: c.TOTAL_PRICE,
+    }))];
+    for (const item of items) {
       await sequelize.query(`
         INSERT INTO HMS_BILL_ITEMS (ID, BILL_ID, ITEM_TYPE, ITEM_NAME, QUANTITY, RATE, AMOUNT, SERVICE_DATE)
-        VALUES (:id, :billId, 'Medicine', :itemName, :qty, :rate, :amount, CURRENT_TIMESTAMP)
+        VALUES (:id, :billId, :type, :name, :qty, :rate, :amount, CURRENT_TIMESTAMP)
       `, {
-        replacements: {
-          id: medItemSeq.ID,
-          billId,
-          itemName: `${charge.MEDICINE_NAME}${charge.STRENGTH ? ' ' + charge.STRENGTH : ''}`,
-          qty: charge.QUANTITY,
-          rate: charge.UNIT_PRICE,
-          amount: charge.TOTAL_PRICE,
-        },
+        replacements: { id: await nextId('hms_bill_items_seq', 'HMS_BILL_ITEMS', t), billId, ...item },
         transaction: t,
+      });
+    }
+    if (applied.length) {
+      await sequelize.query('UPDATE HMS_PATIENT_ADVANCES SET ADJUSTED_BILL_ID = :billId WHERE ID IN (:ids)', {
+        replacements: { billId, ids: applied.map((a) => a.id) }, transaction: t,
       });
     }
 
     await t.commit();
-
-    // Clear draft charges for this admission after billing
     delete activeDraftCharges[admissionId];
+    await logAction(req.user.id, 'CREATE', 'billing', billId, null, { action: 'generate_ipd_bill', billNumber, admissionId, discountAmount, advanceAdjusted }, req.ip);
 
-    console.log('✅ IPD Bill generated:', billNumber);
-    res.json({
+    return res.status(201).json({
       success: true,
       data: {
         billId,
         billNumber,
+        status,
         totalAmount,
-        wardTotal,
+        wardTotal: ward.wardTotal,
         medicineTotal,
+        discountAmount,
+        advanceAdjusted,
+        advanceRemaining,
+        netPayable,
       }
     });
   } catch (err) {
-    await t.rollback();
-    console.error('❌ Generate IPD bill failed:', err.message);
-    res.status(500).json({ success: false, message: 'Failed to generate IPD bill' });
+    await t.rollback().catch(() => {});
+    console.error('Generate IPD bill failed:', err.message);
+    return fail(res, 500, 'Failed to generate IPD bill');
   }
 });
 
@@ -1079,7 +1322,7 @@ router.post('/admissions/:id/generate-bill', protect, checkPermission('ipd', 'wr
 router.get('/billing/saved-drafts', protect, checkPermission('ipd', 'read'), async (req, res) => {
   try {
     const draftAdmissionIds = Object.keys(activeDraftCharges).filter(id => activeDraftCharges[id].length > 0);
-    
+
     if (draftAdmissionIds.length === 0) {
       return res.json({ success: true, data: [] });
     }

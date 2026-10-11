@@ -259,7 +259,9 @@ export default function StaffManagementPage() {
               <input
                 id="s-password" className="form-input" type="password" autoComplete="new-password"
                 value={form.password} onChange={(e) => setField('password', e.target.value)} required={!editing}
+                aria-describedby="s-password-hint"
               />
+              <p id="s-password-hint" className="form-hint">8+ characters with an uppercase letter, a number and a special character.</p>
             </div>
           </div>
           {editing && (

@@ -11,6 +11,52 @@ const { logAction } = require('../utils/auditLogger');
 // Shared settings store
 const securitySettings = require('../utils/settings');
 
+// ── IP allow/block lists ─────────────────────────────────────────────────────
+// Rules are single IPv4/IPv6 addresses or IPv4 CIDR ranges ("10.0.0.0/8"). Sign-in (routes/auth.js) checks them.
+const net = require('net');
+const LOOPBACK = ['127.0.0.1', '::1'];
+const normalizeIp = (ip) => {
+  let v = String(ip || '').trim();
+  if (v.toLowerCase().startsWith('::ffff:') && net.isIPv4(v.slice(7))) v = v.slice(7);
+  return v.toLowerCase();
+};
+const ipv4ToInt = (ip) => ip.split('.').reduce((acc, octet) => acc * 256 + Number(octet), 0);
+function parseIpRule(rule) {
+  const text = String(rule || '').trim();
+  const parts = text.split('/');
+  if (!text || parts.length > 2) return null;
+  const addr = normalizeIp(parts[0]);
+  if (net.isIPv4(addr)) {
+    if (parts.length === 2 && !/^\d{1,2}$/.test(parts[1])) return null;
+    const bits = parts.length === 2 ? Number(parts[1]) : 32;
+    if (bits < 1 || bits > 32) return null;
+    return { v: 4, base: ipv4ToInt(addr), bits, text };
+  }
+  if (net.isIPv6(addr) && parts.length === 1) return { v: 6, addr, text };
+  return null;
+}
+function ipRuleMatches(rule, ip) {
+  const parsed = parseIpRule(rule);
+  const addr = normalizeIp(ip);
+  if (!parsed || !addr) return false;
+  if (parsed.v === 6) return parsed.addr === addr;
+  if (!net.isIPv4(addr)) return false;
+  const size = 2 ** (32 - parsed.bits);
+  return Math.floor(ipv4ToInt(addr) / size) === Math.floor(parsed.base / size);
+}
+const ipAccess = {
+  normalizeIp,
+  parseRule: parseIpRule,
+  matches: ipRuleMatches,
+  isAllowed(ip, settings) {
+    const block = settings.ip_blacklist || [];
+    const allow = settings.ip_whitelist || [];
+    if (block.some((rule) => ipRuleMatches(rule, ip))) return false;
+    if (allow.length > 0 && !allow.some((rule) => ipRuleMatches(rule, ip))) return false;
+    return true;
+  },
+};
+
 const serverStartTime = Date.now();
 const errorLogs = []; // In-memory error log buffer
 
@@ -62,7 +108,8 @@ router.get('/center', protect, restrictTo('super_admin'), async (req, res) => {
        FROM HMS_AUDIT_LOGS a 
        LEFT JOIN HMS_USERS u ON a.USER_ID = u.ID 
        WHERE a.ACTION = 'LOGIN_FAILED' 
-       ORDER BY a.CREATED_AT DESC`,
+       ORDER BY a.CREATED_AT DESC
+       LIMIT 20`,
       { type: sequelize.QueryTypes.SELECT }
     );
 
@@ -132,7 +179,17 @@ router.get('/sessions', protect, restrictTo('super_admin'), async (req, res) => 
 // Force logout a user (temporary lock)
 router.post('/sessions/:userId/force-logout', protect, restrictTo('super_admin'), async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = Number(req.params.userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid user.' });
+    }
+    if (userId === Number(req.user.id)) {
+      return res.status(400).json({ success: false, message: 'You cannot end your own session here. Sign out instead.' });
+    }
+    const target = await User.findByPk(userId);
+    if (!target) return res.status(404).json({ success: false, message: 'User not found.' });
+    // Tokens are not revocable yet, so the account is locked for a minute: every request with the old
+    // token is refused while the lock lasts (see report: needs a token cut-off in the auth middleware).
     await User.update(
       { locked_until: new Date(Date.now() + 60000) }, // Lock for 1 minute
       { where: { id: userId } }
@@ -207,9 +264,36 @@ router.get('/ip-rules', protect, restrictTo('super_admin'), (req, res) => {
 
 router.put('/ip-rules', protect, restrictTo('super_admin'), async (req, res) => {
   try {
-    if (req.body.whitelist) securitySettings.ip_whitelist = req.body.whitelist;
-    if (req.body.blacklist) securitySettings.ip_blacklist = req.body.blacklist;
     const ip = req.ip || req.connection?.remoteAddress || null;
+    const clean = (list) => [...new Set((Array.isArray(list) ? list : []).map((r) => String(r || '').trim()).filter(Boolean))];
+    const whitelist = req.body.whitelist !== undefined ? clean(req.body.whitelist) : securitySettings.ip_whitelist;
+    const blacklist = req.body.blacklist !== undefined ? clean(req.body.blacklist) : securitySettings.ip_blacklist;
+
+    const invalid = [...whitelist, ...blacklist].filter((r) => !parseIpRule(r));
+    if (invalid.length) {
+      return res.status(400).json({
+        success: false,
+        message: `Not a valid IP address or IPv4 range: ${invalid.join(', ')}. Use forms like 203.0.113.7 or 203.0.113.0/24.`,
+      });
+    }
+    // Never let a save lock out the server itself or the administrator making the change.
+    const protectedIps = [...new Set([...LOOPBACK, normalizeIp(ip)].filter(Boolean))];
+    const selfBlocked = blacklist.filter((rule) => protectedIps.some((p) => ipRuleMatches(rule, p)));
+    if (selfBlocked.length) {
+      return res.status(400).json({
+        success: false,
+        message: `${selfBlocked.join(', ')} would block this server or your own address (${normalizeIp(ip)}). Remove it from the block list.`,
+      });
+    }
+    if (whitelist.length && !whitelist.some((rule) => ipRuleMatches(rule, ip))) {
+      return res.status(400).json({
+        success: false,
+        message: `The allow list does not include your own address (${normalizeIp(ip)}), so saving it would lock you out. Add your address or range first.`,
+      });
+    }
+
+    securitySettings.ip_whitelist = whitelist;
+    securitySettings.ip_blacklist = blacklist;
     await logAction(req.user.id, 'UPDATE', 'security', null, null, { action: 'ip_rules_updated' }, ip);
     res.json({ success: true, data: { whitelist: securitySettings.ip_whitelist, blacklist: securitySettings.ip_blacklist } });
   } catch (err) {
@@ -693,6 +777,8 @@ router.put('/role-templates/:id', protect, restrictTo('super_admin'), async (req
 // ═══════════════════════════════════════════════════════
 router.post('/users/:id/unlock', protect, restrictTo('super_admin'), async (req, res) => {
   try {
+    const target = await User.findByPk(req.params.id);
+    if (!target) return res.status(404).json({ success: false, message: 'User not found.' });
     await User.update(
       { locked_until: null, failed_attempts: 0 },
       { where: { id: req.params.id } }
@@ -714,3 +800,4 @@ function formatUptime(ms) {
 }
 
 module.exports = router;
+module.exports.ipAccess = ipAccess;

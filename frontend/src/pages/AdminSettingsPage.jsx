@@ -76,6 +76,11 @@ function PanelHead({ icon: Icon, title, actions }) {
 
 const loadingPanel = <section className="panel panel-pad"><p className="muted">Loading…</p></section>;
 
+const PROFILE_FIELDS = {
+  NAME: 'name', TAGLINE: 'tagline', ADDRESS: 'address', CITY: 'city', STATE: 'state', PIN: 'pin', PHONE: 'phone',
+  EMAIL: 'email', WEBSITE: 'website', GSTIN: 'gstin', REG_NUMBER: 'regNumber', NABH_STATUS: 'nabhStatus', CGHS_EMPANELLED: 'cghsEmpanelled',
+};
+
 // ═══════════════════════════════════════════════════════════════
 //  TAB 1 — Hospital Profile
 // ═══════════════════════════════════════════════════════════════
@@ -107,10 +112,16 @@ function HospitalProfileTab() {
 
   const handleSave = async () => {
     try {
+      // The profile row comes back with both lower- and UPPER-case keys; send each editable field once,
+      // under the name the API expects (sending both made every save fail).
       const fd = new FormData();
-      Object.keys(form).forEach((k) => { if (form[k] !== null && form[k] !== undefined) fd.append(k === 'NAME' ? 'name' : k === 'TAGLINE' ? 'tagline' : k === 'ADDRESS' ? 'address' : k === 'CITY' ? 'city' : k === 'STATE' ? 'state' : k === 'PIN' ? 'pin' : k === 'PHONE' ? 'phone' : k === 'EMAIL' ? 'email' : k === 'WEBSITE' ? 'website' : k === 'GSTIN' ? 'gstin' : k === 'REG_NUMBER' ? 'regNumber' : k === 'NABH_STATUS' ? 'nabhStatus' : k === 'CGHS_EMPANELLED' ? 'cghsEmpanelled' : k, form[k]); });
+      Object.entries(PROFILE_FIELDS).forEach(([key, apiName]) => {
+        if (form[key] !== null && form[key] !== undefined) fd.append(apiName, form[key]);
+      });
       if (logoFile) fd.append('logo', logoFile);
-      await api.put('/admin/hospital-profile', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const { data } = await api.put('/admin/hospital-profile', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (data?.data) setForm(data.data);
+      setLogoFile(null);
       toast.success('Hospital profile updated');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Update failed');
@@ -168,9 +179,9 @@ function HospitalProfileTab() {
               {logoPreview && (
                 <img src={logoPreview} alt="Current logo" style={{ width: 72, height: 72, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 8, padding: 4, background: 'var(--surface)' }} />
               )}
-              <input id="hp-logo" type="file" accept="image/*" onChange={handleLogoChange} />
+              <input id="hp-logo" type="file" accept="image/png,image/jpeg,image/gif" onChange={handleLogoChange} />
             </div>
-            <p className="form-hint"><Upload size={12} aria-hidden="true" /> PNG or JPG. Used on printed letterheads and reports.</p>
+            <p className="form-hint"><Upload size={12} aria-hidden="true" /> PNG, JPG or GIF, up to 2 MB. Used on printed letterheads and reports.</p>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -401,32 +412,111 @@ function TariffModal({ item, onClose, onSaved }) {
 function DepartmentConfigTab() {
   const [depts, setDepts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // null = closed, {} = new, row = edit
+  const [form, setForm] = useState({ name: '', shortCode: '', floorLocation: '', isActive: true });
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     api.get('/admin/departments')
       .then((res) => setDepts(res.data.data || []))
       .catch(() => toast.error('Failed to load departments'))
       .finally(() => setLoading(false));
-  }, []);
+  };
+  useEffect(() => { load(); }, []);
+
+  const isActive = (d) => String(d.IS_ACTIVE ?? 'Y').toUpperCase() !== 'N';
+  const openAdd = () => { setForm({ name: '', shortCode: '', floorLocation: '', isActive: true }); setEditing({}); };
+  const openEdit = (d) => {
+    setForm({ name: d.NAME || '', shortCode: d.SHORT_CODE || '', floorLocation: d.FLOOR_LOCATION || '', isActive: isActive(d) });
+    setEditing(d);
+  };
+
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const payload = { ...form, isActive: form.isActive ? 'Y' : 'N' };
+      if (editing?.ID) await api.put(`/admin/departments/${editing.ID}`, payload);
+      else await api.post('/admin/departments', payload);
+      toast.success(editing?.ID ? 'Department updated' : 'Department added');
+      setEditing(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save department');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const columns = useMemo(() => [
     { id: 'name', header: 'Department', accessorFn: (d) => d.NAME || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
-    { id: 'code', header: 'Code', accessorFn: (d) => d.CODE || '', meta: { width: 160 }, cell: ({ getValue }) => <span className="mono">{getValue() || '—'}</span> },
-    { id: 'status', header: 'Status', enableSorting: false, meta: { width: 120 }, cell: () => <span className="status status-success">Active</span> },
+    { id: 'code', header: 'Code', accessorFn: (d) => d.SHORT_CODE || '', meta: { width: 120 }, cell: ({ getValue }) => <span className="mono">{getValue() || '—'}</span> },
+    { id: 'floor', header: 'Location', accessorFn: (d) => d.FLOOR_LOCATION || '', meta: { width: 160 }, cell: ({ getValue }) => getValue() || '—' },
+    {
+      id: 'status', header: 'Status', accessorFn: (d) => (isActive(d) ? 'Active' : 'Inactive'), meta: { width: 120 },
+      cell: ({ getValue }) => <span className={`status ${getValue() === 'Active' ? 'status-success' : 'status-neutral'}`}>{getValue()}</span>,
+    },
+    {
+      id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 56, align: 'right' },
+      cell: ({ row }) => (
+        <RowMenu label={`Actions for ${row.original.NAME}`} items={[{ label: 'Edit department', icon: Pencil, onSelect: () => openEdit(row.original) }]} />
+      ),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   ], []);
 
   return (
     <section className="panel">
-      <PanelHead icon={Layers} title="Departments" />
-      <p className="muted" style={{ padding: '12px 16px 0' }}>Hospital departments available for appointments, billing and reports.</p>
+      <PanelHead
+        icon={Layers}
+        title="Departments"
+        actions={<button type="button" className="btn btn-primary btn-md" onClick={openAdd}><Plus size={16} aria-hidden="true" /> Add department</button>}
+      />
+      <p className="muted" style={{ padding: '12px 16px 0' }}>Hospital departments available for appointments, billing and reports. Departments in use are switched off rather than deleted.</p>
       <DataTable
         columns={columns}
         data={depts}
         loading={loading}
         getRowId={(d, i) => String(d.ID ?? i)}
+        onRowClick={openEdit}
+        rowLabel={(d) => `Edit ${d.NAME}`}
         initialSorting={[{ id: 'name', desc: false }]}
-        empty={<EmptyState icon={Layers} title="No departments configured" description="Add departments through the HMS setup." />}
+        empty={<EmptyState icon={Layers} title="No departments configured" description="Add the departments your hospital runs." />}
       />
+
+      <Modal
+        open={editing !== null}
+        onOpenChange={(open) => { if (!open) setEditing(null); }}
+        title={editing?.ID ? `Edit ${editing.NAME}` : 'Add department'}
+        size="sm"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setEditing(null)}>Cancel</button>
+            <button type="submit" form="dept-form" className="btn btn-primary btn-md" disabled={saving}>{saving ? 'Saving…' : editing?.ID ? 'Save changes' : 'Add department'}</button>
+          </>
+        )}
+      >
+        <form id="dept-form" onSubmit={save} style={{ display: 'grid', gap: 14 }}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="dept-name">Department name</label>
+            <input id="dept-name" className="form-input" required maxLength={100} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </div>
+          <div className="form-row-2">
+            <div className="form-group">
+              <label className="form-label" htmlFor="dept-code">Short code</label>
+              <input id="dept-code" className="form-input mono" maxLength={10} value={form.shortCode} onChange={(e) => setForm({ ...form, shortCode: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="dept-floor">Location</label>
+              <input id="dept-floor" className="form-input" maxLength={50} placeholder="e.g. Ground floor" value={form.floorLocation} onChange={(e) => setForm({ ...form, floorLocation: e.target.value })} />
+            </div>
+          </div>
+          <label className="check-row">
+            <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />
+            <span>Department is active</span>
+          </label>
+        </form>
+      </Modal>
     </section>
   );
 }
@@ -493,7 +583,7 @@ function HolidayCalendarTab() {
     setHolidays((prev) => [...prev, { ...form }].sort((a, b) => a.date.localeCompare(b.date)));
     setForm({ date: '', name: '', type: 'National' });
     setShowForm(false);
-    toast.success('Holiday added');
+    toast.success('Holiday added to this list');
   };
 
   return (
@@ -508,6 +598,9 @@ function HolidayCalendarTab() {
         )}
       />
       <div className="panel-pad">
+        <div className="alert-strip alert-info" role="note" style={{ marginBottom: 12 }}>
+          The holiday calendar is not saved on the server yet. Holidays you add here are lost when you leave this tab.
+        </div>
         <table className="mini-table">
           <thead>
             <tr><th>Date</th><th>Holiday</th><th>Type</th><th>Status</th></tr>

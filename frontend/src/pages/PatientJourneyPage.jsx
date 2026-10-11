@@ -5,6 +5,7 @@ import {
   ArrowLeft, UserRound, Stethoscope, FlaskConical, Pill, BedDouble, Receipt, CircleCheck, FileText, ChevronDown, ExternalLink, Route,
 } from 'lucide-react';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import PageHeader from '../components/ui/PageHeader';
 import EmptyState from '../components/ui/EmptyState';
@@ -36,6 +37,7 @@ const billLink = (b) => {
 export default function PatientJourneyPage() {
   const { patientId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [patient, setPatient] = useState(null);
   const [events, setEvents] = useState([]);
   const [expanded, setExpanded] = useState({});
@@ -74,7 +76,16 @@ export default function PatientJourneyPage() {
         return Array.isArray(d) ? d : (Array.isArray(d?.data) ? d.data : []);
       };
 
-      listOf(encRes).forEach((e) => {
+      // Clinical encounters need consultation access. Front desk and nurses read the same visits
+      // from the patient's visit list instead, so the journey still shows every OPD visit.
+      const canOpenSlip = ['super_admin', 'doctor'].includes(user?.role);
+      const encounters = encRes.status === 'fulfilled'
+        ? listOf(encRes)
+        : listOf(visitRes).filter((v) => v.type !== 'Lab Test').map((v) => ({
+          id: v.reference_id, encounter_date: v.date, encounter_type: v.type, doctor_name: v.doctor,
+          department: v.department, chief_complaint: v.complaint, status: v.status,
+        }));
+      encounters.forEach((e) => {
         const dept = typeof e.department === 'object' ? e.department?.name : e.department;
         timeline.push({
         id: `enc-${e.id}`,
@@ -82,7 +93,7 @@ export default function PatientJourneyPage() {
         date: e.encounter_date || e.created_at,
         summary: `${e.encounter_type || 'OPD'} visit with Dr. ${(e.doctor?.name || e.doctor_name || 'N/A').replace(/^Dr\.?\s*/i, '')}${dept ? ` (${dept})` : ''}`,
         details: { complaint: e.chief_complaint, status: e.status },
-        link: `/hms/prescription-slip?patientId=${patientId}&encounterId=${e.id}`,
+        link: canOpenSlip ? `/hms/prescription-slip?patientId=${patientId}&encounterId=${e.id}` : undefined,
         });
       });
 
@@ -91,8 +102,8 @@ export default function PatientJourneyPage() {
         type: 'Prescription',
         date: rx.created_at,
         summary: `Prescription, ${rx.items?.length || 0} ${rx.items?.length === 1 ? 'medicine' : 'medicines'}`,
-        details: { medicines: rx.items?.map((i) => i.medicine_name).join(', ') || 'N/A' },
-        link: `/hms/prescription-slip?patientId=${patientId}&encounterId=${rx.encounter_id}`,
+        details: { medicines: rx.items?.map((i) => i.medicine_name).join(', ') || 'N/A', status: rx.status },
+        link: canOpenSlip ? `/hms/prescription-slip?patientId=${patientId}&encounterId=${rx.encounter_id}` : undefined,
       }));
 
       listOf(visitRes).filter((v) => v.type === 'Lab Test').forEach((lab) => timeline.push({
@@ -130,7 +141,7 @@ export default function PatientJourneyPage() {
     } finally {
       setLoading(false);
     }
-  }, [patientId]);
+  }, [patientId, user?.role]);
 
   useEffect(() => { fetchJourney(); }, [fetchJourney]);
 

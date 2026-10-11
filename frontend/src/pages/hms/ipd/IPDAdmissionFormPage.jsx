@@ -101,7 +101,7 @@ export default function IPDAdmissionFormPage() {
       navigate('/ipd/requests');
     } catch (err) {
       console.error(err);
-      toast.error('Could not send IPD request');
+      toast.error(err.response?.data?.message || 'Could not send IPD request');
     } finally {
       setSubmitting(false);
     }

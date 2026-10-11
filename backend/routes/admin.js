@@ -25,10 +25,11 @@ const upload = multer({
   storage,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
   fileFilter: (req, file, cb) => {
-    const allowed = ['.png', '.jpg', '.jpeg', '.gif', '.svg'];
+    // No SVG: an uploaded SVG is served from /uploads and can carry script.
+    const allowed = ['.png', '.jpg', '.jpeg', '.gif'];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(ext)) cb(null, true);
-    else cb(new Error('Only image files (png, jpg, gif, svg) are allowed'));
+    if (allowed.includes(ext) && /^image\/(png|jpeg|gif)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Only PNG, JPG or GIF images are allowed'));
   },
 });
 
@@ -48,10 +49,20 @@ router.get('/hospital-profile', async (req, res) => {
 });
 
 // PUT /api/admin/hospital-profile  (Admin only + logo upload)
-router.put('/hospital-profile', protect, checkPermission('admin', 'write'), upload.single('logo'), async (req, res) => {
+const uploadLogo = (req, res, next) => upload.single('logo')(req, res, (err) => {
+  if (err) return res.status(400).json({ success: false, message: err.message || 'Logo upload failed' });
+  return next();
+});
+
+router.put('/hospital-profile', protect, checkPermission('admin', 'write'), uploadLogo, async (req, res) => {
   try {
+    // A field sent twice arrives as an array; the last value wins.
+    const body = Object.fromEntries(Object.entries(req.body || {}).map(([k, v]) => [k, Array.isArray(v) ? v[v.length - 1] : v]));
     const { name, tagline, address, city, state, pin, phone, email, website,
-            gstin, regNumber, nabhStatus, cghsEmpanelled, letterheadConfig } = req.body;
+            gstin, regNumber, nabhStatus, cghsEmpanelled, letterheadConfig } = body;
+    if (name !== undefined && !String(name).trim()) {
+      return res.status(400).json({ success: false, message: 'Hospital name is required.' });
+    }
 
     let logoUrl = undefined;
     if (req.file) {
@@ -141,11 +152,24 @@ router.get('/tariff/all', protect, checkPermission('admin', 'read'), async (req,
   }
 });
 
+function tariffError({ category, name, rate, gstRate }) {
+  if (!String(category || '').trim() || !String(name || '').trim()) return 'Category and name are required.';
+  if (rate === '' || rate === null || rate === undefined || !Number.isFinite(Number(rate)) || Number(rate) < 0) return 'Rate must be a number of 0 or more.';
+  if (gstRate !== undefined && gstRate !== '' && (!Number.isFinite(Number(gstRate)) || Number(gstRate) < 0 || Number(gstRate) > 28)) return 'GST rate must be between 0 and 28.';
+  return null;
+}
+
 // POST /api/admin/tariff
 router.post('/tariff', protect, checkPermission('admin', 'write'), async (req, res) => {
   try {
     const { category, name, rate, gstRate, perUnit, wardType, doctorId } = req.body;
+    const invalid = tariffError(req.body);
+    if (invalid) return res.status(400).json({ success: false, message: invalid });
+    // The Tariff model's ID is not auto-increment, so Sequelize inserted NULL and every create failed;
+    // take the next value of the table's sequence explicitly.
+    const [[seq]] = await sequelize.query(`SELECT nextval('hms_tariff_seq') AS "ID"`);
     const tariff = await Tariff.create({
+      id: Number(seq.ID),
       category, name, rate,
       gstRate: gstRate || 0,
       perUnit, wardType,
@@ -165,13 +189,13 @@ router.put('/tariff/:id', protect, checkPermission('admin', 'write'), async (req
     const { category, name, rate, gstRate, perUnit, wardType, doctorId } = req.body;
     const tariff = await Tariff.findByPk(req.params.id);
     if (!tariff) return res.status(404).json({ success: false, message: 'Tariff not found' });
+    const invalid = tariffError(req.body);
+    if (invalid) return res.status(400).json({ success: false, message: invalid });
 
-    await tariff.update({
-      category, name, rate,
-      gstRate: gstRate || 0,
-      perUnit, wardType,
-      doctorId: doctorId || null,
-    });
+    const changes = { category, name, rate, gstRate: gstRate || 0, perUnit, wardType };
+    // The rate-card form does not send doctorId; leave a doctor-specific tariff linked to its doctor.
+    if (doctorId !== undefined) changes.doctorId = doctorId || null;
+    await tariff.update(changes);
     await logAction(req.user.id, 'UPDATE', 'admin', tariff.id, null, { action: 'update_tariff', name }, req.ip);
     res.json({ success: true, data: tariff });
   } catch (err) {
@@ -228,7 +252,12 @@ router.put('/staff/:id', protect, checkPermission('admin', 'write'), async (req,
     if (user.role === 'super_admin' || user.role === 'admin') {
       return res.status(403).json({ success: false, message: 'Cannot modify admin/super_admin users' });
     }
-    await user.update({ name, phone, role, isActive: isActive ? 1 : 0 });
+    const changes = {};
+    if (name !== undefined) changes.name = name;
+    if (phone !== undefined) changes.phone = phone;
+    if (role !== undefined) changes.role = role;
+    if (isActive !== undefined) changes.isActive = Number(isActive) ? 1 : 0; // absent means unchanged, not inactive
+    await user.update(changes);
     await logAction(req.user.id, 'UPDATE', 'staff', user.id, null, { action: 'update_staff', name }, req.ip);
     const { id, username, name: updatedName, phone: updatedPhone, role: updatedRole, isActive: updatedActive } = user;
     res.json({ success: true, data: { id, username, name: updatedName, phone: updatedPhone, role: updatedRole, isActive: updatedActive } });
@@ -283,7 +312,10 @@ router.get('/attendance', protect, checkPermission('admin', 'read'), async (req,
 });
 
 router.put('/attendance/leave/:id', protect, checkPermission('admin', 'write'), async (req, res) => {
-  const { status } = req.body; // 'Approved' or 'Rejected'
+  const { status } = req.body || {}; // 'Approved' or 'Rejected'
+  if (!['Approved', 'Rejected'].includes(status)) {
+    return res.status(400).json({ success: false, message: "Status must be 'Approved' or 'Rejected'." });
+  }
   const lr = leaveRequests.find(l => l.id === parseInt(req.params.id));
   if (!lr) return res.status(404).json({ success: false, message: 'Leave request not found' });
   lr.status = status;
@@ -304,11 +336,12 @@ router.get('/notices', protect, checkPermission('admin', 'read'), async (req, re
 });
 
 router.post('/notices', protect, checkPermission('admin', 'write'), async (req, res) => {
-  const { title, message, department, priority } = req.body;
-  if (!title || !message) return res.status(400).json({ success: false, message: 'Title and message required' });
+  const { title, message, department, priority } = req.body || {};
+  if (!String(title || '').trim() || !String(message || '').trim()) return res.status(400).json({ success: false, message: 'Title and message required' });
+  if (priority && !['info', 'normal', 'urgent', 'critical'].includes(priority)) return res.status(400).json({ success: false, message: 'Unknown priority' });
   const notice = {
-    id: notices.length + 1 + Date.now(),
-    title, message,
+    id: Date.now() * 10 + Math.floor(Math.random() * 10),
+    title: String(title).trim(), message: String(message).trim(),
     department: department || 'All',
     priority: priority || 'normal',
     created_by: req.user.name || 'Admin',
@@ -322,7 +355,8 @@ router.post('/notices', protect, checkPermission('admin', 'write'), async (req, 
 router.delete('/notices/:id', protect, checkPermission('admin', 'write'), async (req, res) => {
   const idx = notices.findIndex(n => n.id === parseInt(req.params.id));
   if (idx === -1) return res.status(404).json({ success: false, message: 'Notice not found' });
-  notices.splice(idx, 1);
+  const [removed] = notices.splice(idx, 1);
+  await logAction(req.user.id, 'DELETE', 'notices', removed.id, { title: removed.title }, null, req.ip);
   res.json({ success: true });
 });
 
@@ -338,6 +372,65 @@ router.get('/departments', protect, checkPermission('admin', 'read'), async (req
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Failed to fetch departments' });
+  }
+});
+
+// Department add/edit. Departments are never deleted (appointments, encounters and bills refer to them);
+// switch IS_ACTIVE off instead.
+function departmentInput(body = {}) {
+  const name = String(body.name || '').trim();
+  const shortCode = String(body.shortCode || '').trim().toUpperCase();
+  const floor = String(body.floorLocation || '').trim();
+  if (!name) return { error: 'Department name is required.' };
+  if (name.length > 100) return { error: 'Department name is too long (100 characters at most).' };
+  if (shortCode.length > 10) return { error: 'Short code is too long (10 characters at most).' };
+  if (floor.length > 50) return { error: 'Location is too long (50 characters at most).' };
+  return { name, shortCode: shortCode || null, floor: floor || null, active: body.isActive === undefined ? undefined : (body.isActive === true || body.isActive === 'Y' || Number(body.isActive) === 1 ? 'Y' : 'N') };
+}
+
+async function duplicateDepartment(name, exceptId = null) {
+  const [rows] = await sequelize.query(
+    `SELECT ID FROM HMS_DEPARTMENTS WHERE LOWER(NAME) = LOWER(:name) AND (:exceptId IS NULL OR ID <> :exceptId)`,
+    { replacements: { name, exceptId } }
+  );
+  return rows.length > 0;
+}
+
+router.post('/departments', protect, checkPermission('admin', 'write'), async (req, res) => {
+  try {
+    const d = departmentInput(req.body);
+    if (d.error) return res.status(400).json({ success: false, message: d.error });
+    if (await duplicateDepartment(d.name)) return res.status(409).json({ success: false, message: `A department called ${d.name} already exists.` });
+    const [rows] = await sequelize.query(
+      `INSERT INTO HMS_DEPARTMENTS (NAME, SHORT_CODE, FLOOR_LOCATION, IS_ACTIVE) VALUES (:name, :shortCode, :floor, :active) RETURNING *`,
+      { replacements: { name: d.name, shortCode: d.shortCode, floor: d.floor, active: d.active || 'Y' } }
+    );
+    await logAction(req.user.id, 'CREATE', 'admin', rows[0]?.ID ?? rows[0]?.id, null, { action: 'create_department', name: d.name }, req.ip);
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Failed to create department' });
+  }
+});
+
+router.put('/departments/:id(\\d+)', protect, checkPermission('admin', 'write'), async (req, res) => {
+  try {
+    const d = departmentInput(req.body);
+    if (d.error) return res.status(400).json({ success: false, message: d.error });
+    const id = Number(req.params.id);
+    if (await duplicateDepartment(d.name, id)) return res.status(409).json({ success: false, message: `A department called ${d.name} already exists.` });
+    const [rows] = await sequelize.query(
+      `UPDATE HMS_DEPARTMENTS SET NAME = :name, SHORT_CODE = :shortCode, FLOOR_LOCATION = :floor,
+              IS_ACTIVE = COALESCE(:active, IS_ACTIVE)
+        WHERE ID = :id RETURNING *`,
+      { replacements: { id, name: d.name, shortCode: d.shortCode, floor: d.floor, active: d.active ?? null } }
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Department not found' });
+    await logAction(req.user.id, 'UPDATE', 'admin', id, null, { action: 'update_department', name: d.name, active: rows[0].IS_ACTIVE ?? rows[0].is_active }, req.ip);
+    res.json({ success: true, data: rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Failed to update department' });
   }
 });
 

@@ -58,6 +58,7 @@ export default function MedicineMasterPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [loadedQty, setLoadedQty] = useState(null);
+  const [loadedMrp, setLoadedMrp] = useState(null);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     genericName: '', brandNames: [], category: 'Analgesic',
@@ -117,6 +118,7 @@ export default function MedicineMasterPage() {
   const handleEdit = (med) => {
     setEditingId(med.id);
     setLoadedQty(Number(med.totalStock || 0));
+    setLoadedMrp(Number(med.mrp || 0));
     setFormData({
       genericName: med.genericName,
       brandNames: parseBrandNames(med.brandNames),
@@ -192,10 +194,16 @@ export default function MedicineMasterPage() {
     try {
       setSaving(true);
       const payload = { ...formData, brandNames: formData.brandNames };
-      // The quantity field is prefilled with the total across all batches, but the API writes it onto the
-      // latest batch only. Sending it back unchanged would inflate stock when a medicine has several batches,
-      // so it is sent only when the user actually changed it.
-      if (editingId && payload.initialQuantity === loadedQty) delete payload.initialQuantity;
+      if (editingId) {
+        // The quantity field shows the total across all batches. The change in that total is sent as a delta
+        // for the latest batch (sending the total itself made it the latest batch's quantity and inflated stock
+        // when a medicine had several batches). The MRP shown is the highest across batches, so it is sent
+        // only when changed; a rename alone leaves every batch's stock and prices untouched.
+        delete payload.initialQuantity;
+        const delta = Number(formData.initialQuantity || 0) - Number(loadedQty || 0);
+        if (delta !== 0) payload.quantityDelta = delta;
+        if (Number(formData.perUnitPrice || 0) === Number(loadedMrp || 0)) delete payload.perUnitPrice;
+      }
       if (editingId) {
         await api.put(`/medicines/${editingId}`, payload);
         toast.success('Medicine updated');
@@ -461,7 +469,7 @@ export default function MedicineMasterPage() {
             </div>
             <div className="form-group">
               <label className="form-label" htmlFor="med-gst">GST rate (%)</label>
-              <input id="med-gst" className="form-input" type="number" step="0.01" value={formData.gstRate} onChange={e => setField('gstRate', parseFloat(e.target.value) || 0)} placeholder="For example, 12" />
+              <input id="med-gst" className="form-input" type="number" min="0" max="100" step="1" value={formData.gstRate} onChange={e => setField('gstRate', parseInt(e.target.value, 10) || 0)} placeholder="For example, 12" />
             </div>
           </div>
           <label className="check-row" htmlFor="isControlled">
@@ -483,7 +491,7 @@ export default function MedicineMasterPage() {
               <input id="med-mrp" className="form-input" type="number" min="0" step="0.01" value={formData.perUnitPrice} onChange={e => setField('perUnitPrice', parseFloat(e.target.value) || 0)} placeholder="For example, 5.50" />
             </div>
           </div>
-          {editingId && <p className="form-hint" style={{ marginTop: -6 }}>A changed quantity or MRP is applied to the latest batch only.</p>}
+          {editingId && <p className="form-hint" style={{ marginTop: -6 }}>A change in quantity is added to or taken from the latest batch and logged as a stock adjustment. A changed MRP applies to the latest batch only.</p>}
         </form>
       </Modal>
     </>

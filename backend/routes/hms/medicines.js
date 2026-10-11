@@ -22,6 +22,46 @@ function parseBrandNames(val) {
   return [];
 }
 
+// GST is a whole percentage (HMS_MEDICINES.GST_RATE is an integer); quantities are whole units.
+function validateNumbers({ gstRate, initialQuantity, perUnitPrice, quantityDelta }) {
+  if (gstRate !== undefined && gstRate !== null && gstRate !== '') {
+    const g = Number(gstRate);
+    if (!Number.isInteger(g) || g < 0 || g > 100) return 'GST rate must be a whole percentage between 0 and 100.';
+  }
+  if (initialQuantity !== undefined && initialQuantity !== null && initialQuantity !== '') {
+    const q = Number(initialQuantity);
+    if (!Number.isInteger(q) || q < 0) return 'Quantity must be a whole number of units, 0 or more.';
+  }
+  if (quantityDelta !== undefined && quantityDelta !== null && !Number.isInteger(Number(quantityDelta))) {
+    return 'The stock change must be a whole number of units.';
+  }
+  if (perUnitPrice !== undefined && perUnitPrice !== null && perUnitPrice !== '') {
+    const p = Number(perUnitPrice);
+    if (!Number.isFinite(p) || p < 0) return 'MRP must be 0 or more.';
+  }
+  return null;
+}
+
+// Another catalogue entry with the same generic name, formulation and strength (case-insensitive).
+async function findDuplicate({ genericName, formulation, strength, strengthUnit }, excludeId = null) {
+  const [rows] = await sequelize.query(`
+    SELECT ID, GENERIC_NAME, FORMULATION, STRENGTH, STRENGTH_UNIT
+    FROM HMS_MEDICINES
+    WHERE UPPER(TRIM(GENERIC_NAME)) = UPPER(TRIM(:genericName))
+      AND UPPER(COALESCE(FORMULATION, '')) = UPPER(COALESCE(:formulation, ''))
+      AND UPPER(COALESCE(STRENGTH, '')) = UPPER(COALESCE(:strength, ''))
+      AND UPPER(COALESCE(STRENGTH_UNIT, '')) = UPPER(COALESCE(:strengthUnit, ''))
+      AND (:excludeId IS NULL OR ID <> :excludeId)
+    LIMIT 1
+  `, {
+    replacements: {
+      genericName: String(genericName || ''), formulation: formulation || null, strength: strength || null,
+      strengthUnit: strengthUnit || null, excludeId,
+    },
+  });
+  return rows[0] || null;
+}
+
 router.get('/rxnav/search', protect, checkPermission('pharmacy', 'read'), async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
@@ -155,9 +195,11 @@ router.get('/', protect, checkPermission('pharmacy', 'read'), async (req, res) =
 });
 
 // Create new medicine
+// Names are stored as typed: React escapes them on display, and HTML-escaping here stored
+// "Paracetamol/Caffeine" as "Paracetamol&#x2F;Caffeine" (edits, which were not escaped, then disagreed).
 router.post('/', [
-  body('genericName').trim().escape(),
-  body('category').optional({ checkFalsy: true }).trim().escape(),
+  body('genericName').trim(),
+  body('category').optional({ checkFalsy: true }).trim(),
 ], protect, checkPermission('pharmacy', 'write'), async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -166,6 +208,12 @@ router.post('/', [
             unitOfSale, hsnCode, gstRate, isControlled, initialQuantity, perUnitPrice } = req.body;
     if (!genericName || !formulation) {
       return res.status(400).json({ success: false, message: 'Generic name and formulation are required.' });
+    }
+    const numberError = validateNumbers({ gstRate, initialQuantity, perUnitPrice });
+    if (numberError) return res.status(400).json({ success: false, message: numberError });
+    const duplicate = await findDuplicate({ genericName, formulation, strength, strengthUnit });
+    if (duplicate) {
+      return res.status(409).json({ success: false, message: `${duplicate.GENERIC_NAME} ${[duplicate.STRENGTH, duplicate.STRENGTH_UNIT].filter(Boolean).join(' ')} (${duplicate.FORMULATION}) is already in the catalogue as ID ${duplicate.ID}.` });
     }
     
     const t = await sequelize.transaction();
@@ -234,7 +282,20 @@ router.post('/', [
 });
 
 // Update medicine
+// Only the fields sent are changed (a partial update used to reset GST to 0 and clear the controlled flag).
+// Stock: `quantityDelta` adds or removes units on the latest batch (by expiry); the older `initialQuantity`
+// sets the latest batch's quantity. Both are logged as ADJUSTMENT with a signed quantity so a correction
+// is not counted as stock issued to patients. `perUnitPrice` changes the latest batch's MRP only; the
+// purchase rate from the supplier invoice is left alone.
 router.put('/:id', protect, checkPermission('pharmacy', 'write'), async (req, res) => {
+  const { genericName, brandNames, category, formulation, strength, strengthUnit,
+          unitOfSale, hsnCode, gstRate, isControlled, initialQuantity, perUnitPrice, quantityDelta } = req.body;
+  const numberError = validateNumbers({ gstRate, initialQuantity, perUnitPrice, quantityDelta });
+  if (numberError) return res.status(400).json({ success: false, message: numberError });
+  if (genericName !== undefined && !String(genericName).trim()) {
+    return res.status(400).json({ success: false, message: 'Generic name is required.' });
+  }
+
   const t = await sequelize.transaction();
   try {
     const medicine = await Medicine.findByPk(req.params.id, { transaction: t });
@@ -242,35 +303,59 @@ router.put('/:id', protect, checkPermission('pharmacy', 'write'), async (req, re
       await t.rollback();
       return res.status(404).json({ success: false, message: 'Medicine not found.' });
     }
-    const { genericName, brandNames, category, formulation, strength, strengthUnit,
-            unitOfSale, hsnCode, gstRate, isControlled, initialQuantity, perUnitPrice } = req.body;
-    
-    await medicine.update({
-      genericName, category, formulation, strength, strengthUnit,
-      unitOfSale, hsnCode,
-      brandNames: Array.isArray(brandNames) ? JSON.stringify(brandNames) : brandNames,
-      gstRate: gstRate || 0,
-      isControlled: isControlled ? 1 : 0,
-    }, { transaction: t });
 
-    // Handle Quantity and Price Updates if provided
-    if (initialQuantity !== undefined || perUnitPrice !== undefined) {
+    const changes = {};
+    if (genericName !== undefined) changes.genericName = String(genericName).trim();
+    if (category !== undefined) changes.category = category;
+    if (formulation !== undefined) changes.formulation = formulation;
+    if (strength !== undefined) changes.strength = strength;
+    if (strengthUnit !== undefined) changes.strengthUnit = strengthUnit;
+    if (unitOfSale !== undefined) changes.unitOfSale = unitOfSale;
+    if (hsnCode !== undefined) changes.hsnCode = hsnCode;
+    if (brandNames !== undefined) changes.brandNames = Array.isArray(brandNames) ? JSON.stringify(brandNames) : brandNames;
+    if (gstRate !== undefined) changes.gstRate = Number(gstRate || 0);
+    if (isControlled !== undefined) changes.isControlled = isControlled ? 1 : 0;
+
+    const duplicate = await findDuplicate({
+      genericName: changes.genericName ?? medicine.genericName,
+      formulation: changes.formulation ?? medicine.formulation,
+      strength: changes.strength ?? medicine.strength,
+      strengthUnit: changes.strengthUnit ?? medicine.strengthUnit,
+    }, medicine.id);
+    if (duplicate) {
+      await t.rollback();
+      return res.status(409).json({ success: false, message: `Another catalogue entry (ID ${duplicate.ID}) already has this name, formulation and strength.` });
+    }
+
+    if (Object.keys(changes).length) await medicine.update(changes, { transaction: t });
+
+    const hasDelta = quantityDelta !== undefined && quantityDelta !== null && Number(quantityDelta) !== 0;
+    const hasQty = initialQuantity !== undefined && initialQuantity !== null && initialQuantity !== '';
+    const hasPrice = perUnitPrice !== undefined && perUnitPrice !== null && perUnitPrice !== '';
+
+    if (hasDelta || hasQty || hasPrice) {
       const [batches] = await sequelize.query(`
-        SELECT ID, QUANTITY, MRP FROM HMS_MEDICINE_BATCHES WHERE MEDICINE_ID = :medId ORDER BY EXPIRY_DATE DESC
+        SELECT ID, QUANTITY, MRP FROM HMS_MEDICINE_BATCHES WHERE MEDICINE_ID = :medId ORDER BY EXPIRY_DATE DESC, ID DESC
+        FOR UPDATE
       `, { replacements: { medId: medicine.id }, transaction: t });
 
       if (batches.length > 0) {
-        // Update the latest batch
         const latestBatch = batches[0];
-        const newQty = initialQuantity !== undefined ? parseInt(initialQuantity) : latestBatch.QUANTITY;
-        const newMrp = perUnitPrice !== undefined ? parseFloat(perUnitPrice) : latestBatch.MRP;
-        
+        const oldQty = Number(latestBatch.QUANTITY || 0);
+        let newQty = oldQty;
+        if (hasDelta) newQty = oldQty + Number(quantityDelta);
+        else if (hasQty) newQty = parseInt(initialQuantity, 10);
+        if (newQty < 0) {
+          await t.rollback();
+          return res.status(400).json({ success: false, message: `The latest batch has only ${oldQty} units, so stock cannot go down by ${Math.abs(Number(quantityDelta))}.` });
+        }
+        const newMrp = hasPrice ? parseFloat(perUnitPrice) : latestBatch.MRP;
+
         await sequelize.query(`
-          UPDATE HMS_MEDICINE_BATCHES SET QUANTITY = :qty, MRP = :mrp, PURCHASE_RATE = :mrp WHERE ID = :batchId
+          UPDATE HMS_MEDICINE_BATCHES SET QUANTITY = :qty, MRP = :mrp WHERE ID = :batchId
         `, { replacements: { qty: newQty, mrp: newMrp, batchId: latestBatch.ID }, transaction: t });
 
-        // Calculate difference for ledger
-        const qtyDiff = newQty - latestBatch.QUANTITY;
+        const qtyDiff = newQty - oldQty;
         if (qtyDiff !== 0) {
           const [[{ NEXTVAL: nextLedgerId }]] = await sequelize.query(
             "SELECT nextval('hms_stock_led_seq') AS \"NEXTVAL\"", { transaction: t }
@@ -279,13 +364,14 @@ router.put('/:id', protect, checkPermission('pharmacy', 'write'), async (req, re
             id: nextLedgerId,
             medicineId: medicine.id,
             batchId: latestBatch.ID,
-            transactionType: qtyDiff > 0 ? 'IN' : 'OUT',
-            quantity: Math.abs(qtyDiff),
+            transactionType: 'ADJUSTMENT',
+            quantity: qtyDiff,
             referenceType: 'Stock Adjustment (Edit)',
             performedBy: req.user.id,
           }, { transaction: t });
         }
-      } else if (initialQuantity > 0) {
+      } else if ((hasDelta && Number(quantityDelta) > 0) || (hasQty && Number(initialQuantity) > 0)) {
+        const openingQty = hasDelta ? Number(quantityDelta) : parseInt(initialQuantity, 10);
         // No batches exist, create one like in POST
         const [[{ NEXTVAL: nextBatchId }]] = await sequelize.query(
           "SELECT nextval('hms_med_batch_seq') AS \"NEXTVAL\"", { transaction: t }
@@ -299,7 +385,7 @@ router.put('/:id', protect, checkPermission('pharmacy', 'write'), async (req, re
           medicineId: medicine.id,
           batchNumber,
           expiryDate,
-          quantity: initialQuantity,
+          quantity: openingQty,
           mrp: perUnitPrice || 0,
           purchaseRate: perUnitPrice || 0,
         }, { transaction: t });
@@ -312,7 +398,7 @@ router.put('/:id', protect, checkPermission('pharmacy', 'write'), async (req, re
           medicineId: medicine.id,
           batchId: nextBatchId,
           transactionType: 'IN',
-          quantity: initialQuantity,
+          quantity: openingQty,
           referenceType: 'Opening Stock (Edit)',
           performedBy: req.user.id,
         }, { transaction: t });

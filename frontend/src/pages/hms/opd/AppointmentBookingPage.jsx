@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CalendarCheck, CalendarDays, CircleAlert, List, Search, Stethoscope, UserRound, X } from 'lucide-react';
 import api from '../../../api/axios';
@@ -46,6 +46,10 @@ export default function AppointmentBookingPage() {
 
   // In a real app we would fetch the doctor's booked slots from backend
   const [bookedSlots, setBookedSlots] = useState([]);
+  // Slots are offered only once the doctor's bookings for the day are known (before, a booked
+  // slot looked free until the list arrived).
+  const [slotsKey, setSlotsKey] = useState('');
+  const latestSlotsKey = useRef('');
 
   useEffect(() => { fetchDoctors(); }, []);
 
@@ -67,17 +71,23 @@ export default function AppointmentBookingPage() {
   };
 
   const fetchBookedSlots = async (doctorId, date) => {
+    const key = `${doctorId}|${date}`;
+    latestSlotsKey.current = key;
+    let booked = [];
     try {
       const res = await api.get(`/hms/appointments?doctor_id=${doctorId}&date=${date}`);
-      const booked = (res.data.data || [])
+      booked = (res.data.data || [])
         .filter((appointment) => !['Cancelled', 'Completed', 'No Show'].includes(appointment.status))
         .map((appointment) => appointment.slot_start)
         .filter(Boolean);
-      setBookedSlots(booked);
     } catch (err) {
-      setBookedSlots([]);
+      booked = [];
     }
+    if (latestSlotsKey.current !== key) return; // a newer doctor/date was chosen meanwhile
+    setBookedSlots(booked);
+    setSlotsKey(key);
   };
+  const slotsLoading = Boolean(selectedDoctor && selectedDate) && slotsKey !== `${selectedDoctor}|${selectedDate}`;
 
   // Debounced search
   useEffect(() => {
@@ -108,9 +118,9 @@ export default function AppointmentBookingPage() {
     const slot_end = `${endH}:${endM}`;
 
     try {
+      // No department here: the server uses the doctor's own department (it used to be forced to 1).
       await api.post('/hms/appointments', {
         patient_id: patient.id,
-        department_id: 1, // Default dummy department since it's required by db
         doctor_id: selectedDoctor,
         appointment_date: selectedDate,
         slot_start: selectedSlot,
@@ -215,7 +225,9 @@ export default function AppointmentBookingPage() {
                   <input id="book-date" type="date" className="form-input" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} min={localYmd()} />
                 </div>
 
-                {selectedDoctor && selectedDate ? (
+                {selectedDoctor && selectedDate && slotsLoading ? (
+                  <p className="muted">Checking available slots…</p>
+                ) : selectedDoctor && selectedDate ? (
                   <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
                     <legend className="form-label" style={{ marginBottom: 8 }}>Available slots</legend>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 8 }}>

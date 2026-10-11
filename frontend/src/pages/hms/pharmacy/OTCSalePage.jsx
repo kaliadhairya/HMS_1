@@ -14,47 +14,38 @@ const suggestionItem = {
   background: 'transparent', color: 'var(--text-primary)', font: 'inherit', cursor: 'pointer',
 };
 
+const emptyRow = () => ({ id: Date.now() + Math.random(), medicineId: '', medicineSearch: '', batchId: '', quantity: 1, mrp: 0, gstRate: 0, suggestions: [], batches: [] });
+
 export default function OTCSalePage() {
   const [patientId, setPatientId] = useState('');
+  const [patientError, setPatientError] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash');
-  const [items, setItems] = useState([
-    { id: 1, medicineId: '', batchId: '', quantity: 1, mrp: 0, gstRate: 0, suggestions: [], batches: [] }
-  ]);
+  const [items, setItems] = useState([emptyRow()]);
   const [loading, setLoading] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
 
-  const handleItemChange = async (index, field, value) => {
-    const newItems = [...items];
-    newItems[index][field] = value;
+  // Immutable row updates: the old handler mutated rows in place and raced with its own async search.
+  const patchRow = (rowId, patch) => setItems((prev) => prev.map((it) => (it.id === rowId ? { ...it, ...patch } : it)));
 
-    // Autocomplete for medicines
-    if (field === 'medicineSearch') {
-      if (value.length > 2) {
-        try {
-          const res = await api.get(`/medicines/search?q=${value}`);
-          newItems[index].suggestions = res.data;
-        } catch (e) {
-          console.error(e);
-        }
-      } else {
-        newItems[index].suggestions = [];
-      }
+  const handleSearch = async (rowId, value) => {
+    // Typing again clears the medicine that was picked before.
+    patchRow(rowId, { medicineSearch: value, medicineId: '', batchId: '', batches: [], mrp: 0, gstRate: 0, suggestions: [] });
+    if (value.trim().length <= 2) return;
+    try {
+      const res = await api.get(`/medicines/search?q=${encodeURIComponent(value.trim())}`);
+      // Ignore answers for text the user has since changed.
+      setItems((prev) => prev.map((it) => (it.id === rowId && it.medicineSearch === value ? { ...it, suggestions: res.data || [] } : it)));
+    } catch (e) {
+      console.error(e);
     }
-    setItems(newItems);
   };
 
-  const selectMedicine = async (index, medicine) => {
-    const newItems = [...items];
-    newItems[index].medicineId = medicine.id;
-    newItems[index].medicineSearch = medicine.genericName;
-    newItems[index].gstRate = medicine.gstRate || 0;
-    newItems[index].suggestions = [];
+  const selectMedicine = async (rowId, medicine) => {
+    patchRow(rowId, { medicineId: medicine.id, medicineSearch: medicine.genericName, gstRate: medicine.gstRate || 0, suggestions: [] });
 
-    // Fetch batches for this medicine
+    // In-stock, unexpired batches for this medicine, earliest expiry first. (The consolidated /pharmacy/stock list has
+    // one row per medicine with no batch ID or batch quantity, so batches could never be found there.)
     try {
-      await api.get(`/pharmacy/stock-ledger/${medicine.id}`);
-      // In-stock batches for this medicine, earliest expiry first. (The consolidated /pharmacy/stock list has one
-      // row per medicine with no batch ID or batch quantity, so batches could never be found there.)
       const batchRes = await api.get(`/pharmacy/medicines/${medicine.id}/batches`);
       const medBatches = (batchRes.data.data || []).map(b => ({
         BATCH_ID: b.id ?? b.ID,
@@ -62,27 +53,31 @@ export default function OTCSalePage() {
         QUANTITY: Number(b.quantity ?? b.QUANTITY ?? 0),
         MRP: b.mrp ?? b.MRP,
       })).filter(b => b.QUANTITY > 0);
-      newItems[index].batches = medBatches;
-      if (medBatches.length > 0) {
-        newItems[index].batchId = medBatches[0].BATCH_ID;
-        newItems[index].mrp = medBatches[0].MRP;
-      }
+      patchRow(rowId, {
+        batches: medBatches,
+        batchId: medBatches.length > 0 ? medBatches[0].BATCH_ID : '',
+        mrp: medBatches.length > 0 ? medBatches[0].MRP : 0,
+      });
     } catch (e) {
       console.error(e);
+      toast.error('Could not load batches for this medicine');
     }
+  };
 
-    setItems(newItems);
+  const selectBatch = (rowId, value) => {
+    setItems((prev) => prev.map((it) => {
+      if (it.id !== rowId) return it;
+      const batch = it.batches.find((b) => String(b.BATCH_ID) === String(value));
+      return { ...it, batchId: batch?.BATCH_ID || '', mrp: batch?.MRP ?? 0 };
+    }));
   };
 
   const addItem = () => {
-    setItems([...items, { id: Date.now(), medicineId: '', batchId: '', quantity: 1, mrp: 0, gstRate: 0, suggestions: [], batches: [] }]);
+    setItems((prev) => [...prev, emptyRow()]);
   };
 
-  const removeItem = (index) => {
-    if (items.length === 1) return;
-    const newItems = [...items];
-    newItems.splice(index, 1);
-    setItems(newItems);
+  const removeItem = (rowId) => {
+    setItems((prev) => (prev.length === 1 ? prev : prev.filter((it) => it.id !== rowId)));
   };
 
   const calcRowAmount = (item) => {
@@ -104,44 +99,58 @@ export default function OTCSalePage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const validItems = items.filter(i => i.medicineId && i.batchId && i.quantity > 0);
+    setPatientError('');
+    for (const [i, it] of items.entries()) {
+      if (it.medicineSearch && !it.medicineId) return toast.error(`Row ${i + 1}: pick the medicine from the list`);
+      if (it.medicineId && !it.batchId) return toast.error(`Row ${i + 1}: ${it.medicineSearch} has no stock to sell`);
+      const q = Number(it.quantity);
+      if (it.medicineId && (!Number.isInteger(q) || q <= 0)) return toast.error(`Row ${i + 1}: enter a whole-number quantity`);
+      const batch = it.batches.find((b) => String(b.BATCH_ID) === String(it.batchId));
+      if (batch && q > batch.QUANTITY) return toast.error(`Row ${i + 1}: only ${batch.QUANTITY} left in batch ${batch.BATCH_NUMBER}`);
+    }
+    const validItems = items.filter(i => i.medicineId && i.batchId && Number(i.quantity) > 0);
     if (validItems.length === 0) return toast.error('Add at least one medicine with a batch selected');
 
     try {
       setLoading(true);
       const payload = {
-        patientId: patientId || null,
+        patientId: patientId.trim() || null,
         paymentMode,
         items: validItems.map(i => ({
           medicineId: i.medicineId,
           batchId: i.batchId,
-          quantity: parseFloat(i.quantity)
+          quantity: parseInt(i.quantity, 10)
         }))
       };
 
       const res = await api.post('/pharmacy/otc', payload);
       toast.success('Sale completed');
 
-      // Receipt data
+      // Receipt from the server's own figures (rate = batch MRP, GST from the medicine).
       setReceiptData({
         billNumber: res.data.billNumber,
         totalAmount: res.data.totalAmount,
+        gstAmount: res.data.gstAmount,
         paymentMode,
+        patientUhid: payload.patientId,
         date: new Date().toLocaleString(),
-        items: validItems.map(i => ({
-          name: i.medicineSearch,
+        items: (res.data.items || []).map(i => ({
+          name: i.medicineName,
           quantity: i.quantity,
-          rate: i.mrp,
-          amount: calcRowAmount(i).total
+          rate: i.rate,
+          gstAmount: i.gstAmount,
+          amount: i.amount,
         }))
       });
 
       // Reset
-      setItems([{ id: Date.now(), medicineId: '', batchId: '', quantity: 1, mrp: 0, gstRate: 0, suggestions: [], batches: [] }]);
+      setItems([emptyRow()]);
       setPatientId('');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'The sale could not be completed');
-      console.error(err);
+      const message = err.response?.data?.message || 'The sale could not be completed';
+      if (/patient/i.test(message) && err.response?.status === 400) setPatientError(message);
+      toast.error(message);
+      if (!err.response || err.response.status >= 500) console.error(err);
     } finally {
       setLoading(false);
     }
@@ -165,6 +174,7 @@ export default function OTCSalePage() {
             </div>
             <div style={{ textAlign: 'right' }}>
               <div><strong>Payment:</strong> {receiptData.paymentMode}</div>
+              {receiptData.patientUhid && <div><strong>UHID:</strong> {receiptData.patientUhid}</div>}
             </div>
           </div>
 
@@ -189,13 +199,17 @@ export default function OTCSalePage() {
             </tbody>
           </table>
 
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, color: 'var(--text-secondary)' }}>
+            <span>GST included:</span>
+            <span>₹{Number(receiptData.gstAmount || 0).toFixed(2)}</span>
+          </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.2rem', fontWeight: 700 }}>
             <span>Total Amount:</span>
             <span>₹{Number(receiptData.totalAmount || 0).toFixed(2)}</span>
           </div>
 
           <div style={{ textAlign: 'center', marginTop: 40, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Thank you for visiting!
+            Thank you for visiting.
           </div>
         </div>
 
@@ -236,8 +250,14 @@ export default function OTCSalePage() {
           <div className="form-row-2">
             <div className="form-group">
               <label className="form-label" htmlFor="otc-patient">Patient UHID (optional)</label>
-              <input id="otc-patient" className="form-input" type="text" placeholder="e.g. HOSP-2026-000123" value={patientId} onChange={e => setPatientId(e.target.value)} aria-describedby="otc-patient-hint" />
-              <p className="form-hint" id="otc-patient-hint">Leave blank for walk-in customers.</p>
+              <input
+                id="otc-patient" className="form-input" type="text" placeholder="e.g. HOSP-2026-000123" value={patientId}
+                onChange={e => { setPatientId(e.target.value); setPatientError(''); }}
+                aria-describedby="otc-patient-hint" aria-invalid={patientError ? 'true' : undefined}
+              />
+              {patientError
+                ? <p className="form-hint" id="otc-patient-hint" role="alert" style={{ color: 'var(--red)' }}>{patientError}</p>
+                : <p className="form-hint" id="otc-patient-hint">Leave blank for walk-in customers.</p>}
             </div>
             <div className="form-group">
               <label className="form-label" htmlFor="otc-payment">Payment mode</label>
@@ -284,13 +304,13 @@ export default function OTCSalePage() {
                           autoComplete="off"
                           placeholder="Search medicine"
                           value={item.medicineSearch || ''}
-                          onChange={e => handleItemChange(index, 'medicineSearch', e.target.value)}
+                          onChange={e => handleSearch(item.id, e.target.value)}
                         />
                         {item.suggestions?.length > 0 && (
                           <div style={suggestionBox} role="listbox" aria-label="Matching medicines">
                             {item.suggestions.map(med => (
-                              <button key={med.id} type="button" role="option" aria-selected="false" style={suggestionItem} onClick={() => selectMedicine(index, med)}>
-                                {med.genericName}
+                              <button key={med.id} type="button" role="option" aria-selected="false" style={suggestionItem} onClick={() => selectMedicine(item.id, med)}>
+                                {med.genericName} <span className="cell-secondary">{[med.strength, med.strengthUnit].filter(Boolean).join(' ')}</span>
                               </button>
                             ))}
                           </div>
@@ -298,11 +318,7 @@ export default function OTCSalePage() {
                       </td>
                       <td style={{ minWidth: 200 }}>
                         <label className="sr-only" htmlFor={`otc-batch-${item.id}`}>Batch for row {index + 1}</label>
-                        <select id={`otc-batch-${item.id}`} className="form-select" required disabled={!item.batches || item.batches.length === 0} value={item.batchId} onChange={e => {
-                          const batch = item.batches.find(b => b.BATCH_ID.toString() === e.target.value);
-                          handleItemChange(index, 'batchId', batch?.BATCH_ID || '');
-                          if (batch) handleItemChange(index, 'mrp', batch.MRP);
-                        }}>
+                        <select id={`otc-batch-${item.id}`} className="form-select" required disabled={!item.batches || item.batches.length === 0} value={item.batchId} onChange={e => selectBatch(item.id, e.target.value)}>
                           <option value="">{item.medicineId && item.batches?.length === 0 ? 'No stock' : 'Select batch'}</option>
                           {item.batches?.map(b => (
                             <option key={b.BATCH_ID} value={b.BATCH_ID}>
@@ -313,12 +329,12 @@ export default function OTCSalePage() {
                       </td>
                       <td>
                         <label className="sr-only" htmlFor={`otc-qty-${item.id}`}>Quantity for row {index + 1}</label>
-                        <input id={`otc-qty-${item.id}`} className="form-input" required type="number" min="1" value={item.quantity} onChange={e => handleItemChange(index, 'quantity', e.target.value)} />
+                        <input id={`otc-qty-${item.id}`} className="form-input" required type="number" min="1" step="1" value={item.quantity} onChange={e => patchRow(item.id, { quantity: e.target.value })} />
                       </td>
                       <td className="text-right tabular">{(parseFloat(item.mrp) || 0).toFixed(2)}</td>
                       <td className="text-right tabular" style={{ fontWeight: 600 }}>{r.total.toFixed(2)}</td>
                       <td className="text-right">
-                        <button type="button" className="icon-btn" aria-label={`Remove row ${index + 1}`} onClick={() => removeItem(index)} disabled={items.length === 1}>
+                        <button type="button" className="icon-btn" aria-label={`Remove row ${index + 1}`} onClick={() => removeItem(item.id)} disabled={items.length === 1}>
                           <Trash2 size={16} aria-hidden="true" />
                         </button>
                       </td>

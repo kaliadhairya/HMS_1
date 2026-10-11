@@ -10,30 +10,76 @@ function computeBMI(weight_kg, height_cm) {
   return Number((weight_kg / (height_m * height_m)).toFixed(2));
 }
 
+// A value counts only when it was actually measured. Without this, a blank field (null) compared
+// as 0 and raised "Low BP", "Low SpO2" and "Bradycardia" for vitals nobody recorded.
+const has = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+
 function generateAlerts(v) {
   const alerts = [];
-  if (v.bp_systolic > 140 || v.bp_diastolic > 90) alerts.push('High BP');
-  if (v.bp_systolic < 90 || v.bp_diastolic < 60) alerts.push('Low BP');
-  if ((v.temp_unit === 'C' && v.temperature > 37.5) || (v.temp_unit === 'F' && v.temperature > 99.5)) alerts.push('Fever');
-  if (v.spo2 < 95) alerts.push('Low SpO2');
-  if (v.pulse > 100) alerts.push('Tachycardia');
-  if (v.pulse < 60) alerts.push('Bradycardia');
-  if (v.bmi > 25) alerts.push('Overweight');
+  const num = (value) => Number(value);
+  if ((has(v.bp_systolic) && num(v.bp_systolic) > 140) || (has(v.bp_diastolic) && num(v.bp_diastolic) > 90)) alerts.push('High BP');
+  if ((has(v.bp_systolic) && num(v.bp_systolic) < 90) || (has(v.bp_diastolic) && num(v.bp_diastolic) < 60)) alerts.push('Low BP');
+  if (has(v.temperature) && ((v.temp_unit === 'C' && num(v.temperature) > 37.5) || (v.temp_unit === 'F' && num(v.temperature) > 99.5))) alerts.push('Fever');
+  if (has(v.spo2) && num(v.spo2) < 95) alerts.push('Low SpO2');
+  if (has(v.pulse) && num(v.pulse) > 100) alerts.push('Tachycardia');
+  if (has(v.pulse) && num(v.pulse) < 60) alerts.push('Bradycardia');
+  if (has(v.bmi) && num(v.bmi) > 25) alerts.push('Overweight');
   return alerts.length > 0 ? JSON.stringify(alerts) : null;
 }
+
+// Physiologically possible ranges. A value outside them is a typing or unit mistake
+// (e.g. 98.6 entered with the unit set to °C), so it is rejected rather than stored.
+const VITAL_LIMITS = {
+  bp_systolic: [40, 300, 'Systolic BP'],
+  bp_diastolic: [20, 200, 'Diastolic BP'],
+  pulse: [20, 250, 'Pulse'],
+  spo2: [40, 100, 'SpO2'],
+  respiratory_rate: [4, 80, 'Respiratory rate'],
+  weight_kg: [0.3, 400, 'Weight'],
+  height_cm: [20, 260, 'Height'],
+};
+const TEMP_LIMITS = { C: [30, 45], F: [86, 113] };
+
+function validateVitals(body) {
+  for (const [key, [min, max, label]] of Object.entries(VITAL_LIMITS)) {
+    const value = body[key];
+    if (value === null || value === undefined || value === '') continue;
+    if (!has(value)) return `${label} must be a number.`;
+    if (Number(value) < min || Number(value) > max) return `${label} must be between ${min} and ${max}.`;
+  }
+  if (body.temperature !== null && body.temperature !== undefined && body.temperature !== '') {
+    if (!has(body.temperature)) return 'Temperature must be a number.';
+    const [min, max] = TEMP_LIMITS[body.temp_unit];
+    const t = Number(body.temperature);
+    if (t < min || t > max) return `Temperature in °${body.temp_unit} must be between ${min} and ${max}. Check the unit.`;
+  }
+  return null;
+}
+
+const blankToNull = (value) => (value === '' || value === undefined ? null : value);
 
 // POST /api/hms/vitals
 router.post('/', protect, async (req, res) => {
   try {
-    const { patient_id, encounter_type, bp_systolic, bp_diastolic, temperature, temp_unit, weight_kg, height_cm, spo2, pulse, respiratory_rate } = req.body;
-    
+    const { patient_id, encounter_type } = req.body;
+    const [bp_systolic, bp_diastolic, temperature, weight_kg, height_cm, spo2, pulse, respiratory_rate] = [
+      'bp_systolic', 'bp_diastolic', 'temperature', 'weight_kg', 'height_cm', 'spo2', 'pulse', 'respiratory_rate',
+    ].map((key) => blankToNull(req.body[key]));
+    const temp_unit = String(req.body.temp_unit || 'C').toUpperCase();
+
     if (!patient_id) return res.status(400).json({ success: false, message: 'Patient ID required.' });
+    if (!TEMP_LIMITS[temp_unit]) return res.status(400).json({ success: false, message: 'Temperature unit must be C or F.' });
+    if ([bp_systolic, bp_diastolic, temperature, weight_kg, height_cm, spo2, pulse, respiratory_rate].every((v) => v === null)) {
+      return res.status(400).json({ success: false, message: 'Enter at least one vital sign.' });
+    }
+    const invalid = validateVitals({ bp_systolic, bp_diastolic, temperature, temp_unit, weight_kg, height_cm, spo2, pulse, respiratory_rate });
+    if (invalid) return res.status(400).json({ success: false, message: invalid });
 
     const bmi = computeBMI(weight_kg, height_cm);
-    
+
     const vitalData = {
-      patient_id, encounter_type, bp_systolic, bp_diastolic, temperature, 
-      temp_unit: temp_unit || 'C', weight_kg, height_cm, bmi, spo2, pulse, respiratory_rate,
+      patient_id, encounter_type, bp_systolic, bp_diastolic, temperature,
+      temp_unit, weight_kg, height_cm, bmi, spo2, pulse, respiratory_rate,
       recorded_by: req.user.id
     };
 

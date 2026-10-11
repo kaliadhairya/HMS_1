@@ -162,30 +162,41 @@ router.get('/prescriptions', protect, async (req, res) => {
   }
 });
 
+// The doctor's investigations from the last LAB_WINDOW_DAYS days (default 30, max 90), one row per
+// test. Cancelled tests are left out. It used to return the newest 50 orders including cancelled
+// tests, so the dashboard counts were wrong for a busy doctor.
+const LAB_WINDOW_DAYS = 30;
 router.get('/labs', protect, async (req, res) => {
   try {
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || LAB_WINDOW_DAYS, 1), 90);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const orders = await InvestigationOrder.findAll({
-      where: { doctor_id: req.user.id },
+      where: { doctor_id: req.user.id, order_date: { [Op.gte]: since } },
       include: [
-        { model: Patient, as: 'patient', attributes: ['name', 'uhid'] },
+        { model: Patient, as: 'patient', attributes: ['id', 'name', 'uhid'] },
         { model: InvestigationOrderItem, as: 'items', attributes: ['id', 'test_name', 'status'] }
       ],
       order: [['id', 'DESC']],
-      limit: 50,
     });
 
     const data = orders.flatMap((order) =>
-      (order.items || []).map((item) => ({
-        id: `LR-${item.id}`,
-        date: order.order_date ? new Date(order.order_date).toISOString().slice(0, 10) : null,
-        patient: order.patient?.name || 'Unknown',
-        test: item.test_name,
-        status: item.status,
-        priority: order.priority || 'Routine'
-      }))
+      (order.items || [])
+        .filter((item) => item.status !== 'Cancelled')
+        .map((item) => ({
+          id: `LR-${item.id}`,
+          itemId: item.id,
+          orderId: order.id,
+          date: order.order_date ? new Date(order.order_date).toISOString().slice(0, 10) : null,
+          orderedAt: order.order_date || null,
+          patient: order.patient?.name || 'Unknown',
+          uhid: order.patient?.uhid || null,
+          test: item.test_name,
+          status: item.status,
+          priority: order.priority || 'Routine'
+        }))
     );
 
-    res.json({ success: true, data });
+    res.json({ success: true, data, windowDays: days });
   } catch (err) {
     console.error('Doctor labs error:', err);
     res.status(500).json({ success: false, message: 'Failed to load lab orders.' });

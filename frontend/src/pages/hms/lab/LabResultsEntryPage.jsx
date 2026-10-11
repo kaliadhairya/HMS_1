@@ -7,6 +7,7 @@ import DataTable from '../../../components/ui/DataTable';
 import EmptyState from '../../../components/ui/EmptyState';
 import Modal from '../../../components/ui/Modal';
 import { toast } from 'react-hot-toast';
+import { abnormalFlag, isAbnormal, FlagTag, fmtTime } from './labFlags';
 
 const PRIORITY_RANK = { STAT: 0, Urgent: 1, Routine: 2 };
 const PRIORITY_TONE = { STAT: 'danger', Urgent: 'warning', Routine: 'success' };
@@ -17,6 +18,8 @@ export default function LabResultsEntryPage() {
   const [selected, setSelected] = useState(null);
   const [resultValue, setResultValue] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [referenceRange, setReferenceRange] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [query, setQuery] = useState('');
 
   const loadPending = async () => {
@@ -37,29 +40,43 @@ export default function LabResultsEntryPage() {
   useEffect(() => {
     setResultValue(selected?.currentResult || '');
     setRemarks(selected?.remarks || '');
+    setReferenceRange(selected?.referenceRange || '');
   }, [selected]);
+
+  const previewFlag = abnormalFlag(resultValue, referenceRange);
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    if (!selected) return;
+    if (!selected || submitting) return;
     if (!resultValue.trim()) {
       toast.error('Observed value is required');
       return;
     }
 
+    setSubmitting(true);
     try {
-      await api.post(`/lab/results/${selected.id}`, {
+      const res = await api.post(`/lab/results/${selected.id}`, {
         result_value: resultValue.trim(),
+        reference_range: referenceRange.trim(),
         remarks: remarks.trim(),
       });
-      toast.success('Result submitted successfully');
+      const flag = res.data?.data?.flag;
+      if (isAbnormal(flag)) {
+        toast.success(`Result saved for ${selected.test}. ${flag === 'High' ? 'Above' : 'Below'} the reference range, flagged for the ordering doctor.`, { duration: 6000 });
+      } else {
+        toast.success(`Result saved for ${selected.test}`);
+      }
       setSelected(null);
       setResultValue('');
       setRemarks('');
+      setReferenceRange('');
       setLoading(true);
       loadPending();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to save result');
+      if (err.response?.status === 409) { setSelected(null); setLoading(true); loadPending(); }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -103,14 +120,14 @@ export default function LabResultsEntryPage() {
       cell: ({ row }) => (
         <span className="cell-stack">
           <span>{row.original.orderedBy}</span>
-          <span className="cell-secondary tabular">{row.original.time}</span>
+          <span className="cell-secondary tabular">{fmtTime(row.original.ordered_at)}</span>
         </span>
       ),
     },
     {
       id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 140, align: 'right' },
       cell: ({ row }) => (
-        <button type="button" className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); setSelected(row.original); }}>
+        <button type="button" className="btn btn-primary btn-sm" aria-label={`Enter result for ${row.original.test}, ${row.original.patient}`} onClick={(e) => { e.stopPropagation(); setSelected(row.original); }}>
           <NotebookPen size={14} aria-hidden="true" /> Enter result
         </button>
       ),
@@ -172,7 +189,7 @@ export default function LabResultsEntryPage() {
         footer={(
           <>
             <button type="button" className="btn btn-ghost btn-md" onClick={() => setSelected(null)}>Cancel</button>
-            <button type="submit" form="lab-result-form" className="btn btn-primary btn-md">Submit result</button>
+            <button type="submit" form="lab-result-form" className="btn btn-primary btn-md" disabled={submitting}>{submitting ? 'Saving…' : 'Submit result'}</button>
           </>
         )}
       >
@@ -187,17 +204,43 @@ export default function LabResultsEntryPage() {
                 </div>
               </div>
             </div>
-            <div className="form-group">
-              <label className="form-label" htmlFor="lab-result-value">Observed value</label>
-              <input
-                id="lab-result-value"
-                type="text"
-                className="form-input"
-                placeholder="Enter measured value"
-                value={resultValue}
-                onChange={(e) => setResultValue(e.target.value)}
-                autoFocus
-              />
+            <div className="form-row-2">
+              <div className="form-group">
+                <label className="form-label" htmlFor="lab-result-value">Observed value</label>
+                <input
+                  id="lab-result-value"
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. 9.1 g/dL"
+                  value={resultValue}
+                  onChange={(e) => setResultValue(e.target.value)}
+                  maxLength={500}
+                  autoFocus
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="lab-result-range">Reference range</label>
+                <input
+                  id="lab-result-range"
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. 12-16 g/dL"
+                  value={referenceRange}
+                  onChange={(e) => setReferenceRange(e.target.value)}
+                  maxLength={500}
+                  aria-describedby="lab-result-range-hint"
+                />
+              </div>
+            </div>
+            <div className="form-hint" id="lab-result-range-hint" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: -6 }}>
+              {previewFlag ? (
+                <>
+                  <FlagTag flag={previewFlag} />
+                  <span>{isAbnormal(previewFlag) ? `${previewFlag === 'High' ? 'Above' : 'Below'} the reference range. It will be flagged for the doctor.` : 'Within the reference range.'}</span>
+                </>
+              ) : (
+                <span>Use a range such as 12-16, &lt;200 or &gt;40. Results outside it are flagged high or low.</span>
+              )}
             </div>
             <div className="form-group">
               <label className="form-label" htmlFor="lab-result-remarks">Technician remarks</label>

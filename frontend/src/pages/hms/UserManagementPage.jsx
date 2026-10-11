@@ -8,6 +8,7 @@ import EmptyState from '../../components/ui/EmptyState';
 import Modal from '../../components/ui/Modal';
 import RowMenu from '../../components/ui/RowMenu';
 import api from '../../api/axios';
+import { useAuth } from '../../context/AuthContext';
 
 const ROLES = ['super_admin', 'admin', 'doctor', 'lab_technician', 'receptionist', 'pharmacist', 'nurse'];
 const ROLE_LABEL = {
@@ -18,10 +19,27 @@ const ROLE_TONE = { super_admin: 'danger', admin: 'warning', doctor: 'info' };
 const EMPTY_FORM = { username: '', name: '', first_name: '', last_name: '', phone: '', role: 'lab_technician', password: '' };
 
 const fullName = (u) => (u.first_name || u.last_name ? `${u.first_name || ''} ${u.last_name || ''}`.trim() : u.name || u.username);
+const EVENT_LABEL = { LOGIN: 'Signed in', LOGOUT: 'Signed out', LOGIN_FAILED: 'Failed sign-in' };
+const EVENT_TONE = { LOGIN: 'success', LOGIN_FAILED: 'danger' };
+// NEW_VALUE of a failed sign-in is JSON such as {"attempts":2} or {"reason":"account_inactive"}.
+const eventDetail = (log) => {
+  if (log.action !== 'LOGIN_FAILED' || !log.new_value) return '';
+  try {
+    const v = JSON.parse(log.new_value);
+    if (v.reason) return String(v.reason).replace(/_/g, ' ');
+    return v.attempts ? `wrong password, attempt ${v.attempts}` : '';
+  } catch {
+    return '';
+  }
+};
 const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 
 export default function UserManagementPage() {
+  const { user: me } = useAuth();
+  // Only a super admin may create super admins (the API enforces this too).
+  const roleOptions = me?.role === 'super_admin' ? ROLES : ROLES.filter((r) => r !== 'super_admin');
   const [users, setUsers] = useState([]);
+  const [deactivateTarget, setDeactivateTarget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -87,9 +105,10 @@ export default function UserManagementPage() {
     try {
       const { data } = await api.patch(`/users/${user.id}/toggle-active`);
       toast.success(data.message);
+      setDeactivateTarget(null);
       fetchUsers();
-    } catch {
-      toast.error('Failed to change status');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to change status');
     }
   };
 
@@ -157,14 +176,21 @@ export default function UserManagementPage() {
             items={[
               { label: 'Edit user', icon: Pencil, onSelect: () => openEditModal(u) },
               { label: 'Sign-in history', icon: History, onSelect: () => viewHistory(u) },
-              { label: u.isActive ? 'Deactivate' : 'Activate', icon: u.isActive ? Lock : LockOpen, onSelect: () => toggleActive(u), danger: u.isActive, separator: true },
+              {
+                label: u.isActive ? 'Deactivate' : 'Activate',
+                icon: u.isActive ? Lock : LockOpen,
+                onSelect: () => (u.isActive ? setDeactivateTarget(u) : toggleActive(u)),
+                danger: Boolean(u.isActive),
+                separator: true,
+                hidden: u.id === me?.id || (u.role === 'super_admin' && me?.role !== 'super_admin'),
+              },
             ]}
           />
         );
       },
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  ], [me?.id, me?.role]);
 
   return (
     <>
@@ -238,8 +264,8 @@ export default function UserManagementPage() {
             </div>
             <div className="form-group">
               <label className="form-label" htmlFor="u-role">Role</label>
-              <select id="u-role" className="form-select" value={form.role} onChange={(e) => setField('role', e.target.value)}>
-                {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              <select id="u-role" className="form-select" value={form.role} onChange={(e) => setField('role', e.target.value)} disabled={editUser?.id === me?.id}>
+                {(roleOptions.includes(form.role) ? roleOptions : [...roleOptions, form.role]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
               </select>
             </div>
           </div>
@@ -267,7 +293,9 @@ export default function UserManagementPage() {
               id="u-password" className="form-input" type="password" autoComplete="new-password"
               value={form.password} onChange={(e) => setField('password', e.target.value)} required={!editUser}
             />
-            {editUser && <p className="form-hint">Leave blank to keep the current password.</p>}
+            <p className="form-hint">
+              {editUser ? 'Leave blank to keep the current password. ' : ''}At least 8 characters with an uppercase letter, a number and a special character.
+            </p>
           </div>
         </form>
       </Modal>
@@ -280,14 +308,15 @@ export default function UserManagementPage() {
         size="lg"
       >
         {historyLoading ? <p className="muted">Loading…</p> : loginHistory.length === 0 ? (
-          <p className="muted">No sign-ins recorded for this user.</p>
+          <p className="muted">No sign-in activity recorded for this user.</p>
         ) : (
           <table className="mini-table">
-            <thead><tr><th>Event</th><th>IP address</th><th>Time</th></tr></thead>
+            <thead><tr><th>Event</th><th>Details</th><th>IP address</th><th>Time</th></tr></thead>
             <tbody>
               {loginHistory.map((log, i) => (
                 <tr key={log.id || i}>
-                  <td><span className={`status ${log.action === 'LOGIN' ? 'status-success' : 'status-neutral'}`}>{log.action === 'LOGIN' ? 'Signed in' : log.action === 'LOGOUT' ? 'Signed out' : log.action}</span></td>
+                  <td><span className={`status status-${EVENT_TONE[log.action] || 'neutral'}`}>{EVENT_LABEL[log.action] || log.action}</span></td>
+                  <td className="cell-secondary">{eventDetail(log) || '—'}</td>
                   <td className="mono">{log.ip_address || '—'}</td>
                   <td className="tabular">{fmtDateTime(log.created_at)}</td>
                 </tr>
@@ -295,6 +324,22 @@ export default function UserManagementPage() {
             </tbody>
           </table>
         )}
+      </Modal>
+
+      <Modal
+        open={Boolean(deactivateTarget)}
+        onOpenChange={(open) => { if (!open) setDeactivateTarget(null); }}
+        title="Deactivate this account?"
+        description={deactivateTarget ? `${fullName(deactivateTarget)} (${deactivateTarget.username}) will not be able to sign in until the account is activated again.` : ''}
+        size="sm"
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost btn-md" onClick={() => setDeactivateTarget(null)}>Cancel</button>
+            <button type="button" className="btn btn-danger btn-md" onClick={() => toggleActive(deactivateTarget)}>Deactivate</button>
+          </>
+        )}
+      >
+        <p className="muted">Records the user created are kept. You can activate the account again at any time.</p>
       </Modal>
     </>
   );

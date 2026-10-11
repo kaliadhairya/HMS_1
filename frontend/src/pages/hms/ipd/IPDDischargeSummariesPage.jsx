@@ -60,7 +60,7 @@ export default function IPDDischargeSummariesPage() {
 
   const filtered = useMemo(() => summaries.filter(s => {
     const q = search.toLowerCase();
-    return (s.PATIENT_NAME?.toLowerCase().includes(q) || s.UHID?.toLowerCase().includes(q) || String(s.ADMISSION_ID).includes(q) || s.FINAL_DIAGNOSIS?.toLowerCase().includes(q));
+    return (s.PATIENT_NAME?.toLowerCase().includes(q) || s.UHID?.toLowerCase().includes(q) || String(s.ADMISSION_ID).includes(q) || s.ADMISSION_ID_FORMATTED?.toLowerCase().includes(q) || s.FINAL_DIAGNOSIS?.toLowerCase().includes(q));
   }), [summaries, search]);
 
   const columns = useMemo(() => [
@@ -83,8 +83,8 @@ export default function IPDDischargeSummariesPage() {
       ),
     },
     {
-      id: 'admission', header: 'Admission', accessorFn: (s) => Number(s.ADMISSION_ID || 0), meta: { width: 130 },
-      cell: ({ row }) => <span className="mono">IPD-{row.original.ADMISSION_ID}</span>,
+      id: 'admission', header: 'Admission', accessorFn: (s) => Number(s.ADMISSION_ID || 0), meta: { width: 160 },
+      cell: ({ row }) => <span className="mono">{row.original.ADMISSION_ID_FORMATTED || `IPD-${row.original.ADMISSION_ID}`}</span>,
     },
     {
       id: 'diagnosis', header: 'Final diagnosis', accessorFn: (s) => s.FINAL_DIAGNOSIS || '',

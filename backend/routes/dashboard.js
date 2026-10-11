@@ -12,6 +12,26 @@ const { Token, Appointment, Doctor } = require('../models');
 // All dashboard routes require authentication + dashboard read permission
 router.use(protect, checkPermission('dashboard', 'read'));
 
+// Active medicines with 10 or fewer units across all batches (same rule as the pharmacy reports).
+const LOW_STOCK_SQL = `
+  SELECT COUNT(*) as CNT FROM (
+    SELECT m.ID FROM HMS_MEDICINES m
+    LEFT JOIN HMS_MEDICINE_BATCHES b ON b.MEDICINE_ID = m.ID
+    WHERE m.IS_ACTIVE = 1
+    GROUP BY m.ID
+    HAVING COALESCE(SUM(b.QUANTITY), 0) <= 10
+  ) low_stock`;
+
+// Results completed today that fall outside their reference range (the lab dashboard's "critical flagged").
+async function abnormalLabResultsToday() {
+  const { abnormalFlag } = require('./lab');
+  const rows = await sequelize.query(
+    `SELECT RESULT_VALUE, REFERENCE_RANGE FROM HMS_INVESTIGATION_ORDER_ITEMS WHERE STATUS = 'Completed' AND UPDATED_AT >= CURRENT_DATE`,
+    { type: sequelize.QueryTypes.SELECT }
+  );
+  return rows.filter((r) => ['High', 'Low'].includes(abnormalFlag(r.result_value ?? r.RESULT_VALUE, r.reference_range ?? r.REFERENCE_RANGE))).length;
+}
+
 // ─── Helper: get start of today, this week, this month ──────────
 function getDateRanges() {
   const now = new Date();
@@ -56,10 +76,13 @@ router.get('/super-admin', restrictTo('super_admin', 'admin'), async (req, res) 
     const monthPatients = Number(countsResult?.month_patients || 0);
     const prevMonthPatients = Number(countsResult?.prev_month_patients || 0);
 
-    // 2. Fetch only recent window (last 60 days) for trend & scope analytics instead of entire database history
+    // 2. Fetch only the recent window (previous month, or the last 30 days if that reaches further back)
+    const last30Start = new Date(todayStart);
+    last30Start.setDate(last30Start.getDate() - 29);
+    const windowStart = last30Start < prevMonthStart ? last30Start : prevMonthStart;
     const recentPatients = await Patient.findAll({
       where: {
-        createdAt: { [Op.gte]: prevMonthStart }
+        createdAt: { [Op.gte]: windowStart }
       },
       attributes: ['id', 'createdAt', 'patientType', 'gender', 'opdIndoor'],
       order: [['createdAt', 'ASC']]
@@ -125,7 +148,10 @@ router.get('/super-admin', restrictTo('super_admin', 'admin'), async (req, res) 
       };
     };
 
-    const allPatientAnalytics = buildPatientAnalytics(recentPatients, null, 30);
+    // "Last 30 days" (the modal's label): totals and breakdowns used to cover the whole fetch window
+    // (up to two months) while the trend showed 30 days.
+    const last30Rows = recentPatients.filter(p => isOnOrAfter(p.createdAt, last30Start));
+    const allPatientAnalytics = buildPatientAnalytics(last30Rows, last30Start, 30);
     const todayAnalytics = buildPatientAnalytics(todayPatientRows, todayStart, 1);
     const weekAnalytics = buildPatientAnalytics(weekPatientRows, weekStart, dayCountInclusive(weekStart, todayStart));
     const monthAnalytics = buildPatientAnalytics(monthPatientRows, monthStart, dayCountInclusive(monthStart, todayStart));
@@ -164,6 +190,10 @@ router.get('/super-admin', restrictTo('super_admin', 'admin'), async (req, res) 
       },
     });
 
+    const [lowStockRows] = await sequelize.query(LOW_STOCK_SQL);
+    const lowStockCount = Number(lowStockRows[0]?.CNT || 0);
+    const abnormalLabs = await abnormalLabResultsToday();
+
     res.json({
       success: true,
       data: {
@@ -187,8 +217,9 @@ router.get('/super-admin', restrictTo('super_admin', 'admin'), async (req, res) 
         recent_audit: recentAudit,
         alerts: {
           failed_logins_today: failedLoginsToday,
-          low_stock_count: 0,
-          critical_lab_count: 0,
+          // These two were hard-coded to 0.
+          low_stock_count: lowStockCount,
+          critical_lab_count: abnormalLabs,
         },
       },
     });
@@ -355,16 +386,7 @@ router.get('/pharmacist', restrictTo('pharmacist', 'super_admin', 'admin'), asyn
     const dispenseQueueCount = queueRows[0]?.CNT || 0;
 
     // Low stock count (medicines with total qty <= 10)
-    const [lowRows] = await sequelize.query(`
-      SELECT COUNT(*) as CNT FROM (
-        SELECT m.ID
-        FROM HMS_MEDICINES m
-        LEFT JOIN HMS_MEDICINE_BATCHES b ON b.MEDICINE_ID = m.ID
-        WHERE m.IS_ACTIVE = 1
-        GROUP BY m.ID
-        HAVING COALESCE(SUM(b.QUANTITY), 0) <= 10
-      )
-    `);
+    const [lowRows] = await sequelize.query(LOW_STOCK_SQL);
     const lowStockCount = lowRows[0]?.CNT || 0;
 
     // Top 5 low stock items
@@ -388,15 +410,15 @@ router.get('/pharmacist', restrictTo('pharmacist', 'super_admin', 'admin'), asyn
     `);
     const expiringCount = expiringRows[0]?.CNT || 0;
 
-    // Today's sales (OUT transactions today)
+    // Today's sales: what was actually billed today — dispensing records plus counter (OTC) sales, the same
+    // figures the pharmacy reports use. It used to be units out x current MRP, which left out GST and
+    // priced old stock movements at today's MRP.
     const [salesRows] = await sequelize.query(`
-      SELECT COALESCE(SUM(sl.QUANTITY * b.MRP), 0) as TOTAL_SALES
-      FROM HMS_STOCK_LEDGER sl
-      JOIN HMS_MEDICINE_BATCHES b ON b.ID = sl.BATCH_ID
-      WHERE sl.TRANSACTION_TYPE = 'OUT'
-        AND trunc(sl.TRANSACTION_DATE) = trunc(CURRENT_TIMESTAMP)
+      SELECT
+        (SELECT COALESCE(SUM(TOTAL_AMOUNT), 0) FROM HMS_DISPENSING_RECORDS WHERE DISPENSED_AT >= CURRENT_DATE) as DISPENSED,
+        (SELECT COALESCE(SUM(TOTAL_AMOUNT), 0) FROM HMS_OTC_SALES WHERE SOLD_AT >= CURRENT_DATE) as COUNTER
     `);
-    const todaysSales = salesRows[0]?.TOTAL_SALES || 0;
+    const todaysSales = Math.round((Number(salesRows[0]?.DISPENSED || 0) + Number(salesRows[0]?.COUNTER || 0)) * 100) / 100;
 
     res.json({
       success: true,
@@ -419,12 +441,13 @@ router.get('/admin-ops', restrictTo('admin', 'super_admin'), async (req, res) =>
   try {
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // Revenue today (billing)
+    // Revenue today = payments received today (shown as "Collected today" on billing & finance).
+    // It used to read a table that does not exist (HMS_BILLING) and the error was swallowed, so it was always 0.
     const [revRows] = await sequelize.query(`
-      SELECT COALESCE(SUM(TOTAL_AMOUNT), 0) as REVENUE FROM HMS_BILLING
-      WHERE trunc(BILL_DATE) = trunc(CURRENT_TIMESTAMP)
-    `).catch(() => [[{ REVENUE: 0 }]]);
-    const revenueToday = revRows[0]?.REVENUE || 0;
+      SELECT COALESCE(SUM(AMOUNT), 0) as REVENUE FROM HMS_PAYMENTS
+      WHERE PAYMENT_DATE >= CURRENT_DATE
+    `);
+    const revenueToday = Number(revRows[0]?.REVENUE || 0);
 
     // Bed occupancy
     const [bedRows] = await sequelize.query(`
@@ -470,22 +493,15 @@ router.get('/admin-ops', restrictTo('admin', 'super_admin'), async (req, res) =>
     const pendingDischarges = dischRows[0]?.CNT || 0;
 
     // Low stock medicines
-    const [lowStockRows] = await sequelize.query(`
-      SELECT COUNT(*) as CNT FROM (
-        SELECT m.ID FROM HMS_MEDICINES m
-        LEFT JOIN HMS_MEDICINE_BATCHES b ON b.MEDICINE_ID = m.ID
-        WHERE m.IS_ACTIVE = 1
-        GROUP BY m.ID
-        HAVING COALESCE(SUM(b.QUANTITY), 0) <= 10
-      )
-    `).catch(() => [[{ CNT: 0 }]]);
+    const [lowStockRows] = await sequelize.query(LOW_STOCK_SQL);
     const lowStock = lowStockRows[0]?.CNT || 0;
 
-    // Today's appointments
+    // Today's appointments (cancelled ones are not expected visits)
     const [apptRows] = await sequelize.query(`
       SELECT COUNT(*) as CNT FROM HMS_APPOINTMENTS
       WHERE trunc(APPOINTMENT_DATE) = trunc(CURRENT_TIMESTAMP)
-    `).catch(() => [[{ CNT: 0 }]]);
+        AND COALESCE(STATUS, '') <> 'Cancelled'
+    `);
     const todaysAppointments = apptRows[0]?.CNT || 0;
 
     // Recent admissions (last 10)

@@ -5,7 +5,8 @@ const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 const { sequelize } = require('../models');
-const { protect } = require('../middleware/auth');
+const { protect, checkPermission } = require('../middleware/auth');
+const { loadOrders } = require('./lab');
 
 // ── Helpers ─────────────────────────────────────────────────────
 const safe = (val, fallback = '') => {
@@ -365,8 +366,127 @@ async function generateOPDBillPDF(billId, res) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  LAB REPORT PDF (one investigation order: patient, tests, results)
+// ═══════════════════════════════════════════════════════════════
+
+async function generateLabOrderPDF(orderId, res, { download = false } = {}) {
+  const [order] = await loadOrders({ where: 'o.ID = :orderId', replacements: { orderId } });
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Investigation order not found' });
+  }
+  const tests = order.tests.filter((t) => t.status !== 'Cancelled');
+  if (!tests.some((t) => t.status === 'Completed')) {
+    return res.status(409).json({ success: false, message: 'No results have been reported for this order yet' });
+  }
+  const hosp = await getHospitalProfile();
+
+  const doc = new PDFDocument({ margin: 40, size: 'A4' });
+  const MARGIN = 40;
+  const PW = doc.page.width;
+  const PH = doc.page.height;
+  const CONTENT = PW - MARGIN * 2;
+  const BOTTOM = PH - 110;
+  const fmt = (v) => (v ? new Date(v).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '-');
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `${download ? 'attachment' : 'inline'}; filename="lab-report-${order.orderId}.pdf"`);
+  doc.pipe(res);
+
+  drawLetterhead(doc, hosp, MARGIN, CONTENT);
+
+  doc.fontSize(13).font('Helvetica-Bold').fillColor('#000000')
+    .text('LABORATORY REPORT', MARGIN, doc.y + 2, { align: 'center', width: CONTENT });
+  doc.moveDown(0.6);
+
+  // Patient and order details
+  const boxY = doc.y;
+  doc.rect(MARGIN, boxY, CONTENT, 62).fill('#f5f5f5');
+  doc.fontSize(10).font('Helvetica-Bold').fillColor('#333333');
+  doc.text(`Patient: ${safe(order.patient)}`, MARGIN + 10, boxY + 8, { width: 250, lineBreak: false });
+  doc.text(`UHID: ${safe(order.uhid)}`, 300, boxY + 8, { lineBreak: false });
+  doc.text(`Age/Sex: ${safe(order.age, '-')}Y / ${safe(order.gender, '-')}`, 430, boxY + 8, { lineBreak: false });
+  doc.fontSize(9).font('Helvetica').fillColor('#444444');
+  doc.text(`Order: ORD-${order.orderId}   Priority: ${safe(order.priority)}`, MARGIN + 10, boxY + 26, { lineBreak: false });
+  doc.text(`Ordered by: ${safe(order.doctor)}`, 300, boxY + 26, { lineBreak: false });
+  doc.text(`Ordered: ${fmt(order.orderedAt)}`, MARGIN + 10, boxY + 42, { lineBreak: false });
+  doc.text(`Reported: ${fmt(order.completedAt)}   Status: ${order.status === 'Completed' ? 'Final' : 'Partial'}`, 300, boxY + 42, { lineBreak: false });
+  doc.y = boxY + 76;
+
+  const cols = { test: MARGIN, result: MARGIN + 210, range: MARGIN + 320, flag: MARGIN + 455 };
+  const drawTableHead = () => {
+    const y = doc.y;
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
+    doc.text('Investigation', cols.test, y, { lineBreak: false });
+    doc.text('Result', cols.result, y, { lineBreak: false });
+    doc.text('Reference range', cols.range, y, { lineBreak: false });
+    doc.text('Flag', cols.flag, y, { lineBreak: false });
+    doc.moveTo(MARGIN, y + 14).lineTo(MARGIN + CONTENT, y + 14).lineWidth(0.5).strokeColor('#999999').stroke();
+    doc.y = y + 20;
+  };
+  drawTableHead();
+
+  tests.forEach((t) => {
+    const remarks = t.remarks ? safe(t.remarks) : '';
+    const remarksH = remarks ? doc.fontSize(8).heightOfString(`Remarks: ${remarks}`, { width: CONTENT - 20 }) + 4 : 0;
+    if (doc.y + 30 + remarksH > BOTTOM) {
+      doc.addPage();
+      doc.y = MARGIN;
+      drawTableHead();
+    }
+    const y = doc.y;
+    const abnormal = t.flag === 'High' || t.flag === 'Low';
+    doc.fontSize(10).font('Helvetica-Bold').fillColor('#222222').text(safe(t.test), cols.test, y, { width: 200 });
+    if (t.department) doc.fontSize(8).font('Helvetica').fillColor('#777777').text(safe(t.department), cols.test, doc.y, { width: 200 });
+    const rowBottom = doc.y;
+    const result = t.status === 'Completed' ? safe(t.result, '-') : 'Pending';
+    doc.fontSize(10).font(abnormal ? 'Helvetica-Bold' : 'Helvetica').fillColor(abnormal ? '#b42318' : '#000000')
+      .text(result, cols.result, y, { width: 105 });
+    doc.fontSize(9).font('Helvetica').fillColor('#333333').text(safe(t.referenceRange, '-'), cols.range, y, { width: 130 });
+    const flagText = t.flag === 'High' ? 'H (high)' : t.flag === 'Low' ? 'L (low)' : '';
+    if (flagText) doc.fontSize(9).font('Helvetica-Bold').fillColor('#b42318').text(flagText, cols.flag, y, { lineBreak: false });
+    doc.y = Math.max(rowBottom, doc.y) + 4;
+    if (remarks) {
+      doc.fontSize(8).font('Helvetica-Oblique').fillColor('#555555').text(`Remarks: ${remarks}`, cols.test + 10, doc.y, { width: CONTENT - 20 });
+      doc.y += 2;
+    }
+    doc.moveTo(MARGIN, doc.y + 2).lineTo(MARGIN + CONTENT, doc.y + 2).lineWidth(0.3).strokeColor('#dddddd').stroke();
+    doc.y += 8;
+  });
+
+  if (order.clinicalNotes) {
+    doc.moveDown(0.5);
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000').text('Clinical notes: ', MARGIN, doc.y, { continued: true });
+    doc.font('Helvetica').fillColor('#333333').text(safe(order.clinicalNotes), { width: CONTENT });
+  }
+
+  doc.moveDown(1);
+  doc.fontSize(8).font('Helvetica').fillColor('#666666')
+    .text('Results marked H or L are outside the reference range recorded by the laboratory. Interpret with the clinical picture.', MARGIN, doc.y, { width: CONTENT });
+
+  const sigY = PH - 95;
+  doc.moveTo(MARGIN + CONTENT - 160, sigY).lineTo(MARGIN + CONTENT, sigY).lineWidth(0.5).strokeColor('#999999').stroke();
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#333333').text('Laboratory technician', MARGIN + CONTENT - 160, sigY + 5, { lineBreak: false });
+  doc.fontSize(7).font('Helvetica').fillColor('#aaaaaa').text('This is a computer-generated report', MARGIN, sigY + 5, { lineBreak: false });
+
+  doc.end();
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  ROUTES
 // ═══════════════════════════════════════════════════════════════
+
+router.get('/lab-report/:orderId', protect, checkPermission('lab', 'read'), async (req, res) => {
+  try {
+    const orderId = parseInt(String(req.params.orderId).replace(/^(ORD|REP)-/, ''), 10);
+    if (!Number.isInteger(orderId)) return res.status(400).json({ success: false, message: 'Invalid order id' });
+    await generateLabOrderPDF(orderId, res, { download: req.query.download === 'true' });
+  } catch (err) {
+    console.error(err);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: 'Failed to generate the lab report' });
+    }
+  }
+});
 
 router.get('/prescription/:id', protect, async (req, res) => {
   try {

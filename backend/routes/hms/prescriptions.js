@@ -178,39 +178,23 @@ router.put('/:id/items', protect, checkPermission('consultation', 'write'), asyn
   try {
     const prescription_id = req.params.id;
     const { items, status } = req.body; // Array of item objects
-    
-    // Step 1: Auto-save new medicines to the Medicine Master table (non-critical, outside transaction)
-    if (items && items.length > 0) {
-      for (const item of items) {
-        try {
-          const generic = (item.generic_name || item.medicine_name || '').trim();
-          if (!generic) continue;
 
-          const existingMeds = await Medicine.findAll({
-            where: sequelize.where(
-              sequelize.fn('UPPER', sequelize.col('GENERIC_NAME')),
-              generic.toUpperCase()
-            )
-          });
-          const existing = existingMeds.length > 0 ? existingMeds[0] : null;
-
-          if (!existing) {
-            const [[{ NEXTVAL: nextId }]] = await sequelize.query("SELECT nextval('hms_medicines_seq') AS \"NEXTVAL\"");
-            await Medicine.create({
-              id: nextId,
-              genericName: generic,
-              formulation: item.dose_unit || 'Tablet',
-              strength: item.dose || '',
-              category: 'Prescription',
-              isActive: 1,
-            });
-          }
-        } catch (err) {
-          console.error('Failed to auto-save medicine to master:', err);
-          // Non-fatal, continue saving prescription
-        }
-      }
+    // A finalized consultation's prescription is what the pharmacy dispenses from; it must not change.
+    const [owner] = await sequelize.query(`
+      SELECT p.ID, e.STATUS AS ENCOUNTER_STATUS
+        FROM HMS_PRESCRIPTIONS p
+        LEFT JOIN HMS_ENCOUNTERS e ON e.ID = p.ENCOUNTER_ID
+       WHERE p.ID = :id
+    `, { replacements: { id: Number(prescription_id) } });
+    if (!owner || owner.length === 0) return res.status(404).json({ error: 'Prescription not found' });
+    if (owner[0].ENCOUNTER_STATUS === 'Finalized') {
+      return res.status(400).json({ error: 'The consultation is finalized; its prescription can no longer be changed' });
     }
+    
+    // Free-text medicines are NOT added to the medicine catalogue any more: that created 0-stock
+    // catalogue entries (category 'Prescription') for every typed name, cluttering the catalogue and
+    // low-stock lists and making the pharmacy show "Out of stock" instead of "Not in catalogue".
+    // Lines are linked to the catalogue on read (resolveItemsForRead) when the generic name matches.
 
     // Step 2: Atomic delete-then-insert inside a transaction (prevents data loss if insert fails)
     await sequelize.transaction(async (t) => {

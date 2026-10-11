@@ -7,9 +7,12 @@ import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import EmptyState from '../../../components/ui/EmptyState';
+import { fmtTime } from './labFlags';
 
 const PRIORITY_RANK = { STAT: 0, Urgent: 1, Routine: 2 };
 const PRIORITY_TONE = { STAT: 'danger', Urgent: 'warning', Routine: 'success' };
+// Doctor names are stored with or without the title; never print "Dr. Dr.".
+const withTitle = (name) => (!name || /^dr\.?\s/i.test(name) ? name || '—' : `Dr. ${name}`);
 
 export default function InvestigationQueuePage() {
   const [orders, setOrders] = useState([]);
@@ -35,11 +38,13 @@ export default function InvestigationQueuePage() {
     }
   };
 
+  // Starting an order sends the technician to sample collection: results can only be entered
+  // for tests whose sample has been logged.
   const processTests = async (order) => {
     try {
-      await api.patch(`/lab/queue/${order.id}`, { status: 'In Progress' });
-      navigate('/lab/results');
-      toast.success(`Moved ${order.patient} to results entry`);
+      if (order.status !== 'In Progress') await api.patch(`/lab/queue/${order.id}`, { status: 'In Progress' });
+      navigate('/lab/samples');
+      toast.success(`Collect samples for ${order.patient}`);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update lab queue');
     }
@@ -61,7 +66,7 @@ export default function InvestigationQueuePage() {
         </span>
       ),
     },
-    { id: 'time', header: 'Ordered at', accessorFn: (o) => o.time || '', meta: { width: 110 }, cell: ({ getValue }) => <span className="tabular">{getValue()}</span> },
+    { id: 'time', header: 'Ordered at', accessorFn: (o) => (o.ordered_at ? new Date(o.ordered_at).getTime() : 0), meta: { width: 110 }, cell: ({ row }) => <span className="tabular">{fmtTime(row.original.ordered_at)}</span> },
     {
       id: 'tests', header: 'Tests ordered', accessorFn: (o) => (o.tests || []).join(', '), enableSorting: false,
       cell: ({ row }) => {
@@ -75,7 +80,7 @@ export default function InvestigationQueuePage() {
         );
       },
     },
-    { id: 'doctor', header: 'Doctor', accessorFn: (o) => o.doctor || '', meta: { width: 170 }, cell: ({ getValue }) => `Dr. ${getValue()}` },
+    { id: 'doctor', header: 'Doctor', accessorFn: (o) => o.doctor || '', meta: { width: 170 }, cell: ({ getValue }) => withTitle(getValue()) },
     {
       id: 'priority', header: 'Urgency', accessorFn: (o) => PRIORITY_RANK[o.priority] ?? 2, meta: { width: 110 },
       cell: ({ row }) => <span className={`status status-${PRIORITY_TONE[row.original.priority] || 'neutral'}`}>{row.original.priority}</span>,

@@ -6,6 +6,24 @@ const { Token, Patient, Doctor, Department, User } = require('../../models');
 const { protect } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
 
+// Tokens store the doctor as the user ID (the token screen lists doctor users) or, in older rows,
+// as the HMS_DOCTORS ID. Resolve both so numbering and the queue cover the same doctor.
+async function doctorIdsFor(doctorId) {
+  const id = Number(doctorId);
+  const [rows] = await sequelize.query(
+    `SELECT ID, USER_ID, DEPARTMENT_ID FROM HMS_DOCTORS WHERE USER_ID = :id OR ID = :id
+      ORDER BY CASE WHEN USER_ID = :id THEN 0 ELSE 1 END, ID LIMIT 1`,
+    { replacements: { id } }
+  );
+  const ids = new Set([id]);
+  const doctor = rows[0];
+  if (doctor) {
+    if (doctor.ID) ids.add(Number(doctor.ID));
+    if (doctor.USER_ID) ids.add(Number(doctor.USER_ID));
+  }
+  return { ids: [...ids], departmentId: doctor && doctor.DEPARTMENT_ID ? Number(doctor.DEPARTMENT_ID) : null };
+}
+
 function tokenDateWhere(dateString) {
   return sequelize.where(
     sequelize.fn('TRUNC', sequelize.col('TOKEN_DATE')),
@@ -92,7 +110,16 @@ router.get('/today-all', protect, async (req, res) => {
 router.post('/', protect, async (req, res) => {
   try {
     const { patient_id, doctor_id, department_id } = req.body;
-    if (!patient_id || !doctor_id || !department_id) {
+    if (!patient_id || !doctor_id) {
+      return res.status(400).json({ success: false, message: 'Missing required fields.' });
+    }
+    if (!Number.isInteger(Number(doctor_id)) || Number(doctor_id) <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid doctor.' });
+    }
+    // The token screen used to send department 1 for every doctor; take the doctor's own department.
+    const { ids: doctorIds, departmentId: doctorDepartmentId } = await doctorIdsFor(doctor_id);
+    const resolvedDepartmentId = department_id ? Number(department_id) : doctorDepartmentId;
+    if (!resolvedDepartmentId) {
       return res.status(400).json({ success: false, message: 'Missing required fields.' });
     }
 
@@ -100,6 +127,11 @@ router.post('/', protect, async (req, res) => {
 
     // Transaction to safely generate next incremental token number for the doctor/date
     const result = await sequelize.transaction(async (t) => {
+      // Two desks issuing at the same moment must not get the same number.
+      await sequelize.query('SELECT pg_advisory_xact_lock(hashtext(:lockKey))', {
+        replacements: { lockKey: `token:${Math.min(...doctorIds)}:${today}` },
+        transaction: t,
+      });
       const [[{ NEXTVAL: nextId }]] = await sequelize.query(
         "SELECT nextval('hms_token_seq') AS \"NEXTVAL\"",
         { transaction: t }
@@ -108,7 +140,7 @@ router.post('/', protect, async (req, res) => {
       // Find max token for today for this doctor
       const tokenRows = await Token.findAll({
         where: {
-          doctor_id,
+          doctor_id: { [Op.in]: doctorIds },
           [Op.and]: [tokenDateWhere(today)]
         },
         attributes: ['token_number'],
@@ -120,7 +152,7 @@ router.post('/', protect, async (req, res) => {
 
       const token = await Token.create({
         id: nextId,
-        patient_id, doctor_id, department_id,
+        patient_id, doctor_id, department_id: resolvedDepartmentId,
         token_date: today,
         token_number: nextNumber,
         generated_by: req.user.id
@@ -147,7 +179,7 @@ router.get('/queue', protect, async (req, res) => {
     const where = {
       [Op.and]: [tokenDateWhere(queryDate)]
     };
-    if (doctor_id) where.doctor_id = doctor_id;
+    if (doctor_id) where.doctor_id = { [Op.in]: (await doctorIdsFor(doctor_id)).ids };
 
     const tokens = await Token.findAll({
       where,

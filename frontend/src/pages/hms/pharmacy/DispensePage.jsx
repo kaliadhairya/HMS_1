@@ -9,8 +9,23 @@ import { useSocket } from '../../../context/SocketContext';
 
 const fmtTime = (v) => (v ? new Date(v).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—');
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const inr = (v) => `₹${Number(v || 0).toFixed(2)}`;
 // Batches come from the MedicineBatch model (camelCase); older payloads used snake_case.
 const batchRate = (b) => b?.sale_price ?? b?.mrp ?? 0;
+const batchNo = (b) => b?.batch_number || b?.batchNumber || b?.id;
+const batchExpiry = (b) => b?.expiry_date || b?.expiryDate || b?.EXPIRY_DATE;
+
+// Why a line is not being dispensed. The first applicable reason is preselected.
+const NOT_DISPENSED_REASONS = ['Not in catalogue', 'Out of stock', 'Patient declined', 'Other'];
+
+// Doctor names are often stored with the title already ("Dr. Ramesh Kumar").
+const drName = (name) => (/^dr\.?\s/i.test(String(name || '')) ? name : `Dr. ${name || '—'}`);
+
+const dosageText = (rx) => [
+  [rx.dose, rx.dose_unit].filter(Boolean).join(' '),
+  rx.frequency,
+  rx.duration_days ? `${rx.duration_days} ${Number(rx.duration_days) === 1 ? 'day' : 'days'}` : null,
+].filter(Boolean).join(' · ');
 
 export default function DispensePage() {
   const [queue, setQueue] = useState([]);
@@ -20,7 +35,7 @@ export default function DispensePage() {
   const [slipData, setSlipData] = useState(null);
   const socket = useSocket();
 
-  // New states for Advanced Dispense
+  // One row per prescription line
   const [dispenseItems, setDispenseItems] = useState([]);
 
   useEffect(() => {
@@ -62,7 +77,7 @@ export default function DispensePage() {
       const res = await api.get(`/hms/prescriptions/${item.PRESCRIPTION_ID}`);
       const rxItems = res.data.data.items || [];
 
-      // 2. For each item, fetch available batches
+      // 2. For each item, fetch the batches that can be dispensed (in stock, not expired, earliest expiry first)
       const itemsWithBatches = await Promise.all(rxItems.map(async (rxItem) => {
         // A free-text medicine that isn't in the catalogue has no medicine_id and no stock;
         // load the rest of the prescription instead of failing on it.
@@ -73,18 +88,21 @@ export default function DispensePage() {
             batches = batchRes.data.data || [];
           } catch { batches = []; }
         }
+        const unavailableReason = !rxItem.medicine_id ? 'Not in catalogue' : batches.length === 0 ? 'Out of stock' : null;
         return {
           id: rxItem.id,
           medicineId: rxItem.medicine_id,
           medicineName: rxItem.medicine_name || rxItem.medicine?.name || 'Unknown',
-          requestedQty: rxItem.quantity,
-          dispenseQty: rxItem.quantity,
+          dosage: dosageText(rxItem),
+          dispenseQty: '',
           availableBatches: batches,
-          selectedBatchId: batches.length > 0 ? batches[0].id : '',
+          selectedBatchId: batches.length > 0 ? String(batches[0].id) : '',
           selectedBatch: batches.length > 0 ? batches[0] : null,
           rate: batches.length > 0 ? batchRate(batches[0]) : 0,
           inStock: batches.reduce((sum, b) => sum + (b.quantity || 0), 0),
-          isPartial: false
+          unavailableReason,
+          notDispensed: false,
+          reason: unavailableReason || 'Patient declined',
         };
       }));
 
@@ -98,86 +116,93 @@ export default function DispensePage() {
   };
 
   const updateDispenseItem = (index, field, value) => {
-    const newItems = [...dispenseItems];
-
-    if (field === 'selectedBatchId') {
-      const batch = newItems[index].availableBatches.find(b => b.id == value);
-      newItems[index].selectedBatchId = value;
-      newItems[index].selectedBatch = batch;
-      newItems[index].rate = batchRate(batch);
-    } else {
-      newItems[index][field] = value;
-    }
-
-    if (field === 'dispenseQty') {
-      newItems[index].isPartial = parseInt(value) < newItems[index].requestedQty;
-    }
-    setDispenseItems(newItems);
+    setDispenseItems((prev) => prev.map((item, i) => {
+      if (i !== index) return item;
+      if (field === 'selectedBatchId') {
+        const batch = item.availableBatches.find((b) => String(b.id) === String(value)) || null;
+        return { ...item, selectedBatchId: value, selectedBatch: batch, rate: batchRate(batch) };
+      }
+      return { ...item, [field]: value };
+    }));
   };
 
   const handleDispense = async () => {
     if (!selectedPrescription || dispenseItems.length === 0) return;
 
-    // Validation: Ensure all items have a selected batch with enough stock
-    for (const item of dispenseItems) {
+    const toDispense = dispenseItems.filter((item) => !item.notDispensed);
+    // Validation: every line is either dispensed from a batch with enough stock, or marked as not dispensed.
+    for (const item of toDispense) {
       if (!item.selectedBatchId) {
-        toast.error(`Select a batch for ${item.medicineName}`);
+        toast.error(`Select a batch for ${item.medicineName}, or mark it as not dispensed`);
         return;
       }
+      const qty = Number(item.dispenseQty);
       // Prescription items carry no quantity, so the pharmacist must enter one; never send an empty quantity.
-      if (!(parseInt(item.dispenseQty) > 0)) {
+      if (!Number.isInteger(qty) || qty <= 0) {
         toast.error(`Enter the quantity to dispense for ${item.medicineName}`);
         return;
       }
-      if (item.dispenseQty > (item.selectedBatch?.quantity || 0)) {
+      if (qty > Number(item.selectedBatch?.quantity || 0)) {
         toast.error(`Not enough stock in the selected batch for ${item.medicineName}`);
         return;
       }
+    }
+    if (toDispense.length === 0) {
+      toast.error('Nothing to dispense. At least one medicine must be dispensed from stock.');
+      return;
     }
 
     try {
       setDispensing(true);
 
+      // Rates and amounts are worked out by the server from the batch MRP.
       const payload = {
         prescriptionId: selectedPrescription.PRESCRIPTION_ID,
-        items: dispenseItems.map(item => ({
+        items: toDispense.map((item) => ({
+          prescriptionItemId: item.id,
           medicineId: item.medicineId,
-          batchId: item.selectedBatchId,
-          quantity: parseInt(item.dispenseQty),
-          rate: item.rate,
-          amount: parseFloat(item.rate) * parseInt(item.dispenseQty),
-          medicineName: item.medicineName
-        }))
+          batchId: Number(item.selectedBatchId),
+          quantity: Number(item.dispenseQty),
+          medicineName: item.medicineName,
+        })),
+        notDispensed: dispenseItems.filter((item) => item.notDispensed).map((item) => ({
+          prescriptionItemId: item.id,
+          medicineName: item.medicineName,
+          reason: item.reason,
+        })),
       };
 
       const res = await api.post('/pharmacy/dispense', payload);
 
       // /pharmacy/dispense answers { success: true }; the legacy namespace answered { status: 'success' }.
       if (res.data.success || res.data.status === 'success') {
-        toast.success('Medicines dispensed and added to the bill');
+        const data = res.data;
+        toast.success(data.notDispensed?.length ? data.message : 'Medicines dispensed and added to the bill');
 
-        // Populate slip data from the response or local state
         setSlipData({
-          id: 'D-' + Date.now(),
-          dispensedAt: new Date().toISOString(),
+          id: data.dispensingRecordId,
+          dispensedAt: data.dispensedAt || new Date().toISOString(),
           patientName: selectedPrescription.PATIENT_NAME,
           patientUhid: selectedPrescription.UHID,
-          totalAmount: payload.items.reduce((sum, i) => sum + i.amount, 0),
-          isIpd: String(selectedPrescription.UHID || '').includes('IPD'),
-          items: payload.items.map(i => ({
-            medicineName: i.medicineName,
-            quantity: i.quantity,
-            rate: i.rate,
-            amount: i.amount,
-            isPartial: dispenseItems.find(di => di.medicineId === i.medicineId)?.isPartial
-          }))
+          billNumber: data.billNumber,
+          totalAmount: data.totalAmount,
+          isIpd: data.billType === 'IPD',
+          items: data.items || [],
+          notDispensed: data.notDispensed || [],
         });
 
         fetchQueue();
         setSelectedPrescription(null);
+        setDispenseItems([]);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Dispensing failed');
+      // Someone else dispensed it first: drop it from the screen and the queue.
+      if (err.response?.status === 409) {
+        setSelectedPrescription(null);
+        setDispenseItems([]);
+        fetchQueue();
+      }
     } finally {
       setDispensing(false);
     }
@@ -207,7 +232,7 @@ export default function DispensePage() {
             >
               <span className="cell-stack" style={{ minWidth: 0 }}>
                 <span className="cell-primary">{item.PATIENT_NAME}</span>
-                <span className="cell-secondary"><span className="mono">{item.UHID}</span> · Dr. {item.DOCTOR_NAME}</span>
+                <span className="cell-secondary"><span className="mono">{item.UHID}</span> · {drName(item.DOCTOR_NAME)}</span>
               </span>
               <span className="cell-stack" style={{ alignItems: 'flex-end', flexShrink: 0 }}>
                 <span className="cell-secondary">{fmtTime(item.CREATED_AT)}</span>
@@ -236,7 +261,7 @@ export default function DispensePage() {
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         {/* Left Panel: Queue */}
-        <section className="panel" style={{ flex: '1 1 320px', maxWidth: 400 }}>
+        <section className="panel" style={{ flex: '1 1 320px', maxWidth: 400 }} aria-label="Pending prescriptions">
           <div className="panel-head">
             <h2 className="panel-title" style={{ margin: 0 }}><ClipboardList size={16} aria-hidden="true" /> Pending prescriptions</h2>
             {!loading && <span className="muted tabular">{queue.length}</span>}
@@ -249,8 +274,8 @@ export default function DispensePage() {
         {/* Right Panel: Action Area */}
         <section className="panel" style={{ flex: '3 1 520px', minWidth: 0 }}>
           {slipData ? (
-            <div style={{ padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, overflowY: 'auto' }} className="print-area">
-              <h2 style={{ marginBottom: 8, color: 'var(--green)' }}>Rx Dispensed</h2>
+            <div style={{ padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, overflowY: 'auto' }} className="print-area" role="region" aria-label="Dispensing slip">
+              <h2 style={{ marginBottom: 8, color: 'var(--success)' }}>Rx Dispensed</h2>
               <div style={{ background: 'var(--surface-2)', padding: 32, borderRadius: 12, width: '100%', maxWidth: 700, marginTop: 24, border: '1px dashed var(--border)' }}>
                 <div style={{ textAlign: 'center', marginBottom: 24, paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
                   <h3 style={{ margin: 0 }}>HMS Hospital Pharmacy Slip</h3>
@@ -262,10 +287,11 @@ export default function DispensePage() {
                   <div>
                     <div><strong>Patient:</strong> {slipData.patientName}</div>
                     <div><strong>UHID:</strong> {slipData.patientUhid}</div>
-                    {slipData.isIpd && <div style={{ color: 'var(--blue)', fontWeight: 600, marginTop: 4 }}>[IPD Patient - Sent to Central Billing]</div>}
+                    {slipData.isIpd && <div style={{ color: 'var(--primary)', fontWeight: 600, marginTop: 4 }}>[IPD Patient - Sent to Central Billing]</div>}
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <strong>Record ID:</strong> #{slipData.id}
+                    <div><strong>Record ID:</strong> #{slipData.id}</div>
+                    {slipData.billNumber && <div><strong>Bill:</strong> {slipData.billNumber}</div>}
                   </div>
                 </div>
 
@@ -273,6 +299,7 @@ export default function DispensePage() {
                   <thead>
                     <tr style={{ background: 'var(--surface-3)' }}>
                       <th style={{ padding: 8, textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Medicine</th>
+                      <th style={{ padding: 8, textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Batch</th>
                       <th style={{ padding: 8, textAlign: 'center', borderBottom: '1px solid var(--border)' }}>Qty</th>
                       <th style={{ padding: 8, textAlign: 'center', borderBottom: '1px solid var(--border)' }}>Rate</th>
                       <th style={{ padding: 8, textAlign: 'right', borderBottom: '1px solid var(--border)' }}>Amount</th>
@@ -283,22 +310,34 @@ export default function DispensePage() {
                       <tr key={idx}>
                         <td style={{ padding: '8px 0', borderBottom: '1px dashed var(--border)' }}>
                           <strong>{item.medicineName}</strong>
-                          {item.substitutedFor && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Sub. for: {item.substitutedFor}</div>}
-                          {item.isPartial && <span style={{ color: 'var(--amber)', fontSize: '0.75rem', marginLeft: 8 }}>(Partial)</span>}
+                        </td>
+                        <td style={{ padding: 8, borderBottom: '1px dashed var(--border)' }} className="mono">
+                          {item.batchNumber}{item.expiryDate ? ` (exp ${fmtDate(item.expiryDate)})` : ''}
                         </td>
                         <td style={{ padding: 8, textAlign: 'center', borderBottom: '1px dashed var(--border)' }}>
                           {item.quantity}
                         </td>
-                        <td style={{ padding: 8, textAlign: 'center', borderBottom: '1px dashed var(--border)' }}>₹{Number(item.rate || 0).toFixed(2)}</td>
-                        <td style={{ padding: 8, textAlign: 'right', borderBottom: '1px dashed var(--border)' }}>₹{Number(item.amount || 0).toFixed(2)}</td>
+                        <td style={{ padding: 8, textAlign: 'center', borderBottom: '1px dashed var(--border)' }}>{inr(item.rate)}</td>
+                        <td style={{ padding: 8, textAlign: 'right', borderBottom: '1px dashed var(--border)' }}>{inr(item.amount)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
 
+                {slipData.notDispensed.length > 0 && (
+                  <div style={{ marginBottom: 24 }}>
+                    <strong>Not dispensed</strong>
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+                      {slipData.notDispensed.map((n) => (
+                        <li key={n.prescriptionItemId}>{n.medicineName} <span style={{ color: 'var(--text-secondary)' }}>({n.reason})</span></li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.2rem', fontWeight: 700 }}>
                   <span>Total Amount:</span>
-                  <span>₹{Number(slipData.totalAmount || 0).toFixed(2)}</span>
+                  <span>{inr(slipData.totalAmount)}</span>
                 </div>
               </div>
 
@@ -322,7 +361,7 @@ export default function DispensePage() {
                 <div className="cell-stack">
                   <h2 style={{ fontSize: '1.1rem', fontWeight: 650 }}>{selectedPrescription.PATIENT_NAME}</h2>
                   <span className="cell-secondary">
-                    UHID <span className="mono">{selectedPrescription.UHID}</span> · Prescribed by Dr. {selectedPrescription.DOCTOR_NAME}
+                    UHID <span className="mono">{selectedPrescription.UHID}</span> · Prescribed by {drName(selectedPrescription.DOCTOR_NAME)}
                   </span>
                 </div>
                 <button
@@ -344,64 +383,104 @@ export default function DispensePage() {
                           <th>Prescribed medicine</th>
                           <th>Batch (expiry)</th>
                           <th className="text-right">In stock</th>
-                          <th className="text-right">Requested</th>
                           <th style={{ width: 110 }}>Dispense qty</th>
-                          <th>Status</th>
+                          <th style={{ minWidth: 190 }}>Not dispensed</th>
                         </tr>
                       </thead>
                       <tbody>
                         {dispenseItems.map((di, idx) => {
                           const stock = di.selectedBatch ? di.selectedBatch.quantity : di.inStock;
+                          const off = di.notDispensed;
                           return (
-                            <tr key={di.id}>
-                              <td className="cell-primary">{di.medicineName}</td>
+                            <tr key={di.id} style={off ? { opacity: 0.75 } : undefined}>
+                              <td>
+                                <span className="cell-stack">
+                                  <span className="cell-primary">{di.medicineName}</span>
+                                  {di.dosage && <span className="cell-secondary">{di.dosage}</span>}
+                                  {di.unavailableReason && (
+                                    <span><span className={`status ${di.medicineId ? 'status-danger' : 'status-warning'}`}>{di.unavailableReason}</span></span>
+                                  )}
+                                </span>
+                              </td>
                               <td style={{ minWidth: 200 }}>
                                 <label className="sr-only" htmlFor={`disp-batch-${di.id}`}>Batch for {di.medicineName}</label>
                                 <select
                                   id={`disp-batch-${di.id}`}
                                   className="form-select"
                                   value={di.selectedBatchId}
+                                  disabled={off || di.availableBatches.length === 0}
                                   onChange={e => updateDispenseItem(idx, 'selectedBatchId', e.target.value)}
                                 >
                                   <option value="">{di.availableBatches.length === 0 ? 'No stock' : 'Select batch'}</option>
                                   {di.availableBatches.map(b => (
-                                    <option key={b.id} value={b.id}>
-                                      {b.batch_number || b.batchNumber || b.id} (exp {fmtDate(b.expiry_date || b.expiryDate || b.EXPIRY_DATE)})
+                                    <option key={b.id} value={String(b.id)}>
+                                      {batchNo(b)} (exp {fmtDate(batchExpiry(b))}) · {inr(batchRate(b))}
                                     </option>
                                   ))}
                                 </select>
                               </td>
-                              <td className="text-right tabular" style={{ fontWeight: 600, color: (di.selectedBatch?.quantity || 0) < di.requestedQty ? 'var(--red)' : 'var(--success)' }}>
+                              <td className="text-right tabular" style={{ fontWeight: 600, color: Number(stock || 0) <= 0 ? 'var(--red)' : undefined }}>
                                 {stock}
                               </td>
-                              <td className="text-right tabular">{di.requestedQty ?? '—'}</td>
                               <td>
                                 <label className="sr-only" htmlFor={`disp-qty-${di.id}`}>Quantity to dispense for {di.medicineName}</label>
                                 <input
                                   id={`disp-qty-${di.id}`}
                                   type="number"
                                   min="1"
+                                  step="1"
                                   className="form-input"
                                   value={di.dispenseQty ?? ''}
+                                  disabled={off}
                                   onChange={e => updateDispenseItem(idx, 'dispenseQty', e.target.value)}
                                 />
                               </td>
                               <td>
-                                {di.isPartial ? <span className="status status-warning">Partial</span> : <span className="status status-success">Full</span>}
+                                <div className="stack-sm" style={{ gap: 6 }}>
+                                  <label className="check-row" htmlFor={`disp-skip-${di.id}`} style={{ margin: 0 }}>
+                                    <input
+                                      type="checkbox"
+                                      id={`disp-skip-${di.id}`}
+                                      checked={off}
+                                      onChange={e => updateDispenseItem(idx, 'notDispensed', e.target.checked)}
+                                      aria-label={`Not dispensed: ${di.medicineName}`}
+                                    />
+                                    <span>Not dispensed</span>
+                                  </label>
+                                  {off && (
+                                    <>
+                                      <label className="sr-only" htmlFor={`disp-reason-${di.id}`}>Reason {di.medicineName} is not dispensed</label>
+                                      <select
+                                        id={`disp-reason-${di.id}`}
+                                        className="form-select"
+                                        value={di.reason}
+                                        onChange={e => updateDispenseItem(idx, 'reason', e.target.value)}
+                                      >
+                                        {NOT_DISPENSED_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                                      </select>
+                                    </>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );
                         })}
                         {dispenseItems.length === 0 && (
-                          <tr><td colSpan={6} className="muted">This prescription has no medicines.</td></tr>
+                          <tr><td colSpan={5} className="muted">This prescription has no medicines.</td></tr>
                         )}
                       </tbody>
                     </table>
                   </div>
                 )}
+                {dispenseItems.some((d) => d.unavailableReason && !d.notDispensed) && (
+                  <div className="alert-strip alert-warning" role="note" style={{ marginBottom: 0 }}>
+                    <Info size={16} aria-hidden="true" />
+                    <span>Some medicines cannot be supplied from stock. Mark them as not dispensed to dispense the rest; they are listed on the slip.</span>
+                  </div>
+                )}
                 <div className="alert-strip alert-info" role="note" style={{ marginBottom: 0 }}>
                   <Info size={16} aria-hidden="true" />
-                  <span>For inpatients, dispensing adds the cost to their IPD bill. No cash is collected here.</span>
+                  <span>Each line is charged at the batch MRP. For inpatients, dispensing adds the cost to their IPD bill. No cash is collected here.</span>
                 </div>
               </div>
             </>

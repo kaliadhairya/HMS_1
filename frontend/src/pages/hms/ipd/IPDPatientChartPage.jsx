@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Activity, ClipboardPlus, FileText, HeartPulse, LogOut, NotebookPen, Pill } from 'lucide-react';
+import { Activity, ClipboardPlus, Droplets, FileText, HeartPulse, LogOut, NotebookPen, Pill } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import DischargeSummaryModal from '../../../components/DischargeSummaryModal';
@@ -21,6 +21,10 @@ const MAR_TONE = { Given: 'success', Pending: 'neutral', Held: 'warning' };
 const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
 // IPD vitals come from a Sequelize model (camelCase); keep UPPER_CASE fallbacks for raw rows.
 const num = (...vals) => Number(vals.find((v) => v !== undefined && v !== null) || 0);
+const errMsg = (err, fallback) => err?.response?.data?.message || fallback;
+const EMPTY_VITALS = { bpSystolic: '', bpDiastolic: '', temperature: '', pulse: '', spo2: '', respiratoryRate: '', painScore: '', intakeOralMl: '', intakeIvMl: '', outputUrineMl: '', outputDrainMl: '' };
+const DAY_MS = 864e5;
+const signed = (n) => (n > 0 ? `+${n}` : String(n));
 
 export default function IPDPatientChartPage() {
   const { id } = useParams();
@@ -40,7 +44,7 @@ export default function IPDPatientChartPage() {
   // Forms States
   const [pnForm, setPnForm] = useState({ subjective: '', objective: '', assessment: '', plan: '' });
   const [nnForm, setNnForm] = useState({ conditionNotes: '', complaints: '', actionsTaken: '' });
-  const [vitalForm, setVitalForm] = useState({ bpSystolic: '', bpDiastolic: '', temperature: '', pulse: '', spo2: '', respiratoryRate: '', painScore: '', intakeOralMl: '', intakeIvMl: '', outputUrineMl: '', outputDrainMl: '', shift: 'Morning' });
+  const [vitalForm, setVitalForm] = useState({ ...EMPTY_VITALS, shift: 'Morning' });
 
   const fetchData = async () => {
     try {
@@ -125,7 +129,7 @@ export default function IPDPatientChartPage() {
       toast.success('Progress note saved');
       setPnForm({ subjective: '', objective: '', assessment: '', plan: '' });
       fetchProgressNotes();
-    } catch (err) { toast.error('Could not save progress note'); }
+    } catch (err) { toast.error(errMsg(err, 'Could not save progress note')); }
   };
 
   const submitNn = async (e) => {
@@ -135,7 +139,7 @@ export default function IPDPatientChartPage() {
       toast.success('Nursing note saved');
       setNnForm({ conditionNotes: '', complaints: '', actionsTaken: '' });
       fetchNursingNotes();
-    } catch (err) { toast.error('Could not save nursing note'); }
+    } catch (err) { toast.error(errMsg(err, 'Could not save nursing note')); }
   };
 
   const submitVitals = async (e) => {
@@ -143,10 +147,11 @@ export default function IPDPatientChartPage() {
     try {
       await api.post('/ipd/vitals', { ...vitalForm, admissionId: id, patientId: admission.PATIENT_ID });
       toast.success('Vitals saved');
-      // Reset numeric fields
-      setVitalForm({ ...vitalForm, bpSystolic: '', bpDiastolic: '', temperature: '', pulse: '', spo2: '', respiratoryRate: '', painScore: '' });
+      // Clear every measurement, intake and output included: they used to stay filled in and were
+      // saved again with the next reading, double-counting the fluid balance. The shift is kept.
+      setVitalForm((f) => ({ ...EMPTY_VITALS, shift: f.shift }));
       fetchVitals();
-    } catch (err) { toast.error('Could not save vitals'); }
+    } catch (err) { toast.error(errMsg(err, 'Could not save vitals')); }
   };
 
   // Medication administration (MAR)
@@ -161,7 +166,8 @@ export default function IPDPatientChartPage() {
       toast.success('Medication marked as given');
       fetchMar();
     } catch (err) {
-      toast.error('Could not update medication');
+      toast.error(errMsg(err, 'Could not update medication'));
+      fetchMar();
     } finally {
       setMarBusy(false);
     }
@@ -178,7 +184,8 @@ export default function IPDPatientChartPage() {
       setHoldTarget(null);
       fetchMar();
     } catch (err) {
-      toast.error('Could not update medication');
+      toast.error(errMsg(err, 'Could not update medication'));
+      if (err?.response?.status === 409) { setHoldTarget(null); fetchMar(); }
     } finally {
       setMarBusy(false);
     }
@@ -192,6 +199,19 @@ export default function IPDPatientChartPage() {
       </>
     );
   }
+
+  // Intake / output totals over the last 24 hours, from the inpatient (not OPD triage) readings.
+  const fluid = (() => {
+    const since = Date.now() - DAY_MS;
+    const rows = vitals.filter((v) => !v.isGeneral && new Date(v.recordedAt || v.RECORDED_AT).getTime() >= since);
+    if (rows.length === 0) return null;
+    const sum = (a, b) => rows.reduce((t, v) => t + num(v[a], v[b]), 0);
+    const oral = sum('INTAKE_ORAL_ML', 'intakeOralMl');
+    const iv = sum('INTAKE_IV_ML', 'intakeIvMl');
+    const urine = sum('OUTPUT_URINE_ML', 'outputUrineMl');
+    const drain = sum('OUTPUT_DRAIN_ML', 'outputDrainMl');
+    return { count: rows.length, oral, iv, urine, drain, intake: oral + iv, output: urine + drain, balance: oral + iv - urine - drain };
+  })();
 
   const isActive = admission.STATUS === 'Active';
   const canDischarge = (user.role === 'admin' || user.role === 'doctor') && isActive;
@@ -382,10 +402,10 @@ export default function IPDPatientChartPage() {
                 <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}>Record vitals and fluid balance</h2></div>
                 <form onSubmit={submitVitals} className="panel-pad stack-sm">
                    <div className="form-row-2">
-                     <div className="form-group">
-                       <label className="form-label" htmlFor="v-bp-sys">BP (sys / dia)</label>
+                     <div className="form-group" role="group" aria-labelledby="v-bp-label">
+                       <span className="form-label" id="v-bp-label">BP (sys / dia, mmHg)</span>
                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                         <input id="v-bp-sys" className="form-input" type="number" placeholder="120" value={vitalForm.bpSystolic} onChange={e=>setVitalForm({...vitalForm, bpSystolic:e.target.value})} />
+                         <input id="v-bp-sys" className="form-input" type="number" placeholder="120" aria-label="Systolic BP" value={vitalForm.bpSystolic} onChange={e=>setVitalForm({...vitalForm, bpSystolic:e.target.value})} />
                          <span className="muted" aria-hidden="true">/</span>
                          <input className="form-input" type="number" placeholder="80" aria-label="Diastolic BP" value={vitalForm.bpDiastolic} onChange={e=>setVitalForm({...vitalForm, bpDiastolic:e.target.value})} />
                        </div>
@@ -395,7 +415,7 @@ export default function IPDPatientChartPage() {
                        <input id="v-pulse" className="form-input" type="number" placeholder="72" value={vitalForm.pulse} onChange={e=>setVitalForm({...vitalForm, pulse:e.target.value})} />
                      </div>
                      <div className="form-group">
-                       <label className="form-label" htmlFor="v-temp">Temp (°F)</label>
+                       <label className="form-label" htmlFor="v-temp">Temperature (°F)</label>
                        <input id="v-temp" className="form-input" type="number" step="0.1" placeholder="98.6" value={vitalForm.temperature} onChange={e=>setVitalForm({...vitalForm, temperature:e.target.value})} />
                      </div>
                      <div className="form-group">
@@ -440,6 +460,23 @@ export default function IPDPatientChartPage() {
             </section>
           </div>
 
+          {fluid && (
+            <section className="panel">
+              <div className="panel-head">
+                <h2 className="panel-title" style={{ margin: 0 }}><Droplets size={16} aria-hidden="true" /> Fluid balance</h2>
+                <span className="cell-secondary">Last 24 hours · {fluid.count} {fluid.count === 1 ? 'entry' : 'entries'}</span>
+              </div>
+              <div className="panel-pad facts">
+                <div><div className="fact-label">Intake</div><div className="fact-value tabular">{fluid.intake} mL</div><div className="cell-secondary">Oral {fluid.oral} · IV {fluid.iv}</div></div>
+                <div><div className="fact-label">Output</div><div className="fact-value tabular">{fluid.output} mL</div><div className="cell-secondary">Urine {fluid.urine} · Drain {fluid.drain}</div></div>
+                <div>
+                  <div className="fact-label">Balance</div>
+                  <div className="fact-value tabular" style={{ color: fluid.balance < 0 ? 'var(--amber)' : undefined }}>{signed(fluid.balance)} mL</div>
+                </div>
+              </div>
+            </section>
+          )}
+
           <section className="panel">
             <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><HeartPulse size={16} aria-hidden="true" /> Vitals log</h2></div>
             {vitals.length === 0 ? (
@@ -460,7 +497,8 @@ export default function IPDPatientChartPage() {
                   <tbody>
                     {vitals.map(v => {
                       const sys = v.BP_SYSTOLIC || v.bpSystolic;
-                      const bpOut = sys > 140 || sys < 90;
+                      const dia = v.BP_DIASTOLIC || v.bpDiastolic;
+                      const bpOut = sys != null && (sys > 140 || sys < 90);
                       const spo2 = v.SPO2 || v.spo2;
                       return (
                         <tr key={v.id || v.ID}>
@@ -471,13 +509,13 @@ export default function IPDPatientChartPage() {
                             </span>
                           </td>
                           <td>
-                            <span className={`status ${bpOut ? 'status-danger' : 'status-success'}`}>
-                              {v.BP_SYSTOLIC || v.bpSystolic}/{v.BP_DIASTOLIC || v.bpDiastolic}
-                            </span>
+                            {sys ? (
+                              <span className={`status ${bpOut ? 'status-danger' : 'status-success'}`}>{sys}/{dia || '—'}</span>
+                            ) : <span className="muted">—</span>}
                           </td>
-                          <td className="tabular">{v.PULSE || v.pulse} <span className="cell-secondary">bpm</span></td>
-                          <td className="tabular">{v.TEMPERATURE || v.temperature} <span className="cell-secondary">°F</span></td>
-                          <td className="tabular" style={{ fontWeight: spo2 < 95 ? 650 : undefined, color: spo2 < 95 ? 'var(--red)' : undefined }}>{spo2}%</td>
+                          <td className="tabular">{(v.PULSE || v.pulse) ? <>{v.PULSE || v.pulse} <span className="cell-secondary">bpm</span></> : <span className="muted">—</span>}</td>
+                          <td className="tabular">{(v.TEMPERATURE || v.temperature) ? <>{v.TEMPERATURE || v.temperature} <span className="cell-secondary">°{(v.tempUnit || 'F').toUpperCase().startsWith('C') ? 'C' : 'F'}</span></> : <span className="muted">—</span>}</td>
+                          <td className="tabular" style={{ fontWeight: spo2 && spo2 < 95 ? 650 : undefined, color: spo2 && spo2 < 95 ? 'var(--red)' : undefined }}>{spo2 ? `${spo2}%` : <span className="muted">—</span>}</td>
                           <td className="tabular" style={{ textAlign: 'right' }}>
                             {v.isGeneral ? <span className="muted">—</span> : (
                               <span>
@@ -503,7 +541,7 @@ export default function IPDPatientChartPage() {
           <div className="panel-head">
             <div className="cell-stack">
               <h2 className="panel-title" style={{ margin: 0 }}><Pill size={16} aria-hidden="true" /> Scheduled medications (MAR)</h2>
-              <span className="cell-secondary">Medication administration for this admission, today.</span>
+              <span className="cell-secondary">Today's doses for this admission, and earlier doses still to be given.</span>
             </div>
           </div>
           {marRecords.length === 0 ? (
@@ -523,10 +561,21 @@ export default function IPDPatientChartPage() {
                 <tbody>
                   {marRecords.map(m => (
                     <tr key={m.ID}>
-                      <td className="tabular" style={{ fontWeight: 600 }}>{new Date(m.SCHEDULED_TIME).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                      <td className="tabular" style={{ fontWeight: 600 }}>
+                        {new Date(m.SCHEDULED_TIME).toDateString() !== new Date().toDateString() && <span className="cell-secondary">{new Date(m.SCHEDULED_TIME).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} </span>}
+                        {new Date(m.SCHEDULED_TIME).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </td>
                       <td className="cell-primary">{m.MEDICINE_NAME}</td>
                       <td style={{ color: 'var(--text-secondary)' }}>{m.DOSE} · {m.ROUTE}</td>
-                      <td><span className={`status status-${MAR_TONE[m.STATUS] || 'danger'}`}>{m.STATUS}</span></td>
+                      <td>
+                        <span className="cell-stack" style={{ alignItems: 'flex-start', gap: 2 }}>
+                          <span className={`status status-${MAR_TONE[m.STATUS] || 'danger'}`}>{m.STATUS}</span>
+                          {m.STATUS !== 'Pending' && m.ADMINISTERED_AT && (
+                            <span className="cell-secondary">{m.ADMINISTERED_BY_NAME || 'Staff'} · {new Date(m.ADMINISTERED_AT).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          )}
+                          {m.HOLD_REASON && <span className="cell-secondary">Reason: {m.HOLD_REASON}</span>}
+                        </span>
+                      </td>
                       <td style={{ textAlign: 'right' }}>
                         {m.STATUS === 'Pending' && canNurse && (
                           <span className="inline-actions">

@@ -186,6 +186,11 @@ router.get('/', protect, async (req, res) => {
       ];
     }
     if (patientType) where.patientType = patientType;
+    // Dates used to be pasted into the SQL text (injection). Accept only YYYY-MM-DD and bind them.
+    const isYmd = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
+    if ((fromDate && !isYmd(fromDate)) || (toDate && !isYmd(toDate))) {
+      return res.status(400).json({ success: false, message: 'Dates must be in YYYY-MM-DD format.' });
+    }
     if (fromDate || toDate) {
       where[Op.and] = where[Op.and] || [];
       if (fromDate) {
@@ -193,7 +198,7 @@ router.get('/', protect, async (req, res) => {
           sequelize.where(
             sequelize.fn('TRUNC', sequelize.col('testDate')),
             '>=',
-            sequelize.literal(`TO_DATE('${fromDate}', 'YYYY-MM-DD')`)
+            sequelize.fn('TO_DATE', fromDate, 'YYYY-MM-DD')
           )
         );
       }
@@ -202,7 +207,7 @@ router.get('/', protect, async (req, res) => {
           sequelize.where(
             sequelize.fn('TRUNC', sequelize.col('testDate')),
             '<=',
-            sequelize.literal(`TO_DATE('${toDate}', 'YYYY-MM-DD')`)
+            sequelize.fn('TO_DATE', toDate, 'YYYY-MM-DD')
           )
         );
       }
@@ -504,6 +509,12 @@ router.get('/hms/today-patients', protect, async (req, res) => {
       LEFT JOIN HMS_USERS u ON u.ID = e.DOCTOR_ID
       WHERE TRUNC(p.CREATED_AT) = TO_DATE(:today, 'YYYY-MM-DD')
          OR e.ID IS NOT NULL
+         -- Returning patients the front desk queued today (token or booked appointment)
+         OR EXISTS (SELECT 1 FROM HMS_TOKENS t
+                     WHERE t.PATIENT_ID = p.ID AND TRUNC(t.TOKEN_DATE) = TO_DATE(:today, 'YYYY-MM-DD'))
+         OR EXISTS (SELECT 1 FROM HMS_APPOINTMENTS a
+                     WHERE a.PATIENT_ID = p.ID AND TRUNC(a.APPOINTMENT_DATE) = TO_DATE(:today, 'YYYY-MM-DD')
+                       AND a.STATUS IN ('Scheduled', 'Checked-in'))
       ORDER BY p.CREATED_AT DESC
     `, {
       replacements: { today },
@@ -550,6 +561,12 @@ router.get('/hms/pending-consultation', protect, async (req, res) => {
         AND NOT EXISTS (
           SELECT 1 FROM HMS_ENCOUNTERS e WHERE e.PATIENT_ID = p.ID
         )
+        -- Queued for today (token or appointment): they are in today's queue instead
+        AND NOT EXISTS (SELECT 1 FROM HMS_TOKENS t
+                         WHERE t.PATIENT_ID = p.ID AND TRUNC(t.TOKEN_DATE) = TRUNC(CURRENT_TIMESTAMP))
+        AND NOT EXISTS (SELECT 1 FROM HMS_APPOINTMENTS a
+                         WHERE a.PATIENT_ID = p.ID AND TRUNC(a.APPOINTMENT_DATE) = TRUNC(CURRENT_TIMESTAMP)
+                           AND a.STATUS IN ('Scheduled', 'Checked-in'))
       ORDER BY p.CREATED_AT DESC
     `, {
       type: QueryTypes.SELECT
@@ -748,17 +765,35 @@ router.get('/hms/:id/chronic-conditions', protect, async (req, res) => {
   }
 });
 
+// The Allergy / ChronicCondition models declare ID without a default, so Sequelize sends ID = NULL
+// and the insert fails. Take the ID from the table's sequence, as the other HMS routes do.
+async function nextSequenceId(sequenceName) {
+  const [[row]] = await sequelize.query(`SELECT nextval('${sequenceName}') AS "NEXTVAL"`);
+  return Number(row.NEXTVAL ?? row.nextval);
+}
+
+const ALLERGY_SEVERITIES = new Set(['Mild', 'Moderate', 'Severe']);
+
 // POST /api/patients/hms/:id/allergies
 router.post('/hms/:id/allergies', protect, async (req, res) => {
   try {
-    const { allergen, reaction, severity } = req.body;
+    const allergen = String(req.body.allergen || '').trim();
+    const reaction = String(req.body.reaction || '').trim() || null;
+    const severity = String(req.body.severity || '').trim() || null;
     if (!allergen) return res.status(400).json({ success: false, message: 'Allergen is required.' });
+    if (severity && !ALLERGY_SEVERITIES.has(severity)) {
+      return res.status(400).json({ success: false, message: 'Severity must be Mild, Moderate or Severe.' });
+    }
+    const patient = await Patient.findByPk(req.params.id, { attributes: ['id'] });
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient not found.' });
 
     const allergy = await Allergy.create({
-      patient_id: req.params.id,
+      id: await nextSequenceId('hms_allergy_seq'),
+      patient_id: patient.id,
       allergen, reaction, severity,
       noted_by: req.user.id
     });
+    await logAction(req.user.id, 'CREATE', 'patient_allergy', allergy.id, null, { patient_id: patient.id, allergen, severity }, req.ip);
     res.status(201).json({ success: true, data: allergy });
   } catch (err) {
     console.error(err);
@@ -773,6 +808,7 @@ router.post('/hms/:id/chronic-conditions', protect, async (req, res) => {
     if (!condition_name) return res.status(400).json({ success: false, message: 'Condition name required.' });
 
     const condition = await ChronicCondition.create({
+      id: await nextSequenceId('hms_chronic_seq'),
       patient_id: req.params.id,
       condition_name, since_when, notes
     });

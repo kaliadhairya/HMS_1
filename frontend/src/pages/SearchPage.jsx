@@ -59,7 +59,8 @@ export default function SearchPage() {
       if (data.report) {
         navigate(`/report/${data.report.id}`, { state: { patient: data.patient } });
       } else {
-        toast.error('No report found for this patient.');
+        // Patients registered at the front desk have no report yet: start one (created on first save).
+        navigate(`/report/new?patient_id=${patientId}`, { state: { patient: data.patient } });
       }
     } catch {
       toast.error('Failed to load patient report.');

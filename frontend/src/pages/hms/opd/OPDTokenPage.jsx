@@ -5,8 +5,9 @@ import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
 
-const QUEUE_TONE = { Waiting: 'warning', Consulting: 'info', Completed: 'success' };
-const TOKEN_CLASS = { Waiting: 'token-waiting', Consulting: 'token-consulting' };
+// The server uses Waiting -> In Consultation -> Done; Consulting/Completed kept for older rows.
+const QUEUE_TONE = { Waiting: 'warning', 'In Consultation': 'info', Consulting: 'info', Done: 'success', Completed: 'success' };
+const TOKEN_CLASS = { Waiting: 'token-waiting', 'In Consultation': 'token-consulting', Consulting: 'token-consulting' };
 
 // /patients/hms/search returns raw SQL aliases (patient_name, phone_number); map them to the
 // field names the rest of this page uses.
@@ -78,9 +79,9 @@ export default function OPDTokenPage() {
     setLoading(true);
     setError('');
     try {
+      // No department here: the server uses the doctor's own department (it used to be forced to 1).
       const payload = {
         patient_id: patient.id,
-        department_id: 1,
         doctor_id: selectedDoctor,
       };
       const res = await api.post('/hms/tokens', payload);
@@ -240,7 +241,7 @@ export default function OPDTokenPage() {
                   <li
                     key={t.id}
                     className="queue-item"
-                    style={{ background: t.status === 'Consulting' ? 'var(--primary-light)' : undefined }}
+                    style={{ background: t.status === 'Consulting' || t.status === 'In Consultation' ? 'var(--primary-light)' : undefined }}
                   >
                     <span className={`token-circle ${TOKEN_CLASS[t.status] || 'token-completed'} tabular`} aria-label={`Token ${t.token_number}`}>
                       {t.token_number}

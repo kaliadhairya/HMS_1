@@ -6,6 +6,7 @@ const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { logAction } = require('../utils/auditLogger');
 const securitySettings = require('../utils/settings');
+const { ipAccess } = require('./security');
 
 const { body, validationResult } = require('express-validator');
 
@@ -35,14 +36,15 @@ router.post('/login', [
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
     }
 
-    // Check if account is active
-    if (!user.isActive) {
-      await logAction(user.id, 'LOGIN_FAILED', 'auth', null, null, { reason: 'account_inactive' }, ip);
-      return res.status(403).json({ success: false, message: 'Account is deactivated. Contact your administrator.' });
+    // IP allow/block lists from the security centre
+    if (!ipAccess.isAllowed(ip, securitySettings)) {
+      await logAction(user.id, 'LOGIN_FAILED', 'auth', null, null, { reason: 'ip_blocked' }, ip);
+      return res.status(403).json({ success: false, message: 'Sign-in from this network address is not allowed. Contact your administrator.' });
     }
 
     // Check if account is locked
-    if (user.locked_until && new Date(user.locked_until) > new Date()) {
+    const lockActive = user.locked_until && new Date(user.locked_until) > new Date();
+    if (lockActive) {
       await logAction(user.id, 'LOGIN_FAILED', 'auth', null, null, { reason: 'account_locked' }, ip);
       return res.status(423).json({
         success: false,
@@ -51,21 +53,14 @@ router.post('/login', [
       });
     }
 
-    // Check maintenance mode
-    if (securitySettings.maintenance_mode && user.role !== 'super_admin') {
-      await logAction(user.id, 'LOGIN_FAILED', 'auth', null, null, { reason: 'maintenance_mode' }, ip);
-      return res.status(503).json({
-        success: false,
-        message: securitySettings.maintenance_message,
-      });
-    }
-
-    // Compare password
+    // Compare password before revealing anything else about the account
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      // Increment failed attempts
-      const attempts = (user.failed_attempts || 0) + 1;
-      const updateData = { failed_attempts: attempts };
+      // Increment failed attempts. A lock that has run out starts a fresh count, so one more
+      // mistake after the lock expires does not lock the account again straight away.
+      const previous = user.locked_until ? 0 : (user.failed_attempts || 0);
+      const attempts = previous + 1;
+      const updateData = { failed_attempts: attempts, locked_until: null };
 
       if (attempts >= 5) {
         const lockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
@@ -84,6 +79,21 @@ router.post('/login', [
       }
 
       return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+    }
+
+    // Check if account is active (only told to someone who knows the password)
+    if (!user.isActive) {
+      await logAction(user.id, 'LOGIN_FAILED', 'auth', null, null, { reason: 'account_inactive' }, ip);
+      return res.status(403).json({ success: false, message: 'Account is deactivated. Contact your administrator.' });
+    }
+
+    // Check maintenance mode
+    if (securitySettings.maintenance_mode && user.role !== 'super_admin') {
+      await logAction(user.id, 'LOGIN_FAILED', 'auth', null, null, { reason: 'maintenance_mode' }, ip);
+      return res.status(503).json({
+        success: false,
+        message: securitySettings.maintenance_message,
+      });
     }
 
     // Successful login — reset failed_attempts, update last_login
@@ -154,7 +164,11 @@ router.post('/change-password', protect, async (req, res) => {
 
     const isMatch = await user.comparePassword(currentPassword);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Current password is incorrect.' });
+      // 400, not 401: the session is valid, and the web client signs the user out on any 401.
+      return res.status(400).json({ success: false, message: 'Current password is incorrect.' });
+    }
+    if (await user.comparePassword(newPassword)) {
+      return res.status(400).json({ success: false, message: 'Choose a new password that is different from the current one.' });
     }
 
     user.password = newPassword; // beforeUpdate hook will hash it

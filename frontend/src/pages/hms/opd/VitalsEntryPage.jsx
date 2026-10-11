@@ -154,7 +154,8 @@ export default function VitalsEntryPage() {
       // Reset form
       setFormData((prev) => ({ ...prev, bp_systolic: '', bp_diastolic: '', temperature: '', weight_kg: '', height_cm: '', spo2: '', pulse: '', respiratory_rate: '' }));
     } catch (err) {
-      setError('Failed to record vitals.');
+      // Show the server's reason (e.g. "Temperature in °C must be between 30 and 45. Check the unit.")
+      setError(err.response?.data?.message || 'Failed to record vitals.');
     } finally {
       setLoading(false);
     }

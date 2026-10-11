@@ -2,11 +2,26 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import { toast } from 'react-hot-toast';
-import { ArrowLeft, ArrowRight, CircleCheck, FlaskConical, HeartPulse, Search, UserRound, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleCheck, FlaskConical, HeartPulse, Search, TriangleAlert, UserRound, X } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
+import { AllergyStatusPanel, findAllergyMatches, medicineNames, useAllergyGate, usePatientAllergies } from '../consultation/allergySafety';
 
 const rxInputStyle = { height: 32, padding: '4px 8px', minWidth: 64 };
+// /hms/medicines/search returns camelCase fields (genericName, brandNames[]); older rows used snake case.
+const medGeneric = (m) => m.genericName || m.generic_name || '';
+const medBrands = (m) => {
+  const raw = m.brandNames ?? m.brand_names;
+  if (Array.isArray(raw)) return raw;
+  if (!raw) return [];
+  try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : [String(parsed)]; } catch { return String(raw).split(',').map((b) => b.trim()).filter(Boolean); }
+};
+// NUMERIC columns arrive as strings ("38.20"); show them as numbers (38.2).
+const shown = (v, unit = '') => {
+  if (v === null || v === undefined || v === '') return '—';
+  const n = Number(v);
+  return `${Number.isFinite(n) ? n : v}${unit}`;
+};
 
 export default function DoctorQuickConsultPage() {
   const navigate = useNavigate();
@@ -36,6 +51,11 @@ export default function DoctorQuickConsultPage() {
   const [prescriptionItems, setPrescriptionItems] = useState([]);
   const [medSearch, setMedSearch] = useState('');
   const [medResults, setMedResults] = useState([]);
+
+  // Patient safety: allergy record and the confirmation before prescribing against it
+  const allergyState = usePatientAllergies(activePatient ? (activePatient.id || activePatient.ID) : null);
+  const allergyGate = useAllergyGate(allergyState);
+  const allergyMatchesFor = (item) => (allergyState.status === 'ok' ? findAllergyMatches(allergyState.allergies, medicineNames(item)) : []);
 
   // Patient Search Logic
   useEffect(() => {
@@ -69,17 +89,18 @@ export default function DoctorQuickConsultPage() {
     
     // Automatically create ad-hoc encounter if none active, or fetch latest
     try {
+      // No department here: the server takes it from today's token/appointment or the doctor
+      // (it used to be forced to department 1).
       const payload = {
         patient_id: patient.id || patient.ID,
-        department_id: 1, // Generic OPD
         encounter_type: 'OPD'
       };
       const res = await api.post('/hms/encounters', payload);
       setActiveEncounterId(res.data.id);
       
-      // Load patient context (Vitals, Lab Reports)
+      // Load patient context (Vitals, Lab Reports). The vitals API answers { success, data }.
       const vp = await api.get(`/hms/vitals/latest/${patient.id || patient.ID}`);
-      if (vp.data.success) setVitals(vp.data.vital);
+      if (vp.data.success) setVitals(vp.data.data || null);
       
       // Fetch historic lab reports for this patient directly into their profile
       const rpRes = await api.get(`/patients/hms/${patient.id || patient.ID}/visits`);
@@ -152,13 +173,18 @@ export default function DoctorQuickConsultPage() {
     } catch (err) { console.error(err); }
   };
 
+  // Every medicine goes through the allergy check; a match needs "Prescribe anyway".
   const addPrescriptionItem = (med) => {
-    setPrescriptionItems([...prescriptionItems, {
-      medicine_name: med.generic_name,
-      dose: '1', dose_unit: 'Tablet', route: 'Oral', frequency: 'BD', duration_days: 5, instructions: 'After meal'
-    }]);
+    const generic = medGeneric(med);
     setMedSearch('');
     setMedResults([]);
+    if (!generic) return;
+    allergyGate.check([generic, ...medBrands(med)], generic, () => {
+      setPrescriptionItems((items) => [...items, {
+        medicine_name: generic, generic_name: generic,
+        dose: '1', dose_unit: 'Tablet', route: 'Oral', frequency: 'BD', duration_days: 5, instructions: 'After meal'
+      }]);
+    });
   };
 
   const updateItem = (index, field, val) => {
@@ -188,7 +214,7 @@ export default function DoctorQuickConsultPage() {
       toast.success('Consultation finalized');
       clearPatient();
     } catch (err) { 
-      toast.error('Failed to finalize encounter'); 
+      toast.error(err.response?.data?.error || 'Failed to finalize encounter'); 
     }
   };
 
@@ -251,6 +277,10 @@ export default function DoctorQuickConsultPage() {
           )}
         </section>
       ) : (
+        <>
+        <div className="panel panel-pad" style={{ marginBottom: 16 }}>
+          <AllergyStatusPanel status={allergyState.status} allergies={allergyState.allergies} onRetry={allergyState.retry} />
+        </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
           {/* Patient context */}
           <aside className="stack" style={{ flex: '1 1 280px', maxWidth: 400, minWidth: 0 }}>
@@ -264,17 +294,22 @@ export default function DoctorQuickConsultPage() {
               </div>
             </section>
 
-            <section className="panel panel-pad">
-              <h2 className="panel-title"><HeartPulse size={16} aria-hidden="true" /> Today&apos;s vitals</h2>
+            <section className="panel panel-pad" aria-labelledby="qc-vitals-title">
+              <h2 className="panel-title" id="qc-vitals-title"><HeartPulse size={16} aria-hidden="true" /> Latest vitals</h2>
               {vitals ? (
-                <div className="facts">
-                  <div><div className="fact-label">BP</div><div className="fact-value tabular">{vitals.bp_systolic}/{vitals.bp_diastolic}</div></div>
-                  <div><div className="fact-label">Pulse</div><div className="fact-value tabular">{vitals.pulse} bpm</div></div>
-                  <div><div className="fact-label">Temperature</div><div className="fact-value tabular">{vitals.temperature}°F</div></div>
-                  <div><div className="fact-label">SpO2</div><div className="fact-value tabular">{vitals.spo2}%</div></div>
-                </div>
+                <>
+                  <p className="muted" style={{ marginTop: 0 }}>
+                    Recorded {new Date(vitals.recorded_at || vitals.RECORDED_AT).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })}
+                  </p>
+                  <div className="facts">
+                    <div><div className="fact-label">BP</div><div className="fact-value tabular">{vitals.bp_systolic ? `${vitals.bp_systolic}/${shown(vitals.bp_diastolic)}` : '—'}</div></div>
+                    <div><div className="fact-label">Pulse</div><div className="fact-value tabular">{shown(vitals.pulse, ' bpm')}</div></div>
+                    <div><div className="fact-label">Temperature</div><div className="fact-value tabular">{shown(vitals.temperature, ` °${vitals.temp_unit || vitals.TEMP_UNIT || 'F'}`)}</div></div>
+                    <div><div className="fact-label">SpO2</div><div className="fact-value tabular">{shown(vitals.spo2, '%')}</div></div>
+                  </div>
+                </>
               ) : (
-                <div className="alert-strip alert-warning" style={{ marginBottom: 0 }}>No vitals recorded today.</div>
+                <div className="alert-strip alert-warning" style={{ marginBottom: 0 }}>No vitals recorded for this patient.</div>
               )}
             </section>
 
@@ -388,8 +423,8 @@ export default function DoctorQuickConsultPage() {
                             <li key={m.id}>
                               <button type="button" className="list-row" onClick={() => addPrescriptionItem(m)}>
                                 <span className="cell-stack">
-                                  <span className="cell-primary">{m.generic_name} {m.brand_names ? `(${JSON.parse(m.brand_names).join(', ')})` : ''}</span>
-                                  <span className="cell-secondary">{m.formulation} {m.strength} {m.strength_unit}</span>
+                                  <span className="cell-primary">{medGeneric(m)}{medBrands(m).length ? ` (${medBrands(m).join(', ')})` : ''}</span>
+                                  <span className="cell-secondary">{[m.formulation, m.strength, m.strengthUnit || m.strength_unit].filter(Boolean).join(' ')}</span>
                                 </span>
                               </button>
                             </li>
@@ -404,9 +439,20 @@ export default function DoctorQuickConsultPage() {
                       <thead><tr><th>Medicine</th><th>Dose</th><th>Unit</th><th>Route</th><th>Frequency</th><th>Days</th><th><span className="sr-only">Actions</span></th></tr></thead>
                       <tbody>
                         {prescriptionItems.length === 0 && <tr><td colSpan="7" className="muted" style={{ textAlign: 'center' }}>No medicines prescribed yet.</td></tr>}
-                        {prescriptionItems.map((item, idx) => (
+                        {prescriptionItems.map((item, idx) => {
+                          const matches = allergyMatchesFor(item);
+                          return (
                           <tr key={idx}>
-                            <td className="cell-primary">{item.medicine_name}</td>
+                            <td>
+                              <span className="cell-stack">
+                                <span className="cell-primary">{item.medicine_name}</span>
+                                {matches.length > 0 && (
+                                  <span className="status status-danger" style={{ alignSelf: 'flex-start' }}>
+                                    <TriangleAlert size={12} aria-hidden="true" /> Allergy: {matches.map((a) => a.allergen).join(', ')}
+                                  </span>
+                                )}
+                              </span>
+                            </td>
                             <td><input type="text" className="form-input" style={rxInputStyle} aria-label={`Dose for ${item.medicine_name}`} value={item.dose} onChange={e => updateItem(idx, 'dose', e.target.value)} /></td>
                             <td><input type="text" className="form-input" style={rxInputStyle} aria-label={`Dose unit for ${item.medicine_name}`} value={item.dose_unit} onChange={e => updateItem(idx, 'dose_unit', e.target.value)} /></td>
                             <td><input type="text" className="form-input" style={rxInputStyle} aria-label={`Route for ${item.medicine_name}`} value={item.route} onChange={e => updateItem(idx, 'route', e.target.value)} /></td>
@@ -418,7 +464,8 @@ export default function DoctorQuickConsultPage() {
                               </button>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -434,8 +481,10 @@ export default function DoctorQuickConsultPage() {
             </div>
           </section>
         </div>
+        </>
       )}
     </main>
+    {allergyGate.modal}
     </>
   );
 }

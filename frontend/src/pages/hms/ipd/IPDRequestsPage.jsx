@@ -21,6 +21,8 @@ const STATUS_TONE = { Pending: 'warning', Admitted: 'success', Cancelled: 'neutr
 const URGENCY_TONE = { Emergency: 'danger', Urgent: 'warning', Routine: 'neutral' };
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const fmtTime = (v) => (v ? new Date(v).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '');
+// A bed can take a patient only when it is active, marked Available and has nobody in it.
+const isFreeBed = (b) => (b.STATUS || b.status) === 'Available' && Number(b.IS_ACTIVE ?? 1) === 1 && !b.ADMISSION_ID;
 const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 
 export default function IPDRequestsPage() {
@@ -99,18 +101,19 @@ export default function IPDRequestsPage() {
       // Auto-match ward preference from doctor's request
       const pref = (req.WARD_PREFERENCE || req.wardPreference || '').toLowerCase().trim();
       if (pref) {
-        const matched = wardList.find(w => {
-          const wName = (w.NAME || w.name || '').toLowerCase();
-          const wType = (w.TYPE || w.type || '').toLowerCase();
-          return wName === pref || wType === pref || wName.includes(pref) || pref.includes(wName);
-        });
+        // Exact name or type first: "Private" used to match the "Semi-Private" ward by substring.
+        const nameOf = (w) => (w.NAME || w.name || '').toLowerCase();
+        const typeOf = (w) => (w.TYPE || w.type || '').toLowerCase();
+        const matched = wardList.find(w => nameOf(w) === pref || typeOf(w) === pref)
+          || wardList.find(w => nameOf(w).startsWith(pref) || pref.startsWith(nameOf(w)))
+          || wardList.find(w => nameOf(w).includes(pref) || pref.includes(nameOf(w)));
         if (matched) {
           const wardId = String(matched.ID || matched.id);
           setSelectedWard(wardId);
           // Also fetch beds for the matched ward
           try {
             const bedRes = await api.get(`/ipd/beds?ward_id=${wardId}`);
-            setBeds(bedRes.data.data?.filter(b => b.STATUS === 'Available' || b.status === 'Available') || []);
+            setBeds(bedRes.data.data?.filter(isFreeBed) || []);
           } catch (err) {
             console.error(err);
           }
@@ -124,7 +127,7 @@ export default function IPDRequestsPage() {
   const fetchBeds = async (wardId) => {
     try {
       const res = await api.get(`/ipd/beds?ward_id=${wardId}`);
-      setBeds(res.data.data?.filter(b => b.STATUS === 'Available' || b.status === 'Available') || []);
+      setBeds(res.data.data?.filter(isFreeBed) || []);
     } catch (err) {
       console.error(err);
     }
@@ -142,26 +145,17 @@ export default function IPDRequestsPage() {
     if (!selectedBed) return toast.error('Select an available bed');
     setAdmitting(true);
     try {
-      // 1. Create admission
+      // The admission and the request status change happen in one transaction on the server.
       const admRes = await api.post('/ipd/admissions', {
         patientId: admitModal.PATIENT_ID || admitModal.patientId,
         admittingDoctorId: admitModal.DOCTOR_ID || admitModal.doctorId,
-        department: admitModal.PRIMARY_DIAGNOSIS || 'General',
         bedId: selectedBed,
+        requestId: admitModal.ID || admitModal.id,
         admissionType: admitModal.URGENCY_LEVEL || 'Routine',
-        patientName: admitModal.PATIENT_NAME || admitModal.patientName,
-        uhid: admitModal.UHID || admitModal.uhid,
       });
 
       if (admRes.data.success) {
         const admissionId = admRes.data.data.id || admRes.data.data.ID;
-        // 2. Update request status on backend
-        await api.patch(`/ipd/requests/${admitModal.ID || admitModal.id}/status`, {
-          status: 'Admitted',
-          admissionId
-        });
-
-        // 3. Immediately update local state so UI reflects change
         const admitId = String(admitModal.ID || admitModal.id);
         setRequests(prev => prev.map(r => {
           if (String(r.ID || r.id) === admitId) {
@@ -170,24 +164,25 @@ export default function IPDRequestsPage() {
           return r;
         }));
 
-        toast.success('Patient admitted');
+        toast.success(`Patient admitted: ${admRes.data.data.ADMISSION_ID_FORMATTED}`);
         setAdmitModal(null);
         setSelectedWard('');
         setSelectedBed('');
         setBeds([]);
 
-        // 4. Switch filter to "Admitted" so user sees the result
+        // Switch filter to "Admitted" so user sees the result
         setStatusFilter('Admitted');
       }
     } catch (err) {
       console.error(err);
-      toast.error('Could not admit patient');
+      toast.error(err.response?.data?.message || 'Could not admit patient');
+      if (err.response?.status === 409) fetchRequests();
     } finally {
       setAdmitting(false);
     }
   };
 
-  const canAdmit = user?.role === 'nurse' || user?.role === 'super_admin' || user?.role === 'receptionist';
+  const canAdmit = ['nurse', 'admin', 'super_admin', 'receptionist'].includes(user?.role);
   const canDelete = user?.role === 'doctor' || user?.role === 'super_admin' || user?.role === 'admin';
 
   const handleDelete = async () => {
@@ -226,16 +221,8 @@ export default function IPDRequestsPage() {
     }
   };
 
-  const recordVitals = (req) => navigate('/hms/vitals/entry', {
-    state: {
-      patient: {
-        id: req.PATIENT_ID || req.patientId,
-        name: req.PATIENT_NAME || req.patientName,
-        uhid: req.UHID || req.uhid,
-        age: req.AGE || req.age || '',
-      }
-    }
-  });
+  // Inpatient vitals go on the admission's chart (with shift and fluid balance), not the OPD triage page.
+  const recordVitals = (req) => navigate(`/ipd/patient/${req.ADMISSION_ID || req.admissionId}`, { state: { activeTab: 'vitals' } });
 
   const columns = useMemo(() => {
     const cols = [];
@@ -329,7 +316,7 @@ export default function IPDRequestsPage() {
                 </button>
               )}
               {status === 'Pending' && !canAdmit && <span className="cell-secondary">Awaiting admission</span>}
-              {status === 'Admitted' && canAdmit && (
+              {status === 'Admitted' && canAdmit && (req.ADMISSION_ID || req.admissionId) && (
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => recordVitals(req)}>
                   <Stethoscope size={14} aria-hidden="true" /> Record vitals
                 </button>

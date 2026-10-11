@@ -4,7 +4,7 @@ const PDFDocument = require('pdfkit');
 const TestReport = require('../models/TestReport');
 const Patient = require('../models/Patient');
 const User = require('../models/User');
-const { protect } = require('../middleware/auth');
+const { protect, checkPermission } = require('../middleware/auth');
 const { sequelize } = require('../models/db');
 const path = require('path');
 const fs = require('fs');
@@ -29,8 +29,45 @@ const getResult = (val) => {
   return s === '—' ? '' : s;
 };
 
+const REPORT_SECTIONS = ['haematology', 'biochemistry', 'serology', 'urine', 'other'];
+
+// ─── POST /api/reports — Start a report for a patient ───────────────────────
+// Patients registered through the HMS front desk have no report row (only the legacy lab
+// registration created one), so the editor at /report/new?patient_id= creates it on first save.
+router.post('/', protect, checkPermission('lab', 'write'), async (req, res) => {
+  try {
+    const patientId = Number(req.body?.patientId ?? req.body?.patient_id);
+    if (!Number.isInteger(patientId) || patientId <= 0) {
+      return res.status(400).json({ success: false, message: 'patientId is required.' });
+    }
+    const patient = await Patient.findByPk(patientId, { attributes: ['id'] });
+    if (!patient) return res.status(404).json({ success: false, message: 'Patient not found.' });
+
+    const [[{ NEXTVAL: reportId }]] = await sequelize.query("SELECT nextval('hms_test_reports_seq') AS \"NEXTVAL\"");
+    const fields = {
+      id: reportId,
+      patientId,
+      remarks: req.body?.remarks ?? null,
+      suggestions: req.body?.suggestions ?? null,
+      status: req.body?.status || 'Draft',
+      reportedBy: req.user.id,
+      reportDate: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    for (const section of REPORT_SECTIONS) {
+      if (req.body?.[section] && typeof req.body[section] === 'object') fields[section] = req.body[section];
+    }
+    const report = await TestReport.create(fields);
+    res.status(201).json({ success: true, message: 'Report created.', report });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
+});
+
 // ─── PUT /api/reports/:id — Save test results ────────────────────────────────
-router.put('/:id(\\d+)', protect, async (req, res) => {
+router.put('/:id(\\d+)', protect, checkPermission('lab', 'write'), async (req, res) => {
   try {
     const report = await TestReport.findByPk(req.params.id);
     if (!report) return res.status(404).json({ success: false, message: 'Report not found.' });
@@ -509,7 +546,9 @@ router.get('/:id(\\d+)/pdf', protect, async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ success: false, message: err.stack || err.message });
+    // Never send the stack trace to the client; the PDF stream may already have started.
+    if (!res.headersSent) res.status(500).json({ success: false, message: 'Failed to generate the report PDF.' });
+    else res.end();
   }
 });
 
@@ -520,16 +559,38 @@ router.get('/:id(\\d+)/pdf', protect, async (req, res) => {
 
 // ── GET /api/reports/opd-register ──────────────────────────────
 const { clobToString } = require('../utils/clobToString');
+const { restrictTo } = require('../middleware/auth');
+
+// Hospital-wide analytics (revenue, audit trail, every doctor's figures) are for administrators only;
+// they used to be open to any signed-in role.
+const analyticsAccess = [protect, restrictTo('super_admin', 'admin')];
+
+// start_date / end_date must be real YYYY-MM-DD dates; anything else used to surface as a 500.
+const isYmd = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+function badRange(req, res, { required = true } = {}) {
+  const { start_date: start, end_date: end } = req.query;
+  if (required && (!start || !end)) {
+    res.status(400).json({ success: false, message: 'start_date and end_date are required' });
+    return true;
+  }
+  if ((start && !isYmd(start)) || (end && !isYmd(end))) {
+    res.status(400).json({ success: false, message: 'Dates must be in YYYY-MM-DD format' });
+    return true;
+  }
+  if (start && end && start > end) {
+    res.status(400).json({ success: false, message: 'start_date must be on or before end_date' });
+    return true;
+  }
+  return false;
+}
 
 
-router.get('/opd-register', protect, async (req, res) => {
+router.get('/opd-register', analyticsAccess, async (req, res) => {
   try {
     const { start_date, end_date, doctor_id, department } = req.query;
     const exportType = req.query.export;
 
-    if (!start_date || !end_date) {
-      return res.status(400).json({ success: false, message: 'start_date and end_date are required' });
-    }
+    if (badRange(req, res)) return;
 
     const replacements = { start_date, end_date };
     let doctorFilter = '';
@@ -542,7 +603,9 @@ router.get('/opd-register', protect, async (req, res) => {
              p.AGE, p.GENDER, COALESCE(dep.NAME, 'General') as DEPARTMENT,
              u.NAME as DOCTOR_NAME,
              e.CHIEF_COMPLAINT, e.ENCOUNTER_DATE,
-             b.NET_PAYABLE as FEE,
+             (SELECT b.NET_PAYABLE FROM HMS_BILLS b
+               WHERE b.ENCOUNTER_ID = e.ID AND b.BILL_TYPE = 'OPD' AND b.STATUS <> 'Cancelled'
+               ORDER BY b.ID DESC LIMIT 1) as FEE,
              (SELECT string_agg(d.ICD10_DESCRIPTION, ', ')
               FROM HMS_DIAGNOSES d WHERE d.ENCOUNTER_ID = e.ID) as DIAGNOSES
       FROM HMS_ENCOUNTERS e
@@ -550,7 +613,6 @@ router.get('/opd-register', protect, async (req, res) => {
       JOIN HMS_USERS u ON u.ID = e.DOCTOR_ID
       LEFT JOIN HMS_DEPARTMENTS dep ON dep.ID = e.DEPARTMENT_ID
       LEFT JOIN HMS_TOKENS t ON t.ID = e.TOKEN_ID
-      LEFT JOIN HMS_BILLS b ON b.ENCOUNTER_ID = e.ID AND b.BILL_TYPE = 'OPD'
       WHERE trunc(e.ENCOUNTER_DATE) BETWEEN trunc(TO_DATE(:start_date,'YYYY-MM-DD'))
                                         AND trunc(TO_DATE(:end_date,'YYYY-MM-DD'))
       AND e.STATUS = 'Finalized'
@@ -608,52 +670,59 @@ router.get('/opd-register', protect, async (req, res) => {
 });
 
 // ── GET /api/reports/revenue ───────────────────────────────────
-router.get('/revenue', protect, async (req, res) => {
+// Billed / payable / outstanding: bills raised in the range (cancelled bills excluded).
+// Collected, by mode and per day: payments received in the range, so the three agree with each other.
+router.get('/revenue', analyticsAccess, async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
-    if (!start_date || !end_date) {
-      return res.status(400).json({ success: false, message: 'start_date and end_date are required' });
-    }
+    if (badRange(req, res)) return;
     const replacements = { start_date, end_date };
 
     // Query 1: Totals
     const [totals] = await sequelize.query(`
-      SELECT SUM(b.TOTAL_AMOUNT) as TOTAL_BILLED,
-             SUM(b.NET_PAYABLE) as TOTAL_PAYABLE,
-             SUM(COALESCE(paid.TOTAL_PAID,0)) as TOTAL_COLLECTED,
-             SUM(b.NET_PAYABLE) - SUM(COALESCE(paid.TOTAL_PAID,0)) as OUTSTANDING
+      SELECT COALESCE(SUM(b.TOTAL_AMOUNT), 0) as TOTAL_BILLED,
+             COALESCE(SUM(b.NET_PAYABLE), 0) as TOTAL_PAYABLE,
+             (SELECT COALESCE(SUM(pm.AMOUNT), 0) FROM HMS_PAYMENTS pm
+               WHERE trunc(pm.PAYMENT_DATE) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')) as TOTAL_COLLECTED,
+             COALESCE(SUM(GREATEST(b.NET_PAYABLE - COALESCE(paid.TOTAL_PAID, 0), 0)), 0) as OUTSTANDING,
+             COUNT(b.ID) as BILL_COUNT
       FROM HMS_BILLS b
       LEFT JOIN (SELECT BILL_ID, SUM(AMOUNT) as TOTAL_PAID FROM HMS_PAYMENTS GROUP BY BILL_ID) paid
         ON paid.BILL_ID = b.ID
       WHERE trunc(b.CREATED_AT) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
-      AND b.STATUS != 'Cancelled'
+      AND b.STATUS <> 'Cancelled'
     `, { replacements });
 
     // Query 2: By payment mode
     const [byMode] = await sequelize.query(`
-      SELECT PAYMENT_MODE, SUM(AMOUNT) as TOTAL
+      SELECT COALESCE(PAYMENT_MODE, 'Other') as PAYMENT_MODE, SUM(AMOUNT) as TOTAL
       FROM HMS_PAYMENTS
       WHERE trunc(PAYMENT_DATE) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
-      GROUP BY PAYMENT_MODE
+      GROUP BY COALESCE(PAYMENT_MODE, 'Other')
+      ORDER BY TOTAL DESC
     `, { replacements });
 
-    // Query 3: Daily collection
+    // Query 3: Daily collection (DATE_VAL is a plain YYYY-MM-DD date)
     const [dailyCollection] = await sequelize.query(`
-      SELECT trunc(PAYMENT_DATE) as DATE_VAL, SUM(AMOUNT) as DAILY_TOTAL
+      SELECT TO_CHAR(trunc(PAYMENT_DATE), 'YYYY-MM-DD') as DATE_VAL, SUM(AMOUNT) as DAILY_TOTAL
       FROM HMS_PAYMENTS
       WHERE trunc(PAYMENT_DATE) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
       GROUP BY trunc(PAYMENT_DATE)
-      ORDER BY DATE_VAL
+      ORDER BY trunc(PAYMENT_DATE)
     `, { replacements });
 
-    // Query 4: By department
+    // Query 4: By department. IPD bills have no encounter, so they used to be left out entirely,
+    // and cancelled bills used to be counted.
     const [byDepartment] = await sequelize.query(`
-      SELECT COALESCE(dep.NAME, 'Unassigned') as DEPARTMENT, SUM(b.NET_PAYABLE) as REVENUE
+      SELECT COALESCE(dep.NAME, CASE WHEN b.BILL_TYPE = 'IPD' THEN 'Inpatient (IPD)' ELSE 'Unassigned' END) as DEPARTMENT,
+             SUM(b.NET_PAYABLE) as REVENUE
       FROM HMS_BILLS b
-      JOIN HMS_ENCOUNTERS e ON e.ID = b.ENCOUNTER_ID
+      LEFT JOIN HMS_ENCOUNTERS e ON e.ID = b.ENCOUNTER_ID
       LEFT JOIN HMS_DEPARTMENTS dep ON dep.ID = e.DEPARTMENT_ID
       WHERE trunc(b.CREATED_AT) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
-      GROUP BY COALESCE(dep.NAME, 'Unassigned')
+      AND b.STATUS <> 'Cancelled'
+      GROUP BY 1
+      ORDER BY REVENUE DESC
     `, { replacements });
 
     res.json({
@@ -672,22 +741,30 @@ router.get('/revenue', protect, async (req, res) => {
 });
 
 // ── GET /api/reports/pharmacy-sales ────────────────────────────
-router.get('/pharmacy-sales', protect, async (req, res) => {
+// Prescription dispensing plus counter (OTC) sales, the same sources as the pharmacy's own reports.
+router.get('/pharmacy-sales', analyticsAccess, async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
-    if (!start_date || !end_date) {
-      return res.status(400).json({ success: false, message: 'start_date and end_date are required' });
-    }
+    if (badRange(req, res)) return;
 
     const [rows] = await sequelize.query(`
-      SELECT m.GENERIC_NAME, m.CATEGORY, SUM(di.QUANTITY) as TOTAL_QTY,
-             SUM(di.AMOUNT) as TOTAL_VALUE
-      FROM HMS_DISPENSING_RECORDS dr
-      JOIN HMS_DISPENSING_ITEMS di ON di.DISPENSING_RECORD_ID = dr.ID
-      JOIN HMS_MEDICINES m ON m.ID = di.MEDICINE_ID
-      WHERE trunc(dr.DISPENSED_AT) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
+      SELECT m.GENERIC_NAME, m.CATEGORY, SUM(x.QTY) as TOTAL_QTY, SUM(x.AMOUNT) as TOTAL_VALUE,
+             SUM(CASE WHEN x.SRC = 'Dispensed' THEN x.QTY ELSE 0 END) as DISPENSED_QTY,
+             SUM(CASE WHEN x.SRC = 'Counter' THEN x.QTY ELSE 0 END) as COUNTER_QTY
+      FROM (
+        SELECT di.MEDICINE_ID, di.QUANTITY as QTY, di.AMOUNT, 'Dispensed' as SRC
+        FROM HMS_DISPENSING_RECORDS dr
+        JOIN HMS_DISPENSING_ITEMS di ON di.DISPENSING_RECORD_ID = dr.ID
+        WHERE trunc(dr.DISPENSED_AT) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
+        UNION ALL
+        SELECT oi.MEDICINE_ID, oi.QUANTITY as QTY, oi.AMOUNT, 'Counter' as SRC
+        FROM HMS_OTC_SALES os
+        JOIN HMS_OTC_ITEMS oi ON oi.OTC_SALE_ID = os.ID
+        WHERE trunc(os.SOLD_AT) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
+      ) x
+      JOIN HMS_MEDICINES m ON m.ID = x.MEDICINE_ID
       GROUP BY m.ID, m.GENERIC_NAME, m.CATEGORY
-      ORDER BY TOTAL_VALUE DESC
+      ORDER BY TOTAL_VALUE DESC, m.GENERIC_NAME ASC
     `, { replacements: { start_date, end_date } });
 
     res.json({ success: true, data: rows });
@@ -698,15 +775,15 @@ router.get('/pharmacy-sales', protect, async (req, res) => {
 });
 
 // ── GET /api/reports/lab-workload ──────────────────────────────
-router.get('/lab-workload', protect, async (req, res) => {
+// One row per test (order item), judged by the test's own status: cancelled tests are neither
+// ordered work nor pending, and STAT work sorts first (URGENCY DESC used to put STAT after Urgent).
+router.get('/lab-workload', analyticsAccess, async (req, res) => {
   try {
     const { start_date, end_date } = req.query;
-    if (!start_date || !end_date) {
-      return res.status(400).json({ success: false, message: 'start_date and end_date are required' });
-    }
+    if (badRange(req, res)) return;
 
     const [rows] = await sequelize.query(`
-      SELECT io.STATUS, io.URGENCY,
+      SELECT ioi.ID as ITEM_ID, io.ID as ORDER_ID, ioi.STATUS, io.STATUS as ORDER_STATUS, io.URGENCY,
              ioi.TEST_CATEGORY, ioi.ITEM_NAME,
              p.NAME as PATIENT_NAME,
              u.NAME as DOCTOR_NAME,
@@ -715,23 +792,34 @@ router.get('/lab-workload', protect, async (req, res) => {
       FROM HMS_INVESTIGATION_ORDERS io
       JOIN HMS_INVESTIGATION_ORDER_ITEMS ioi ON ioi.ORDER_ID = io.ID
       JOIN HMS_PATIENTS p ON p.ID = io.PATIENT_ID
-      JOIN HMS_USERS u ON u.ID = io.DOCTOR_ID
+      LEFT JOIN HMS_USERS u ON u.ID = io.DOCTOR_ID
       WHERE trunc(io.CREATED_AT) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
-      ORDER BY io.URGENCY DESC, io.CREATED_AT ASC
+      ORDER BY CASE UPPER(io.URGENCY) WHEN 'STAT' THEN 0 WHEN 'URGENT' THEN 1 ELSE 2 END, io.CREATED_AT ASC, ioi.ID ASC
     `, { replacements: { start_date, end_date } });
 
-    const totalOrdered = rows.length;
-    const completed = rows.filter(r => r.STATUS === 'Completed').length;
-    const pendingList = rows.filter(r => r.STATUS !== 'Completed');
+    const isCancelled = (r) => r.STATUS === 'Cancelled' || r.ORDER_STATUS === 'Cancelled';
+    const live = rows.filter((r) => !isCancelled(r));
+    const completed = live.filter((r) => r.STATUS === 'Completed').length;
+    const pendingList = live.filter((r) => r.STATUS !== 'Completed');
 
-    // By category
+    // By category (live tests only)
     const byCategory = {};
-    rows.forEach(r => {
+    live.forEach(r => {
       const cat = r.TEST_CATEGORY || 'Other';
       byCategory[cat] = (byCategory[cat] || 0) + 1;
     });
 
-    res.json({ success: true, data: { total_ordered: totalOrdered, total_completed: completed, pending_list: pendingList, by_category: byCategory } });
+    res.json({
+      success: true,
+      data: {
+        total_ordered: live.length,
+        total_completed: completed,
+        total_pending: pendingList.length,
+        total_cancelled: rows.length - live.length,
+        pending_list: pendingList,
+        by_category: byCategory,
+      },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Failed to generate lab workload report' });
@@ -739,11 +827,12 @@ router.get('/lab-workload', protect, async (req, res) => {
 });
 
 // ── GET /api/reports/audit-trail ──────────────────────────────
-router.get('/audit-trail', protect, async (req, res) => {
+router.get('/audit-trail', analyticsAccess, async (req, res) => {
   try {
     const { start_date, end_date, user_id, module } = req.query;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
+    if (badRange(req, res, { required: false })) return;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
     const offset = (page - 1) * limit;
 
     const replacements = {};
@@ -759,7 +848,7 @@ router.get('/audit-trail', protect, async (req, res) => {
     const [countResult] = await sequelize.query(`
       SELECT COUNT(*) as TOTAL FROM HMS_AUDIT_LOGS a WHERE 1=1 ${dateFilter} ${userFilter} ${moduleFilter}
     `, { replacements });
-    const totalCount = countResult[0]?.TOTAL || 0;
+    const totalCount = Number(countResult[0]?.TOTAL || 0);
 
     const [rows] = await sequelize.query(`
       SELECT a.ID, a.ACTION, a.MODULE, a.RECORD_ID, a.IP_ADDRESS, a.CREATED_AT,
@@ -779,17 +868,19 @@ router.get('/audit-trail', protect, async (req, res) => {
 });
 
 // ── GET /api/reports/doctor-performance ────────────────────────
-router.get('/doctor-performance', protect, async (req, res) => {
+router.get('/doctor-performance', analyticsAccess, async (req, res) => {
   try {
     const { doctor_id, start_date, end_date } = req.query;
     if (!doctor_id || !start_date || !end_date) {
       return res.status(400).json({ success: false, message: 'doctor_id, start_date, and end_date required' });
     }
+    if (!/^\d+$/.test(String(doctor_id))) return res.status(400).json({ success: false, message: 'doctor_id must be a number' });
+    if (badRange(req, res)) return;
     const replacements = { doctor_id, start_date, end_date };
 
     const [encounters] = await sequelize.query(`
       SELECT COUNT(*) as TOTAL FROM HMS_ENCOUNTERS
-      WHERE DOCTOR_ID = :doctor_id
+      WHERE DOCTOR_ID = :doctor_id AND STATUS = 'Finalized'
       AND trunc(ENCOUNTER_DATE) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
     `, { replacements });
 
@@ -801,24 +892,24 @@ router.get('/doctor-performance', protect, async (req, res) => {
 
     const [labOrders] = await sequelize.query(`
       SELECT COUNT(*) as TOTAL FROM HMS_INVESTIGATION_ORDERS
-      WHERE DOCTOR_ID = :doctor_id
+      WHERE DOCTOR_ID = :doctor_id AND STATUS <> 'Cancelled'
       AND trunc(CREATED_AT) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
     `, { replacements });
 
     const [revenue] = await sequelize.query(`
       SELECT SUM(b.NET_PAYABLE) as TOTAL FROM HMS_BILLS b
       JOIN HMS_ENCOUNTERS e ON e.ID = b.ENCOUNTER_ID
-      WHERE e.DOCTOR_ID = :doctor_id
+      WHERE e.DOCTOR_ID = :doctor_id AND b.STATUS <> 'Cancelled'
       AND trunc(b.CREATED_AT) BETWEEN TO_DATE(:start_date,'YYYY-MM-DD') AND TO_DATE(:end_date,'YYYY-MM-DD')
     `, { replacements });
 
     res.json({
       success: true,
       data: {
-        encounters: encounters[0]?.TOTAL || 0,
-        prescriptions: prescriptions[0]?.TOTAL || 0,
-        labOrders: labOrders[0]?.TOTAL || 0,
-        revenue: revenue[0]?.TOTAL || 0,
+        encounters: Number(encounters[0]?.TOTAL || 0),
+        prescriptions: Number(prescriptions[0]?.TOTAL || 0),
+        labOrders: Number(labOrders[0]?.TOTAL || 0),
+        revenue: Number(revenue[0]?.TOTAL || 0),
       }
     });
   } catch (err) {

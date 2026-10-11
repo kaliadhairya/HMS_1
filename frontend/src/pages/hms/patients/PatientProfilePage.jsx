@@ -1,27 +1,54 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { CalendarPlus, Download, FileText, HeartPulse, Plus, Receipt, Route, Ticket, TriangleAlert, UserRound } from 'lucide-react';
 import api from '../../../api/axios';
 import { openAuthenticatedBlob } from '../../../utils/authenticatedDownload';
+import { useAuth } from '../../../context/AuthContext';
 import Navbar from '../../../components/Navbar';
 import PatientBanner from '../../../components/patient/PatientBanner';
-import { CalendarPlus, Ticket, Route } from 'lucide-react';
+import EmptyState from '../../../components/ui/EmptyState';
+import Modal from '../../../components/ui/Modal';
 
-const PATIENT_TYPE_META = {
-  corporate_employee: { label: 'Corporate Patient', fullLabel: 'Corporate Employee', bg: 'rgba(16,185,129,0.1)', color: '#059669', border: 'rgba(16,185,129,0.24)' },
-  other: { label: 'General Patient', fullLabel: 'General', bg: 'rgba(59,130,246,0.1)', color: '#2563eb', border: 'rgba(59,130,246,0.24)' },
+const PATIENT_TYPE_LABEL = { corporate_employee: 'Corporate employee', other: 'General' };
+const TABS = [
+  ['overview', 'Overview'],
+  ['visits', 'Visits'],
+  ['documents', 'Documents'],
+  ['prescriptions', 'Prescriptions'],
+  ['billing', 'Billing'],
+  ['clinical', 'Allergies and conditions'],
+  ['vitals', 'Vitals'],
+];
+const VISIT_TONE = { Finalized: 'success', Final: 'success', Completed: 'success', Draft: 'info', Pending: 'warning' };
+const BILL_TONE = { Paid: 'success', 'Partially Paid': 'warning', Pending: 'warning', Cancelled: 'neutral' };
+const SEVERITIES = ['Mild', 'Moderate', 'Severe'];
+const BILLING_ROLES = ['super_admin', 'admin', 'receptionist'];
+const PRESCRIBER_ROLES = ['super_admin', 'doctor'];
+
+const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }) : '—');
+const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const pick = (row, ...keys) => { for (const k of keys) { if (row?.[k] !== undefined && row?.[k] !== null) return row[k]; } return undefined; };
+const parseAlerts = (raw) => {
+  if (!raw) return [];
+  try { const p = typeof raw === 'string' ? JSON.parse(raw) : raw; return Array.isArray(p) ? p : []; } catch { return []; }
 };
 
-const getPatientTypeMeta = (type) => PATIENT_TYPE_META[type] || PATIENT_TYPE_META.other;
+const EMPTY_ALLERGY = { allergen: '', reaction: '', severity: '' };
+const EMPTY_CONDITION = { condition_name: '', since_when: '', notes: '' };
 
 export default function PatientProfilePage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  
+  const { user } = useAuth();
+
   const [patient, setPatient] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
 
-  // Tab Data
+  // Tab data ('loading' | 'ok' | 'error' per tab)
+  const [tabStatus, setTabStatus] = useState({});
   const [visits, setVisits] = useState([]);
   const [allergies, setAllergies] = useState([]);
   const [conditions, setConditions] = useState([]);
@@ -29,50 +56,131 @@ export default function PatientProfilePage() {
   const [bills, setBills] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
   const [vitals, setVitals] = useState([]);
+  const [ipdVitals, setIpdVitals] = useState([]);
 
-  useEffect(() => {
-    fetchProfile();
-  }, [id]);
+  // Add allergy / condition dialogs
+  const [allergyOpen, setAllergyOpen] = useState(false);
+  const [allergyForm, setAllergyForm] = useState(EMPTY_ALLERGY);
+  const [conditionOpen, setConditionOpen] = useState(false);
+  const [conditionForm, setConditionForm] = useState(EMPTY_CONDITION);
+  const [saving, setSaving] = useState(false);
 
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await api.get(`/patients/hms/${id}`);
       setPatient(res.data.data);
       setAllergies(res.data.data.allergies || []);
       setConditions(res.data.data.chronic_conditions || []);
     } catch (err) {
       console.error(err);
+      if (!silent) setPatient(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  const loadTab = async (tab) => {
+    const loaders = {
+      visits: async () => setVisits((await api.get(`/patients/hms/${id}/visits`)).data.data || []),
+      documents: async () => setDocuments((await api.get(`/patients/hms/${id}/documents`)).data.data || []),
+      billing: async () => setBills((await api.get(`/billing/patient/${id}`)).data.data || []),
+      prescriptions: async () => {
+        const res = await api.get(`/hms/prescriptions/patient/${id}`);
+        setPrescriptions(Array.isArray(res.data) ? res.data : res.data?.data || []);
+      },
+      vitals: async () => {
+        const [opd, ipd] = await Promise.allSettled([
+          api.get(`/hms/vitals/history/${id}`),
+          api.get(`/ipd/vitals/patient/${id}`),
+        ]);
+        if (opd.status !== 'fulfilled') throw opd.reason;
+        setVitals(opd.value.data.data || []);
+        setIpdVitals(ipd.status === 'fulfilled' ? ipd.value.data.data || [] : []);
+      },
+    };
+    if (!loaders[tab]) return;
+    setTabStatus((s) => ({ ...s, [tab]: 'loading' }));
+    try {
+      await loaders[tab]();
+      setTabStatus((s) => ({ ...s, [tab]: 'ok' }));
+    } catch (err) {
+      console.error(err);
+      setTabStatus((s) => ({ ...s, [tab]: 'error' }));
     }
   };
 
-  const loadTabData = async (tab) => {
+  const openTab = (tab) => {
     setActiveTab(tab);
-    if (tab === 'visits' && visits.length === 0) {
-      const res = await api.get(`/patients/hms/${id}/visits`);
-      setVisits(res.data.data);
+    loadTab(tab);
+  };
+
+  const saveAllergy = async (e) => {
+    e.preventDefault();
+    if (!allergyForm.allergen.trim()) { toast.error('Enter the allergen'); return; }
+    setSaving(true);
+    try {
+      await api.post(`/patients/hms/${id}/allergies`, {
+        allergen: allergyForm.allergen.trim(),
+        reaction: allergyForm.reaction.trim() || null,
+        severity: allergyForm.severity || null,
+      });
+      toast.success('Allergy recorded');
+      setAllergyOpen(false);
+      setAllergyForm(EMPTY_ALLERGY);
+      await fetchProfile(true);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not record the allergy');
+    } finally {
+      setSaving(false);
     }
-    if (tab === 'documents' && documents.length === 0) {
-      try { const res = await api.get(`/patients/hms/${id}/documents`); setDocuments(res.data.data); } catch {}
-    }
-    if (tab === 'billing' && bills.length === 0) {
-      try { const res = await api.get(`/billing/patient/${id}`); setBills(res.data.data || []); } catch {}
-    }
-    if (tab === 'prescriptions' && prescriptions.length === 0) {
-      try { const res = await api.get(`/hms/prescriptions/patient/${id}`); setPrescriptions(res.data || []); } catch {}
-    }
-    if (tab === 'vitals' && vitals.length === 0) {
-      try { const res = await api.get(`/ipd/vitals/patient/${id}`); setVitals(res.data.data || []); } catch {}
+  };
+
+  const saveCondition = async (e) => {
+    e.preventDefault();
+    if (!conditionForm.condition_name.trim()) { toast.error('Enter the condition'); return; }
+    setSaving(true);
+    try {
+      await api.post(`/patients/hms/${id}/chronic-conditions`, {
+        condition_name: conditionForm.condition_name.trim(),
+        since_when: conditionForm.since_when.trim() || null,
+        notes: conditionForm.notes.trim() || null,
+      });
+      toast.success('Condition recorded');
+      setConditionOpen(false);
+      setConditionForm(EMPTY_CONDITION);
+      await fetchProfile(true);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not record the condition');
+    } finally {
+      setSaving(false);
     }
   };
 
   if (loading) return <><Navbar /><main className="app-page"><p className="muted">Loading patient…</p></main></>;
-  if (!patient) return <><Navbar /><main className="app-page"><h1>Patient not found</h1><p className="muted">The patient may have been removed, or the link is wrong.</p></main></>;
+  if (!patient) {
+    return (
+      <>
+        <Navbar />
+        <main className="app-page">
+          <h1 className="sr-only">Patient profile</h1>
+          <section className="panel"><EmptyState icon={UserRound} title="Patient not found" description="The patient may have been removed, or the link is wrong." /></section>
+        </main>
+      </>
+    );
+  }
 
   const patientType = patient.patientType || patient.patient_type;
-  const patientTypeMeta = getPatientTypeMeta(patientType);
+  const canBill = BILLING_ROLES.includes(user?.role);
+  const canPrescribe = PRESCRIBER_ROLES.includes(user?.role);
+  const status = tabStatus[activeTab];
+  const tabNotice = status === 'loading'
+    ? <p className="muted panel-pad">Loading…</p>
+    : status === 'error'
+      ? <div className="panel-pad"><div className="alert-strip alert-warning" role="status" style={{ marginBottom: 0 }}><TriangleAlert size={16} aria-hidden="true" /> This section could not be loaded, or your role cannot view it.</div></div>
+      : null;
 
   return (
     <>
@@ -96,241 +204,339 @@ export default function PatientProfilePage() {
         </>
       )}
     />
-    <div className="page-wrapper fade-up">
-      {/* ── Tabs Navigation ── */}
-      <div style={{ display: 'flex', gap: 2, marginBottom: 20, borderBottom: '2px solid var(--border)' }}>
-        {['overview', 'visits', 'documents', 'prescriptions', 'billing', 'clinical', 'vitals'].map(tab => (
-          <button
-            key={tab}
-            onClick={() => loadTabData(tab)}
-            style={{
-              padding: '12px 24px',
-              background: activeTab === tab ? 'var(--tab-bg-active)' : 'transparent',
-              border: 'none',
-              borderBottom: activeTab === tab ? '3px solid var(--green)' : '3px solid transparent',
-              color: activeTab === tab ? 'var(--green)' : 'var(--text-secondary)',
-              fontWeight: 600,
-              textTransform: 'capitalize',
-              cursor: 'pointer',
-              fontSize: '0.9rem'
-            }}
-          >
-            {tab === 'clinical' ? 'Allergies & Conditions' : tab}
-          </button>
-        ))}
-      </div>
+    <div className="app-page">
+      <section className="panel">
+        <div className="tabs" role="tablist" aria-label="Patient record">
+          {TABS.map(([tab, label]) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab}
+              className={`tab${activeTab === tab ? ' is-active' : ''}`}
+              onClick={() => openTab(tab)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-      {/* ── Tab Content ── */}
-      <div className="card fade-up">
-        
         {activeTab === 'overview' && (
-          <div className="form-grid-2">
+          <div className="panel-pad split-2">
             <div>
-              <div className="card-section-title">Demographics</div>
-              <table className="test-table" style={{ border: 'none', boxShadow: 'none' }}>
+              <h2 className="panel-subtitle" style={{ marginTop: 0 }}>Demographics</h2>
+              <dl className="facts">
+                <div><dt className="fact-label">Date of birth</dt><dd className="fact-value" style={{ margin: 0 }}>{patient.dob || '—'}</dd></div>
+                <div><dt className="fact-label">Patient type</dt><dd className="fact-value" style={{ margin: 0 }}>{PATIENT_TYPE_LABEL[patientType] || 'General'}</dd></div>
+                {patientType === 'corporate_employee' && (
+                  <>
+                    <div><dt className="fact-label">Employee no.</dt><dd className="fact-value mono" style={{ margin: 0 }}>{patient.empNumber || '—'}</dd></div>
+                    <div><dt className="fact-label">Relationship</dt><dd className="fact-value" style={{ margin: 0 }}>{patient.relationship || 'Self'}</dd></div>
+                  </>
+                )}
+                <div><dt className="fact-label">Aadhaar (masked)</dt><dd className="fact-value mono" style={{ margin: 0 }}>{patient.aadhaar_masked || '—'}</dd></div>
+                <div><dt className="fact-label">Registered</dt><dd className="fact-value" style={{ margin: 0 }}>{fmtDate(patient.createdAt)}</dd></div>
+              </dl>
+            </div>
+            <div>
+              <h2 className="panel-subtitle" style={{ marginTop: 0 }}>Address and contact</h2>
+              <dl className="facts">
+                <div><dt className="fact-label">Email</dt><dd className="fact-value" style={{ margin: 0 }}>{patient.email || '—'}</dd></div>
+                <div><dt className="fact-label">Address</dt><dd className="fact-value" style={{ margin: 0 }}>{[patient.house_no, patient.street, patient.city].filter(Boolean).join(', ') || '—'}</dd></div>
+                <div><dt className="fact-label">Emergency contact</dt><dd className="fact-value" style={{ margin: 0 }}>{patient.emergency_contact_name ? `${patient.emergency_contact_name}${patient.emergency_contact_relation ? ` (${patient.emergency_contact_relation})` : ''}` : '—'}</dd></div>
+                <div><dt className="fact-label">Emergency phone</dt><dd className="fact-value tabular" style={{ margin: 0 }}>{patient.emergency_contact_phone || '—'}</dd></div>
+              </dl>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'visits' && (tabNotice || (
+          visits.length === 0 ? <EmptyState icon={HeartPulse} title="No visits yet" description="OPD consultations and lab reports appear here." /> : (
+            <div className="panel-pad" style={{ overflowX: 'auto' }}>
+              <table className="mini-table">
+                <thead><tr><th>Date</th><th>Type</th><th>Department</th><th>Doctor</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
                 <tbody>
-                  <tr><td className="label-cell">DOB</td><td>{patient.dob || '-'}</td></tr>
-                  <tr><td className="label-cell">Patient Type</td><td>{patientTypeMeta.fullLabel}</td></tr>
-                  <tr><td className="label-cell">Aadhaar (Masked)</td><td>{patient.aadhaar_masked || '-'}</td></tr>
-                  <tr><td className="label-cell">Registration Date</td><td>{new Date(patient.createdAt).toLocaleDateString()}</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div>
-              <div className="card-section-title">Address & Contact</div>
-              <table className="test-table" style={{ border: 'none', boxShadow: 'none' }}>
-                <tbody>
-                  <tr><td className="label-cell">Email</td><td>{patient.email || '-'}</td></tr>
-                  <tr><td className="label-cell">Address</td><td>{patient.house_no} {patient.street}, {patient.city}</td></tr>
-                  <tr><td className="label-cell">Emergency Contact</td><td>{patient.emergency_contact_name || '-'} ({patient.emergency_contact_relation || '-'})</td></tr>
-                  <tr><td className="label-cell">Emergency Phone</td><td>{patient.emergency_contact_phone || '-'}</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'visits' && (
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Type</th>
-                  <th>Department</th>
-                  <th>Doctor</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visits.length === 0 ? <tr><td colSpan="6" style={{textAlign: 'center'}}>No visits found.</td></tr> : visits.map((v, i) => (
-                  <tr key={i}>
-                    <td>{new Date(v.date).toLocaleDateString()}</td>
-                    <td>{v.type}</td>
-                    <td>{v.department}</td>
-                    <td>{v.doctor}</td>
-                    <td><span className={`badge badge-${v.status === 'final' ? 'green' : 'amber'}`}>{v.status}</span></td>
-                    <td>
-                      {v.type === 'Lab Test' && (
-                        <button className="btn btn-outline btn-sm" onClick={() => navigate(`/report/${v.reference_id}`)}>View Report</button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {activeTab === 'clinical' && (
-          <div className="form-grid-2">
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="card-section-title">Allergies</div>
-                <button className="btn btn-ghost btn-sm" style={{ padding: '2px 8px' }}>+ Add</button>
-              </div>
-              {allergies.length === 0 ? <p style={{color:'var(--text-muted)'}}>No known allergies.</p> : (
-                <ul style={{ paddingLeft: 20, color: 'var(--red)' }}>
-                  {allergies.map(a => <li key={a.id}><b>{a.allergen}</b> - {a.reaction} ({a.severity})</li>)}
-                </ul>
-              )}
-            </div>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="card-section-title">Chronic Conditions</div>
-                <button className="btn btn-ghost btn-sm" style={{ padding: '2px 8px' }}>+ Add</button>
-              </div>
-              {conditions.length === 0 ? <p style={{color:'var(--text-muted)'}}>No chronic conditions reported.</p> : (
-                <ul style={{ paddingLeft: 20 }}>
-                  {conditions.map(c => <li key={c.id}><b>{c.condition_name}</b> (Since {c.since_when})</li>)}
-                </ul>
-              )}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'billing' && (
-          <div className="table-wrapper">
-            <table>
-              <thead><tr><th>Bill No</th><th>Date</th><th>Type</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
-              <tbody>
-                {bills.length === 0 ? <tr><td colSpan="6" style={{textAlign:'center'}}>No billing records.</td></tr> :
-                  bills.map(b => (
-                    <tr key={b.ID || b.id}>
-                      <td><strong>{b.BILL_NUMBER || b.bill_number}</strong></td>
-                      <td>{b.CREATED_AT ? new Date(b.CREATED_AT).toLocaleDateString() : ''}</td>
-                      <td>{b.BILL_TYPE || b.bill_type}</td>
-                      <td>Rs.{Number(b.NET_PAYABLE || b.net_payable || 0).toFixed(2)}</td>
-                      <td><span className={`badge ${(b.STATUS || b.status) === 'Paid' ? 'badge-green' : 'badge-amber'}`}>{b.STATUS || b.status}</span></td>
-                      <td>
-                        {(b.STATUS || b.status) === 'Paid'
-                          ? <button type="button" className="btn btn-outline btn-sm" onClick={() => openAuthenticatedBlob(`/pdf/bill/${b.ID || b.id}`)}>View PDF</button>
-                          : <button className="btn btn-primary btn-sm" onClick={() => navigate(`/billing/opd/${b.ENCOUNTER_ID || b.encounter_id}`)}>Pay Now</button>
-                        }
+                  {visits.map((v, i) => (
+                    <tr key={`${v.type}-${v.reference_id || i}`}>
+                      <td className="tabular">{fmtDate(v.date)}</td>
+                      <td>{v.type}</td>
+                      <td>{v.department || '—'}</td>
+                      <td>{v.doctor || '—'}</td>
+                      <td><span className={`status status-${VISIT_TONE[v.status] || 'neutral'}`}>{v.status || '—'}</span></td>
+                      <td className="text-right">
+                        {v.type === 'Lab Test' && (
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(`/report/${v.reference_id}`)}>View report</button>
+                        )}
                       </td>
-                    </tr>
-                  ))
-                }
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {activeTab === 'prescriptions' && (
-          <div className="table-wrapper">
-            <table>
-              <thead><tr><th>Date</th><th>Doctor</th><th>Items</th><th>Action</th></tr></thead>
-              <tbody>
-                {prescriptions.length === 0 ? <tr><td colSpan="4" style={{textAlign:'center'}}>No prescriptions.</td></tr> :
-                  prescriptions.map(p => (
-                    <tr key={p.id}>
-                      <td>{p.created_at ? new Date(p.created_at).toLocaleDateString() : ''}</td>
-                      <td>{p.doctor_name || 'Doctor'}</td>
-                      <td>{p.items?.length || 0} medicines</td>
-                      <td>
-                        <button 
-                          className="btn btn-outline btn-sm" 
-                          onClick={() => navigate(`/hms/prescription-slip?patientId=${id}&encounterId=${p.encounter_id}`)}
-                        >
-                          View Prescription
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                }
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {activeTab === 'documents' && (
-          <div className="table-wrapper">
-             <table>
-               <thead><tr><th>Type</th><th>File Name</th><th>Uploaded At</th><th>Action</th></tr></thead>
-               <tbody>
-                 {documents.length === 0 ? <tr><td colSpan="4" style={{textAlign:'center'}}>No documents uploaded yet.</td></tr> :
-                   documents.map(doc => (
-                     <tr key={doc.id}>
-                       <td><span className="badge badge-teal">{doc.doc_type || 'File'}</span></td>
-                       <td>{doc.file_name}</td>
-                       <td>{doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : ''}</td>
-                       <td>
-                        <a 
-                          href={doc.file_url.startsWith('http') ? doc.file_url : `${api.defaults.baseURL}${doc.file_url}`} 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="btn btn-outline btn-sm"
-                          style={{ textDecoration: 'none' }}
-                        >
-                          Open File
-                        </a>
-                       </td>
-                     </tr>
-                   ))
-                 }
-               </tbody>
-             </table>
-          </div>
-        )}
-
-        {activeTab === 'vitals' && (
-          <div className="table-wrapper">
-             <table className="table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-               <thead>
-                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                   <th style={{ padding: 12 }}>Time & Shift</th>
-                   <th style={{ padding: 12 }}>BP</th>
-                   <th style={{ padding: 12 }}>Pulse</th>
-                   <th style={{ padding: 12 }}>Temp</th>
-                   <th style={{ padding: 12 }}>SpO2</th>
-                   <th style={{ padding: 12 }}>Total In/Out (mL)</th>
-                 </tr>
-               </thead>
-               <tbody>
-                  {vitals.length === 0 ? <tr><td colSpan="6" style={{textAlign:'center', padding: 16}}>No vitals recorded.</td></tr> : vitals.map(v => (
-                    <tr key={v.id || v.ID} style={{ borderBottom: '1px solid var(--border)' }}>
-                       <td style={{ padding: 12 }}>
-                         {new Date(v.RECORDED_AT || v.recordedAt).toLocaleString()}
-                         <br/><small>{v.SHIFT || v.shift}</small>
-                       </td>
-                       <td style={{ padding: 12, color: ((v.BP_SYSTOLIC||v.bpSystolic) > 140 || (v.BP_SYSTOLIC||v.bpSystolic) < 90) ? '#e53e3e' : 'inherit' }}>
-                         {v.BP_SYSTOLIC || v.bpSystolic}/{v.BP_DIASTOLIC || v.bpDiastolic}
-                       </td>
-                       <td style={{ padding: 12, color: ((v.PULSE||v.pulse) > 100 || (v.PULSE||v.pulse) < 60) ? '#e53e3e' : 'inherit' }}>{v.PULSE || v.pulse}</td>
-                       <td style={{ padding: 12, color: ((v.TEMPERATURE||v.temperature) > 99.5) ? '#e53e3e' : 'inherit' }}>{v.TEMPERATURE || v.temperature}</td>
-                       <td style={{ padding: 12, color: ((v.SPO2||v.spo2) && (v.SPO2||v.spo2) < 95) ? '#e53e3e' : 'inherit' }}>{v.SPO2 || v.spo2}</td>
-                       <td style={{ padding: 12 }}>In: {(v.INTAKE_ORAL_ML||v.intakeOralMl||0) + (v.INTAKE_IV_ML||v.intakeIvMl||0)} | Out: {(v.OUTPUT_URINE_ML||v.outputUrineMl||0) + (v.OUTPUT_DRAIN_ML||v.outputDrainMl||0)}</td>
                     </tr>
                   ))}
-               </tbody>
-             </table>
+                </tbody>
+              </table>
+            </div>
+          )
+        ))}
+
+        {activeTab === 'clinical' && (
+          <div className="panel-pad split-2" style={{ alignItems: 'start' }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <h2 className="panel-subtitle" style={{ margin: 0 }}>Allergies</h2>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setAllergyForm(EMPTY_ALLERGY); setAllergyOpen(true); }}>
+                  <Plus size={14} aria-hidden="true" /> Add allergy
+                </button>
+              </div>
+              {allergies.length === 0 ? <p className="muted">No known allergies recorded.</p> : (
+                <ul className="list-rows" style={{ marginTop: 10 }}>
+                  {allergies.map((a) => (
+                    <li key={a.id} className="list-row" style={{ cursor: 'default' }}>
+                      <span className="cell-stack">
+                        <span className="cell-primary">{a.allergen}</span>
+                        <span className="cell-secondary">{a.reaction || 'Reaction not recorded'}{a.noted_at ? ` · noted ${fmtDate(a.noted_at)}` : ''}</span>
+                      </span>
+                      <span className={`status status-${a.severity === 'Severe' ? 'danger' : a.severity ? 'warning' : 'neutral'}`}>{a.severity || 'Severity not recorded'}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <h2 className="panel-subtitle" style={{ margin: 0 }}>Chronic conditions</h2>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setConditionForm(EMPTY_CONDITION); setConditionOpen(true); }}>
+                  <Plus size={14} aria-hidden="true" /> Add condition
+                </button>
+              </div>
+              {conditions.length === 0 ? <p className="muted">No chronic conditions recorded.</p> : (
+                <ul className="list-rows" style={{ marginTop: 10 }}>
+                  {conditions.map((c) => (
+                    <li key={c.id} className="list-row" style={{ cursor: 'default' }}>
+                      <span className="cell-stack">
+                        <span className="cell-primary">{c.condition_name}</span>
+                        <span className="cell-secondary">{c.since_when ? `Since ${c.since_when}` : 'Onset not recorded'}{c.notes ? ` · ${c.notes}` : ''}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
 
-      </div>
+        {activeTab === 'billing' && (tabNotice || (
+          bills.length === 0 ? <EmptyState icon={Receipt} title="No bills yet" description="OPD and IPD bills for this patient appear here." /> : (
+            <div className="panel-pad" style={{ overflowX: 'auto' }}>
+              <table className="mini-table">
+                <thead><tr><th>Bill no.</th><th>Date</th><th>Type</th><th className="text-right">Net payable</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
+                <tbody>
+                  {bills.map((b) => {
+                    const billStatus = pick(b, 'STATUS', 'status');
+                    const encounterId = pick(b, 'ENCOUNTER_ID', 'encounter_id');
+                    const billId = pick(b, 'ID', 'id');
+                    return (
+                      <tr key={billId}>
+                        <td className="mono">{pick(b, 'BILL_NUMBER', 'bill_number')}</td>
+                        <td className="tabular">{fmtDate(pick(b, 'CREATED_AT', 'created_at'))}</td>
+                        <td>{pick(b, 'BILL_TYPE', 'bill_type')}</td>
+                        <td className="tabular text-right">{inr(pick(b, 'NET_PAYABLE', 'net_payable'))}</td>
+                        <td><span className={`status status-${BILL_TONE[billStatus] || 'neutral'}`}>{billStatus}</span></td>
+                        <td className="text-right">
+                          {billStatus === 'Paid' ? (
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => openAuthenticatedBlob(`/pdf/bill/${billId}`)}>
+                              <Download size={14} aria-hidden="true" /> View PDF
+                            </button>
+                          ) : canBill && encounterId ? (
+                            <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate(`/billing/opd/${encounterId}`)}>Collect payment</button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        ))}
+
+        {activeTab === 'prescriptions' && (tabNotice || (
+          prescriptions.length === 0 ? <EmptyState icon={FileText} title="No prescriptions yet" description="Prescriptions written for this patient appear here." /> : (
+            <div className="panel-pad" style={{ overflowX: 'auto' }}>
+              <table className="mini-table">
+                <thead><tr><th>Date</th><th>Doctor</th><th>Medicines</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
+                <tbody>
+                  {prescriptions.map((p) => {
+                    const count = p.items?.length || 0;
+                    return (
+                      <tr key={p.id}>
+                        <td className="tabular">{fmtDate(p.created_at)}</td>
+                        <td>{p.doctor_name || 'Doctor'}</td>
+                        <td>
+                          <span className="cell-stack">
+                            <span>{count} {count === 1 ? 'medicine' : 'medicines'}</span>
+                            {count > 0 && <span className="cell-secondary">{p.items.map((i) => i.medicine_name).join(', ')}</span>}
+                          </span>
+                        </td>
+                        <td><span className={`status status-${p.status === 'Finalized' || p.status === 'Dispensed' ? 'success' : 'info'}`}>{p.status || '—'}</span></td>
+                        <td className="text-right">
+                          {canPrescribe && (
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(`/hms/prescription-slip?patientId=${id}&encounterId=${p.encounter_id}`)}>
+                              View prescription
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        ))}
+
+        {activeTab === 'documents' && (tabNotice || (
+          documents.length === 0 ? <EmptyState icon={FileText} title="No documents uploaded yet" description="Scans and files attached to this patient appear here." /> : (
+            <div className="panel-pad" style={{ overflowX: 'auto' }}>
+              <table className="mini-table">
+                <thead><tr><th>Type</th><th>File name</th><th>Uploaded</th><th><span className="sr-only">Actions</span></th></tr></thead>
+                <tbody>
+                  {documents.map((doc) => (
+                    <tr key={doc.id}>
+                      <td><span className="tag">{doc.doc_type || 'File'}</span></td>
+                      <td>{doc.file_name}</td>
+                      <td className="tabular">{fmtDate(doc.uploaded_at)}</td>
+                      <td className="text-right">
+                        <a
+                          href={doc.file_url?.startsWith('http') ? doc.file_url : `${api.defaults.baseURL}${doc.file_url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-ghost btn-sm"
+                        >
+                          Open file
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ))}
+
+        {activeTab === 'vitals' && (tabNotice || (
+          vitals.length === 0 && ipdVitals.length === 0 ? <EmptyState icon={HeartPulse} title="No vitals recorded" description="Vitals from triage, OPD and the wards appear here." /> : (
+            <div className="panel-pad stack" style={{ overflowX: 'auto' }}>
+              {vitals.length > 0 && (
+                <table className="mini-table">
+                  <caption className="panel-subtitle" style={{ textAlign: 'left', marginTop: 0 }}>Triage and OPD</caption>
+                  <thead><tr><th>Recorded</th><th>BP (mmHg)</th><th>Pulse (bpm)</th><th>Temperature</th><th>SpO2 (%)</th><th>Alerts</th></tr></thead>
+                  <tbody>
+                    {vitals.map((v) => {
+                      const alerts = parseAlerts(pick(v, 'alerts', 'ALERTS'));
+                      const sys = pick(v, 'bp_systolic', 'BP_SYSTOLIC');
+                      return (
+                        <tr key={pick(v, 'id', 'ID')}>
+                          <td className="tabular">{fmtDateTime(pick(v, 'recorded_at', 'RECORDED_AT'))}</td>
+                          <td className="tabular">{sys ? `${sys}/${pick(v, 'bp_diastolic', 'BP_DIASTOLIC') ?? '—'}` : '—'}</td>
+                          <td className="tabular">{pick(v, 'pulse', 'PULSE') ?? '—'}</td>
+                          <td className="tabular">{pick(v, 'temperature', 'TEMPERATURE') != null ? `${pick(v, 'temperature', 'TEMPERATURE')} °${pick(v, 'temp_unit', 'TEMP_UNIT') || 'F'}` : '—'}</td>
+                          <td className="tabular">{pick(v, 'spo2', 'SPO2') ?? '—'}</td>
+                          <td>{alerts.length ? <span className="chip-row">{alerts.map((a) => <span key={a} className="status status-danger">{a}</span>)}</span> : <span className="muted">None</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+              {ipdVitals.length > 0 && (
+                <table className="mini-table">
+                  <caption className="panel-subtitle" style={{ textAlign: 'left' }}>Inpatient charting</caption>
+                  <thead><tr><th>Recorded</th><th>Shift</th><th>BP (mmHg)</th><th>Pulse (bpm)</th><th>Temperature</th><th>SpO2 (%)</th><th>In / out (mL)</th></tr></thead>
+                  <tbody>
+                    {ipdVitals.map((v) => {
+                      const sys = pick(v, 'bpSystolic', 'BP_SYSTOLIC');
+                      const intake = Number(pick(v, 'intakeOralMl', 'INTAKE_ORAL_ML') || 0) + Number(pick(v, 'intakeIvMl', 'INTAKE_IV_ML') || 0);
+                      const output = Number(pick(v, 'outputUrineMl', 'OUTPUT_URINE_ML') || 0) + Number(pick(v, 'outputDrainMl', 'OUTPUT_DRAIN_ML') || 0);
+                      return (
+                        <tr key={pick(v, 'id', 'ID')}>
+                          <td className="tabular">{fmtDateTime(pick(v, 'recordedAt', 'RECORDED_AT'))}</td>
+                          <td>{pick(v, 'shift', 'SHIFT') || '—'}</td>
+                          <td className="tabular">{sys ? `${sys}/${pick(v, 'bpDiastolic', 'BP_DIASTOLIC') ?? '—'}` : '—'}</td>
+                          <td className="tabular">{pick(v, 'pulse', 'PULSE') ?? '—'}</td>
+                          <td className="tabular">{pick(v, 'temperature', 'TEMPERATURE') ?? '—'}</td>
+                          <td className="tabular">{pick(v, 'spo2', 'SPO2') ?? '—'}</td>
+                          <td className="tabular">{intake} / {output}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )
+        ))}
+      </section>
     </div>
     </main>
+
+    <Modal
+      open={allergyOpen}
+      onOpenChange={(open) => { if (!saving) setAllergyOpen(open); }}
+      title="Add allergy"
+      description="Prescribers are warned when a medicine matches a recorded allergy."
+      size="sm"
+      footer={(
+        <>
+          <button type="button" className="btn btn-ghost btn-md" onClick={() => setAllergyOpen(false)} disabled={saving}>Cancel</button>
+          <button type="submit" form="allergy-form" className="btn btn-primary btn-md" disabled={saving}>{saving ? 'Saving…' : 'Save allergy'}</button>
+        </>
+      )}
+    >
+      <form id="allergy-form" className="stack-sm" onSubmit={saveAllergy}>
+        <div className="form-group">
+          <label className="form-label" htmlFor="allergy-allergen">Allergen</label>
+          <input id="allergy-allergen" className="form-input" required maxLength={200} value={allergyForm.allergen} onChange={(e) => setAllergyForm((f) => ({ ...f, allergen: e.target.value }))} placeholder="e.g. Penicillin" />
+          <p className="form-hint">Use the medicine or substance name, so prescriptions can be checked against it.</p>
+        </div>
+        <div className="form-group">
+          <label className="form-label" htmlFor="allergy-reaction">Reaction</label>
+          <input id="allergy-reaction" className="form-input" maxLength={200} value={allergyForm.reaction} onChange={(e) => setAllergyForm((f) => ({ ...f, reaction: e.target.value }))} placeholder="e.g. Rash, breathlessness" />
+        </div>
+        <div className="form-group">
+          <label className="form-label" htmlFor="allergy-severity">Severity</label>
+          <select id="allergy-severity" className="form-select" value={allergyForm.severity} onChange={(e) => setAllergyForm((f) => ({ ...f, severity: e.target.value }))}>
+            <option value="">Not recorded</option>
+            {SEVERITIES.map((sv) => <option key={sv} value={sv}>{sv}</option>)}
+          </select>
+        </div>
+      </form>
+    </Modal>
+
+    <Modal
+      open={conditionOpen}
+      onOpenChange={(open) => { if (!saving) setConditionOpen(open); }}
+      title="Add chronic condition"
+      size="sm"
+      footer={(
+        <>
+          <button type="button" className="btn btn-ghost btn-md" onClick={() => setConditionOpen(false)} disabled={saving}>Cancel</button>
+          <button type="submit" form="condition-form" className="btn btn-primary btn-md" disabled={saving}>{saving ? 'Saving…' : 'Save condition'}</button>
+        </>
+      )}
+    >
+      <form id="condition-form" className="stack-sm" onSubmit={saveCondition}>
+        <div className="form-group">
+          <label className="form-label" htmlFor="condition-name">Condition</label>
+          <input id="condition-name" className="form-input" required maxLength={200} value={conditionForm.condition_name} onChange={(e) => setConditionForm((f) => ({ ...f, condition_name: e.target.value }))} placeholder="e.g. Type 2 diabetes" />
+        </div>
+        <div className="form-group">
+          <label className="form-label" htmlFor="condition-since">Since</label>
+          <input id="condition-since" className="form-input" maxLength={50} value={conditionForm.since_when} onChange={(e) => setConditionForm((f) => ({ ...f, since_when: e.target.value }))} placeholder="e.g. 2019" />
+        </div>
+        <div className="form-group">
+          <label className="form-label" htmlFor="condition-notes">Notes</label>
+          <textarea id="condition-notes" className="form-textarea" rows={2} value={conditionForm.notes} onChange={(e) => setConditionForm((f) => ({ ...f, notes: e.target.value }))} />
+        </div>
+      </form>
+    </Modal>
     </>
   );
 }
