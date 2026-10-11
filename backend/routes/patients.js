@@ -186,6 +186,11 @@ router.get('/', protect, async (req, res) => {
       ];
     }
     if (patientType) where.patientType = patientType;
+    // Dates used to be pasted into the SQL text (injection). Accept only YYYY-MM-DD and bind them.
+    const isYmd = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
+    if ((fromDate && !isYmd(fromDate)) || (toDate && !isYmd(toDate))) {
+      return res.status(400).json({ success: false, message: 'Dates must be in YYYY-MM-DD format.' });
+    }
     if (fromDate || toDate) {
       where[Op.and] = where[Op.and] || [];
       if (fromDate) {
@@ -193,7 +198,7 @@ router.get('/', protect, async (req, res) => {
           sequelize.where(
             sequelize.fn('TRUNC', sequelize.col('testDate')),
             '>=',
-            sequelize.literal(`TO_DATE('${fromDate}', 'YYYY-MM-DD')`)
+            sequelize.fn('TO_DATE', fromDate, 'YYYY-MM-DD')
           )
         );
       }
@@ -202,7 +207,7 @@ router.get('/', protect, async (req, res) => {
           sequelize.where(
             sequelize.fn('TRUNC', sequelize.col('testDate')),
             '<=',
-            sequelize.literal(`TO_DATE('${toDate}', 'YYYY-MM-DD')`)
+            sequelize.fn('TO_DATE', toDate, 'YYYY-MM-DD')
           )
         );
       }
@@ -504,6 +509,12 @@ router.get('/hms/today-patients', protect, async (req, res) => {
       LEFT JOIN HMS_USERS u ON u.ID = e.DOCTOR_ID
       WHERE TRUNC(p.CREATED_AT) = TO_DATE(:today, 'YYYY-MM-DD')
          OR e.ID IS NOT NULL
+         -- Returning patients the front desk queued today (token or booked appointment)
+         OR EXISTS (SELECT 1 FROM HMS_TOKENS t
+                     WHERE t.PATIENT_ID = p.ID AND TRUNC(t.TOKEN_DATE) = TO_DATE(:today, 'YYYY-MM-DD'))
+         OR EXISTS (SELECT 1 FROM HMS_APPOINTMENTS a
+                     WHERE a.PATIENT_ID = p.ID AND TRUNC(a.APPOINTMENT_DATE) = TO_DATE(:today, 'YYYY-MM-DD')
+                       AND a.STATUS IN ('Scheduled', 'Checked-in'))
       ORDER BY p.CREATED_AT DESC
     `, {
       replacements: { today },
@@ -550,6 +561,12 @@ router.get('/hms/pending-consultation', protect, async (req, res) => {
         AND NOT EXISTS (
           SELECT 1 FROM HMS_ENCOUNTERS e WHERE e.PATIENT_ID = p.ID
         )
+        -- Queued for today (token or appointment): they are in today's queue instead
+        AND NOT EXISTS (SELECT 1 FROM HMS_TOKENS t
+                         WHERE t.PATIENT_ID = p.ID AND TRUNC(t.TOKEN_DATE) = TRUNC(CURRENT_TIMESTAMP))
+        AND NOT EXISTS (SELECT 1 FROM HMS_APPOINTMENTS a
+                         WHERE a.PATIENT_ID = p.ID AND TRUNC(a.APPOINTMENT_DATE) = TRUNC(CURRENT_TIMESTAMP)
+                           AND a.STATUS IN ('Scheduled', 'Checked-in'))
       ORDER BY p.CREATED_AT DESC
     `, {
       type: QueryTypes.SELECT

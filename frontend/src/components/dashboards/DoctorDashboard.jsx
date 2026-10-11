@@ -34,7 +34,14 @@ const matchesSearch = (p, query) => {
   return [p?.name, p?.uhid, p?.empNumber, p?.phoneNumber, p?.mobile, p?.age, p?.gender, categoryOf(p?.patientType).label, p?.consulting_doctor_name]
     .map(norm).join(' ').includes(q);
 };
-const isPendingLabReview = (lab) => norm(lab?.status) !== 'completed';
+// Results to review: tests that have a final result, ordered in the last RESULT_REVIEW_DAYS days.
+// (It used to count tests still waiting for a result, cancelled ones included.)
+const RESULT_REVIEW_DAYS = 7;
+const isRecentResult = (lab) => {
+  if (norm(lab?.status) !== 'completed') return false;
+  const at = new Date(lab.orderedAt || lab.date || 0).getTime();
+  return at >= Date.now() - RESULT_REVIEW_DAYS * 24 * 60 * 60 * 1000;
+};
 const fmtTime = (v) => (v ? new Date(v).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }) : '—');
 const fmtDayTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }) : '—');
 const withoutDr = (name) => String(name || '').replace(/^Dr\.?\s*/i, '');
@@ -97,9 +104,18 @@ export default function DoctorDashboard() {
     return () => clearInterval(timer);
   }, []);
 
+  // Latest lab list, read by the socket handler without re-subscribing on every refresh.
+  const labsRef = useRef([]);
+  useEffect(() => { labsRef.current = doctorLabs; }, [doctorLabs]);
+
   useEffect(() => {
     if (!socket) return undefined;
-    const onLabReady = (data) => toast.success(`Lab result ready for item ${data.itemId}`, { duration: 5000 });
+    const onLabReady = (data) => {
+      const known = labsRef.current.find((l) => Number(l.itemId) === Number(data.itemId));
+      const test = data.test || known?.test || 'Lab test';
+      toast.success(`Lab result ready: ${test}${known?.patient ? ` for ${known.patient}` : ''}`, { duration: 5000 });
+      fetchDoctorData();
+    };
     const onLabStatus = (data) => { if (data.status === 'In Progress') toast(`Lab order ${data.orderId} is now in progress`); };
     const onDispensed = (data) => toast.success(`Prescription ${data.prescriptionId} has been dispensed`, { duration: 5000 });
     socket.on('lab_result_ready', onLabReady);
@@ -110,7 +126,7 @@ export default function DoctorDashboard() {
       socket.off('lab_status_change', onLabStatus);
       socket.off('prescription_dispensed', onDispensed);
     };
-  }, [socket]);
+  }, [socket, fetchDoctorData]);
 
   const startConsultation = async (patient) => {
     setStartingId(patient.id);
@@ -164,7 +180,7 @@ export default function DoctorDashboard() {
     () => (pendingView === 'open' ? openPending : expiredPending).filter((p) => matchesSearch(p, pendingSearch)),
     [pendingView, openPending, expiredPending, pendingSearch],
   );
-  const pendingLabReviews = doctorLabs.filter(isPendingLabReview).length;
+  const recentLabResults = doctorLabs.filter(isRecentResult).length;
 
   const actionsFor = useCallback((p) => [
     { label: 'Open consultation', icon: Stethoscope, onSelect: () => navigate(`/hms/consultation/${p.encounter_id}`), hidden: !p.encounter_id },
@@ -226,7 +242,7 @@ export default function DoctorDashboard() {
             </button>
             <RowMenu
               label={`More actions for ${p.name}`}
-              items={actionsFor(p).filter((a) => a.label !== 'Open consultation')}
+              items={actionsFor(p)}
               open={menuFor === p.id}
               onOpenChange={(open) => setMenuFor(open ? p.id : null)}
             />
@@ -316,8 +332,8 @@ export default function DoctorDashboard() {
           </button>
         ))}
         <button type="button" className="panel kpi kpi-button" onClick={() => navigate('/doctor/labs')}>
-          <span className="kpi-label">Lab results to review</span>
-          <span className="kpi-value" style={{ color: pendingLabReviews ? 'var(--amber)' : undefined }}>{loading ? '—' : pendingLabReviews}</span>
+          <span className="kpi-label">Lab results, last {RESULT_REVIEW_DAYS} days</span>
+          <span className="kpi-value" style={{ color: recentLabResults ? 'var(--amber)' : undefined }}>{loading ? '—' : recentLabResults}</span>
         </button>
       </div>
 

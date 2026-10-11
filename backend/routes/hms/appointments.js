@@ -61,14 +61,35 @@ function normalizeStatus(status) {
   }
 }
 
+// Appointments store the doctor either as the user ID (the booking screen lists doctor users) or as
+// the HMS_DOCTORS ID (older and seeded rows). Resolve both, so slot checks, filters and the doctor
+// name see every appointment of the same doctor.
+async function doctorIdsFor(doctorId) {
+  const id = Number(doctorId);
+  if (!Number.isInteger(id) || id <= 0) return { ids: [], departmentId: null };
+  const rows = await sequelize.query(
+    `SELECT ID, USER_ID, DEPARTMENT_ID FROM HMS_DOCTORS WHERE USER_ID = :id OR ID = :id
+      ORDER BY CASE WHEN USER_ID = :id THEN 0 ELSE 1 END, ID LIMIT 1`,
+    { replacements: { id }, type: QueryTypes.SELECT }
+  );
+  const ids = new Set([id]);
+  const doctor = rows[0];
+  if (doctor) {
+    if (doctor.ID) ids.add(Number(doctor.ID));
+    if (doctor.USER_ID) ids.add(Number(doctor.USER_ID));
+  }
+  return { ids: [...ids], departmentId: doctor && doctor.DEPARTMENT_ID ? Number(doctor.DEPARTMENT_ID) : null };
+}
+
 async function getBookedSlots(doctorId, appointmentDate, excludeId = null) {
+  const { ids } = await doctorIdsFor(doctorId);
   const filters = [
-    `DOCTOR_ID = :doctorId`,
+    `DOCTOR_ID IN (:doctorIds)`,
     `trunc(APPOINTMENT_DATE) = TO_DATE(:appointmentDate, 'YYYY-MM-DD')`,
     `STATUS NOT IN ('Cancelled', 'Completed', 'No Show')`
   ];
   const replacements = {
-    doctorId: Number(doctorId),
+    doctorIds: ids.length ? ids : [Number(doctorId)],
     appointmentDate,
   };
 
@@ -129,46 +150,63 @@ router.post('/', protect, async (req, res) => {
       status,
     } = req.body;
 
-    if (!patient_id || !doctor_id || !department_id || !appointment_date) {
-      return res.status(400).json({ success: false, message: 'patient_id, doctor_id, department_id, and appointment_date are required.' });
+    if (!patient_id || !doctor_id || !appointment_date) {
+      return res.status(400).json({ success: false, message: 'patient_id, doctor_id and appointment_date are required.' });
+    }
+    // The booking screen used to send department 1 for every doctor; take the doctor's own
+    // department when none is given.
+    const { ids: doctorIds, departmentId: doctorDepartmentId } = await doctorIdsFor(doctor_id);
+    const resolvedDepartmentId = department_id ? Number(department_id) : doctorDepartmentId;
+    if (!resolvedDepartmentId) {
+      return res.status(400).json({ success: false, message: 'department_id is required for this doctor.' });
     }
 
-    const resolvedSlot = await resolveAppointmentSlot({
-      doctorId: doctor_id,
-      appointmentDate: appointment_date,
-      slotStart: slot_start || appointment_time,
-      slotEnd: slot_end,
+    // One booking at a time per doctor and day, so two desks cannot take the same slot.
+    const lockKey = `appointment:${Math.min(...doctorIds)}:${appointment_date}`;
+    const booking = await sequelize.transaction(async (transaction) => {
+      await sequelize.query('SELECT pg_advisory_xact_lock(hashtext(:lockKey))', { replacements: { lockKey }, transaction });
+      const slot = await resolveAppointmentSlot({
+        doctorId: doctor_id,
+        appointmentDate: appointment_date,
+        slotStart: slot_start || appointment_time,
+        slotEnd: slot_end,
+      });
+      if (slot.error) return { error: slot.error };
+
+      const id = await getNextAppointmentId();
+      await sequelize.query(
+        `INSERT INTO HMS_APPOINTMENTS (
+           ID, PATIENT_ID, DOCTOR_ID, DEPARTMENT_ID, APPOINTMENT_DATE,
+           SLOT_START, SLOT_END, APPT_TYPE, STATUS, BOOKED_BY, CREATED_AT
+         ) VALUES (
+           :id, :patientId, :doctorId, :departmentId, TO_DATE(:appointmentDate, 'YYYY-MM-DD'),
+           :slotStart, :slotEnd, :apptType, :status, :bookedBy, CURRENT_TIMESTAMP
+         )`,
+        {
+          replacements: {
+            id,
+            patientId: Number(patient_id),
+            doctorId: Number(doctor_id),
+            departmentId: resolvedDepartmentId,
+            appointmentDate: appointment_date,
+            slotStart: slot.slotStart,
+            slotEnd: slot.slotEnd,
+            apptType: appt_type || 'walk-in',
+            status: normalizeStatus(status) || 'Scheduled',
+            bookedBy: Number(req.user.id),
+          },
+          type: QueryTypes.INSERT,
+          transaction,
+        }
+      );
+      return { id, slot };
     });
-    if (resolvedSlot.error) {
-      return res.status(400).json({ success: false, message: resolvedSlot.error });
+    if (booking.error) {
+      return res.status(400).json({ success: false, message: booking.error });
     }
-
-    const apptId = await getNextAppointmentId();
+    const apptId = booking.id;
+    const resolvedSlot = booking.slot;
     const normalizedStatus = normalizeStatus(status) || 'Scheduled';
-    await sequelize.query(
-      `INSERT INTO HMS_APPOINTMENTS (
-         ID, PATIENT_ID, DOCTOR_ID, DEPARTMENT_ID, APPOINTMENT_DATE,
-         SLOT_START, SLOT_END, APPT_TYPE, STATUS, BOOKED_BY, CREATED_AT
-       ) VALUES (
-         :id, :patientId, :doctorId, :departmentId, TO_DATE(:appointmentDate, 'YYYY-MM-DD'),
-         :slotStart, :slotEnd, :apptType, :status, :bookedBy, CURRENT_TIMESTAMP
-       )`,
-      {
-        replacements: {
-          id: apptId,
-          patientId: Number(patient_id),
-          doctorId: Number(doctor_id),
-          departmentId: Number(department_id),
-          appointmentDate: appointment_date,
-          slotStart: resolvedSlot.slotStart,
-          slotEnd: resolvedSlot.slotEnd,
-          apptType: appt_type || 'walk-in',
-          status: normalizedStatus,
-          bookedBy: Number(req.user.id),
-        },
-        type: QueryTypes.INSERT,
-      }
-    );
 
     await logAction(req.user.id, 'CREATE', 'appointment', apptId, null, { date: appointment_date, slot: resolvedSlot.slotStart }, req.ip);
 
@@ -179,7 +217,7 @@ router.post('/', protect, async (req, res) => {
         id: apptId,
         patient_id: Number(patient_id),
         doctor_id: Number(doctor_id),
-        department_id: Number(department_id),
+        department_id: resolvedDepartmentId,
         appointment_date,
         slot_start: resolvedSlot.slotStart,
         slot_end: resolvedSlot.slotEnd,
@@ -211,8 +249,9 @@ router.get('/', protect, async (req, res) => {
       replacements.departmentId = department_id;
     }
     if (doctor_id) {
-      filters.push(`a.DOCTOR_ID = :doctorId`);
-      replacements.doctorId = doctor_id;
+      const { ids } = await doctorIdsFor(doctor_id);
+      filters.push(`a.DOCTOR_ID IN (:doctorIds)`);
+      replacements.doctorIds = ids.length ? ids : [Number(doctor_id)];
     }
     if (patient_id) {
       filters.push(`a.PATIENT_ID = :patientId`);
@@ -248,8 +287,13 @@ router.get('/', protect, async (req, res) => {
          dept.NAME AS DEPARTMENT_NAME
        FROM HMS_APPOINTMENTS a
        LEFT JOIN HMS_PATIENTS p ON p.ID = a.PATIENT_ID
-       LEFT JOIN HMS_DOCTORS d ON d.ID = a.DOCTOR_ID
-       LEFT JOIN HMS_USERS du ON du.ID = d.USER_ID
+       LEFT JOIN LATERAL (
+         SELECT d2.ID, d2.USER_ID, d2.SPECIALITY FROM HMS_DOCTORS d2
+          WHERE d2.USER_ID = a.DOCTOR_ID OR d2.ID = a.DOCTOR_ID
+          ORDER BY CASE WHEN d2.USER_ID = a.DOCTOR_ID THEN 0 ELSE 1 END
+          LIMIT 1
+       ) d ON TRUE
+       LEFT JOIN HMS_USERS du ON du.ID = COALESCE(d.USER_ID, a.DOCTOR_ID)
        LEFT JOIN HMS_DEPARTMENTS dept ON dept.ID = a.DEPARTMENT_ID
        ${whereClause}
        ORDER BY a.APPOINTMENT_DATE DESC, a.SLOT_START ASC`,

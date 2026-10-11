@@ -11,6 +11,9 @@ import PageHeader from '../../../components/ui/PageHeader';
 import EmptyState from '../../../components/ui/EmptyState';
 
 const STATUS_TONE = { Paid: 'success', 'Partially Paid': 'warning', Pending: 'warning', Cancelled: 'neutral' };
+// What is still owed: net payable less payments already received (the form used to default to the
+// full net payable, even after a part payment).
+const balanceOf = (b) => (b?.BALANCE_DUE !== undefined ? Number(b.BALANCE_DUE) : Number(b?.NET_PAYABLE || b?.netPayable || 0));
 
 export default function OPDBillingPage() {
   const { encounterId } = useParams();
@@ -60,7 +63,7 @@ export default function OPDBillingPage() {
       ]);
       setAdvanceData(advRes?.data?.data);
       setBill(finalBillRes.data.data);
-      setPaymentForm(prev => ({ ...prev, amount: finalBillRes.data.data.NET_PAYABLE || finalBillRes.data.data.netPayable }));
+      setPaymentForm(prev => ({ ...prev, amount: balanceOf(finalBillRes.data.data) }));
     } catch (err) {
       setLoadError(err.response?.data?.message || 'The bill could not be loaded.');
     } finally {
@@ -81,7 +84,7 @@ export default function OPDBillingPage() {
       // Refresh bill
       const finalBillRes = await api.get(`/billing/${bill.ID || bill.id}`);
       setBill(finalBillRes.data.data);
-      setPaymentForm(prev => ({ ...prev, amount: finalBillRes.data.data.NET_PAYABLE }));
+      setPaymentForm(prev => ({ ...prev, amount: balanceOf(finalBillRes.data.data) }));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not apply discount');
     }
@@ -99,6 +102,7 @@ export default function OPDBillingPage() {
       // Refresh bill
       const finalBillRes = await api.get(`/billing/${bill.ID || bill.id}`);
       setBill(finalBillRes.data.data);
+      setPaymentForm(prev => ({ ...prev, amount: balanceOf(finalBillRes.data.data) }));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not record payment');
     }
@@ -148,7 +152,7 @@ export default function OPDBillingPage() {
            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
              <div className="stack-sm" style={{ gap: 4 }}>
                <div><span className="fact-label">Receipt no.</span> <span className="mono">{receipt.RECEIPT_NUMBER || receipt.receiptNumber}</span></div>
-               <div><span className="fact-label">Date</span> <span className="tabular">{new Date(receipt.PAYMENT_DATE || receipt.paymentDate).toLocaleString()}</span></div>
+               <div><span className="fact-label">Date</span> <span className="tabular">{new Date(receipt.PAYMENT_DATE || receipt.paymentDate || Date.now()).toLocaleString('en-IN')}</span></div>
                <div><span className="fact-label">Patient</span> {bill.PATIENT_NAME} (<span className="mono">{bill.UHID}</span>)</div>
              </div>
              <div className="stack-sm" style={{ gap: 4, textAlign: 'right' }}>
@@ -157,8 +161,9 @@ export default function OPDBillingPage() {
              </div>
            </div>
            <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', padding: 16, borderRadius: 8, textAlign: 'center', marginBottom: 20 }}>
-             <div className="tabular" style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary)' }}>₹{receipt.AMOUNT || receipt.amount}</div>
+             <div className="tabular" style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary)' }}>₹{Number(receipt.AMOUNT || receipt.amount || 0).toFixed(2)}</div>
              <p className="muted">Amount received</p>
+             {balanceOf(bill) > 0 && <p className="muted" style={{ margin: 0 }}>Balance still due: <span className="tabular">₹{balanceOf(bill).toFixed(2)}</span></p>}
            </div>
            
            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }} className="no-print">
@@ -168,6 +173,11 @@ export default function OPDBillingPage() {
              <button type="button" className="btn btn-secondary btn-md" onClick={() => navigate(`/billing/patient/${bill.PATIENT_ID}`)}>
                <History size={16} aria-hidden="true" /> View history
              </button>
+             {balanceOf(bill) > 0 && (
+               <button type="button" className="btn btn-ghost btn-md" onClick={() => setReceipt(null)}>
+                 <Wallet size={16} aria-hidden="true" /> Collect balance
+               </button>
+             )}
            </div>
         </section>
       </main>
@@ -250,6 +260,18 @@ export default function OPDBillingPage() {
                <strong>Net payable</strong>
                <strong>₹{bill.NET_PAYABLE}</strong>
              </div>
+             {Number(bill.PAID_AMOUNT || 0) > 0 && (
+               <>
+                 <div style={{ ...rowStyle, marginTop: 8 }}>
+                   <span style={{ color: 'var(--text-secondary)' }}>Paid so far</span>
+                   <strong>₹{Number(bill.PAID_AMOUNT).toFixed(2)}</strong>
+                 </div>
+                 <div style={{ ...rowStyle, marginBottom: 0 }}>
+                   <span style={{ color: 'var(--text-secondary)' }}>Balance due</span>
+                   <strong>₹{balanceOf(bill).toFixed(2)}</strong>
+                 </div>
+               </>
+             )}
           </div>
         </section>
 
@@ -283,7 +305,7 @@ export default function OPDBillingPage() {
                <form onSubmit={handlePayment} className="stack-sm">
                  <div className="form-group">
                    <label className="form-label" htmlFor="pay-amount">Amount received (₹)</label>
-                   <input id="pay-amount" type="number" className="form-input" value={paymentForm.amount} onChange={e=>setPaymentForm({...paymentForm, amount: e.target.value})} required disabled={applyAdvance} />
+                   <input id="pay-amount" type="number" min="0.01" step="0.01" max={balanceOf(bill)} className="form-input" value={paymentForm.amount} onChange={e=>setPaymentForm({...paymentForm, amount: e.target.value})} required disabled={applyAdvance} />
                  </div>
                  {!applyAdvance && (
                    <>

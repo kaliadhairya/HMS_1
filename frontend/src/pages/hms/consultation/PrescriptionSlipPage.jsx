@@ -7,7 +7,8 @@ import { useAuth } from '../../../context/AuthContext';
 import Navbar from '../../../components/Navbar';
 import './PrescriptionSlip.css';
 import Glyph from '../../../components/ui/Glyph';
-import { ArrowLeft, Eye, Printer, Save } from 'lucide-react';
+import { ArrowLeft, Eye, Printer, Save, TriangleAlert } from 'lucide-react';
+import { AllergyStatusPanel, AllergyWarningModal, findAllergyMatches, medicineNames, usePatientAllergies } from './allergySafety';
 
 const emptyItem = () => ({
   medicine_id: null,
@@ -453,6 +454,43 @@ export default function PrescriptionSlipPage() {
   const paramPatientId = searchParams.get('patientId');
   const paramEncounterId = searchParams.get('encounterId');
 
+  // ── Patient safety: allergy record and a confirmation before prescribing against it ──
+  const allergyState = usePatientAllergies(patient?.id);
+  const [allergyPrompt, setAllergyPrompt] = useState(null);
+  // Medicines (by name) the doctor already chose to prescribe despite a warning, for this patient.
+  const allergyAckRef = useRef(new Set());
+  const ackKey = (item) => String(item?.medicine_name || item?.generic_name || '').trim().toLowerCase();
+  const askAllergy = (medicineName, matches, unchecked) => new Promise((resolve) => {
+    setAllergyPrompt({ medicineName, matches, unchecked, resolve });
+  });
+  const closeAllergyPrompt = (allowed) => {
+    const current = allergyPrompt;
+    setAllergyPrompt(null);
+    if (current) current.resolve(allowed);
+  };
+  // Resolves true when the medicines may go on the prescription: no recorded allergy matches, or
+  // the doctor chose "Prescribe anyway". Never blocks or allows silently.
+  const confirmMedicineSafety = async (items) => {
+    if (!patient) return true;
+    const named = items.filter((item) => ackKey(item));
+    if (named.length === 0) return true;
+    if (allergyState.status !== 'ok') {
+      if (allergyAckRef.current.has('__unchecked__')) return true;
+      const allowed = await askAllergy(named.map((i) => i.medicine_name || i.generic_name).join(', '), [], true);
+      if (allowed) allergyAckRef.current.add('__unchecked__');
+      return allowed;
+    }
+    const flagged = named
+      .map((item) => ({ item, matches: findAllergyMatches(allergyState.allergies, medicineNames(item)) }))
+      .filter((x) => x.matches.length > 0 && !allergyAckRef.current.has(ackKey(x.item)));
+    if (flagged.length === 0) return true;
+    const matches = [...new Map(flagged.flatMap((x) => x.matches).map((a) => [a.id || a.allergen, a])).values()];
+    const allowed = await askAllergy(flagged.map((x) => x.item.medicine_name || x.item.generic_name).join(', '), matches, false);
+    if (allowed) flagged.forEach((x) => allergyAckRef.current.add(ackKey(x.item)));
+    return allowed;
+  };
+  const allergyMatchesFor = (item) => (allergyState.status === 'ok' ? findAllergyMatches(allergyState.allergies, medicineNames(item)) : []);
+
   const loadMedicationHistory = useCallback(async (selectedPatientId) => {
     if (!selectedPatientId) {
       setMedicationHistory([]);
@@ -562,8 +600,9 @@ export default function PrescriptionSlipPage() {
         if (/^\d+$/.test(q)) {
           try {
             const directRes = await api.get(`/patients/hms/${q}`);
-            if (directRes.data?.success && directRes.data.patient) {
-              results.push(directRes.data.patient);
+            const direct = directRes.data?.data || directRes.data?.patient;
+            if (directRes.data?.success && direct) {
+              results.push(direct);
             }
           } catch (error) {
             if (error?.response?.status !== 404) {
@@ -753,10 +792,14 @@ export default function PrescriptionSlipPage() {
     }, 300);
   };
 
-  const selectInlineSuggestion = (index, name) => {
+  const selectInlineSuggestion = async (index, name) => {
     setActiveInlineIdx(null);
     setInlineDropdownPosition(null);
     setInlineSuggestions(prev => ({ ...prev, [index]: [] }));
+    if (!(await confirmMedicineSafety([{ medicine_name: name, generic_name: name }]))) {
+      updateItem(index, 'medicine_name', '');
+      return;
+    }
     setPrescriptionItems((items) => {
       const nextItems = [...items];
       nextItems[index] = {
@@ -823,6 +866,7 @@ export default function PrescriptionSlipPage() {
   };
 
   const handleSelectPatient = (selectedPatient, preventReset = false) => {
+    allergyAckRef.current = new Set();
     setPatient(selectedPatient);
     setPatientQuery(selectedPatient.uhid || selectedPatient.name || selectedPatient.patient_name || String(selectedPatient.id));
     setShowPatientResults(false);
@@ -863,7 +907,7 @@ export default function PrescriptionSlipPage() {
     });
   };
 
-  const appendRepeatedMedicines = (sourceItems, successMessage) => {
+  const appendRepeatedMedicines = async (sourceItems, successMessage) => {
     const repeatedItems = sourceItems
       .map(buildRepeatedMedicineItem)
       .filter((item) => item.medicine_name);
@@ -872,6 +916,7 @@ export default function PrescriptionSlipPage() {
       toast.error('No medicines found to repeat');
       return;
     }
+    if (!(await confirmMedicineSafety(repeatedItems))) return;
 
     setActiveInlineIdx(null);
     setInlineDropdownPosition(null);
@@ -956,10 +1001,18 @@ export default function PrescriptionSlipPage() {
     });
   };
 
-  const addMedicineFromSearch = (medicine) => {
+  const addMedicineFromSearch = async (medicine) => {
     const displayName = [medicine.genericName, medicine.strength, medicine.strengthUnit]
       .filter(Boolean)
       .join(' ');
+
+    // Take the half-typed search text out of the list first, so a cancelled warning leaves nothing behind.
+    removeGlobalMedicineDraft();
+    setMedicineQuery('');
+    setMedicineResults([]);
+    setShowMedicineResults(false);
+    const candidate = { medicine_name: displayName || medicine.genericName || '', generic_name: medicine.genericName || '', brandNames: medicine.brandNames };
+    if (!(await confirmMedicineSafety([candidate]))) return;
 
     setPrescriptionItems((items) => {
       const nextItems = [...items];
@@ -1051,6 +1104,9 @@ export default function PrescriptionSlipPage() {
       toast.error('Add at least one medicine');
       return null;
     }
+
+    // Medicines typed by hand (or loaded from an earlier save) are checked here as well.
+    if (!(await confirmMedicineSafety(validItems))) return null;
 
     setSaving(true);
     try {
@@ -1221,6 +1277,14 @@ export default function PrescriptionSlipPage() {
                       <div className="patient-summary-empty"><Glyph icon="🔍" /> Search and select a patient above to begin.</div>
                     )}
                   </div>
+                  {patient && (
+                    <AllergyStatusPanel
+                      status={allergyState.status}
+                      allergies={allergyState.allergies}
+                      onRetry={allergyState.retry}
+                      style={{ marginTop: 10 }}
+                    />
+                  )}
                 </div>
 
                 <div className="editor-field">
@@ -1421,6 +1485,11 @@ export default function PrescriptionSlipPage() {
                             autoComplete="off"
                           />
                         </div>
+                        {allergyMatchesFor(item).length > 0 && (
+                          <span className="status status-danger" style={{ marginTop: 6 }}>
+                            <TriangleAlert size={12} aria-hidden="true" /> Allergy: {allergyMatchesFor(item).map((a) => a.allergen).join(', ')}
+                          </span>
+                        )}
                       </div>
                       <button
                         type="button"
@@ -1733,6 +1802,11 @@ export default function PrescriptionSlipPage() {
       )}
     </main>
 
+    <AllergyWarningModal
+      pending={allergyPrompt}
+      onCancel={() => closeAllergyPrompt(false)}
+      onConfirm={() => closeAllergyPrompt(true)}
+    />
     </>
   );
 }
