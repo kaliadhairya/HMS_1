@@ -344,14 +344,17 @@ async function searchTable(page, placeholder, text) {
       await savedDownload(page, () => dialog.getByRole('button', { name: 'Download PDF' }).click(), 'doctor review PDF');
       await dialog.getByRole('button', { name: 'Close' }).first().click();
 
-      // Dashboard "Lab results to review" = the doctor's lab items that are not completed (GET /doctor/labs).
+      // Dashboard "Lab results, last 7 days" = the doctor's completed lab items ordered in the last 7 days
+      // (GET /doctor/labs leaves cancelled tests out).
       const doctorLabs = await api('GET', '/doctor/labs', { token: await apiLogin('doctor') });
       const mine = doctorLabs.data.data.filter((l) => l.patient === ctx.patientName);
       assert(mine.length === 4 && mine.filter((l) => l.status === 'Completed').length === 3, `/doctor/labs for the patient: ${JSON.stringify(mine)}`);
-      const expected = doctorLabs.data.data.filter((l) => String(l.status).toLowerCase() !== 'completed').length;
+      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const expected = doctorLabs.data.data.filter((l) => String(l.status).toLowerCase() === 'completed'
+        && new Date(l.orderedAt || l.date || 0).getTime() >= weekAgo).length;
       await page.goto(`${BASE}/doctor/dashboard`, { waitUntil: 'networkidle' });
-      const shown = await readKpi(page, 'Lab results to review');
-      assert(Number(shown) === expected, `dashboard shows ${shown}, expected ${expected} non-completed items`);
+      const shown = await readKpi(page, 'Lab results, last 7 days');
+      assert(Number(shown) === expected, `dashboard shows ${shown}, expected ${expected} recent completed results`);
 
       // Consultation page lists the orders as already ordered, with their status.
       await page.goto(`${BASE}/hms/consultation/${ctx.encounterId}`, { waitUntil: 'networkidle' });
