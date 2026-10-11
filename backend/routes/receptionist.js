@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { sequelize, AuditLog } = require('../models');
 const { logAction } = require('../utils/auditLogger');
+const { restrictTo } = require('../middleware/auth');
 
 const VISITOR_MODULE = 'receptionist_visitor';
 const NOTIFICATION_MODULE = 'receptionist_notification';
@@ -142,6 +143,10 @@ async function buildNotifications() {
 
   return notifications.sort((a, b) => Number(!a.read) - Number(!b.read)).reverse();
 }
+
+// Front-desk endpoints (visitors, notifications, billing summary, IPD desk): front desk and admins only.
+// The mount in server.js only checks sign-in, so any role could read and change these before.
+router.use(restrictTo('receptionist', 'super_admin', 'admin'));
 
 router.get('/visitor-log', async (req, res) => {
   try {

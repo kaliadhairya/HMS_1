@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Department, Doctor, User } = require('../../models');
-const { protect } = require('../../middleware/auth');
+const { protect, restrictTo } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
 
 // GET /api/hms/departments
@@ -19,7 +19,8 @@ router.get('/', protect, async (req, res) => {
 });
 
 // POST /api/hms/departments (Admin only conceptually, protected by middleware in real app)
-router.post('/', protect, async (req, res) => {
+// Departments are hospital configuration: only administrators create them.
+router.post('/', protect, restrictTo('super_admin', 'admin'), async (req, res) => {
   try {
     const { name, short_code, floor_location } = req.body;
     if (!name) return res.status(400).json({ success: false, message: 'Name required.' });
