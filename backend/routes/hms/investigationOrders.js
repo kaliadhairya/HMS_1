@@ -45,13 +45,17 @@ router.post('/', protect, checkPermission('consultation', 'write'), async (req, 
     }
 
     const [encounter, patient] = await Promise.all([
-      Encounter.findByPk(encounterId, { attributes: ['id', 'patient_id'] }),
+      Encounter.findByPk(encounterId, { attributes: ['id', 'patient_id', 'status'] }),
       Patient.findByPk(patientId, { attributes: ['id', 'name', 'first_name', 'last_name'] }),
     ]);
     if (!encounter) return res.status(404).json({ error: 'Encounter not found' });
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
     if (Number(encounter.patient_id) !== patientId) {
       return res.status(400).json({ error: 'The encounter belongs to a different patient' });
+    }
+    // A finalized visit may already be billed, so a late order would never be charged or seen in it.
+    if (encounter.status === 'Finalized') {
+      return res.status(409).json({ error: 'This consultation is finalized. Start a new consultation to order more tests.' });
     }
 
     // Header and items are written together, so a failed item never leaves an empty order in the lab queue.
