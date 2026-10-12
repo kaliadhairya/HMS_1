@@ -17,6 +17,24 @@ services:
       retries: 5
     restart: unless-stopped
 
+  migrate:
+    build:
+      context: ./backend
+    container_name: hms-migrate
+    environment:
+      - DB_HOST=${DB_HOST:-db}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-hms}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - SEED_DEMO_DATA=${SEED_DEMO_DATA:-true}
+    # Applies pending migrations, then (development only) demo data.
+    command: ["sh", "-c", "node migrate.js up && if [ \"$$SEED_DEMO_DATA\" = true ]; then node seed_demo_data.js; fi"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   backend:
     build:
       context: ./backend
@@ -38,12 +56,12 @@ services:
     volumes:
       - ./backend/uploads:/app/uploads
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     command: ["sh", "startup.sh"]
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:5001/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:5001/api/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
       interval: 15s
       timeout: 5s
       retries: 5

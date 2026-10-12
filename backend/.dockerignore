@@ -4,7 +4,9 @@ Dockerfile*
 .dockerignore
 .git
 .gitignore
-.env*.local
+# Secrets come from the container environment, never from a copied file.
+.env
+.env.*
 uploads/*
 !uploads/.gitkeep
 logs

@@ -44,7 +44,9 @@ This document lists the default user accounts, roles, and system credentials con
   ```bash
   cd backend && node reset_demo_passwords.js
   ```
-- Initialize and seed tables:
+- Create or upgrade the database schema, then load demo data (development only):
   ```bash
-  cd backend && node init_database.js
+  cd backend && npm run migrate && npm run seed:demo
   ```
+  Docker Compose does both automatically through the `migrate` service.
+  Production (`docker-compose.prod.yml`) applies migrations but never loads demo data.

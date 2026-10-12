@@ -53,11 +53,11 @@ pipeline {
                 script {
                     if (isUnix()) {
                         sh 'sleep 15'
-                        sh 'curl -f http://localhost:5001/api/health || exit 1'
+                        sh 'curl -f http://localhost:5001/api/ready || exit 1'
                         sh 'curl -f http://localhost:4999 || exit 1'
                     } else {
                         bat 'timeout /t 15 /nobreak'
-                        bat 'curl -f http://localhost:5001/api/health'
+                        bat 'curl -f http://localhost:5001/api/ready'
                         bat 'curl -f http://localhost:4999'
                     }
                 }

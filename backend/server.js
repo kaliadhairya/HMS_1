@@ -12,6 +12,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { sequelize } = require('./models');
+const { schemaProblems } = require('./migrate');
 const { validateToken } = require('./utils/identityClient');
 const { resolveTokenUser, identityServiceEnabled } = require('./middleware/auth');
 const {
@@ -27,7 +28,7 @@ app.set('trust proxy', Number.isInteger(numericTrustProxy) && numericTrustProxy 
 
 // ── Metrics & Telemetry ─────────────────────────────────────────
 app.use((req, res, next) => {
-  if (req.path === '/metrics' || req.path === '/api/health') return next();
+  if (req.path === '/metrics' || req.path === '/api/health' || req.path === '/api/ready') return next();
   const end = httpRequestDurationSeconds.startTimer();
   res.on('finish', () => {
     const route = req.baseUrl + (req.route ? req.route.path : req.path);
@@ -101,7 +102,7 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
-  skip: (req) => req.path.startsWith('/api/pdf') || req.path === '/api/health',
+  skip: (req) => req.path.startsWith('/api/pdf') || req.path === '/api/health' || req.path === '/api/ready',
 });
 app.use('/api', apiLimiter);
 
@@ -169,9 +170,25 @@ app.use(
   require('./routes/pharmacist_lms')
 );
 
-// Health check
+// Liveness: the process is running. Use /api/ready to decide whether to send it traffic.
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Readiness: the database answers within two seconds.
+app.get('/api/ready', async (req, res) => {
+  let timer;
+  try {
+    await Promise.race([
+      sequelize.query('SELECT 1'),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('database did not answer within 2 s')), 2000); }),
+    ]);
+    res.json({ status: 'ready', timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(503).json({ status: 'not_ready', reason: err.message });
+  } finally {
+    clearTimeout(timer);
+  }
 });
 
 // 404
@@ -233,50 +250,24 @@ io.on('connection', (socket) => {
   });
 });
 
-sequelize
-  .authenticate()
-  .then(async () => {
-    console.log('✅ PostgreSQL DB connected');
-
-    // ── Auto-migrations (safe, idempotent) ──────────────────────
-    try {
-      const [cols] = await sequelize.query(
-        `SELECT column_name FROM information_schema.columns 
-         WHERE table_name = 'hms_rest_forms' AND column_name = 'extended_date'`
-      );
-      if (cols.length === 0) {
-        await sequelize.query(`ALTER TABLE HMS_REST_FORMS ADD COLUMN EXTENDED_DATE TIMESTAMP`);
-        console.log('➕ Added EXTENDED_DATE column to HMS_REST_FORMS');
-      }
-    } catch (migErr) {
-      console.warn('⚠️ Migration check skipped:', migErr.message);
-    }
-
-    // Columns the models expect but older databases may lack.
-    try {
-      await sequelize.query(`ALTER TABLE HMS_SUPPLIERS ADD COLUMN IF NOT EXISTS SUPPLIER_NUMBER VARCHAR(20) UNIQUE`);
-    } catch (migErr) {
-      console.warn('⚠️ Supplier column migration skipped:', migErr.message);
-    }
-
-    // Fold any patient rows with a retired or unknown category into the general category.
-    try {
-      const [, meta] = await sequelize.query(
-        `UPDATE HMS_PATIENTS SET PATIENTTYPE = 'other', EMPNUMBER = NULL, RELATIONSHIP = NULL WHERE PATIENTTYPE NOT IN ('corporate_employee', 'other')`
-      );
-      if (meta?.rowCount) console.log(`🔁 Migrated ${meta.rowCount} legacy patient record(s) to 'other'`);
-    } catch (migErr) {
-      console.warn('⚠️ Patient type migration skipped:', migErr.message);
-    }
-
-    server.listen(PORT, process.env.BACKEND_HOST || '0.0.0.0', () => {
-      console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.warn('⚠️ PostgreSQL connection failed:', err.message);
-    console.warn('⚠️ Starting server WITHOUT database — mock data will be used.');
-    server.listen(PORT, process.env.BACKEND_HOST || '0.0.0.0', () => {
-      console.log(`🚀 Server running on http://0.0.0.0:${PORT} (NO DB — mock mode)`);
-    });
+// Start only against a reachable database whose schema matches migrations/.
+// The schema itself is changed by "node migrate.js up", never by the server.
+async function start() {
+  try {
+    await sequelize.authenticate();
+  } catch (err) {
+    console.error(`❌ Refusing to start: PostgreSQL is unreachable (${err.message})`);
+    process.exit(1);
+  }
+  const problems = await schemaProblems();
+  if (problems.length) {
+    console.error(`❌ Refusing to start: the database schema is not current. Run "node migrate.js up".\n  ${problems.join('\n  ')}`);
+    process.exit(1);
+  }
+  console.log('✅ PostgreSQL DB connected; schema is current');
+  server.listen(PORT, process.env.BACKEND_HOST || '0.0.0.0', () => {
+    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
   });
+}
+
+start();

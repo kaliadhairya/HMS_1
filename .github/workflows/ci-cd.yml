@@ -33,14 +33,10 @@ jobs:
           cd backend
           npm ci
 
-      - name: Validate Backend Smoke & Route Health
+      - name: Backend Unit Tests
         run: |
           cd backend
-          node -e "
-            console.log('Testing critical module loading...');
-            require('./package.json');
-            console.log('Backend dependencies and modules verified.');
-          "
+          npm test
 
       - name: Install Frontend Dependencies
         run: |
@@ -52,10 +48,53 @@ jobs:
           cd frontend
           npm run build
 
+  # Stage 1b: Database migrations build the same schema from scratch and from
+  # a database created the pre-migration way, on each supported PostgreSQL.
+  migrations:
+    name: Database Migrations (PostgreSQL ${{ matrix.postgres }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        postgres: ['16', '18']
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # verify-migrations.sh reads the legacy init script from history
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Backend Dependencies
+        run: cd backend && npm ci
+
+      - name: Verify Migrations
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+        run: backend/scripts/verify-migrations.sh
+
   # Stage 2: Container Image Build Verification
   docker-build-check:
     name: Docker Container Build & Topology Verification
-    needs: test-and-verify
+    needs: [test-and-verify, migrations]
     runs-on: ubuntu-latest
 
     steps:

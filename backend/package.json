@@ -7,7 +7,10 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "seed": "node utils/seedUsers.js",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "migrate": "node migrate.js up",
+    "migrate:status": "node migrate.js status",
+    "seed:demo": "node seed_demo_data.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

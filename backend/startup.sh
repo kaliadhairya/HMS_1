@@ -36,9 +36,8 @@ done
 
 echo "[OK] PostgreSQL DB is reachable."
 
-# Run database setup & seeding automatically if needed
-echo "[INFO] Running database initialization..."
-node init_database.js || true
+# The schema is changed only by the migrate step ("node migrate.js up").
+# server.js refuses to start if a migration is pending.
 
 # Start the application
 echo "[INFO] Starting HMS Backend..."
