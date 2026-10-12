@@ -234,26 +234,14 @@ router.get('/doctor', restrictTo('doctor', 'super_admin', 'admin'), async (req, 
   try {
     const todayStr = new Date().toISOString().split('T')[0];
     const userId = req.user.id;
-    
-    // Find doctor profile for this user
-    const doctors = await Doctor.findAll({ where: { user_id: userId } });
-    const doctor = doctors.length > 0 ? doctors[0] : null;
-    const doctorTableId = doctor ? doctor.id : null;
-    
-    // Query using BOTH user ID and HMS_DOCTORS ID for full coverage
+
     let opdQueueCount = 0;
     let upcomingApptsCount = 0;
 
-    // OPD tokens may reference HMS_DOCTORS.id or user ID
-    if (doctorTableId) {
-      opdQueueCount = await Token.count({
-        where: { 
-          doctor_id: { [Op.in]: [doctorTableId, userId] }, 
-          token_date: todayStr, 
-          status: 'Waiting' 
-        }
-      });
-    }
+    // OPD tokens store the doctor's user ID
+    opdQueueCount = await Token.count({
+      where: { doctor_id: userId, token_date: todayStr, status: 'Waiting' }
+    });
 
     // Appointments store user ID as doctor_id
     upcomingApptsCount = await Appointment.count({

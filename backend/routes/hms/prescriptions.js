@@ -231,6 +231,9 @@ router.put('/:id/items', protect, checkPermission('consultation', 'write'), asyn
     const updatedItems = await resolveItemsForRead(prescription_id);
     res.json(updatedItems);
   } catch (error) {
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(409).json({ error: 'Some of these medicines have already been given to the patient, so the prescription lines cannot be replaced.' });
+    }
     console.error('Error updating prescription items:', error);
     res.status(500).json({ error: 'Failed to update prescription items' });
   }

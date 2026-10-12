@@ -7,8 +7,7 @@ const { logAction } = require('../../utils/auditLogger');
 const { clobToString } = require('../../utils/clobToString');
 const { Op } = require('sequelize');
 
-// Today's open OPD token / appointment for this patient with this doctor. Tokens and appointments
-// store either the doctor's user ID or their HMS_DOCTORS ID, so both are matched.
+// Today's open OPD token / appointment for this patient with this doctor (both store the doctor's user ID).
 async function findOpenVisit(patientId, userId, transaction) {
   const [doctorRows] = await sequelize.query(
     'SELECT ID, DEPARTMENT_ID FROM HMS_DOCTORS WHERE USER_ID = :userId ORDER BY ID LIMIT 1',
@@ -16,7 +15,6 @@ async function findOpenVisit(patientId, userId, transaction) {
   );
   const doctorRow = doctorRows[0] || null;
   const doctorIds = [Number(userId)];
-  if (doctorRow && !doctorIds.includes(Number(doctorRow.ID))) doctorIds.push(Number(doctorRow.ID));
 
   const [tokenRows] = await sequelize.query(`
     SELECT ID, DEPARTMENT_ID FROM HMS_TOKENS

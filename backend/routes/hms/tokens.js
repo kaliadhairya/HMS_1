@@ -2,26 +2,15 @@ const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
 const { sequelize } = require('../../models/db');
+const { resolveDoctorUser } = require('../../utils/doctorIdentity');
 const { Token, Patient, Doctor, Department, User } = require('../../models');
 const { protect } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
 
-// Tokens store the doctor as the user ID (the token screen lists doctor users) or, in older rows,
-// as the HMS_DOCTORS ID. Resolve both so numbering and the queue cover the same doctor.
+// A doctor given as a user ID or profile ID, as the user ID tokens store.
 async function doctorIdsFor(doctorId) {
-  const id = Number(doctorId);
-  const [rows] = await sequelize.query(
-    `SELECT ID, USER_ID, DEPARTMENT_ID FROM HMS_DOCTORS WHERE USER_ID = :id OR ID = :id
-      ORDER BY CASE WHEN USER_ID = :id THEN 0 ELSE 1 END, ID LIMIT 1`,
-    { replacements: { id } }
-  );
-  const ids = new Set([id]);
-  const doctor = rows[0];
-  if (doctor) {
-    if (doctor.ID) ids.add(Number(doctor.ID));
-    if (doctor.USER_ID) ids.add(Number(doctor.USER_ID));
-  }
-  return { ids: [...ids], departmentId: doctor && doctor.DEPARTMENT_ID ? Number(doctor.DEPARTMENT_ID) : null };
+  const doctor = await resolveDoctorUser(doctorId);
+  return { ids: doctor ? [doctor.userId] : [], userId: doctor ? doctor.userId : null, departmentId: doctor ? doctor.departmentId : null };
 }
 
 function tokenDateWhere(dateString) {
@@ -34,14 +23,7 @@ function tokenDateWhere(dateString) {
 // GET /api/hms/tokens — Fetch today's tokens for the logged-in doctor (dashboard)
 router.get('/', protect, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const doctors = await Doctor.findAll({ where: { user_id: userId } });
-    const doctor = doctors.length > 0 ? doctors[0] : null;
-    const doctorTableId = doctor ? doctor.id : null;
-
-    // Query tokens using both the user ID and HMS_DOCTORS ID
-    const doctorIds = [userId];
-    if (doctorTableId && doctorTableId !== userId) doctorIds.push(doctorTableId);
+    const doctorIds = [req.user.id];
 
     const today = new Date().toISOString().split('T')[0];
     const tokens = await Token.findAll({
@@ -117,7 +99,10 @@ router.post('/', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid doctor.' });
     }
     // The token screen used to send department 1 for every doctor; take the doctor's own department.
-    const { ids: doctorIds, departmentId: doctorDepartmentId } = await doctorIdsFor(doctor_id);
+    const { ids: doctorIds, userId: doctorUserId, departmentId: doctorDepartmentId } = await doctorIdsFor(doctor_id);
+    if (!doctorUserId) {
+      return res.status(400).json({ success: false, message: 'Invalid doctor.' });
+    }
     const resolvedDepartmentId = department_id ? Number(department_id) : doctorDepartmentId;
     if (!resolvedDepartmentId) {
       return res.status(400).json({ success: false, message: 'Missing required fields.' });
@@ -152,7 +137,7 @@ router.post('/', protect, async (req, res) => {
 
       const token = await Token.create({
         id: nextId,
-        patient_id, doctor_id, department_id: resolvedDepartmentId,
+        patient_id, doctor_id: doctorUserId, department_id: resolvedDepartmentId,
         token_date: today,
         token_number: nextNumber,
         generated_by: req.user.id

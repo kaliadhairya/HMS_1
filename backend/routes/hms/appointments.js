@@ -3,6 +3,7 @@ const router = express.Router();
 const { Op, QueryTypes } = require('sequelize');
 const { Appointment, Patient, Doctor, Department, User } = require('../../models');
 const { sequelize } = require('../../models/db');
+const { resolveDoctorUser } = require('../../utils/doctorIdentity');
 const { protect } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
 
@@ -61,24 +62,10 @@ function normalizeStatus(status) {
   }
 }
 
-// Appointments store the doctor either as the user ID (the booking screen lists doctor users) or as
-// the HMS_DOCTORS ID (older and seeded rows). Resolve both, so slot checks, filters and the doctor
-// name see every appointment of the same doctor.
+// A doctor given as a user ID or profile ID, as the user ID appointments store.
 async function doctorIdsFor(doctorId) {
-  const id = Number(doctorId);
-  if (!Number.isInteger(id) || id <= 0) return { ids: [], departmentId: null };
-  const rows = await sequelize.query(
-    `SELECT ID, USER_ID, DEPARTMENT_ID FROM HMS_DOCTORS WHERE USER_ID = :id OR ID = :id
-      ORDER BY CASE WHEN USER_ID = :id THEN 0 ELSE 1 END, ID LIMIT 1`,
-    { replacements: { id }, type: QueryTypes.SELECT }
-  );
-  const ids = new Set([id]);
-  const doctor = rows[0];
-  if (doctor) {
-    if (doctor.ID) ids.add(Number(doctor.ID));
-    if (doctor.USER_ID) ids.add(Number(doctor.USER_ID));
-  }
-  return { ids: [...ids], departmentId: doctor && doctor.DEPARTMENT_ID ? Number(doctor.DEPARTMENT_ID) : null };
+  const doctor = await resolveDoctorUser(doctorId);
+  return { ids: doctor ? [doctor.userId] : [], userId: doctor ? doctor.userId : null, departmentId: doctor ? doctor.departmentId : null };
 }
 
 async function getBookedSlots(doctorId, appointmentDate, excludeId = null) {
@@ -155,7 +142,10 @@ router.post('/', protect, async (req, res) => {
     }
     // The booking screen used to send department 1 for every doctor; take the doctor's own
     // department when none is given.
-    const { ids: doctorIds, departmentId: doctorDepartmentId } = await doctorIdsFor(doctor_id);
+    const { ids: doctorIds, userId: doctorUserId, departmentId: doctorDepartmentId } = await doctorIdsFor(doctor_id);
+    if (!doctorUserId) {
+      return res.status(400).json({ success: false, message: 'Unknown doctor.' });
+    }
     const resolvedDepartmentId = department_id ? Number(department_id) : doctorDepartmentId;
     if (!resolvedDepartmentId) {
       return res.status(400).json({ success: false, message: 'department_id is required for this doctor.' });
@@ -186,7 +176,7 @@ router.post('/', protect, async (req, res) => {
           replacements: {
             id,
             patientId: Number(patient_id),
-            doctorId: Number(doctor_id),
+            doctorId: doctorUserId,
             departmentId: resolvedDepartmentId,
             appointmentDate: appointment_date,
             slotStart: slot.slotStart,
@@ -216,7 +206,7 @@ router.post('/', protect, async (req, res) => {
       data: {
         id: apptId,
         patient_id: Number(patient_id),
-        doctor_id: Number(doctor_id),
+        doctor_id: doctorUserId,
         department_id: resolvedDepartmentId,
         appointment_date,
         slot_start: resolvedSlot.slotStart,
@@ -287,13 +277,8 @@ router.get('/', protect, async (req, res) => {
          dept.NAME AS DEPARTMENT_NAME
        FROM HMS_APPOINTMENTS a
        LEFT JOIN HMS_PATIENTS p ON p.ID = a.PATIENT_ID
-       LEFT JOIN LATERAL (
-         SELECT d2.ID, d2.USER_ID, d2.SPECIALITY FROM HMS_DOCTORS d2
-          WHERE d2.USER_ID = a.DOCTOR_ID OR d2.ID = a.DOCTOR_ID
-          ORDER BY CASE WHEN d2.USER_ID = a.DOCTOR_ID THEN 0 ELSE 1 END
-          LIMIT 1
-       ) d ON TRUE
-       LEFT JOIN HMS_USERS du ON du.ID = COALESCE(d.USER_ID, a.DOCTOR_ID)
+       LEFT JOIN HMS_DOCTORS d ON d.USER_ID = a.DOCTOR_ID
+       LEFT JOIN HMS_USERS du ON du.ID = a.DOCTOR_ID
        LEFT JOIN HMS_DEPARTMENTS dept ON dept.ID = a.DEPARTMENT_ID
        ${whereClause}
        ORDER BY a.APPOINTMENT_DATE DESC, a.SLOT_START ASC`,

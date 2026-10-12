@@ -205,14 +205,7 @@ router.get('/labs', protect, async (req, res) => {
 
 router.get('/schedule', protect, async (req, res) => {
   try {
-    // Retrieve doctor record
-    const doctorRecords = await Doctor.findAll({ where: { user_id: req.user.id }, attributes: ['id'] });
-    const doctorRecord = doctorRecords[0] || null;
-
-    if (!doctorRecord) {
-      return res.status(404).json({ success: false, message: 'Doctor profile not found.' });
-    }
-
+    // Appointments store the doctor's user ID; this used to query by the profile ID and missed bookings.
     const appointments = await sequelize.query(
       `SELECT
          TO_CHAR(APPOINTMENT_DATE, 'YYYY-MM-DD') AS APPOINTMENT_DATE,
@@ -222,7 +215,7 @@ router.get('/schedule', protect, async (req, res) => {
         AND STATUS NOT IN ('Cancelled', 'Completed', 'No Show')
       ORDER BY APPOINTMENT_DATE ASC, SLOT_START ASC`,
       {
-        replacements: { doctorId: doctorRecord.id },
+        replacements: { doctorId: req.user.id },
         type: QueryTypes.SELECT,
       }
     );
@@ -614,13 +607,7 @@ router.delete('/referrals/:id', protect, async (req, res) => {
 
 router.get('/clinical-notes', protect, async (req, res) => {
   try {
-    const doctorRecords = await Doctor.findAll({ where: { user_id: req.user.id }, attributes: ['id'] });
-    const doctorRecord = doctorRecords[0] || null;
-
     const doctorIds = [req.user.id];
-    if (doctorRecord && doctorRecord.id && !doctorIds.includes(doctorRecord.id)) {
-      doctorIds.push(doctorRecord.id);
-    }
 
     const encounters = await sequelize.query(
       `SELECT
@@ -752,11 +739,7 @@ router.get('/my-patients', protect, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Query appointments using the user ID directly (booking stores user ID as doctor_id)
-    // Also check tokens with both user ID and HMS_DOCTORS ID for full coverage
-    const doctorRecords = await Doctor.findAll({ where: { user_id: userId } });
-    const doctorRecord = doctorRecords.length > 0 ? doctorRecords[0] : null;
-    const doctorTableId = doctorRecord ? doctorRecord.id : null;
+    // Appointments and tokens both store the doctor's user ID.
 
     // 1. Patients from appointments (doctor_id = user ID)
     const { sequelize: seq } = require('../models/db');
@@ -777,9 +760,9 @@ router.get('/my-patients', protect, async (req, res) => {
       type: QueryTypes.SELECT
     });
 
-    // 2. Patients from tokens (doctor_id may be HMS_DOCTORS.id or user ID)
+    // 2. Patients from tokens (doctor_id = user ID)
     let tokenPatients = [];
-    if (doctorTableId) {
+    {
       tokenPatients = await seq.query(`
         SELECT DISTINCT p.ID, p.UHID, p.NAME, p.AGE, p.GENDER, p.BLOOD_GROUP,
                p.PHONENUMBER, p.OPDINDOOR, p.PATIENTTYPE, p.PROVDIAGNOSIS,
@@ -787,11 +770,11 @@ router.get('/my-patients', protect, async (req, res) => {
                t.TOKEN_DATE AS APPOINTMENT_DATE
         FROM HMS_TOKENS t
         JOIN HMS_PATIENTS p ON p.ID = t.PATIENT_ID
-        WHERE (t.DOCTOR_ID = :doctorTableId OR t.DOCTOR_ID = :userId)
+        WHERE t.DOCTOR_ID = :userId
           AND COALESCE(p.IS_ACTIVE, 1) = 1
         ORDER BY t.TOKEN_DATE DESC
       `, {
-        replacements: { doctorTableId, userId },
+        replacements: { userId },
         type: QueryTypes.SELECT
       });
     }
@@ -902,16 +885,21 @@ router.delete('/prescriptions/:id', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Prescription not found or not yours.' });
     }
 
-    // Delete items first, then prescription
-    await sequelize.query('DELETE FROM HMS_PRESCRIPTION_ITEMS WHERE PRESCRIPTION_ID = :id', {
-      replacements: { id: prescriptionId }
-    });
-    await sequelize.query('DELETE FROM HMS_PRESCRIPTIONS WHERE ID = :id', {
-      replacements: { id: prescriptionId }
+    // Items, then the prescription, in one transaction: if the prescription is refused the items stay.
+    await sequelize.transaction(async (transaction) => {
+      await sequelize.query('DELETE FROM HMS_PRESCRIPTION_ITEMS WHERE PRESCRIPTION_ID = :id', {
+        replacements: { id: prescriptionId }, transaction,
+      });
+      await sequelize.query('DELETE FROM HMS_PRESCRIPTIONS WHERE ID = :id', {
+        replacements: { id: prescriptionId }, transaction,
+      });
     });
 
     res.json({ success: true, message: 'Prescription deleted.' });
   } catch (err) {
+    if (err.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(409).json({ success: false, message: 'This prescription has already been dispensed or administered, so it cannot be deleted.' });
+    }
     console.error('Error deleting prescription:', err);
     res.status(500).json({ success: false, message: 'Server error.' });
   }

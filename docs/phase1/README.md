@@ -5,7 +5,7 @@ Branch `phase1/integrity-foundation`, started from `phase0/safety-fixes`.
 | Part | Status |
 |---|---|
 | 1. Versioned migrations and honest startup | **Done** (see below) |
-| 2. Find and repair broken links in existing data; enforce relationships in the database | Not started |
+| 2. Find and repair broken links in existing data; enforce relationships in the database | **Done** (see below) |
 | 3. Revocable sessions (logout, deactivation and password change end a session at once) | Not started |
 | 4. Action and patient-scope authorization | Not started |
 | 5. Transactional, tamper-evident audit trail | Not started |
@@ -37,6 +37,30 @@ Branch `phase1/integrity-foundation`, started from `phase0/safety-fixes`.
 - With the server running, cutting the database off turns `/api/ready` to 503 while `/api/health` stays 200; restoring it returns `/api/ready` to 200.
 - The live Docker database was backed up (`~/hms-backups/20261012-143017`) and migrated. The backend reported "schema is current", and login works.
 
+## Part 2: relationships and integrity rules
+
+- **One meaning for "doctor" (F16).** Every `*DOCTOR_ID` column holds the doctor's user ID, except `HMS_REFERRALS.FROM_DOCTOR_ID` and `HMS_DEPARTMENTS.HEAD_DOCTOR_ID`, which hold the profile ID as their code always has. Older appointments and tokens stored the profile ID; migration 0003 converts them, and stops for a manual review if a value could mean two different doctors. `utils/doctorIdentity.js` resolves a doctor sent as either ID to the user ID before tokens and appointments are saved. Seven routes that searched by both IDs now use the one ID.
+  - This fixed an existing bug: the doctor's schedule queried appointments by profile ID and so missed every booking made through the current booking screen.
+- **Foreign keys (F03).** `0003_relationships.sql` adds 97 foreign keys, each with an index on the referencing column. Rows whose references are already broken move to the `quarantine` schema with a reason (`quarantine.log` summarises), rather than being deleted or guessed.
+  - The Docker database had none.
+  - A copy of the local database moved 128 rows: appointments, tokens, visits, prescriptions, lab orders, bills and dispensing records of about 20 patients deleted by the old patient-delete action, plus their line items.
+- **Integrity rules (F03, F17).** `0004_integrity_rules.sql` enforces:
+  - one active admission per patient and per bed;
+  - the known bed and admission statuses;
+  - unique bed numbers per ward, token numbers per doctor and day, permission rows, doctor profiles per user, and medicine lots per medicine (two concurrent first receipts of the same lot can no longer create two batches);
+  - non-negative stock, prices, bill amounts and line quantities;
+  - positive payments and advances.
+- **Prescription deletes.** Deleting a prescription removed its lines and then the prescription outside a transaction, so a refused delete left the lines gone. Both steps now run in one transaction. A dispensed or administered prescription is refused with a clear 409 message, both on delete and when its lines are replaced.
+
+### Verification (part 2)
+
+- Both database copies end with all 97 foreign keys validated. On the Docker copy every table keeps its row count.
+- The database refuses a prescription for a missing patient, negative stock, and a second active admission for a patient.
+- A token or appointment sent with a profile ID is stored with the user ID, an unknown doctor gets 400, and the doctor's schedule shows the booking.
+- Workflow suites on a migrated copy: OPD 20/20, pharmacy 18/18, laboratory 10/10, administration 28/28, inpatient 11/13 (the known IPD-billing defect, unchanged).
+- `verify-migrations.sh` passes on PostgreSQL 16 and 18 (932 schema facts).
+- Applied to the live Docker database after a backup (`~/hms-backups/20261012-154927`): 97 foreign keys validated, 0 rows quarantined.
+
 ### Not yet applied
 
-The local PostgreSQL 18 database (`backend/.env`) has not been migrated. A server started against it now refuses to start until `cd backend && npm run migrate` is run. The same upgrade was verified on a copy of it.
+The local PostgreSQL 18 database (`backend/.env`) has not been migrated. A server started against it now refuses to start until `cd backend && npm run migrate` is run. The same upgrade was verified on a copy of it; it will move 128 orphaned rows into `quarantine`.
