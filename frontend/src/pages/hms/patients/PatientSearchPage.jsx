@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
-  Search, SlidersHorizontal, UserPlus, Download, MoreHorizontal, UserRound, Route, CalendarPlus, Trash2, Users, X,
+  Search, SlidersHorizontal, UserPlus, Download, MoreHorizontal, UserRound, Route, CalendarPlus, Users,
 } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
@@ -30,7 +30,6 @@ export default function PatientSearchPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const role = user?.role;
-  const isSuperAdmin = role === 'super_admin';
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -39,8 +38,6 @@ export default function PatientSearchPage() {
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [activeFilterCount, setActiveFilterCount] = useState(0);
   const [doctors, setDoctors] = useState([]);
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [deleting, setDeleting] = useState(false);
 
   const searchPatients = async (q, f = filters) => {
     setLoading(true);
@@ -72,42 +69,9 @@ export default function PatientSearchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const visibleIds = useMemo(() => results.map(getPatientId).filter(Boolean), [results]);
-  useEffect(() => { setSelectedIds((prev) => prev.filter((id) => visibleIds.includes(id))); }, [visibleIds]);
-  const selected = results.filter((p) => selectedIds.includes(getPatientId(p)));
-  const allSelected = visibleIds.length > 0 && selectedIds.length === visibleIds.length;
 
   const setFilter = (field, value) => setFilters((prev) => ({ ...prev, [field]: value }));
   const clearFilters = () => { setFilters(INITIAL_FILTERS); searchPatients(query, INITIAL_FILTERS); };
-
-  const deleteOne = async (patient) => {
-    const id = getPatientId(patient);
-    if (!window.confirm(`Permanently delete patient "${patient.patient_name}" (${patient.uhid})?\n\nThis cannot be undone.`)) return;
-    try {
-      await api.delete(`/patients/${id}`);
-      toast.success('Patient record deleted.');
-      searchPatients(query);
-    } catch {
-      toast.error('Deletion failed. The record may be linked to visits or bills.');
-    }
-  };
-
-  const deleteSelected = async () => {
-    if (!isSuperAdmin || selected.length === 0 || deleting) return;
-    const names = selected.slice(0, 4).map((p) => p.patient_name).join(', ');
-    const more = selected.length > 4 ? `, +${selected.length - 4} more` : '';
-    if (!window.confirm(`Permanently delete ${selected.length} patient(s)?\n\n${names}${more}\n\nThis cannot be undone.`)) return;
-    setDeleting(true);
-    let failed = 0;
-    for (const p of selected) {
-      try { await api.delete(`/patients/${getPatientId(p)}`); } catch { failed += 1; }
-    }
-    setDeleting(false);
-    setSelectedIds([]);
-    searchPatients(query, filters);
-    if (failed) toast.error(`${failed} patient(s) could not be deleted. Records may be linked.`);
-    else toast.success(`Deleted ${selected.length} patient(s).`);
-  };
 
   const exportCSV = () => {
     if (results.length === 0) { toast.error('No data to export.'); return; }
@@ -132,33 +96,6 @@ export default function PatientSearchPage() {
 
   const columns = useMemo(() => {
     const cols = [];
-    if (isSuperAdmin) {
-      cols.push({
-        id: 'select',
-        enableSorting: false,
-        meta: { width: 44 },
-        header: () => (
-          <input
-            type="checkbox"
-            aria-label="Select all patients"
-            checked={allSelected}
-            onChange={() => setSelectedIds(allSelected ? [] : visibleIds)}
-          />
-        ),
-        cell: ({ row }) => {
-          const id = getPatientId(row.original);
-          return (
-            <input
-              type="checkbox"
-              aria-label={`Select ${row.original.patient_name}`}
-              checked={selectedIds.includes(id)}
-              onClick={(e) => e.stopPropagation()}
-              onChange={() => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))}
-            />
-          );
-        },
-      });
-    }
     cols.push(
       {
         id: 'patient',
@@ -260,14 +197,6 @@ export default function PatientSearchPage() {
                       <CalendarPlus size={16} /> Book appointment
                     </DropdownMenu.Item>
                   )}
-                  {isSuperAdmin && (
-                    <>
-                      <DropdownMenu.Separator className="menu-sep" />
-                      <DropdownMenu.Item className="menu-item is-danger" onSelect={() => deleteOne(p)}>
-                        <Trash2 size={16} /> Delete record
-                      </DropdownMenu.Item>
-                    </>
-                  )}
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
@@ -277,7 +206,7 @@ export default function PatientSearchPage() {
     );
     return cols;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuperAdmin, allSelected, selectedIds, visibleIds, role]);
+  }, [role]);
 
   const hasCriteria = query.trim() !== '' || activeFilterCount > 0;
 
@@ -366,18 +295,6 @@ export default function PatientSearchPage() {
                 <button type="button" className="btn btn-ghost btn-md" onClick={clearFilters}>Clear</button>
                 <button type="button" className="btn btn-primary btn-md" onClick={() => searchPatients(query, filters)}>Apply filters</button>
               </div>
-            </div>
-          )}
-
-          {isSuperAdmin && selected.length > 0 && (
-            <div className="selection-bar" role="status">
-              <strong>{selected.length} selected</strong>
-              <button type="button" className="btn btn-danger btn-sm" onClick={deleteSelected} disabled={deleting}>
-                <Trash2 size={14} aria-hidden="true" /> {deleting ? 'Deleting…' : 'Delete selected'}
-              </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedIds([])}>
-                <X size={14} aria-hidden="true" /> Clear selection
-              </button>
             </div>
           )}
 

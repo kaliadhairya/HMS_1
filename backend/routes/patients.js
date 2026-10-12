@@ -932,45 +932,15 @@ router.get('/:id(\\d+)', protect, async (req, res) => {
   }
 });
 
-// DELETE /api/patients/:id — Super Admin only
-router.delete('/:id(\\d+)', protect, restrictTo('super_admin'), async (req, res) => {
-  try {
-    const patientId = req.params.id;
-    const patient = await Patient.findByPk(patientId);
-    if (!patient) return res.status(404).json({ success: false, message: 'Patient not found' });
-
-    // Clean up IPD traces: Free up beds and delete admissions
-    try {
-      await sequelize.query(`
-        UPDATE HMS_BEDS 
-        SET STATUS = 'Available'
-        WHERE ID IN (
-          SELECT BED_ID FROM HMS_ADMISSIONS WHERE PATIENT_ID = :pid AND BED_ID IS NOT NULL
-        )
-      `, { replacements: { pid: patientId } });
-
-      await sequelize.query(`
-        DELETE FROM HMS_ADMISSIONS WHERE PATIENT_ID = :pid
-      `, { replacements: { pid: patientId } });
-
-      await sequelize.query(`
-        DELETE FROM HMS_IPD_REQUESTS WHERE PATIENT_ID = :pid
-      `, { replacements: { pid: patientId } });
-    } catch (cleanupErr) {
-      console.warn('Warning: Failed to clean up related IPD admissions:', cleanupErr.message);
-    }
-
-    // We physically delete the record since this is for cleaning up test data
-    await patient.destroy();
-
-    // Log the deletion to audit logs
-    await logAction(req.user.id, 'DELETE', 'patient', req.params.id, null, patient.toJSON(), req.ip);
-
-    res.json({ success: true, message: 'Patient record successfully deleted.' });
-  } catch (err) {
-    console.error('Patient Delete Error:', err);
-    res.status(500).json({ success: false, message: 'Server error during deletion.' });
-  }
+// DELETE /api/patients/:id — disabled. Physically deleting a patient erased
+// their clinical history and released beds still occupied by other patients
+// (blueprint F04). Corrections and duplicate merges get their own reviewed
+// workflow instead.
+router.delete('/:id(\\d+)', protect, restrictTo('super_admin'), (req, res) => {
+  res.status(405).json({
+    success: false,
+    message: 'Patient records cannot be deleted. Use a correction or duplicate-merge workflow instead.',
+  });
 });
 
 module.exports = router;

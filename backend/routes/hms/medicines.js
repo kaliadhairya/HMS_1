@@ -23,6 +23,24 @@ function parseBrandNames(val) {
 }
 
 // GST is a whole percentage (HMS_MEDICINES.GST_RATE is an integer); quantities are whole units.
+// New stock must carry the manufacturer's batch number and expiry from the pack.
+// Inventing them (an INIT-/ADJ- batch expiring five years out) hid real expiry
+// dates from FEFO picking, expiry alerts and recalls (blueprint F07).
+function readLotProvenance({ batchNumber, expiryDate }) {
+  const lot = typeof batchNumber === 'string' ? batchNumber.trim() : '';
+  if (!lot || !/^\d{4}-\d{2}-\d{2}$/.test(String(expiryDate || ''))) {
+    return { error: 'New stock needs the batch number and expiry date printed on the pack.' };
+  }
+  if (lot.length > 100) return { error: 'Batch number must be 100 characters or fewer.' };
+  const expiry = new Date(`${expiryDate}T00:00:00Z`);
+  if (Number.isNaN(expiry.getTime()) || expiry.toISOString().slice(0, 10) !== expiryDate) {
+    return { error: 'Expiry date is not a valid date.' };
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  if (expiryDate <= today) return { error: 'This batch has already expired and cannot be added as stock.' };
+  return { batchNumber: lot, expiryDate };
+}
+
 function validateNumbers({ gstRate, initialQuantity, perUnitPrice, quantityDelta }) {
   if (gstRate !== undefined && gstRate !== null && gstRate !== '') {
     const g = Number(gstRate);
@@ -211,6 +229,8 @@ router.post('/', [
     }
     const numberError = validateNumbers({ gstRate, initialQuantity, perUnitPrice });
     if (numberError) return res.status(400).json({ success: false, message: numberError });
+    const lot = initialQuantity > 0 ? readLotProvenance(req.body) : null;
+    if (lot?.error) return res.status(400).json({ success: false, message: lot.error });
     const duplicate = await findDuplicate({ genericName, formulation, strength, strengthUnit });
     if (duplicate) {
       return res.status(409).json({ success: false, message: `${duplicate.GENERIC_NAME} ${[duplicate.STRENGTH, duplicate.STRENGTH_UNIT].filter(Boolean).join(' ')} (${duplicate.FORMULATION}) is already in the catalogue as ID ${duplicate.ID}.` });
@@ -238,17 +258,11 @@ router.post('/', [
           "SELECT nextval('hms_med_batch_seq') AS \"NEXTVAL\"", { transaction: t }
         );
         
-        // Expiry date set to 5 years from now
-        const expiryDate = new Date();
-        expiryDate.setFullYear(expiryDate.getFullYear() + 5);
-        
-        const batchNumber = `INIT-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-
         await MedicineBatch.create({
           id: nextBatchId,
           medicineId: nextId,
-          batchNumber,
-          expiryDate,
+          batchNumber: lot.batchNumber,
+          expiryDate: lot.expiryDate,
           quantity: initialQuantity,
           mrp: perUnitPrice || 0,
           purchaseRate: perUnitPrice || 0,
@@ -372,19 +386,21 @@ router.put('/:id', protect, checkPermission('pharmacy', 'write'), async (req, re
         }
       } else if ((hasDelta && Number(quantityDelta) > 0) || (hasQty && Number(initialQuantity) > 0)) {
         const openingQty = hasDelta ? Number(quantityDelta) : parseInt(initialQuantity, 10);
-        // No batches exist, create one like in POST
+        // No batches exist yet, so this is a first receipt: it needs real lot details like POST.
+        const lot = readLotProvenance(req.body);
+        if (lot.error) {
+          await t.rollback();
+          return res.status(400).json({ success: false, message: lot.error });
+        }
         const [[{ NEXTVAL: nextBatchId }]] = await sequelize.query(
           "SELECT nextval('hms_med_batch_seq') AS \"NEXTVAL\"", { transaction: t }
         );
-        const expiryDate = new Date();
-        expiryDate.setFullYear(expiryDate.getFullYear() + 5);
-        const batchNumber = `ADJ-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`;
 
         await MedicineBatch.create({
           id: nextBatchId,
           medicineId: medicine.id,
-          batchNumber,
-          expiryDate,
+          batchNumber: lot.batchNumber,
+          expiryDate: lot.expiryDate,
           quantity: openingQty,
           mrp: perUnitPrice || 0,
           purchaseRate: perUnitPrice || 0,

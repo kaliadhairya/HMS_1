@@ -64,7 +64,7 @@ export default function MedicineMasterPage() {
     genericName: '', brandNames: [], category: 'Analgesic',
     formulation: 'Tablet', strength: '', strengthUnit: 'mg',
     unitOfSale: 'Strip', hsnCode: '', gstRate: 0, isControlled: false,
-    initialQuantity: 0, perUnitPrice: 0
+    initialQuantity: 0, perUnitPrice: 0, batchNumber: '', expiryDate: '',
   });
   const [brandInput, setBrandInput] = useState('');
   const [rxNavSuggestions, setRxNavSuggestions] = useState([]);
@@ -132,6 +132,7 @@ export default function MedicineMasterPage() {
       isControlled: med.isControlled === 1,
       initialQuantity: Number(med.totalStock || 0),
       perUnitPrice: Number(med.mrp || 0),
+      batchNumber: '', expiryDate: '',
     });
     setBrandInput('');
     setIsModalOpen(true);
@@ -153,7 +154,7 @@ export default function MedicineMasterPage() {
       genericName: '', brandNames: [], category: 'Analgesic',
       formulation: 'Tablet', strength: '', strengthUnit: 'mg',
       unitOfSale: 'Strip', hsnCode: '', gstRate: 0, isControlled: false,
-      initialQuantity: 0, perUnitPrice: 0
+      initialQuantity: 0, perUnitPrice: 0, batchNumber: '', expiryDate: '',
     });
     setBrandInput('');
     setIsModalOpen(true);
@@ -226,6 +227,9 @@ export default function MedicineMasterPage() {
   };
 
   const setField = (key, value) => setFormData((prev) => ({ ...prev, [key]: value }));
+
+  // Stock that starts a new batch needs the lot details printed on the pack.
+  const needsLot = Number(formData.initialQuantity || 0) > 0 && (!editingId || Number(loadedQty || 0) === 0);
 
   const activeCount = medicines.filter((m) => m.isActive).length;
   const filtered = useMemo(() => medicines.filter((m) => {
@@ -491,6 +495,18 @@ export default function MedicineMasterPage() {
               <input id="med-mrp" className="form-input" type="number" min="0" step="0.01" value={formData.perUnitPrice} onChange={e => setField('perUnitPrice', parseFloat(e.target.value) || 0)} placeholder="For example, 5.50" />
             </div>
           </div>
+          {needsLot && (
+            <div className="form-row-2">
+              <div className="form-group">
+                <label className="form-label" htmlFor="med-batch">Batch number</label>
+                <input id="med-batch" className="form-input" required maxLength={100} value={formData.batchNumber} onChange={e => setField('batchNumber', e.target.value)} placeholder="As printed on the pack" />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="med-expiry">Expiry date</label>
+                <input id="med-expiry" className="form-input" type="date" required min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)} value={formData.expiryDate} onChange={e => setField('expiryDate', e.target.value)} />
+              </div>
+            </div>
+          )}
           {editingId && <p className="form-hint" style={{ marginTop: -6 }}>A change in quantity is added to or taken from the latest batch and logged as a stock adjustment. A changed MRP applies to the latest batch only.</p>}
         </form>
       </Modal>
