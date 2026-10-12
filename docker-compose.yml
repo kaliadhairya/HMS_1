@@ -30,9 +30,9 @@ services:
       - PORT=5001
       - CORS_ORIGIN=*
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:4999}
-      - JWT_SECRET=${JWT_SECRET:-your_super_secret_jwt_key}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env - see .env.example}
       - AADHAAR_ENCRYPTION_KEY=${AADHAAR_ENCRYPTION_KEY:-cd9da93cb9ff3ccd87b4b2da30920bd5ac549e7470423996345cbde3ff5b986a0}
-      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-d2140f944925f320dc70f1b6671b4cf1bb30ea3a9a73871dd972e8010bfe129c}
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-}
     ports:
       - "5001:5001"
     volumes:

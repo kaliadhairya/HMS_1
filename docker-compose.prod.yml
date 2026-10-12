@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: hms
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: hms_secure_production_password_2026
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     volumes:
       - hms_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -39,17 +39,17 @@ services:
       DB_PORT: 5432
       DB_NAME: hms
       DB_USER: postgres
-      DB_PASSWORD: hms_secure_production_password_2026
-      JWT_SECRET: hms_super_secret_production_jwt_key_2026
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_EXPIRES_IN: 8h
       CORS_ORIGIN: "*"
       FRONTEND_URL: http://localhost:4999
-      AADHAAR_ENCRYPTION_KEY: cd9da93cb9ff3ccd87b4b2da30920bd5ac549e7470423996345cbde3ff5b986a0
+      AADHAAR_ENCRYPTION_KEY: ${AADHAAR_ENCRYPTION_KEY:?Set AADHAAR_ENCRYPTION_KEY in .env - must match the key existing data was encrypted with}
       UPLOAD_DIR: ./uploads
       MAX_FILE_SIZE_MB: 5
       RATE_LIMIT_WINDOW_MS: 900000
       RATE_LIMIT_MAX_AUTH: 20
-      INTERNAL_SERVICE_SECRET: d2140f944925f320dc70f1b6671b4cf1bb30ea3a9a73871dd972e8010bfe129c
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-}
       TRUST_PROXY: "1"
     ports:
       - "5001:5001"

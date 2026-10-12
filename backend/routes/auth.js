@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { logAction } = require('../utils/auditLogger');
+const { signSessionToken, signPasswordResetToken, verifyPasswordResetToken, resetTokenMatchesUser } = require('../utils/authTokens');
 const securitySettings = require('../utils/settings');
 const { ipAccess } = require('./security');
 
@@ -102,11 +102,7 @@ router.post('/login', [
       { where: { id: user.id } }
     );
 
-    const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
-    );
+    const token = signSessionToken(user);
 
     await logAction(user.id, 'LOGIN', 'auth', null, null, { role: user.role }, ip);
 
@@ -255,11 +251,7 @@ router.post('/verify-otp', async (req, res) => {
     }
 
     // Generate short-lived reset token
-    const resetToken = jwt.sign(
-      { id: user.id, purpose: 'password_reset' },
-      process.env.JWT_SECRET,
-      { expiresIn: '15m' }
-    );
+    const resetToken = signPasswordResetToken(user);
 
     res.json({ success: true, resetToken });
   } catch (err) {
@@ -288,18 +280,15 @@ router.post('/reset-password', async (req, res) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
+      decoded = verifyPasswordResetToken(resetToken);
     } catch (e) {
       return res.status(400).json({ success: false, message: 'Invalid or expired reset token.' });
     }
 
-    if (decoded.purpose !== 'password_reset') {
-      return res.status(400).json({ success: false, message: 'Invalid reset token.' });
-    }
-
     const user = await User.findByPk(decoded.id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
+    if (!user || !resetTokenMatchesUser(decoded, user)) {
+      // A changed password means this token was already used.
+      return res.status(400).json({ success: false, message: 'Invalid or expired reset token.' });
     }
 
     user.password = newPassword; // hook hashes it

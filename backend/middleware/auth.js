@@ -8,13 +8,18 @@ function resolveBearerToken(req) {
   return null;
 }
 
-const jwt = require('jsonwebtoken');
+const { verifySessionToken } = require('../utils/authTokens');
 const User = require('../models/User');
 const Permission = require('../models/Permission');
 
+const identityServiceEnabled = () => Boolean(process.env.INTERNAL_SERVICE_SECRET && process.env.IDENTITY_URL);
+
+// Signed auth-context headers are only honoured behind an explicitly enabled gateway.
+const trustedGatewayEnabled = () => process.env.TRUST_GATEWAY_AUTH_CONTEXT === 'true';
+
 const protect = async (req, res, next) => {
   try {
-    const trusted = readTrustedContext(req);
+    const trusted = trustedGatewayEnabled() ? readTrustedContext(req) : null;
     if (trusted) {
       req.user = trusted;
       return next();
@@ -22,25 +27,23 @@ const protect = async (req, res, next) => {
     const token = resolveBearerToken(req);
     if (!token) return res.status(401).json({ success: false, message: 'Not authenticated. Please log in.' });
 
-    // 1. Try remote Identity Service if configured
-    if (process.env.INTERNAL_SERVICE_SECRET && process.env.IDENTITY_URL) {
+    // When an Identity Service is configured it is the only authority: a
+    // rejected or unverifiable token never falls back to local validation.
+    if (identityServiceEnabled()) {
+      let context;
       try {
-        const context = await validateToken(token, req.headers['x-request-id']);
-        if (context) {
-          req.user = context;
-          return next();
-        }
+        context = await validateToken(token, req.headers['x-request-id']);
       } catch (err) {
-        // Fall through to local validation
+        console.error('Identity service unavailable:', err.message);
+        return res.status(503).json({ success: false, message: 'Authentication service is temporarily unavailable.' });
       }
+      if (!context) return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+      req.user = context;
+      return next();
     }
 
-    // 2. Resilient Local JWT + Database validation fallback
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_super_secret_jwt_key');
-      if (!decoded || !decoded.id) {
-        return res.status(401).json({ success: false, message: 'Invalid token.' });
-      }
+      const decoded = verifySessionToken(token);
 
       const user = await User.findByPk(decoded.id);
       if (!user || user.isActive === 0) {
@@ -75,7 +78,7 @@ const protect = async (req, res, next) => {
         permissions,
       };
       return next();
-    } catch (jwtErr) {
+    } catch (tokenErr) {
       return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
     }
   } catch (error) {
@@ -108,8 +111,7 @@ const checkPermission = (module, action) => (req, res, next) => {
 // Verify a token without an HTTP request (used by socket.io). Returns the user or null.
 const resolveTokenUser = async (token) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_super_secret_jwt_key');
-    if (!decoded?.id) return null;
+    const decoded = verifySessionToken(token);
     const user = await User.findByPk(decoded.id);
     if (!user || user.isActive === 0) return null;
     if (user.locked_until && new Date(user.locked_until) > new Date()) return null;
@@ -119,4 +121,4 @@ const resolveTokenUser = async (token) => {
   }
 };
 
-module.exports = { protect, restrictTo, checkPermission, resolveTokenUser };
+module.exports = { protect, restrictTo, checkPermission, resolveTokenUser, identityServiceEnabled };

@@ -66,6 +66,10 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Validate Docker Compose Topology
+        env:
+          DB_PASSWORD: ci-placeholder
+          JWT_SECRET: ci-placeholder
+          AADHAAR_ENCRYPTION_KEY: ci-placeholder
         run: |
           docker compose -f docker-compose.prod.yml config
 

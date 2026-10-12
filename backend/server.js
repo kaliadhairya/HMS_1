@@ -1,4 +1,11 @@
 require('dotenv').config();
+const { assertSecurityConfig } = require('./utils/authTokens');
+try {
+  assertSecurityConfig();
+} catch (err) {
+  console.error(`❌ Refusing to start: ${err.message}`);
+  process.exit(1);
+}
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -6,7 +13,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { sequelize } = require('./models');
 const { validateToken } = require('./utils/identityClient');
-const { resolveTokenUser } = require('./middleware/auth');
+const { resolveTokenUser, identityServiceEnabled } = require('./middleware/auth');
 const {
   client,
   httpRequestDurationSeconds,
@@ -197,11 +204,10 @@ io.use(async (socket, next) => {
     const authorization = socket.handshake.headers.authorization;
     const token = socket.handshake.auth?.token || (authorization?.startsWith('Bearer ') ? authorization.slice(7) : null);
     if (!token) return next(new Error('Authentication required'));
-    let context = null;
-    if (process.env.INTERNAL_SERVICE_SECRET && process.env.IDENTITY_URL) {
-      context = await validateToken(token, socket.handshake.headers['x-request-id']).catch(() => null);
-    }
-    if (!context) context = await resolveTokenUser(token);
+    // Same rule as HTTP: a configured Identity Service is the only authority.
+    const context = identityServiceEnabled()
+      ? await validateToken(token, socket.handshake.headers['x-request-id'])
+      : await resolveTokenUser(token);
     if (!context) return next(new Error('Invalid or inactive session'));
     socket.user = context;
     return next();
