@@ -429,47 +429,18 @@ router.get('/system-health', protect, restrictTo('super_admin'), async (req, res
 // ═══════════════════════════════════════════════════════
 // 7. BACKUP & RECOVERY — /api/security/backups
 // ═══════════════════════════════════════════════════════
-const backupHistory = [];
+// The application does not take database backups. These endpoints used to
+// record a "Completed" backup without writing anything (blueprint F13).
+// Backups run on the server with scripts/backup-db.sh, and each one is proven
+// restorable with scripts/restore-check.sh.
+const BACKUP_GUIDANCE = 'Backups are not run by the application. On the server, run scripts/backup-db.sh and prove each backup with scripts/restore-check.sh.';
 
 router.get('/backups', protect, restrictTo('super_admin'), (req, res) => {
-  res.json({
-    success: true,
-    data: {
-      schedule: { frequency: 'Daily', time: '02:00 AM', retention_days: 30 },
-      history: backupHistory,
-      last_backup: backupHistory[0]?.timestamp,
-    },
-  });
+  res.json({ success: true, data: { managed_by_app: false, message: BACKUP_GUIDANCE } });
 });
 
-router.post('/backups/trigger', protect, restrictTo('super_admin'), async (req, res) => {
-  try {
-    const [tableRows] = await sequelize.query(
-      `SELECT COUNT(*) AS CNT FROM information_schema.tables WHERE table_schema = 'public'`,
-      { type: QueryTypes.SELECT }
-    );
-    const [auditRows] = await sequelize.query(
-      `SELECT COUNT(*) AS CNT FROM HMS_AUDIT_LOGS`,
-      { type: QueryTypes.SELECT }
-    );
-    const tableCount = Number(tableRows?.CNT || tableRows?.cnt || 0);
-    const auditCount = Number(auditRows?.CNT || auditRows?.cnt || 0);
-    const estimatedSizeMb = Math.max(1, Math.ceil((tableCount * 0.6) + (auditCount / 1000)));
-    const newBackup = {
-      id: Date.now(),
-      type: 'Manual',
-      status: 'Completed',
-      size: `${estimatedSizeMb} MB`,
-      tables: tableCount,
-      timestamp: new Date().toISOString(),
-    };
-    backupHistory.unshift(newBackup);
-    const ip = req.ip || req.connection?.remoteAddress || null;
-    await logAction(req.user.id, 'CREATE', 'security', null, null, { action: 'manual_backup_triggered' }, ip);
-    res.json({ success: true, data: newBackup, message: 'Backup completed successfully.' });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Backup failed.' });
-  }
+router.post('/backups/trigger', protect, restrictTo('super_admin'), (req, res) => {
+  res.status(501).json({ success: false, message: BACKUP_GUIDANCE });
 });
 
 // ═══════════════════════════════════════════════════════
@@ -652,20 +623,23 @@ router.get('/compliance', protect, restrictTo('super_admin'), async (req, res) =
     res.json({
       success: true,
       data: {
-        overall_score: 72,
+        // No overall score: these are engineering checks, not an audit or
+        // certification result (the old figure was a hard-coded 72%).
+        note: 'Engineering checks of what the software enforces today. This is not an audit or certification result.',
         checks: [
           { name: 'Password Policy', status: 'pass', detail: 'Min 8 chars, uppercase, number, special char enforced', category: 'Authentication' },
           { name: 'Account Lockout', status: 'pass', detail: '5 failed attempts = 15 min lock', category: 'Authentication' },
-          { name: 'Session Timeout', status: 'pass', detail: 'Configurable per role (30-60 min)', category: 'Authentication' },
-          { name: 'Audit Logging', status: 'pass', detail: `${Number(totalAudit[0]?.CNT || totalAudit[0]?.cnt || 0)} events recorded`, category: 'Audit' },
-          { name: 'Role-Based Access', status: 'pass', detail: '7 roles with permission isolation', category: 'Access Control' },
-          { name: 'Two-Factor Auth', status: 'warn', detail: '2FA not yet enforced for all roles', category: 'Authentication' },
+          { name: 'Session Timeout', status: 'fail', detail: `Per-role timeouts can be saved but are not enforced; a session lasts until its token expires (${process.env.JWT_EXPIRES_IN || '8h'})`, category: 'Authentication' },
+          { name: 'Audit Logging', status: 'warn', detail: `${Number(totalAudit[0]?.CNT || totalAudit[0]?.cnt || 0)} events recorded; entries are written outside the business transaction and can be lost`, category: 'Audit' },
+          { name: 'Role-Based Access', status: 'warn', detail: '7 roles; several patient and chart endpoints check sign-in but not role or patient scope', category: 'Access Control' },
+          { name: 'Two-Factor Auth', status: 'fail', detail: 'Roles can be marked for 2FA, but login never asks for a second factor', category: 'Authentication' },
           { name: 'Data Encryption (at rest)', status: 'warn', detail: 'PostgreSQL pgcrypto/TDE not configured', category: 'Data Protection' },
-          { name: 'Data Encryption (transit)', status: 'pass', detail: 'HTTPS enforced via Helmet', category: 'Data Protection' },
+          { name: 'Data Encryption (transit)', status: 'warn', detail: 'The app serves plain HTTP; HTTPS depends on a reverse proxy in front of it', category: 'Data Protection' },
+          { name: 'Backups', status: 'warn', detail: 'Not run by the application; see Backup and recovery', category: 'Resilience' },
           { name: 'Consent Management', status: 'fail', detail: 'No patient consent tracking implemented', category: 'Privacy' },
           { name: 'Data Retention Policy', status: 'warn', detail: 'No automated purge schedule', category: 'Privacy' },
           { name: 'Breach Notification', status: 'fail', detail: 'No automated breach detection', category: 'Incident Response' },
-          { name: 'Input Sanitization', status: 'pass', detail: 'express-validator + Helmet CSP active', category: 'Security' },
+          { name: 'Input Sanitization', status: 'warn', detail: 'Helmet CSP is active; request validation covers only some routes', category: 'Security' },
         ],
         stats: {
           total_users: Number(totalUsers[0]?.CNT || totalUsers[0]?.cnt || 0),

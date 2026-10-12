@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import {
   Activity, BadgeCheck, Ban, BellRing, Bug, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, ClipboardCheck, CreditCard,
   Database, DatabaseBackup, Globe, Hammer, Hospital, KeyRound, Link, LockOpen, LogOut, Mail, Megaphone, Microscope, Monitor,
-  Network, Pencil, Plug, Plus, RefreshCw, RotateCcw, Save, ScrollText, Server, Shield, ShieldAlert, ShieldCheck, Tags, Trash2,
+  Network, Pencil, Plug, Plus, RefreshCw, Save, ScrollText, Server, Shield, ShieldAlert, ShieldCheck, Tags, Trash2,
   Wrench, X, Zap,
 } from 'lucide-react';
 import Navbar from '../../components/Navbar';
@@ -689,60 +689,19 @@ function SystemHealthPanel() {
 function BackupPanel() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [triggering, setTriggering] = useState(false);
-  const load = () => api.get('/security/backups').then((r) => setData(r.data.data)).catch(console.error).finally(() => setLoading(false));
-  useEffect(() => { load(); }, []);
-
-  const triggerBackup = async () => {
-    setTriggering(true);
-    try { await api.post('/security/backups/trigger'); load(); toast.success('Backup completed'); } catch { toast.error('Backup failed'); }
-    setTriggering(false);
-  };
+  useEffect(() => { api.get('/security/backups').then((r) => setData(r.data.data)).catch(console.error).finally(() => setLoading(false)); }, []);
 
   if (loading) return <Loading />;
+  if (!data) return <LoadFailed />;
 
+  // The app does not take backups itself, so this screen only says where they are made.
   return (
     <div className="stack">
-      <SubHead
-        title="Backup and recovery"
-        description="Database backups and restore points."
-        actions={(
-          <button type="button" className="btn btn-primary btn-md" onClick={triggerBackup} disabled={triggering}>
-            <DatabaseBackup size={16} aria-hidden="true" /> {triggering ? 'Backing up…' : 'Back up now'}
-          </button>
-        )}
-      />
-
-      <div className="kpi-strip" style={{ marginBottom: 0 }}>
-        <Kpi label="Schedule" value={data?.schedule?.frequency} sub={`at ${data?.schedule?.time}`} />
-        <Kpi label="Last backup" value={data?.last_backup ? fmtDate(data.last_backup) : 'Never'} tone={data?.last_backup ? undefined : 'warning'} />
-        <Kpi label="Retention" value={`${data?.schedule?.retention_days} days`} />
-      </div>
-
+      <SubHead title="Backup and recovery" description="Where database backups are made and how they are proven restorable." />
       <section className="panel">
-        <PanelHead icon={DatabaseBackup} title="Backup history" />
+        <PanelHead icon={DatabaseBackup} title="Not run by the application" />
         <div className="panel-pad">
-          {(data?.history || []).length === 0 ? <p className="muted">No backups yet.</p> : (
-            <table className="mini-table">
-              <thead><tr><th>Date</th><th>Type</th><th>Size</th><th>Tables</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
-              <tbody>
-                {data.history.map((b) => (
-                  <tr key={b.id}>
-                    <td className="tabular">{fmtDateTime(b.timestamp)}</td>
-                    <td><span className={`status ${b.type === 'Manual' ? 'status-info' : 'status-neutral'}`}>{b.type}</span></td>
-                    <td className="tabular">{b.size}</td>
-                    <td className="tabular">{b.tables}</td>
-                    <td><span className="status status-success">{b.status}</span></td>
-                    <td className="text-right">
-                      <button type="button" className="btn btn-ghost btn-sm" disabled title="Restore is not available from this screen yet">
-                        <RotateCcw size={14} aria-hidden="true" /> Restore
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <p>{data.message}</p>
         </div>
       </section>
     </div>
@@ -1270,30 +1229,17 @@ function ComplianceCenterPanel() {
   const passCount = checks.filter((c) => c.status === 'pass').length;
   const warnCount = checks.filter((c) => c.status === 'warn').length;
   const failCount = checks.filter((c) => c.status === 'fail').length;
-  const score = data.overall_score;
-  const scoreTone = score >= 80 ? undefined : score >= 60 ? 'warning' : 'danger';
-  const scoreColor = score >= 80 ? 'var(--success)' : score >= 60 ? 'var(--amber)' : 'var(--red)';
-
   return (
     <div className="stack">
-      <SubHead title="Compliance" description="HIPAA and DPDP compliance status, data access policies and breach alerts." />
+      <SubHead title="Compliance" description="What the software enforces today, check by check." />
 
       <div className="kpi-strip" style={{ marginBottom: 0 }}>
-        <Kpi label="Compliance score" value={`${score}%`} tone={scoreTone} />
         <Kpi label="Checks passed" value={passCount} />
         <Kpi label="Warnings" value={warnCount} tone={warnCount > 0 ? 'warning' : undefined} />
         <Kpi label="Failed" value={failCount} tone={failCount > 0 ? 'danger' : undefined} />
       </div>
 
-      <section className="panel panel-pad">
-        <div className="bar-row">
-          <span>Overall compliance</span>
-          <strong className="tabular" style={{ color: scoreColor }}>{score}%</strong>
-        </div>
-        <div className="bar-track" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={score} aria-label="Overall compliance" style={{ height: 10, borderRadius: 5 }}>
-          <div className="bar-fill" style={{ width: `${score}%`, background: scoreColor }} />
-        </div>
-      </section>
+      {data.note && <p className="muted">{data.note}</p>}
 
       <section className="panel">
         <PanelHead icon={ClipboardCheck} title="Compliance checks" />
