@@ -8,6 +8,7 @@ const AuditLog = require('../models/AuditLog');
 const { protect, restrictTo } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const { logAction } = require('../utils/auditLogger');
+const { revokeUserSessions } = require('../utils/sessions');
 const { sequelize } = require('../models/db');
 
 const ROLES = ['super_admin', 'admin', 'doctor', 'lab_technician', 'receptionist', 'pharmacist', 'nurse'];
@@ -199,6 +200,11 @@ router.put('/:id(\\d+)', async (req, res) => {
     if (phone !== undefined) user.phone = phone;
 
     await user.save();
+    // A new password, a role change or deactivation ends the account's current sessions.
+    const roleChanged = role && role !== oldData.role;
+    if (password || roleChanged || (isActive !== undefined && !user.isActive)) {
+      await revokeUserSessions(user.id, password ? 'password reset by administrator' : roleChanged ? 'role changed' : 'account deactivated', { io: req.app.get('io') });
+    }
 
     if (user.role === 'doctor') {
       try {
@@ -250,6 +256,7 @@ router.put('/:id(\\d+)/password', async (req, res) => {
     user.password = password;
     user.first_login = 'Y';
     await user.save();
+    await revokeUserSessions(user.id, 'password reset by administrator', { io: req.app.get('io') });
 
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(req.user.id, 'UPDATE', 'admin', user.id, null, { action: 'admin_password_reset' }, ip);
@@ -277,6 +284,7 @@ router.patch('/:id(\\d+)/toggle-active', async (req, res) => {
     const oldActive = user.isActive;
     user.isActive = user.isActive ? 0 : 1;
     await user.save();
+    if (!user.isActive) await revokeUserSessions(user.id, 'account deactivated', { io: req.app.get('io') });
 
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(req.user.id, 'UPDATE', 'admin', user.id,

@@ -61,7 +61,7 @@ export default function Navbar() {
     : (user?.name || 'User');
   const initial = ((user?.name || '').replace(/^Dr\.?\s*/i, '') || 'U').charAt(0).toUpperCase();
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  const handleLogout = async () => { await logout(); navigate('/login'); };
 
   useEffect(() => {
     document.body.classList.add('has-app-shell');

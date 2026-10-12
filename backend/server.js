@@ -14,7 +14,7 @@ const path = require('path');
 const { sequelize } = require('./models');
 const { schemaProblems } = require('./migrate');
 const { validateToken } = require('./utils/identityClient');
-const { resolveTokenUser, identityServiceEnabled } = require('./middleware/auth');
+const { resolveTokenUser, socketToken, identityServiceEnabled } = require('./middleware/auth');
 const {
   client,
   httpRequestDurationSeconds,
@@ -220,8 +220,7 @@ app.set('io', io);
 
 io.use(async (socket, next) => {
   try {
-    const authorization = socket.handshake.headers.authorization;
-    const token = socket.handshake.auth?.token || (authorization?.startsWith('Bearer ') ? authorization.slice(7) : null);
+    const token = socketToken(socket.handshake);
     if (!token) return next(new Error('Authentication required'));
     // Same rule as HTTP: a configured Identity Service is the only authority.
     const context = identityServiceEnabled()
@@ -239,6 +238,9 @@ io.use(async (socket, next) => {
 io.on('connection', (socket) => {
   const role = socket.user?.role || 'anonymous';
   socket.join(role);
+  // Per-user and per-session rooms let a revoked session be disconnected at once.
+  if (socket.user?.id) socket.join(`user:${socket.user.id}`);
+  if (socket.user?.sessionId) socket.join(`session:${socket.user.sessionId}`);
   activeSocketConnections.inc({ role });
   console.log(`🔌 Authenticated client ${socket.id} joined ${role}`);
   socket.on('join_role', () => {

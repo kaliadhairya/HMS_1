@@ -7,6 +7,7 @@ const AuditLog = require('../models/AuditLog');
 const User = require('../models/User');
 const { sequelize } = require('../models/db');
 const { logAction } = require('../utils/auditLogger');
+const { revokeUserSessions } = require('../utils/sessions');
 
 // Shared settings store
 const securitySettings = require('../utils/settings');
@@ -155,11 +156,14 @@ router.get('/sessions', protect, restrictTo('super_admin'), async (req, res) => 
   try {
     // Get recently active users (logged in within last 24 hours)
     const activeSessions = await sequelize.query(
-      `SELECT ID as "ID", USERNAME as "USERNAME", NAME as "NAME", ROLE as "ROLE", LAST_LOGIN as "LAST_LOGIN",
-              FAILED_ATTEMPTS as "FAILED_ATTEMPTS", LOCKED_UNTIL as "LOCKED_UNTIL", IS_ACTIVE as "IS_ACTIVE"
-       FROM HMS_USERS
-       WHERE LAST_LOGIN IS NOT NULL 
-       ORDER BY LAST_LOGIN DESC`,
+      `SELECT u.ID as "ID", u.USERNAME as "USERNAME", u.NAME as "NAME", u.ROLE as "ROLE", u.LAST_LOGIN as "LAST_LOGIN",
+              u.FAILED_ATTEMPTS as "FAILED_ATTEMPTS", u.LOCKED_UNTIL as "LOCKED_UNTIL", u.IS_ACTIVE as "IS_ACTIVE",
+              COUNT(s.id)::int as "ACTIVE_SESSIONS", MAX(s.last_seen_at) as "LAST_SEEN"
+       FROM HMS_USERS u
+       LEFT JOIN hms_sessions s ON s.user_id = u.ID AND s.revoked_at IS NULL AND s.expires_at > now()
+       WHERE u.LAST_LOGIN IS NOT NULL
+       GROUP BY u.ID
+       ORDER BY u.LAST_LOGIN DESC`,
       { type: sequelize.QueryTypes.SELECT }
     );
 
@@ -188,15 +192,10 @@ router.post('/sessions/:userId/force-logout', protect, restrictTo('super_admin')
     }
     const target = await User.findByPk(userId);
     if (!target) return res.status(404).json({ success: false, message: 'User not found.' });
-    // Tokens are not revocable yet, so the account is locked for a minute: every request with the old
-    // token is refused while the lock lasts (see report: needs a token cut-off in the auth middleware).
-    await User.update(
-      { locked_until: new Date(Date.now() + 60000) }, // Lock for 1 minute
-      { where: { id: userId } }
-    );
+    const ended = await revokeUserSessions(userId, `forced logout by user ${req.user.id}`, { io: req.app.get('io') });
     const ip = req.ip || req.connection?.remoteAddress || null;
-    await logAction(req.user.id, 'FORCE_LOGOUT', 'security', userId, null, { target_user: userId }, ip);
-    res.json({ success: true, message: 'User session terminated.' });
+    await logAction(req.user.id, 'FORCE_LOGOUT', 'security', userId, null, { target_user: userId, sessions_ended: ended }, ip);
+    res.json({ success: true, message: ended ? `Ended ${ended} session(s).` : 'The user had no active sessions.' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to force logout.' });
   }

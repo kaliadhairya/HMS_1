@@ -6,7 +6,7 @@ Branch `phase1/integrity-foundation`, started from `phase0/safety-fixes`.
 |---|---|
 | 1. Versioned migrations and honest startup | **Done** (see below) |
 | 2. Find and repair broken links in existing data; enforce relationships in the database | **Done** (see below) |
-| 3. Revocable sessions (logout, deactivation and password change end a session at once) | Not started |
+| 3. Revocable sessions (logout, deactivation and password change end a session at once) | **Done** (see below) |
 | 4. Action and patient-scope authorization | Not started |
 | 5. Transactional, tamper-evident audit trail | Not started |
 | 6. Idempotency for retried clinical and financial commands | Not started |
@@ -60,6 +60,39 @@ Branch `phase1/integrity-foundation`, started from `phase0/safety-fixes`.
 - Workflow suites on a migrated copy: OPD 20/20, pharmacy 18/18, laboratory 10/10, administration 28/28, inpatient 11/13 (the known IPD-billing defect, unchanged).
 - `verify-migrations.sh` passes on PostgreSQL 16 and 18 (932 schema facts).
 - Applied to the live Docker database after a backup (`~/hms-backups/20261012-154927`): 97 foreign keys validated, 0 rows quarantined.
+
+## Part 3: revocable sessions
+
+- **Server-side sessions** (`0005_sessions.sql`, `utils/sessions.js`). Each sign-in creates an `hms_sessions` row, and the token carries its ID. Every request and socket handshake checks that the session is live.
+  - Signing out (`POST /api/auth/logout`) ends the session.
+  - Ending a session elsewhere drops its socket.
+- **Sessions end immediately when:**
+  - the user signs out;
+  - the user changes their password (other devices only);
+  - the password is reset through the forgotten-password flow or by an administrator;
+  - the role changes or the account is deactivated;
+  - a super admin uses "End session". This used to lock the account for one minute, after which the old token worked again.
+- **Idle timeout:** the per-role timeouts on the Security screen are now enforced. A session idle longer than its role's limit is ended.
+- **Cookie, not browser storage:**
+  - Browsers receive the session only as an `HttpOnly; SameSite=Strict` cookie, so page scripts cannot read it. It is `Secure` behind HTTPS, or with `COOKIE_SECURE=true`.
+  - A state-changing request authenticated by the cookie must carry `X-Requested-With: XMLHttpRequest`, which the app's API client always sends and a cross-site form cannot.
+  - Scripts and services request a bearer token with `X-Auth-Transport: bearer`.
+- **Removed** `POST /api/auth/emergency-reset`, an unused endpoint that set accounts to known passwords.
+- **Session list:** the Security screen's session list shows each user's live session count and last activity.
+
+### Verification (part 3)
+
+- `npm test` passes (8 token tests). Tokens without a session ID are rejected.
+- `e2e/sessions.e2e.js` passes 7/7:
+  - logout ends the token;
+  - a password change keeps this device and signs out the other;
+  - forced logout ends HTTP access and drops a connected socket, and the token cannot open a new one;
+  - deactivation ends sessions, and reactivation does not revive them;
+  - an idle session times out and stays dead;
+  - a browser login gets an HttpOnly SameSite cookie and no token;
+  - a cookie POST without the header is refused.
+- Workflow suites: OPD 20/20, pharmacy 18/18, laboratory 10/10, administration 28/28 (the forced-logout step now expects the account to stay usable rather than locked), inpatient 11/13 (known billing defect).
+- Live Docker app after a backup (`~/hms-backups/20261012-160641`), through the production nginx on port 4999: sign-in sets the cookie, the cookie works, logout ends it, the live socket connects with the cookie and is refused without it.
 
 ### Not yet applied
 

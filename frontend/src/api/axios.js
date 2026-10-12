@@ -3,25 +3,20 @@ import toast from 'react-hot-toast';
 
 const baseURL = import.meta.env.VITE_API_BASE_URL || '/api';
 
+// The session is an HttpOnly cookie set at sign-in, so page scripts never see
+// the token. X-Requested-With proves to the server that a state-changing
+// request came from this app and not from a form on another site.
 const api = axios.create({
   baseURL,
-  headers: { 'Content-Type': 'application/json' },
-});
-
-// Attach JWT to every request
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('lab_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-
-  return config;
+  withCredentials: true,
+  headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
 });
 
 // Handle 401 globally — redirect to login
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401 && !err.config.url.includes('/auth/login')) {
-      localStorage.removeItem('lab_token');
+    if (err.response?.status === 401 && !err.config.url.includes('/auth/login') && !err.config.url.includes('/auth/logout')) {
       localStorage.removeItem('lab_user');
       window.location.href = '/login';
     } else if (err.response?.status === 403) {

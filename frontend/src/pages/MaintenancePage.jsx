@@ -10,7 +10,7 @@ function MaintenancePage() {
 
   // Going home triggers an API call; if maintenance is still on, the 503 handler brings the user back here.
   const handleRetry = () => navigate('/');
-  const handleSignOut = () => { logout(); navigate('/login'); };
+  const handleSignOut = async () => { await logout(); navigate('/login'); };
 
   return (
     <main style={{ display: 'grid', placeItems: 'center', minHeight: '100vh', padding: 16, background: 'var(--bg)' }}>

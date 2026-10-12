@@ -14,8 +14,8 @@ export const SocketProvider = ({ children }) => {
   useEffect(() => {
     if (user) {
       const newSocket = io(socketUrl, {
+        // The session travels in the HttpOnly cookie.
         withCredentials: true,
-        auth: { token: localStorage.getItem('lab_token') },
       });
 
       newSocket.on('connect', () => {

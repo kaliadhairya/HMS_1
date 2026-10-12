@@ -7,6 +7,7 @@ process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
 const tokens = require('../utils/authTokens');
 
 const user = { id: 7, username: 'nurse1', role: 'nurse', password: '$2a$12$hashOne' };
+const sid = '6f1c2a5e-0000-4000-8000-000000000001';
 
 test('a password-reset token is rejected as a session', () => {
   const reset = tokens.signPasswordResetToken(user);
@@ -14,13 +15,19 @@ test('a password-reset token is rejected as a session', () => {
 });
 
 test('a session token is rejected as a password-reset token', () => {
-  const session = tokens.signSessionToken(user);
+  const session = tokens.signSessionToken(user, sid);
   assert.throws(() => tokens.verifyPasswordResetToken(session));
 });
 
 test('a valid session token is accepted', () => {
-  const decoded = tokens.verifySessionToken(tokens.signSessionToken(user));
+  const decoded = tokens.verifySessionToken(tokens.signSessionToken(user, sid));
   assert.strictEqual(decoded.id, 7);
+});
+
+test('a session token without a session ID is rejected', () => {
+  const noSid = jwt.sign({ id: 7, purpose: 'session' }, process.env.JWT_SECRET, { issuer: 'hms-backend', audience: 'hms-session' });
+  assert.throws(() => tokens.verifySessionToken(noSid));
+  assert.throws(() => tokens.signSessionToken(user));
 });
 
 test('a legacy token without purpose or audience is rejected', () => {

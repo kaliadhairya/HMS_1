@@ -1,14 +1,28 @@
 const { validateToken } = require('../utils/identityClient');
 const { readTrustedContext } = require('./trustedContext');
 
-function resolveBearerToken(req) {
+const { verifySessionToken } = require('../utils/authTokens');
+const { COOKIE_NAME, checkSession, readCookie } = require('../utils/sessions');
+
+// Browsers send the session in an HttpOnly cookie; scripts and services send
+// a bearer token.
+function resolveToken(req) {
   const authorization = req.headers.authorization;
-  if (authorization?.startsWith('Bearer ')) return authorization.slice(7);
-  if (typeof req.query.token === 'string' && process.env.ALLOW_QUERY_TOKEN === 'true') return req.query.token;
-  return null;
+  if (authorization?.startsWith('Bearer ')) return { token: authorization.slice(7), source: 'bearer' };
+  const cookie = readCookie(req.headers.cookie, COOKIE_NAME);
+  if (cookie) return { token: cookie, source: 'cookie' };
+  if (typeof req.query.token === 'string' && process.env.ALLOW_QUERY_TOKEN === 'true') return { token: req.query.token, source: 'query' };
+  return { token: null, source: null };
 }
 
-const { verifySessionToken } = require('../utils/authTokens');
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+// A cookie is sent automatically, so a state-changing request authenticated
+// by one must also carry a header a cross-site form cannot set.
+function failsCsrfCheck(req, source) {
+  return source === 'cookie' && !SAFE_METHODS.has(req.method) && req.headers['x-requested-with'] !== 'XMLHttpRequest';
+}
+
 const User = require('../models/User');
 const Permission = require('../models/Permission');
 
@@ -24,8 +38,11 @@ const protect = async (req, res, next) => {
       req.user = trusted;
       return next();
     }
-    const token = resolveBearerToken(req);
+    const { token, source } = resolveToken(req);
     if (!token) return res.status(401).json({ success: false, message: 'Not authenticated. Please log in.' });
+    if (failsCsrfCheck(req, source)) {
+      return res.status(403).json({ success: false, message: 'Request blocked: missing X-Requested-With header.' });
+    }
 
     // When an Identity Service is configured it is the only authority: a
     // rejected or unverifiable token never falls back to local validation.
@@ -42,9 +59,13 @@ const protect = async (req, res, next) => {
       return next();
     }
 
+    let decoded;
     try {
-      const decoded = verifySessionToken(token);
-
+      decoded = verifySessionToken(token);
+    } catch (tokenErr) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+    }
+    {
       const user = await User.findByPk(decoded.id);
       if (!user || user.isActive === 0) {
         return res.status(401).json({ success: false, message: 'User not found or deactivated.' });
@@ -53,6 +74,9 @@ const protect = async (req, res, next) => {
       if (user.locked_until && new Date(user.locked_until) > new Date()) {
         return res.status(423).json({ success: false, message: 'Account is temporarily locked.' });
       }
+
+      const sessionProblem = await checkSession(decoded.sid, user.id, user.role);
+      if (sessionProblem) return res.status(401).json({ success: false, message: sessionProblem });
 
       let permissions = [];
       try {
@@ -75,11 +99,10 @@ const protect = async (req, res, next) => {
         role: user.role,
         department_id: user.department_id,
         first_login: user.first_login,
+        sessionId: decoded.sid,
         permissions,
       };
       return next();
-    } catch (tokenErr) {
-      return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
     }
   } catch (error) {
     console.error('Identity validation error:', error.message);
@@ -115,10 +138,19 @@ const resolveTokenUser = async (token) => {
     const user = await User.findByPk(decoded.id);
     if (!user || user.isActive === 0) return null;
     if (user.locked_until && new Date(user.locked_until) > new Date()) return null;
-    return { id: user.id, username: user.username, name: user.name, role: user.role };
+    if (await checkSession(decoded.sid, user.id, user.role)) return null;
+    return { id: user.id, username: user.username, name: user.name, role: user.role, sessionId: decoded.sid };
   } catch {
     return null;
   }
 };
 
-module.exports = { protect, restrictTo, checkPermission, resolveTokenUser, identityServiceEnabled };
+// The session token a socket handshake carries: explicit auth, bearer header, or the session cookie.
+function socketToken(handshake) {
+  const authorization = handshake.headers.authorization;
+  return handshake.auth?.token
+    || (authorization?.startsWith('Bearer ') ? authorization.slice(7) : null)
+    || readCookie(handshake.headers.cookie, COOKIE_NAME);
+}
+
+module.exports = { protect, restrictTo, checkPermission, resolveTokenUser, socketToken, identityServiceEnabled };

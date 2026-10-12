@@ -37,9 +37,11 @@ function assertSecurityConfig() {
   }
 }
 
-function signSessionToken(user) {
+// sessionId names the hms_sessions row that must stay live for the token to work.
+function signSessionToken(user, sessionId) {
+  if (!sessionId) throw new Error('A session token needs a session ID');
   return jwt.sign(
-    { id: user.id, username: user.username, role: user.role, purpose: 'session' },
+    { id: user.id, username: user.username, role: user.role, purpose: 'session', sid: sessionId },
     getJwtSecret(),
     {
       algorithm: 'HS256',
@@ -57,7 +59,7 @@ function verifySessionToken(token) {
     issuer: ISSUER,
     audience: SESSION_AUDIENCE,
   });
-  if (decoded?.purpose !== 'session' || !decoded.id) throw new Error('Not a session token');
+  if (decoded?.purpose !== 'session' || !decoded.id || !decoded.sid) throw new Error('Not a session token');
   return decoded;
 }
 

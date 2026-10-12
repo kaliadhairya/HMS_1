@@ -29,12 +29,12 @@ const creds = (role) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // API call with retry while the backend restarts (node --watch) — connection errors only.
-async function api(method, url, { token, body } = {}) {
+async function api(method, url, { token, body, headers = {} } = {}) {
   for (let attempt = 0; attempt < 20; attempt++) {
     try {
       const res = await fetch(API + url, {
         method,
-        headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       const text = await res.text();
@@ -51,7 +51,7 @@ const tokens = {};
 async function apiLogin(role) {
   if (tokens[role]) return tokens[role];
   const [username, password] = creds(role);
-  const r = await api('POST', '/auth/login', { body: { username, password } });
+  const r = await api('POST', '/auth/login', { body: { username, password }, headers: { 'X-Auth-Transport': 'bearer' } });
   if (!r.data?.token) throw new Error(`API login failed for ${role}: ${r.status} ${JSON.stringify(r.data).slice(0, 200)}`);
   tokens[role] = r.data.token;
   return r.data.token;

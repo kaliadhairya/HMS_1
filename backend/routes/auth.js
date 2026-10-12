@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { logAction } = require('../utils/auditLogger');
 const { signSessionToken, signPasswordResetToken, verifyPasswordResetToken, resetTokenMatchesUser } = require('../utils/authTokens');
+const { createSession, revokeSession, revokeUserSessions, setSessionCookie, clearSessionCookie } = require('../utils/sessions');
 const securitySettings = require('../utils/settings');
 const { ipAccess } = require('./security');
 
@@ -102,13 +102,18 @@ router.post('/login', [
       { where: { id: user.id } }
     );
 
-    const token = signSessionToken(user);
+    const session = await createSession(user.id, req);
+    const token = signSessionToken(user, session.id);
+    // Browsers get the token only as an HttpOnly cookie, out of reach of page
+    // scripts. Scripts and services ask for it with X-Auth-Transport: bearer.
+    setSessionCookie(req, res, token);
+    const wantsBearer = req.headers['x-auth-transport'] === 'bearer';
 
     await logAction(user.id, 'LOGIN', 'auth', null, null, { role: user.role }, ip);
 
     res.json({
       success: true,
-      token,
+      ...(wantsBearer ? { token } : {}),
       user: {
         id: user.id,
         username: user.username,
@@ -132,6 +137,22 @@ router.get('/me', protect, (req, res) => {
     user: req.user,
     first_login: req.user.first_login || 'N',
   });
+});
+
+// ─── POST /api/auth/logout ──────────────────────────────────────
+router.post('/logout', protect, async (req, res) => {
+  try {
+    if (req.user.sessionId) {
+      await revokeSession(req.user.sessionId, 'signed out');
+      req.app.get('io')?.in(`session:${req.user.sessionId}`).disconnectSockets(true);
+    }
+    clearSessionCookie(req, res);
+    await logAction(req.user.id, 'LOGOUT', 'auth', null, null, null, req.ip || null);
+    res.json({ success: true, message: 'Signed out.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error.' });
+  }
 });
 
 // ─── POST /api/auth/change-password ─────────────────────────────
@@ -170,6 +191,8 @@ router.post('/change-password', protect, async (req, res) => {
     user.password = newPassword; // beforeUpdate hook will hash it
     user.first_login = 'N';
     await user.save();
+    // Sign out every other device; this one stays signed in.
+    await revokeUserSessions(user.id, 'password changed', { io: req.app.get('io'), exceptSessionId: req.user.sessionId || null });
 
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(user.id, 'UPDATE', 'auth', user.id, null, { action: 'password_changed' }, ip);
@@ -296,6 +319,7 @@ router.post('/reset-password', async (req, res) => {
     user.otp_expires = null;
     user.first_login = 'N';
     await user.save();
+    await revokeUserSessions(user.id, 'password reset', { io: req.app.get('io') });
 
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(user.id, 'UPDATE', 'auth', user.id, null, { action: 'password_reset' }, ip);
@@ -304,25 +328,6 @@ router.post('/reset-password', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error.' });
-  }
-});
-
-// ─── POST /api/auth/emergency-reset ─────────────────────────────
-router.post('/emergency-reset', protect, async (req, res) => {
-  try {
-    if (req.user.role !== 'super_admin' && process.env.NODE_ENV !== 'development') {
-      return res.status(403).json({ success: false, message: 'Forbidden.' });
-    }
-    const hashedPasswordDoctor = await bcrypt.hash('doctor@123', 10);
-    const hashedPasswordReceptionist = await bcrypt.hash('receptionist@123', 10);
-
-    await User.update({ password: hashedPasswordDoctor }, { where: { username: 'doctor_user' } });
-    await User.update({ password: hashedPasswordReceptionist }, { where: { username: 'receptionist_user' } });
-
-    res.json({ success: true, message: "Passwords for doctor_user and receptionist_user have been reset to defaults." });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server error during reset." });
   }
 });
 

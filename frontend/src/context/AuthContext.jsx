@@ -12,9 +12,10 @@ export function AuthProvider({ children }) {
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
+    // Tokens from before the cookie switch are useless now; drop them.
+    localStorage.removeItem('lab_token');
     const verifyToken = async () => {
-      const token = localStorage.getItem('lab_token');
-      if (token) {
+      if (localStorage.getItem('lab_user')) {
         try {
           const { data } = await api.get('/auth/me');
           if (data.success && data.user) {
@@ -31,7 +32,6 @@ export function AuthProvider({ children }) {
           // Only a real "not authenticated" answer ends the session; keep it through
           // network errors, rate limits or a server restart.
           if (err.response?.status === 401 || err.message === 'Invalid session') {
-            localStorage.removeItem('lab_token');
             localStorage.removeItem('lab_user');
             setUser(null);
           }
@@ -47,7 +47,6 @@ export function AuthProvider({ children }) {
     setLoading(true);
     try {
       const { data } = await api.post('/auth/login', { username, password });
-      localStorage.setItem('lab_token', data.token);
       const userData = {
         ...data.user,
         first_login: data.first_login || 'N',
@@ -68,8 +67,13 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('lab_token');
+  // Ends the session on the server (and its live connection), then locally.
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Already signed out or offline: the local sign-out below still happens.
+    }
     localStorage.removeItem('lab_user');
     setUser(null);
   };

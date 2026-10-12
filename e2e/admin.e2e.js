@@ -43,7 +43,7 @@ async function rawLogin(username, password, forwardedFor) {
     try {
       const res = await fetch(API + '/auth/login', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', ...(forwardedFor ? { 'x-forwarded-for': forwardedFor } : {}) },
+        headers: { 'content-type': 'application/json', 'x-auth-transport': 'bearer', ...(forwardedFor ? { 'x-forwarded-for': forwardedFor } : {}) },
         body: JSON.stringify({ username, password }),
       });
       const data = await res.json().catch(() => ({}));
@@ -391,9 +391,11 @@ const ymd = (d) => d.toISOString().slice(0, 10);
       await dialog(page).getByRole('button', { name: 'End session' }).click();
       await toast(page, 'Session ended');
       const cut = await api('GET', '/auth/me', { token: ctx.userToken });
-      assert(cut.status === 423 || cut.status === 401, `token still accepted after ending the session: ${cut.status}`);
-      await page.locator('tbody tr', { hasText: ctx.user.username }).getByRole('button', { name: `Unlock ${ctx.user.username}` }).click();
-      await toast(page, 'Account unlocked');
+      assert(cut.status === 401, `token still accepted after ending the session: ${cut.status}`);
+      // The session is revoked; the account itself is not locked, so the user can sign in again.
+      const again = await rawLogin(ctx.user.username, PW2);
+      assert(again.status === 200, `sign-in after the session was ended: ${again.status} ${JSON.stringify(again.data)}`);
+      ctx.userToken = again.data.token;
       noErrors(sa, 'end session');
     });
 
