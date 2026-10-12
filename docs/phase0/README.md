@@ -25,6 +25,23 @@ Phase 0 of the HMS_1 Clinical Architecture Blueprint. Branch `phase0/safety-fixe
 | Documented schema differences | Met |
 | Repeatable environment startup | Partly met. Startup now fails on bad secrets, but the backend still starts in "mock mode" when the database is unreachable while reporting healthy, and it alters the schema at startup (F18, Phase 1). |
 
+## Workflow regression run
+
+The existing `e2e/` suites ran against a throwaway copy of the Docker database (backend on UTC, matching Docker):
+
+| Suite | Result |
+|---|---|
+| OPD | 20/20 |
+| Pharmacy | 18/18 |
+| Laboratory | 10/10 |
+| Administration | 28/28 |
+| Inpatient | 11/13. The 2 IPD-billing steps (advance not applied) fail identically on the original `main` code, so this is an existing defect (blueprint F10/F11, Phase 5). |
+
+Notes for running the suites:
+- The demo data has free beds only in Maternity, so the inpatient suite needs two free General, ICU or Private beds.
+- Running the backend on a host in India-time shifts lab waiting times by 5 h 30 min (time-zone handling, Phase 1).
+- Running all suites back to back trips the login rate limit unless `RATE_LIMIT_MAX_AUTH` is raised.
+
 ## Found during Phase 0 and not fixed yet
 
 - **The GitHub repo is public and its history contains working secrets**: the production database password, JWT secrets, the internal service secret and the Aadhaar encryption key. Removing them from current files does not remove them from history. Any server that used them needs new values, and the Aadhaar key needs a migration that keeps existing data readable.
