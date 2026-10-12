@@ -106,7 +106,9 @@ const apiLimiter = rateLimit({
 app.use('/api', apiLimiter);
 
 // ── Static Files ────────────────────────────────────────────────
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Only the hospital logo is public (it appears on pages and printouts).
+// Nothing else under uploads/ is served without an authorized route.
+app.use('/uploads/logo', express.static(path.join(__dirname, 'uploads', 'logo')));
 
 // -- Global Audit Logger -----------------------------------------
 const auditLogger = require('./middleware/auditLogger');
