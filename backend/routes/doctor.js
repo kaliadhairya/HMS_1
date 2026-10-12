@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect, checkPermission } = require('../middleware/auth');
+const { protect, checkPermission, restrictTo } = require('../middleware/auth');
 const { sequelize } = require('../models/db');
 const Patient = require('../models/Patient');
 const Doctor = require('../models/Doctor');
@@ -118,7 +118,7 @@ function classifyEncounterNote(encounterType) {
 //  Routes
 // ═══════════════════════════════════════════════════════════════
 
-router.get('/prescriptions', protect, async (req, res) => {
+router.get('/prescriptions', protect, restrictTo('doctor', 'super_admin'), async (req, res) => {
   try {
     const showAllDoctors = req.query.scope === 'all';
     const doctorWhereClause = showAllDoctors ? '' : 'WHERE pr.DOCTOR_ID = :doctorId';
@@ -166,7 +166,7 @@ router.get('/prescriptions', protect, async (req, res) => {
 // test. Cancelled tests are left out. It used to return the newest 50 orders including cancelled
 // tests, so the dashboard counts were wrong for a busy doctor.
 const LAB_WINDOW_DAYS = 30;
-router.get('/labs', protect, async (req, res) => {
+router.get('/labs', protect, restrictTo('doctor', 'super_admin'), async (req, res) => {
   try {
     const days = Math.min(Math.max(parseInt(req.query.days, 10) || LAB_WINDOW_DAYS, 1), 90);
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -203,7 +203,7 @@ router.get('/labs', protect, async (req, res) => {
   }
 });
 
-router.get('/schedule', protect, async (req, res) => {
+router.get('/schedule', protect, restrictTo('doctor', 'super_admin'), async (req, res) => {
   try {
     // Appointments store the doctor's user ID; this used to query by the profile ID and missed bookings.
     const appointments = await sequelize.query(
@@ -258,7 +258,7 @@ router.get('/schedule', protect, async (req, res) => {
 });
 
 // Hospital search from PANEL_OF_HOSPITALS
-router.get('/hospitals/search', protect, async (req, res) => {
+router.get('/hospitals/search', protect, restrictTo('doctor', 'super_admin'), async (req, res) => {
   try {
     const { q } = req.query;
     if (!q || q.length < 2) return res.json({ success: true, data: [] });
@@ -284,7 +284,7 @@ router.get('/hospitals/search', protect, async (req, res) => {
 });
 
 // GET /api/doctor/referrals/reasons — Fetch unique reasons for autocomplete
-router.get('/referrals/reasons', protect, async (req, res) => {
+router.get('/referrals/reasons', protect, restrictTo('doctor', 'super_admin'), async (req, res) => {
   try {
     const results = await sequelize.query(
       `SELECT DISTINCT REASON FROM HMS_REFERRALS WHERE REASON IS NOT NULL LIMIT 50`,
@@ -299,7 +299,7 @@ router.get('/referrals/reasons', protect, async (req, res) => {
 });
 
 // GET /api/doctor/referrals/patient/:patientId — Fetch referrals across repeat registrations
-router.get('/referrals/patient/:patientId', protect, async (req, res) => {
+router.get('/referrals/patient/:patientId', protect, restrictTo('doctor', 'super_admin'), async (req, res) => {
   try {
     const patientId = Number(req.params.patientId);
     if (!Number.isInteger(patientId) || patientId <= 0) {
@@ -377,7 +377,7 @@ router.get('/referrals/patient/:patientId', protect, async (req, res) => {
     res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 });
-router.get('/referrals', protect, async (req, res) => {
+router.get('/referrals', protect, restrictTo('doctor', 'super_admin'), async (req, res) => {
   try {
     const doctorRecords = await Doctor.findAll({ where: { user_id: req.user.id }, attributes: ['id'] });
     const doctorRecord = doctorRecords[0] || null;
@@ -422,7 +422,7 @@ router.get('/referrals', protect, async (req, res) => {
   }
 });
 
-router.post('/referrals', protect, async (req, res) => {
+router.post('/referrals', protect, restrictTo('doctor'), async (req, res) => {
   try {
     const doctorRecords = await Doctor.findAll({ where: { user_id: req.user.id }, attributes: ['id'] });
     const doctorRecord = doctorRecords[0] || null;
@@ -455,7 +455,7 @@ router.post('/referrals', protect, async (req, res) => {
   }
 });
 
-router.put('/referrals/:id', protect, async (req, res) => {
+router.put('/referrals/:id', protect, restrictTo('doctor'), async (req, res) => {
   try {
     const doctorRecords = await Doctor.findAll({ where: { user_id: req.user.id }, attributes: ['id'] });
     const doctorRecord = doctorRecords[0] || null;
@@ -588,7 +588,7 @@ router.put('/referrals/:id', protect, async (req, res) => {
   }
 });
 
-router.delete('/referrals/:id', protect, async (req, res) => {
+router.delete('/referrals/:id', protect, restrictTo('doctor'), async (req, res) => {
   try {
     const doctorRecords = await Doctor.findAll({ where: { user_id: req.user.id }, attributes: ['id'] });
     const doctorRecord = doctorRecords[0] || null;
@@ -605,7 +605,7 @@ router.delete('/referrals/:id', protect, async (req, res) => {
   }
 });
 
-router.get('/clinical-notes', protect, async (req, res) => {
+router.get('/clinical-notes', protect, restrictTo('doctor', 'super_admin'), async (req, res) => {
   try {
     const doctorIds = [req.user.id];
 
@@ -646,7 +646,7 @@ router.get('/clinical-notes', protect, async (req, res) => {
   }
 });
 
-router.get('/reports', protect, async (req, res) => {
+router.get('/reports', protect, restrictTo('doctor', 'super_admin'), async (req, res) => {
   try {
     const monthStart = new Date();
     monthStart.setDate(1);
@@ -735,7 +735,7 @@ router.get('/reports', protect, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 
 // GET /api/doctor/my-patients — Get all patients assigned to logged-in doctor
-router.get('/my-patients', protect, async (req, res) => {
+router.get('/my-patients', protect, restrictTo('doctor', 'super_admin'), async (req, res) => {
   try {
     const userId = req.user.id;
 
@@ -819,7 +819,7 @@ router.get('/my-patients', protect, async (req, res) => {
 });
 
 // GET /api/doctor/list-doctors — Get all active doctors (for dropdown/assignment)
-router.get('/list-doctors', protect, async (req, res) => {
+router.get('/list-doctors', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician'), async (req, res) => {
   try {
     const doctors = await Doctor.findAll({
       where: { is_active: 'Y' },
@@ -849,7 +849,7 @@ router.get('/list-doctors', protect, async (req, res) => {
 });
 
 // GET /api/doctor/list-departments — Get all active departments (for dropdown)
-router.get('/list-departments', protect, async (req, res) => {
+router.get('/list-departments', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician'), async (req, res) => {
   try {
     const departments = await Department.findAll({
       where: { is_active: 'Y' },
@@ -868,7 +868,7 @@ router.get('/list-departments', protect, async (req, res) => {
 });
 
 // DELETE /api/doctor/prescriptions/:id — Delete a prescription and its items
-router.delete('/prescriptions/:id', async (req, res) => {
+router.delete('/prescriptions/:id', restrictTo('doctor'), async (req, res) => {
   try {
     const prescriptionId = parseInt(req.params.id, 10);
     if (isNaN(prescriptionId)) {

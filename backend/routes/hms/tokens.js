@@ -4,7 +4,7 @@ const { Op } = require('sequelize');
 const { sequelize } = require('../../models/db');
 const { resolveDoctorUser } = require('../../utils/doctorIdentity');
 const { Token, Patient, Doctor, Department, User } = require('../../models');
-const { protect } = require('../../middleware/auth');
+const { protect, restrictTo } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
 
 // A doctor given as a user ID or profile ID, as the user ID tokens store.
@@ -21,7 +21,7 @@ function tokenDateWhere(dateString) {
 }
 
 // GET /api/hms/tokens — Fetch today's tokens for the logged-in doctor (dashboard)
-router.get('/', protect, async (req, res) => {
+router.get('/', protect, restrictTo('super_admin', 'admin', 'doctor'), async (req, res) => {
   try {
     const doctorIds = [req.user.id];
 
@@ -46,7 +46,7 @@ router.get('/', protect, async (req, res) => {
 });
 
 // GET /api/hms/tokens/today-all — ALL today's tokens for all doctors (global OPD queue)
-router.get('/today-all', protect, async (req, res) => {
+router.get('/today-all', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
     const { QueryTypes } = require('sequelize');
@@ -89,7 +89,7 @@ router.get('/today-all', protect, async (req, res) => {
 });
 
 // POST /api/hms/tokens — Generate Token
-router.post('/', protect, async (req, res) => {
+router.post('/', protect, restrictTo('super_admin', 'admin', 'receptionist'), async (req, res) => {
   try {
     const { patient_id, doctor_id, department_id } = req.body;
     if (!patient_id || !doctor_id) {
@@ -156,7 +156,7 @@ router.post('/', protect, async (req, res) => {
 });
 
 // GET /api/hms/tokens/queue — Live Queue
-router.get('/queue', protect, async (req, res) => {
+router.get('/queue', protect, restrictTo('super_admin', 'admin', 'doctor', 'receptionist'), async (req, res) => {
   try {
     const { doctor_id, date } = req.query;
     const queryDate = date || new Date().toISOString().split('T')[0];
@@ -184,7 +184,7 @@ router.get('/queue', protect, async (req, res) => {
 });
 
 // PATCH /api/hms/tokens/:id/status
-router.patch('/:id/status', protect, async (req, res) => {
+router.patch('/:id/status', protect, restrictTo('super_admin', 'admin', 'doctor', 'receptionist'), async (req, res) => {
   try {
     const { status } = req.body;
     const token = await Token.findByPk(req.params.id);

@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { Doctor, Department, User } = require('../../models');
-const { protect } = require('../../middleware/auth');
+const { protect, restrictTo } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
 
 // GET /api/hms/doctors
-router.get('/', protect, async (req, res) => {
+router.get('/', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
     const users = await User.findAll({
       where: { role: 'doctor', isActive: 1 }
@@ -30,7 +30,7 @@ router.get('/', protect, async (req, res) => {
 });
 
 // POST /api/hms/doctors
-router.post('/', protect, async (req, res) => {
+router.post('/', protect, restrictTo('super_admin', 'admin'), async (req, res) => {
   try {
     const { user_id, department_id, speciality, registration_number, fee, slot_duration_mins } = req.body;
     if (!user_id) return res.status(400).json({ success: false, message: 'user_id required.' });
@@ -49,7 +49,7 @@ router.post('/', protect, async (req, res) => {
 });
 
 // GET /api/hms/doctors/:id
-router.get('/:id', protect, async (req, res) => {
+router.get('/:id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
     const doctor = await Doctor.findByPk(req.params.id, {
       include: [

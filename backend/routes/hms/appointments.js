@@ -4,7 +4,7 @@ const { Op, QueryTypes } = require('sequelize');
 const { Appointment, Patient, Doctor, Department, User } = require('../../models');
 const { sequelize } = require('../../models/db');
 const { resolveDoctorUser } = require('../../utils/doctorIdentity');
-const { protect } = require('../../middleware/auth');
+const { protect, restrictTo } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
 
 const DEFAULT_APPOINTMENT_SLOTS = [
@@ -123,7 +123,7 @@ async function resolveAppointmentSlot({ doctorId, appointmentDate, slotStart, sl
 }
 
 // POST /api/hms/appointments — Book Appointment
-router.post('/', protect, async (req, res) => {
+router.post('/', protect, restrictTo('super_admin', 'admin', 'doctor', 'receptionist'), async (req, res) => {
   try {
     const {
       patient_id,
@@ -224,7 +224,7 @@ router.post('/', protect, async (req, res) => {
 });
 
 // GET /api/hms/appointments — List with filters
-router.get('/', protect, async (req, res) => {
+router.get('/', protect, restrictTo('super_admin', 'admin', 'doctor', 'receptionist'), async (req, res) => {
   try {
     const { date, department_id, doctor_id, patient_id, status } = req.query;
     const filters = [];
@@ -327,7 +327,7 @@ router.get('/', protect, async (req, res) => {
 });
 
 // PUT /api/hms/appointments/:id — Update/Reschedule
-router.put('/:id', protect, async (req, res) => {
+router.put('/:id', protect, restrictTo('super_admin', 'admin', 'doctor', 'receptionist'), async (req, res) => {
   try {
     const { appointment_date, slot_start, slot_end, appointment_time, status, cancellation_reason } = req.body;
     const [existingAppointment] = await sequelize.query(

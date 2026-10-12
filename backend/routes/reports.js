@@ -4,7 +4,7 @@ const PDFDocument = require('pdfkit');
 const TestReport = require('../models/TestReport');
 const Patient = require('../models/Patient');
 const User = require('../models/User');
-const { protect, checkPermission } = require('../middleware/auth');
+const { protect, checkPermission, restrictTo } = require('../middleware/auth');
 const { sequelize } = require('../models/db');
 const path = require('path');
 const fs = require('fs');
@@ -101,7 +101,7 @@ router.put('/:id(\\d+)', protect, checkPermission('lab', 'write'), async (req, r
 });
 
 // ─── GET /api/reports/:id — Fetch a single report ───────────────────────────
-router.get('/:id(\\d+)', protect, async (req, res) => {
+router.get('/:id(\\d+)', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician'), async (req, res) => {
   try {
     const report = await TestReport.findByPk(req.params.id, {
       include: [
@@ -123,7 +123,7 @@ router.get('/:id(\\d+)', protect, async (req, res) => {
 });
 
 // ─── GET /api/reports/ordered-queue — Fetch Doctor ordered investigations ─────
-router.get('/ordered-queue', protect, async (req, res) => {
+router.get('/ordered-queue', protect, restrictTo('super_admin', 'admin', 'lab_technician'), async (req, res) => {
   try {
     const { InvestigationOrder, InvestigationOrderItem } = require('../models');
     
@@ -148,7 +148,7 @@ router.get('/ordered-queue', protect, async (req, res) => {
 });
 
 // ─── GET /api/reports/:id/pdf — Generate PDF ────────────────────────────────
-router.get('/:id(\\d+)/pdf', protect, async (req, res) => {
+router.get('/:id(\\d+)/pdf', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician'), async (req, res) => {
   try {
     const report = await TestReport.findByPk(req.params.id, {
       include: [
@@ -559,7 +559,6 @@ router.get('/:id(\\d+)/pdf', protect, async (req, res) => {
 
 // ── GET /api/reports/opd-register ──────────────────────────────
 const { clobToString } = require('../utils/clobToString');
-const { restrictTo } = require('../middleware/auth');
 
 // Hospital-wide analytics (revenue, audit trail, every doctor's figures) are for administrators only;
 // they used to be open to any signed-in role.

@@ -5,7 +5,7 @@ const { protect, restrictTo } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
 
 // GET /api/hms/departments
-router.get('/', protect, async (req, res) => {
+router.get('/', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'pharmacist', 'lab_technician'), async (req, res) => {
   try {
     const depts = await Department.findAll({
       where: { is_active: 'Y' },
@@ -36,7 +36,7 @@ router.post('/', protect, restrictTo('super_admin', 'admin'), async (req, res) =
 });
 
 // GET /api/hms/departments/:id/doctors
-router.get('/:id/doctors', protect, async (req, res) => {
+router.get('/:id/doctors', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'pharmacist', 'lab_technician'), async (req, res) => {
   try {
     const doctors = await Doctor.findAll({
       where: { department_id: req.params.id, is_active: 'Y' },

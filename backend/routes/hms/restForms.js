@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { RestForm, Patient } = require('../../models');
-const { protect, checkPermission } = require('../../middleware/auth');
+const { protect, checkPermission, restrictTo } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
 
 // Create Rest Form
@@ -43,7 +43,7 @@ router.post('/', protect, checkPermission('consultation', 'write'), async (req, 
 });
 
 // Get all Rest Forms for the logged-in doctor
-router.get('/doctor', protect, async (req, res) => {
+router.get('/doctor', protect, restrictTo('super_admin', 'admin', 'doctor'), async (req, res) => {
   try {
     const restForms = await RestForm.findAll({
       where: { doctor_id: req.user.id },
@@ -85,7 +85,7 @@ router.get('/doctor', protect, async (req, res) => {
 });
 
 // Get a single Rest Form by ID
-router.get('/:id', protect, async (req, res) => {
+router.get('/:id', protect, restrictTo('super_admin', 'admin', 'doctor'), async (req, res) => {
   try {
     const restForm = await RestForm.findByPk(req.params.id, {
       include: [{ model: Patient, as: 'patient' }]

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
-const { protect } = require('../../middleware/auth');
+const { protect, restrictTo } = require('../../middleware/auth');
 
 // Pre-load ICD-10 dataset
 const datasetPath = path.join(__dirname, '../../data/icd10-common.json');
@@ -18,7 +18,7 @@ try {
 }
 
 // Search ICD-10 local dataset
-router.get('/search', protect, async (req, res) => {
+router.get('/search', protect, restrictTo('super_admin', 'admin', 'doctor'), async (req, res) => {
   try {
     const q = req.query.q?.toLowerCase();
     if (!q || q.length < 2) return res.json([]);

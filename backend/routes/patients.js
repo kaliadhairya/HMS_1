@@ -38,7 +38,7 @@ router.post('/', [
   body('name').trim().escape(),
   body('phoneNumber').optional({ checkFalsy: true }).trim().escape(),
   body('empNumber').optional({ checkFalsy: true }).trim().escape(),
-], protect, async (req, res) => {
+], protect, restrictTo('super_admin', 'admin', 'receptionist', 'lab_technician'), async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
@@ -161,7 +161,7 @@ router.post('/', [
 });
 
 // GET /api/patients — List all patients with optional filters
-router.get('/', protect, async (req, res) => {
+router.get('/', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician'), async (req, res) => {
   try {
     const { empNumber, phoneNumber, fromDate, toDate, patientType, page = 1, limit = 20 } = req.query;
 
@@ -250,7 +250,7 @@ router.post('/hms', [
   body('empNumber').optional({ checkFalsy: true }).trim().escape(),
   body('relationship').optional({ checkFalsy: true }).trim().escape(),
   body('email').optional({ checkFalsy: true }).isEmail().normalizeEmail(),
-], protect, async (req, res) => {
+], protect, restrictTo('super_admin', 'doctor', 'receptionist'), async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   try {
@@ -395,10 +395,10 @@ const getCorporateDependentsHandler = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error fetching dependents' });
   }
 };
-router.get('/hms/emp/:empNumber', protect, getCorporateDependentsHandler);
+router.get('/hms/emp/:empNumber', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician'), getCorporateDependentsHandler);
 
 // GET /api/patients/hms/search?q=&empNumber=&phoneNumber=&fromDate=&toDate=&patientType= — Advanced Search
-router.get('/hms/search', protect, async (req, res) => {
+router.get('/hms/search', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
     const { q, empNumber, phoneNumber, fromDate, toDate, patientType, doctorId } = req.query;
     const searchTerm = q ? q.toUpperCase() : '';
@@ -489,7 +489,7 @@ router.get('/hms/search', protect, async (req, res) => {
 });
 
 // GET /api/patients/hms/today-patients — All patients registered today, with consulting doctor info
-router.get('/hms/today-patients', protect, async (req, res) => {
+router.get('/hms/today-patients', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
     const rows = await sequelize.query(`
@@ -548,7 +548,7 @@ router.get('/hms/today-patients', protect, async (req, res) => {
 });
 
 // GET /api/patients/hms/pending-consultation — Patients registered in past days but never consulted
-router.get('/hms/pending-consultation', protect, async (req, res) => {
+router.get('/hms/pending-consultation', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
     const rows = await sequelize.query(`
       SELECT 
@@ -596,7 +596,7 @@ router.get('/hms/pending-consultation', protect, async (req, res) => {
 });
 
 // GET /api/patients/hms/:id — Full Profile
-router.get('/hms/:id', protect, async (req, res) => {
+router.get('/hms/:id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
     const patient = await Patient.findByPk(req.params.id);
     if (!patient) return res.status(404).json({ success: false, message: 'Patient not found.' });
@@ -650,7 +650,7 @@ router.get('/hms/:id', protect, async (req, res) => {
 });
 
 // GET /api/patients/hms/:id/visits
-router.get('/hms/:id/visits', protect, async (req, res) => {
+router.get('/hms/:id/visits', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician'), async (req, res) => {
   try {
     const patientId = req.params.id;
 
@@ -730,7 +730,7 @@ router.get('/hms/:id/visits', protect, async (req, res) => {
 });
 
 // GET /api/patients/hms/:id/documents
-router.get('/hms/:id/documents', protect, async (req, res) => {
+router.get('/hms/:id/documents', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician'), async (req, res) => {
   try {
     const docs = await PatientDocument.findAll({
       where: { patient_id: req.params.id },
@@ -744,7 +744,7 @@ router.get('/hms/:id/documents', protect, async (req, res) => {
 });
 
 // GET /api/patients/hms/:id/allergies
-router.get('/hms/:id/allergies', protect, async (req, res) => {
+router.get('/hms/:id/allergies', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'pharmacist', 'lab_technician'), async (req, res) => {
   try {
     const items = await Allergy.findAll({ where: { patient_id: req.params.id }, order: [['noted_at', 'DESC']] });
     res.json({ success: true, data: items });
@@ -755,7 +755,7 @@ router.get('/hms/:id/allergies', protect, async (req, res) => {
 });
 
 // GET /api/patients/hms/:id/chronic-conditions
-router.get('/hms/:id/chronic-conditions', protect, async (req, res) => {
+router.get('/hms/:id/chronic-conditions', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician'), async (req, res) => {
   try {
     const items = await ChronicCondition.findAll({ where: { patient_id: req.params.id }, order: [['created_at', 'DESC']] });
     res.json({ success: true, data: items });
@@ -775,7 +775,7 @@ async function nextSequenceId(sequenceName) {
 const ALLERGY_SEVERITIES = new Set(['Mild', 'Moderate', 'Severe']);
 
 // POST /api/patients/hms/:id/allergies
-router.post('/hms/:id/allergies', protect, async (req, res) => {
+router.post('/hms/:id/allergies', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
     const allergen = String(req.body.allergen || '').trim();
     const reaction = String(req.body.reaction || '').trim() || null;
@@ -802,7 +802,7 @@ router.post('/hms/:id/allergies', protect, async (req, res) => {
 });
 
 // POST /api/patients/hms/:id/chronic-conditions
-router.post('/hms/:id/chronic-conditions', protect, async (req, res) => {
+router.post('/hms/:id/chronic-conditions', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
     const { condition_name, since_when, notes } = req.body;
     if (!condition_name) return res.status(400).json({ success: false, message: 'Condition name required.' });
@@ -827,7 +827,7 @@ router.post('/hms/:id/chronic-conditions', protect, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 
 // PUT /api/patients/:id — Edit existing patient
-router.put('/:id(\\d+)', protect, async (req, res) => {
+router.put('/:id(\\d+)', protect, restrictTo('super_admin', 'admin', 'receptionist', 'lab_technician'), async (req, res) => {
   try {
     const {
       patientType, name, age, gender, opdIndoor, ward,
@@ -880,7 +880,7 @@ router.put('/:id(\\d+)', protect, async (req, res) => {
 
 // GET /api/patients/:id — Single patient with their report
 // GET /api/patients/search?q=&page=&limit= — quick search by name, UHID, phone or employee number
-router.get('/search', protect, async (req, res) => {
+router.get('/search', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'pharmacist', 'lab_technician'), async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
@@ -901,7 +901,7 @@ router.get('/search', protect, async (req, res) => {
   }
 });
 
-router.get('/:id(\\d+)', protect, async (req, res) => {
+router.get('/:id(\\d+)', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'pharmacist', 'lab_technician'), async (req, res) => {
   try {
     const patient = await Patient.findByPk(req.params.id, {
       include: [{

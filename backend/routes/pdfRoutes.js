@@ -5,7 +5,7 @@ const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 const { sequelize } = require('../models');
-const { protect, checkPermission } = require('../middleware/auth');
+const { protect, checkPermission, restrictTo } = require('../middleware/auth');
 const { loadOrders } = require('./lab');
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -488,7 +488,7 @@ router.get('/lab-report/:orderId', protect, checkPermission('lab', 'read'), asyn
   }
 });
 
-router.get('/prescription/:id', protect, async (req, res) => {
+router.get('/prescription/:id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'pharmacist'), async (req, res) => {
   try {
     await generatePrescriptionPDF(req.params.id, res);
   } catch (err) {
@@ -499,7 +499,7 @@ router.get('/prescription/:id', protect, async (req, res) => {
   }
 });
 
-router.get('/bill/:id', protect, async (req, res) => {
+router.get('/bill/:id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
     await generateOPDBillPDF(req.params.id, res);
   } catch (err) {

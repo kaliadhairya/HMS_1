@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Medicine, MedicineBatch, StockLedger } = require('../../models');
 const { sequelize } = require('../../models/db');
-const { protect, checkPermission } = require('../../middleware/auth');
+const { protect, checkPermission, restrictTo } = require('../../middleware/auth');
 const { body, validationResult } = require('express-validator');
 
 function parseBrandNames(val) {
@@ -125,7 +125,7 @@ router.get('/rxnav/search', protect, checkPermission('pharmacy', 'read'), async 
 });
 
 // Search medicines for autocomplete (used by prescription + pharmacy)
-router.get('/search', protect, async (req, res) => {
+router.get('/search', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'pharmacist'), async (req, res) => {
   try {
     const q = req.query.q;
     if (!q || q.length < 2) return res.json([]);

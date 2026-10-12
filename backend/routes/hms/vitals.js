@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Vital, Patient, User, sequelize } = require('../../models');
-const { protect } = require('../../middleware/auth');
+const { protect, restrictTo } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
 
 function computeBMI(weight_kg, height_cm) {
@@ -59,7 +59,7 @@ function validateVitals(body) {
 const blankToNull = (value) => (value === '' || value === undefined ? null : value);
 
 // POST /api/hms/vitals
-router.post('/', protect, async (req, res) => {
+router.post('/', protect, restrictTo('super_admin', 'doctor', 'nurse'), async (req, res) => {
   try {
     const { patient_id, encounter_type } = req.body;
     const [bp_systolic, bp_diastolic, temperature, weight_kg, height_cm, spo2, pulse, respiratory_rate] = [
@@ -101,7 +101,7 @@ router.post('/', protect, async (req, res) => {
 });
 
 // GET /api/hms/vitals/latest/:patient_id
-router.get('/latest/:patient_id', protect, async (req, res) => {
+router.get('/latest/:patient_id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse'), async (req, res) => {
   try {
     const { sequelize } = require('../../models');
     const [rows] = await sequelize.query(`
@@ -121,7 +121,7 @@ router.get('/latest/:patient_id', protect, async (req, res) => {
 });
 
 // GET /api/hms/vitals/history/:patient_id
-router.get('/history/:patient_id', protect, async (req, res) => {
+router.get('/history/:patient_id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
     const { sequelize } = require('../../models');
     const [rows] = await sequelize.query(`

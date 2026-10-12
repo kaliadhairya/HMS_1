@@ -7,7 +7,7 @@ Branch `phase1/integrity-foundation`, started from `phase0/safety-fixes`.
 | 1. Versioned migrations and honest startup | **Done** (see below) |
 | 2. Find and repair broken links in existing data; enforce relationships in the database | **Done** (see below) |
 | 3. Revocable sessions (logout, deactivation and password change end a session at once) | **Done** (see below) |
-| 4. Action and patient-scope authorization | Not started |
+| 4. Action and patient-scope authorization | **Done for roles**; patient scope needs Phase 2 care teams (see below) |
 | 5. Transactional, tamper-evident audit trail | Not started |
 | 6. Idempotency for retried clinical and financial commands | Not started |
 | 7. Durable state: settings and IPD draft charges out of process memory; outbox for events | Not started |
@@ -93,6 +93,29 @@ Branch `phase1/integrity-foundation`, started from `phase0/safety-fixes`.
   - a cookie POST without the header is refused.
 - Workflow suites: OPD 20/20, pharmacy 18/18, laboratory 10/10, administration 28/28 (the forced-logout step now expects the account to stay usable rather than locked), inpatient 11/13 (known billing defect).
 - Live Docker app after a backup (`~/hms-backups/20261012-160641`), through the production nginx on port 4999: sign-in sets the cookie, the cookie works, logout ends it, the live socket connects with the cookie and is refused without it.
+
+## Part 4: action authorization
+
+- **Every endpoint now checks the caller's role.** 59 endpoints that accepted any signed-in account got an explicit role list. The only ones left open to any signed-in user are `GET /api/auth/me`, `POST /api/auth/logout` and `POST /api/auth/change-password`. `docs/phase0/API_ACCESS.md` is regenerated: 5 public, 3 signed-in, 244 role-checked, 3 internal.
+- **How the roles were chosen.** Each endpoint is open to exactly the roles whose screens call it, traced through every import from the routes in `App.jsx`. Where that left a choice:
+  - Chart contents (visits, documents, conditions, vitals history, lab reports): front desk, clinicians and admins. Lab technicians are included where their screens read them; pharmacists are not.
+  - Allergies stay readable by every role, because pharmacists check them when dispensing. Adding allergies or chronic conditions is limited to doctors, nurses, front desk and admins, who are the roles whose screen offers it.
+  - Bills: front desk, clinicians and admins. No longer lab technicians or pharmacists.
+  - Doctor-only clinical actions (creating, editing or deleting a referral, deleting a prescription) are doctors only. Administrators can no longer do them, because administrative access is not clinical authority.
+  - Endpoints no screen uses (for example creating a doctor profile) are admin-only.
+- **Screens match the server.** The four original lab-module pages (`/register`, `/edit`, `/search`, `/report`), which every role could open, now allow the same roles as their endpoints.
+- **Patient scope is not done.** Limiting a clinician to patients in their care needs the care-team and encounter-assignment model that Phase 2 builds. Until then, every chart read and every refusal is recorded (part 5), so access can be reviewed.
+
+### Verification (part 4)
+
+- `e2e/authorization.e2e.js` passes 5/5:
+  - for 48 endpoints, every role outside the list gets 403 (writes included; the refusal happens before the handler);
+  - every role inside the list gets past the check;
+  - a lab technician cannot read a bill or add an allergy, and no row is written;
+  - administrators cannot create referrals or delete prescriptions;
+  - signed-out callers get 401.
+- All 29 route files load.
+- Workflow suites: OPD 20/20, pharmacy 18/18, laboratory 10/10, administration 28/28, sessions 7/7, inpatient 11/13 (known billing defect).
 
 ### Not yet applied
 

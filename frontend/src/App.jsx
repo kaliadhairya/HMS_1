@@ -160,10 +160,11 @@ export default function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/maintenance" element={<MaintenancePage />} />
               <Route path="/dashboard" element={<ProtectedRoute><DashboardRedirect /></ProtectedRoute>} />
-            <Route path="/register/:type" element={<ProtectedRoute><RegisterPatientPage /></ProtectedRoute>} />
-            <Route path="/edit/:id" element={<ProtectedRoute><RegisterPatientPage /></ProtectedRoute>} />
-            <Route path="/search" element={<ProtectedRoute><SearchPage /></ProtectedRoute>} />
-            <Route path="/report/:reportId" element={<ProtectedRoute><ReportPage /></ProtectedRoute>} />
+            {/* The original lab module's screens; the API allows the same roles. */}
+            <Route path="/register/:type" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'lab_technician']}><RegisterPatientPage /></HMSProtectedRoute>} />
+            <Route path="/edit/:id" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'lab_technician']}><RegisterPatientPage /></HMSProtectedRoute>} />
+            <Route path="/search" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician']}><SearchPage /></HMSProtectedRoute>} />
+            <Route path="/report/:reportId" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician']}><ReportPage /></HMSProtectedRoute>} />
 
             {/* Lab Technician LIMS Routes */}
             <Route path="/lab/queue" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'lab_technician']}><LabTestQueuePage /></HMSProtectedRoute>} />
