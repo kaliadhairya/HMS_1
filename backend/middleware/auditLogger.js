@@ -29,11 +29,14 @@ module.exports = function auditLogger(req, res, next) {
         userId: req.user?.id || null,
         action: req.method,
         module: extractModule(req.originalUrl),
-        recordId: Number(req.params?.id || req.body?.id) || null,
+        recordId: (() => { const id = Number(req.params?.id || req.body?.id); return Number.isInteger(id) && id > 0 && id <= 2147483647 ? id : null; })(),
         newValue: sanitizeBody(req.body),
         ipAddress: req.ip || req.connection?.remoteAddress || 'unknown',
       };
-      writeAudit(entry, idempotencyKey, requestId).catch(() => AuditLog.create({
+      const remote = process.env.INTERNAL_SERVICE_SECRET && process.env.IDENTITY_URL
+        ? writeAudit(entry, idempotencyKey, requestId)
+        : Promise.reject(new Error('local'));
+      remote.catch(() => AuditLog.create({
         user_id: entry.userId,
         action: entry.action,
         module: entry.module,

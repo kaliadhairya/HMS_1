@@ -51,10 +51,16 @@ services:
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env - see .env.example}
       - AADHAAR_ENCRYPTION_KEY=${AADHAAR_ENCRYPTION_KEY:-cd9da93cb9ff3ccd87b4b2da30920bd5ac549e7470423996345cbde3ff5b986a0}
       - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-}
+      # Signed audit checkpoints (see docs/phase1). In development they land in
+      # ./audit-checkpoints; production must ship them to storage the database
+      # administrators cannot rewrite.
+      - AUDIT_CHECKPOINT_DIR=/app/audit-checkpoints
+      - AUDIT_CHECKPOINT_KEY=${AUDIT_CHECKPOINT_KEY:-}
     ports:
       - "5001:5001"
     volumes:
       - ./backend/uploads:/app/uploads
+      - ./audit-checkpoints:/app/audit-checkpoints
     depends_on:
       migrate:
         condition: service_completed_successfully

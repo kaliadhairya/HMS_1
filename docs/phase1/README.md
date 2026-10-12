@@ -8,7 +8,7 @@ Branch `phase1/integrity-foundation`, started from `phase0/safety-fixes`.
 | 2. Find and repair broken links in existing data; enforce relationships in the database | **Done** (see below) |
 | 3. Revocable sessions (logout, deactivation and password change end a session at once) | **Done** (see below) |
 | 4. Action and patient-scope authorization | **Done for roles**; patient scope needs Phase 2 care teams (see below) |
-| 5. Transactional, tamper-evident audit trail | Not started |
+| 5. Transactional, tamper-evident audit trail | **Done** (see below) |
 | 6. Idempotency for retried clinical and financial commands | Not started |
 | 7. Durable state: settings and IPD draft charges out of process memory; outbox for events | Not started |
 | 8. Readiness checks | **Done** with part 1 |
@@ -116,6 +116,32 @@ Branch `phase1/integrity-foundation`, started from `phase0/safety-fixes`.
   - signed-out callers get 401.
 - All 29 route files load.
 - Workflow suites: OPD 20/20, pharmacy 18/18, laboratory 10/10, administration 28/28, sessions 7/7, inpatient 11/13 (known billing defect).
+
+## Part 5: transactional, tamper-evident audit
+
+- **Row changes are recorded by the database** (`0006_audit.sql`). A trigger on every application table writes `audit.row_changes` in the same transaction as the change: inserts keep the new row, deletes the old row, updates only the changed columns. Passwords and one-time codes are never copied. A committed change always has its entry, and a rolled-back one never does. No code path can skip it.
+- **Attribution.** `utils/auditContext.js` gives every request an ID (returned as `X-Request-Id`). Before a pooled connection runs a query, it sets `hms.actor_user_id`, `hms.session_id` and `hms.request_id` on that connection, and the triggers record them. After a successful sign-in, the login's own updates are attributed to that user.
+- **Reads and refusals.** `middleware/accessAudit.js` records every GET of patient data (with the patient ID where the route has one) and every 401 and 403 in `audit.access_events`.
+- **Append-only.** `audit.row_changes`, `audit.access_events` and `hms_audit_logs` refuse UPDATE, DELETE and TRUNCATE. The only exception is the sealer filling the chain columns of an unsealed entry.
+- **Hash chains.** Every 5 seconds the server's sealer (`utils/auditSealer.js`) links committed entries of each table into a SHA-256 chain, and `audit.verify()` recomputes it.
+- **Signed checkpoints.** Once a minute the server writes the chain heads, signed with `AUDIT_CHECKPOINT_KEY`, to `AUDIT_CHECKPOINT_DIR`. `node scripts/audit-verify.js <dir>` checks the chains and every checkpoint.
+  - **Operational requirement:** a checkpoint only protects against a database superuser when it is stored where that person cannot rewrite it, for example a bucket with S3 Object Lock in a separate account. In development it lands in `./audit-checkpoints`.
+- **Activity log fixes.** The readable activity log no longer tries the external identity service unless one is configured. Values too large for its `RECORD_ID` column (which caused the "out of range for type integer" failures) are kept in the details instead of failing the write.
+- **CI** fails if any application table lacks an audit trigger, apart from sessions, idempotency keys, the outbox and the inbox, which are not clinical events.
+
+### Verification (part 5)
+
+- `e2e/audit.e2e.js` passes 7/7:
+  - an allergy added through the API appears in `audit.row_changes` with the nurse's user ID, session ID and the response's `X-Request-Id`;
+  - a rolled-back insert leaves no entry, and no entry contains a password hash;
+  - UPDATE, DELETE and TRUNCATE on audit tables are refused;
+  - a chart read and a 403 appear in `audit.access_events`;
+  - the sealer chains everything and verification passes;
+  - a superuser who disables the guard and edits a sealed entry is caught by the chain;
+  - a superuser who edits an entry and recomputes the entire chain afterwards passes the chain check but is caught by the signed checkpoint.
+- Every suite passes with auditing active: OPD 20/20, pharmacy 18/18, laboratory 10/10, administration 28/28, authorization 5/5, sessions 7/7, audit 7/7, inpatient 11/13 (known billing defect).
+- That run produced 269 row changes and 598 access events with no sealing errors. The only changes without a user are sign-in bookkeeping before authentication, and those are now attributed after a successful sign-in.
+- `verify-migrations.sh` passes on PostgreSQL 16 and 18. It now compares the `audit` schema too and checks audit-trigger coverage, which was confirmed to catch a deliberately unaudited table.
 
 ### Not yet applied
 

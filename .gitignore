@@ -10,5 +10,6 @@ frontend/node_modules/
 *.log
 *.tmp
 *.dump
+audit-checkpoints/
 backend/*.txt
 job-scheduler/

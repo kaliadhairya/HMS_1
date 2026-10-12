@@ -68,10 +68,15 @@ services:
       RATE_LIMIT_MAX_AUTH: 20
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-}
       TRUST_PROXY: "1"
+      # Ship this directory to write-once storage the database administrators
+      # cannot alter (for example an S3 bucket with Object Lock).
+      AUDIT_CHECKPOINT_DIR: /app/audit-checkpoints
+      AUDIT_CHECKPOINT_KEY: ${AUDIT_CHECKPOINT_KEY:?Set AUDIT_CHECKPOINT_KEY in .env}
     ports:
       - "5001:5001"
     volumes:
       - hms_uploads:/app/uploads
+      - hms_audit_checkpoints:/app/audit-checkpoints
     command: ["sh", "startup.sh"]
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:5001/api/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
@@ -155,6 +160,7 @@ services:
           memory: 256M
 
 volumes:
+  hms_audit_checkpoints:
   hms_pgdata:
   hms_uploads:
   hms_promdata:

@@ -33,6 +33,19 @@ git show "$LEGACY_REF:backend/init_database.js" > "$LEGACY_SCRIPT"
 DB_NAME="$LEGACY" node "$LEGACY_SCRIPT" > /dev/null
 DB_NAME="$LEGACY" node migrate.js up
 
+# Every application table must be audited (migration 0006), except the ones
+# whose rows are not clinical, financial or security events.
+UNAUDITED=$(psql -d "$FRESH" -Atc "
+  SELECT string_agg(c.relname, ', ') FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname LIKE 'hms\\_%'
+     AND c.relname NOT IN ('hms_audit_logs', 'hms_sessions', 'hms_idempotency_keys', 'hms_outbox', 'hms_inbox')
+     AND NOT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
+                      WHERE t.tgrelid = c.oid AND p.proname = 'capture_change')")
+if [ -n "$UNAUDITED" ]; then
+  echo "FAIL: tables without an audit trigger: $UNAUDITED"
+  exit 1
+fi
+
 if diff <(psql -d "$FRESH" -Atf scripts/schema-fingerprint.sql) <(psql -d "$LEGACY" -Atf scripts/schema-fingerprint.sql); then
   echo "PASS: fresh and upgraded databases have identical schemas ($(psql -d "$FRESH" -Atf scripts/schema-fingerprint.sql | wc -l) facts)"
 else

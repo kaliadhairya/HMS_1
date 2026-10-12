@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const { logAction } = require('../utils/auditLogger');
+const { setActor } = require('../utils/auditContext');
 const { signSessionToken, signPasswordResetToken, verifyPasswordResetToken, resetTokenMatchesUser } = require('../utils/authTokens');
 const { createSession, revokeSession, revokeUserSessions, setSessionCookie, clearSessionCookie } = require('../utils/sessions');
 const securitySettings = require('../utils/settings');
@@ -96,7 +97,8 @@ router.post('/login', [
       });
     }
 
-    // Successful login — reset failed_attempts, update last_login
+    // Successful login — reset failed_attempts, update last_login (attributed to this user in the audit)
+    setActor({ id: user.id });
     await User.update(
       { failed_attempts: 0, locked_until: null, last_login: new Date() },
       { where: { id: user.id } }

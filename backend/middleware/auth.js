@@ -3,6 +3,7 @@ const { readTrustedContext } = require('./trustedContext');
 
 const { verifySessionToken } = require('../utils/authTokens');
 const { COOKIE_NAME, checkSession, readCookie } = require('../utils/sessions');
+const { setActor } = require('../utils/auditContext');
 
 // Browsers send the session in an HttpOnly cookie; scripts and services send
 // a bearer token.
@@ -36,6 +37,7 @@ const protect = async (req, res, next) => {
     const trusted = trustedGatewayEnabled() ? readTrustedContext(req) : null;
     if (trusted) {
       req.user = trusted;
+      setActor(req.user);
       return next();
     }
     const { token, source } = resolveToken(req);
@@ -56,6 +58,7 @@ const protect = async (req, res, next) => {
       }
       if (!context) return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
       req.user = context;
+      setActor(req.user);
       return next();
     }
 
@@ -102,6 +105,7 @@ const protect = async (req, res, next) => {
         sessionId: decoded.sid,
         permissions,
       };
+      setActor(req.user);
       return next();
     }
   } catch (error) {

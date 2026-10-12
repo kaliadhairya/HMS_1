@@ -13,6 +13,8 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { sequelize } = require('./models');
 const { schemaProblems } = require('./migrate');
+const { requestContext, bindAuditActor } = require('./utils/auditContext');
+const { startAuditSealer } = require('./utils/auditSealer');
 const { validateToken } = require('./utils/identityClient');
 const { resolveTokenUser, socketToken, identityServiceEnabled } = require('./middleware/auth');
 const {
@@ -22,6 +24,9 @@ const {
   activeSocketConnections,
 } = require('./utils/metrics');
 const app = express();
+// Database audit triggers attribute every row change to the request's user (migration 0006).
+bindAuditActor(sequelize);
+app.use(requestContext);
 const trustProxy = process.env.TRUST_PROXY || '1';
 const numericTrustProxy = Number(trustProxy);
 app.set('trust proxy', Number.isInteger(numericTrustProxy) && numericTrustProxy >= 0 ? numericTrustProxy : (trustProxy === 'true' ? true : trustProxy));
@@ -114,6 +119,8 @@ app.use('/uploads/logo', express.static(path.join(__dirname, 'uploads', 'logo'))
 // -- Global Audit Logger -----------------------------------------
 const auditLogger = require('./middleware/auditLogger');
 app.use('/api', auditLogger);
+// Chart reads and refused requests (row changes are captured by the database).
+app.use(require('./middleware/accessAudit'));
 
 // ── Routes ──────────────────────────────────────────────────────
 app.use('/api/auth', require('./routes/auth'));
@@ -270,6 +277,7 @@ async function start() {
   server.listen(PORT, process.env.BACKEND_HOST || '0.0.0.0', () => {
     console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
   });
+  startAuditSealer(sequelize);
 }
 
 start();
