@@ -8,6 +8,8 @@
   migrations 0030–0049. Prompt: `docs/PHASE3_PROMPT.md`.
 - **Phase 4 (Codex, after Phase 3):** worktree `../HMS_1-phase4`, migrations 0050–0069.
   Prompt: `docs/PHASE4_PROMPT.md`.
+- **Phase 5 (Claude):** worktree `../HMS_1-phase5`, branch `phase5/revenue-cycle`
+  from `integration/phase2-phase3`, migrations 0070–0089. Plan: `docs/phase5/PLAN.md`.
 - No one deploys to the shared Docker app without the owner's approval.
 
 ### Session log
@@ -61,3 +63,14 @@ required; leave Phase 2's implementation files unchanged.
 - 2026-10-13: resumed; reviewing medication schema and implementing Phase 3-owned domain services, routes, UI and acceptance tests.
 
 - 2026-10-13: completed medication/backend/frontend implementation and review; all 17 verifier suites pass, PG16/18 migrations match through 0043, build passes. Evidence: docs/phase3/verification.json. No shared deployment/merge. Phase 4 awaits the merged base required by the main parallel-work rules.
+
+## Phase 5 (Claude)
+
+STOP: Phase 5 billing files are owned by Claude in `HMS_1-phase5` on
+`phase5/revenue-cycle` (see `docs/phase5/PLAN.md`, "Ownership"). Other agents
+leave this worktree unchanged.
+- 2026-10-14: started from `01c19aa`. Billing accounts, charge capture,
+  invoices, journal, deposits/payments/refunds, insurance and reconciliation.
+  Lab and medicine charges are captured by database triggers, so Phase 3 and
+  Phase 4 files are not edited. Test databases `hms_p5_*`, API 5032, Vite 5204.
+  No shared deployment.
