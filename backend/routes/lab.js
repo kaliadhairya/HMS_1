@@ -377,6 +377,10 @@ router.get('/workload', canRead, async (req, res) => {
         avgTatMinutes,
         targetTat: null,
         abnormalFlagged: completedItems.filter((i) => isAbnormal(i.flag)).length,
+        // Existing dashboards label this historical alias "Abnormal results".
+        // New consumers use abnormalFlagged or unresolvedCritical explicitly.
+        criticalFlagged: completedItems.filter((i) => isAbnormal(i.flag)).length,
+        legacyCriticalFlaggedMeaning: 'ABNORMAL_COUNT_ONLY',
         unresolvedCritical: Number((await sequelize.query("SELECT count(*)::int AS n FROM hms_lab_critical_tasks WHERE state<>'CLOSED'", { type: QueryTypes.SELECT }))[0].n),
         shift: 'Operational',
       },

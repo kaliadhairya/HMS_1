@@ -21,3 +21,9 @@ Owner request for Phase 3's consultation investigation UI and Phase 2's
 
 Phase 4 will retain historical reads and retire ungoverned result/report writes.
 No edits to other phases' implementation files or shared deployment are made.
+
+Shared dashboard integration: `/api/lab/workload` exposes `abnormalFlagged`
+and `unresolvedCritical` separately. Update the dashboards to read the former
+for "Abnormal results". The legacy `criticalFlagged` alias retains only its
+historical abnormal-count semantics for compatibility; it is not evidence
+that a critical policy matched or a communication task exists.
