@@ -18,6 +18,20 @@ const REGISTRATION_ROLES = ['super_admin', 'admin', 'receptionist'];
 const fmt = (v) => (v ? new Date(v).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 
 // Shown above the tabs while a patient has only a temporary identity.
+// A merged duplicate points to the record that holds its history now.
+export function MergedRecordBanner({ patient }) {
+  if (patient.identity_status !== 'merged' || !patient.merged_into) return null;
+  return (
+    <section className="panel panel-pad" role="status" style={{ marginBottom: 16 }}>
+      <div className="alert-strip alert-warning" style={{ marginBottom: 0 }}>
+        <TriangleAlert size={16} aria-hidden="true" />
+        <span><strong>This record was merged.</strong> Its visits and records now belong to {patient.merged_into.name} ({patient.merged_into.uhid}).</span>
+        <a className="btn btn-secondary btn-sm" href={`/hms/patients/${patient.merged_into.id}`}>Open that record</a>
+      </div>
+    </section>
+  );
+}
+
 export function ConfirmIdentityBanner({ patient, onConfirmed }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', gender: 'Male', age: patient.age ?? '', dob: '', phoneNumber: '' });

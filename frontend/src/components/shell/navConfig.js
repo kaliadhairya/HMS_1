@@ -19,6 +19,7 @@ export const NAV_BY_ROLE = {
   super_admin: [
     { to: '/super_admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
     { to: '/hms/patients/search', label: 'Patients', icon: Search, group: 'Patients' },
+    { to: '/hms/patients/duplicates', label: 'Possible duplicates', icon: Users, group: 'Patients' },
     { to: '/pharmacy/medicines', label: 'Medicines', icon: Pill, group: 'Pharmacy' },
     { to: '/reports', label: 'Reports', icon: ChartColumn, group: 'Insights' },
     { to: '/hms/admin/users', label: 'Users', icon: Users, group: 'Administration' },
@@ -28,6 +29,7 @@ export const NAV_BY_ROLE = {
   admin: [
     { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
     { to: '/hms/admin/patients', label: 'Patients', icon: Hospital, group: 'Patients' },
+    { to: '/hms/patients/duplicates', label: 'Possible duplicates', icon: Users, group: 'Patients' },
     { to: '/hms/appointments', label: 'Appointments', icon: CalendarDays, group: 'Patients' },
     { to: '/hms/admin/bed-management', label: 'Bed management', icon: BedDouble, group: 'Inpatient' },
     { to: '/hms/admin/pharmacy', label: 'Pharmacy', icon: Package, group: 'Pharmacy' },
@@ -62,6 +64,7 @@ export const NAV_BY_ROLE = {
   receptionist: [
     { to: '/receptionist/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
     { to: '/hms/patients/new', label: 'Registration', icon: UserPlus, group: 'Patients' },
+    { to: '/hms/patients/duplicates', label: 'Possible duplicates', icon: Users, group: 'Patients' },
     { to: '/hms/patients/search', label: 'Patients', icon: Search, group: 'Patients' },
     { to: '/receptionist/appointments', label: 'Appointments', icon: CalendarDays, group: 'Patients' },
     { to: '/hms/opd/token', label: 'OPD tokens', icon: Ticket, group: 'Patients', disabled: true },

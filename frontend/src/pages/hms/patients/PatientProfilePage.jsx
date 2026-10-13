@@ -9,7 +9,7 @@ import Navbar from '../../../components/Navbar';
 import PatientBanner from '../../../components/patient/PatientBanner';
 import EmptyState from '../../../components/ui/EmptyState';
 import Modal from '../../../components/ui/Modal';
-import PatientIdentityPanel, { ConfirmIdentityBanner } from './PatientIdentityPanel';
+import PatientIdentityPanel, { ConfirmIdentityBanner, MergedRecordBanner } from './PatientIdentityPanel';
 
 const PATIENT_TYPE_LABEL = { corporate_employee: 'Corporate employee', other: 'General' };
 const TABS = [
@@ -207,6 +207,7 @@ export default function PatientProfilePage() {
       )}
     />
     <div className="app-page">
+      <MergedRecordBanner patient={patient} />
       <ConfirmIdentityBanner patient={patient} onConfirmed={() => fetchProfile(true)} />
       <section className="panel">
         <div className="tabs" role="tablist" aria-label="Patient record">

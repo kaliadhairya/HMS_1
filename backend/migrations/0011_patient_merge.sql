@@ -85,7 +85,7 @@ LANGUAGE sql STABLE AS $$
   ),
   demographic AS (
     SELECT pa, pb, 'same phone, similar name' AS reason, 35 AS points FROM pairs
-     WHERE (a).phone <> '' AND (a).phone = (b).phone AND sim >= 0.5
+     WHERE (a).phone <> '' AND (a).phone = (b).phone AND sim >= 0.6
     UNION ALL
     SELECT pa, pb, 'same date of birth, similar name', 35 FROM pairs
      WHERE (a).dob IS NOT NULL AND (a).dob = (b).dob AND sim >= 0.7

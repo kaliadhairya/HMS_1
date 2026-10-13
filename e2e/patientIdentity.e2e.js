@@ -87,7 +87,8 @@ const randomAbha = () => Array.from({ length: 14 }, (_, i) => (i === 0 ? 9 : Mat
     assert((await call('POST', `/patients/hms/${a.id}/identifiers/${addA.data.data.id}/verify`, nurse)).status === 403, 'nurse verified an identifier');
     assert((await call('POST', `/patients/hms/${a.id}/identifiers/${addA.data.data.id}/verify`, desk)).status === 200, 'verify A');
     const clash = await call('POST', `/patients/hms/${b.id}/identifiers/${addB.data.data.id}/verify`, desk);
-    assert(clash.status === 409 && /possible duplicates/.test(clash.data.message), `second verify: ${clash.status} ${clash.data?.message}`);
+    // Not verified; both records go to the possible-duplicates review (part 2).
+    assert(clash.status === 202 && clash.data.verified === false && /possible-duplicates review/.test(clash.data.message), `second verify: ${clash.status} ${clash.data?.message}`);
     const [count] = await sql("SELECT count(*)::int AS n FROM hms_patient_identifiers WHERE value = $1 AND verification_status = 'verified'", [abha]);
     assert(count.n === 1, `${count.n} verified copies`);
   });
