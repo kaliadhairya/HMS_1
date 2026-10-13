@@ -13,6 +13,7 @@ Never switch branches in a folder another agent is using.
 | 2 | Claude | `HMS_1/` (the main folder) | `phase2/patient-journey` |
 | 3 | Codex | `HMS_1-phase3/` | `phase3/medication-safety` |
 | 4 | Codex | `HMS_1-phase4/` | `phase4/laboratory` |
+| 5 | Claude | `HMS_1-phase5/` | `phase5/revenue-cycle` |
 
 Create a worktree once, from the main folder:
 
@@ -32,6 +33,7 @@ Each worktree needs its own `npm ci` in `backend/`, `frontend/` and `e2e/`.
 | 2 | `0010`–`0029` |
 | 3 | `0030`–`0049` |
 | 4 | `0050`–`0069` |
+| 5 | `0070`–`0089` |
 
 - Never edit a migration that is already committed.
 - Every new `hms_` table needs foreign keys, CHECK constraints, and an audit
@@ -79,6 +81,7 @@ throwaway databases and ports. Never test against the database called `hms`.
 | 2 | `hms_e2e`, `hms_p2_*` | 5002 | 5174 |
 | 3 | `hms_p3_*` | 5012 | 5184 |
 | 4 | `hms_p4_*` | 5022 | 5194 |
+| 5 | `hms_p5_*` | 5032 | 5204 |
 
 Copy test data from the newest `~/hms-backups/<timestamp>/hms.dump`, then run
 `node migrate.js up` in your own worktree.
