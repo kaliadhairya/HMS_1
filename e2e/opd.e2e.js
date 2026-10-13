@@ -6,6 +6,7 @@
 // Run: cd e2e && NODE_PATH=$(npm root -g) node opd.e2e.js
 const {
   chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, stamp, sleep,
+  inCare,
 } = require('./helpers');
 
 const S = stamp();
@@ -381,6 +382,8 @@ async function pickPatient(page, query, name) {
       const { page, errors } = fresh(doc);
       const recToken = await apiLogin('receptionist');
       const qc = await api('POST', '/patients/hms', { token: recToken, body: { patientType: 'other', name: QC_NAME, age: 52, gender: 'Male', opdIndoor: 'OPD', testDate: new Date().toISOString().slice(0, 10), phoneNumber: `8${S.padStart(9, '0')}` } });
+      assert(qc.status === 201, `quick consult patient ${qc.status}`);
+      await inCare(qc.data.data.id);
       assert(qc.status === 201, `QC patient: ${qc.status}`);
       state.qcPatient = qc.data.data;
       const al = await api('POST', `/patients/hms/${state.qcPatient.id}/allergies`, { token: await apiLogin('doctor'), body: { allergen: 'paracetamol', severity: 'Moderate' } });
@@ -399,7 +402,8 @@ async function pickPatient(page, query, name) {
       assert(/paracetamol/i.test(await dialog.textContent()), 'quick consult warning does not name the allergy');
       await dialog.getByRole('button', { name: 'Cancel' }).click();
 
-      // Patient with none on record
+      // Patient with none on record (the doctor must be in the patient's care to read allergies)
+      await inCare(state.corp.id);
       await page.getByRole('button', { name: 'Back to search' }).click();
       await page.getByPlaceholder('Search patient name, ID or UHID').fill(state.corp.uhid);
       await page.getByRole('button', { name: new RegExp(CORP_NAME) }).click();
@@ -474,6 +478,7 @@ async function pickPatient(page, query, name) {
     await step('Medicines dispensed before billing: the OPD bill adds the consultation fee to the pharmacy\'s bill (API)', async () => {
       const [rec, doc, ph] = [await apiLogin('receptionist'), await apiLogin('doctor'), await apiLogin('pharmacist')];
       const pt = await api('POST', '/patients/hms', { token: rec, body: { patientType: 'other', name: `E2E OPD Rx ${S}`, age: 29, gender: 'Female', opdIndoor: 'OPD', testDate: new Date().toISOString().slice(0, 10), phoneNumber: `6${S.padStart(9, '0')}` } });
+      await inCare(pt.data.data.id);
       assert(pt.status === 201, `patient ${pt.status}`);
       const med = await api('POST', '/hms/medicines', { token: ph, body: { genericName: `E2E OPD Med ${S}`, formulation: 'Tablet', strength: '5', strengthUnit: 'mg', category: 'Tablet', gstRate: 0 } });
       assert(med.status === 201 || med.status === 200, `medicine ${med.status} ${JSON.stringify(med.data).slice(0, 160)}`);

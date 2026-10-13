@@ -1,4 +1,6 @@
 const express = require('express');
+const { openOccupancy, closeOccupancy } = require('../utils/adt');
+const { QueryTypes } = require('sequelize');
 const router = express.Router();
 const { sequelize, Ward, Bed, Admission, Patient, User, ProgressNote, NursingNote, IpdVitals, MarRecord, IpdRequest } = require('../models');
 const { publish } = require('../utils/outbox');
@@ -291,6 +293,8 @@ router.post('/admissions', protect, checkPermission('ipd', 'write'), async (req,
       transaction: t,
     });
     await sequelize.query("UPDATE HMS_BEDS SET STATUS = 'Occupied' WHERE ID = :bedId", { replacements: { bedId }, transaction: t });
+    // The bed's occupancy history starts with the admission (migration 0017).
+    await openOccupancy(sequelize, { bedId, admissionId, userId: req.user.id, reason: 'admission', transaction: t });
     if (request) {
       await sequelize.query(
         "UPDATE HMS_IPD_REQUESTS SET STATUS = 'Admitted', ADMISSION_ID = :admissionId, UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = :id",
@@ -608,14 +612,19 @@ router.patch('/admissions/:id/discharge', protect, checkPermission('ipd', 'write
     if (!admission) return abort(404, 'Admission record not found');
     if (admission.STATUS !== 'Active') return abort(409, `This admission is already ${String(admission.STATUS).toLowerCase()}.`);
     if (!finalDiagnosis) return abort(400, 'Final diagnosis is required to discharge.');
+    // A discharge plan, once started, must be clinically ready (migration 0017).
+    const [plan] = await sequelize.query('SELECT clinical_ready_at FROM hms_discharge_plans WHERE admission_id = :admissionId', { replacements: { admissionId: admission.ID }, type: QueryTypes.SELECT, transaction: t });
+    if (plan && !plan.clinical_ready_at) return abort(409, 'The discharge plan is not clinically ready yet.');
 
     const [[updated]] = await sequelize.query(`
       UPDATE HMS_ADMISSIONS SET DISCHARGE_DATE = CURRENT_TIMESTAMP, STATUS = 'Discharged'
       WHERE ID = :admissionId
       RETURNING DISCHARGE_DATE AS "DISCHARGE_DATE"
     `, { replacements: { admissionId: admission.ID }, transaction: t });
+    // The bed goes to cleaning, not straight back to Ready (blueprint 4.1).
+    await closeOccupancy(sequelize, { admissionId: admission.ID, reason: 'discharged', transaction: t });
     if (admission.BED_ID) {
-      await sequelize.query("UPDATE HMS_BEDS SET STATUS = 'Available' WHERE ID = :bedId", { replacements: { bedId: admission.BED_ID }, transaction: t });
+      await sequelize.query("UPDATE HMS_BEDS SET STATUS = 'Dirty' WHERE ID = :bedId", { replacements: { bedId: admission.BED_ID }, transaction: t });
     }
 
     const summaryId = await nextId('hms_discharge_seq', 'HMS_DISCHARGE_SUMMARIES', t);

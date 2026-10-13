@@ -18,6 +18,10 @@ const REQUIRED = [
   /^\/api\/lab\/(samples|results\/[\w-]+)$/,
   /^\/api\/pharmacist_lms\/(dispense|returns|purchase-orders)$/,
   /^\/api\/hms\/(encounters|diagnoses|prescriptions|investigation-orders|appointments|tokens|vitals)(?:\/.*)?$/,
+  /^\/api\/clinical-documents(?:\/.*)?$/,
+  /^\/api\/triage(?:\/.*)?$/,
+  /^\/api\/adt(?:\/.*)?$/,
+  /^\/api\/referrals(?:\/.*)?$/,
 ];
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const KEY_FORMAT = /^[\w.:-]{8,200}$/;

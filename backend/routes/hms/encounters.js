@@ -4,6 +4,7 @@ const { Encounter, Patient, User, Department, Token, Diagnosis, Prescription, Pr
 const { sequelize } = require('../../models/db');
 const { protect, checkPermission } = require('../../middleware/auth');
 const { requireCurrentPractitioner } = require('../../utils/practitioners');
+const { patientInCare, ensureCareTeam, NOT_IN_CARE } = require('../../utils/careTeam');
 const { logAction } = require('../../utils/auditLogger');
 const { clobToString } = require('../../utils/clobToString');
 const { Op } = require('sequelize');
@@ -50,6 +51,9 @@ router.post('/', protect, checkPermission('consultation', 'write'), requireCurre
     }
     const patient = await Patient.findByPk(patientId, { attributes: ['id'] });
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    if (req.user.role === 'doctor' && !(await patientInCare(req.user.id, patientId))) {
+      return res.status(403).json({ success: false, code: 'PATIENT_NOT_IN_CARE', message: NOT_IN_CARE });
+    }
 
     const encounterId = await sequelize.transaction(async (transaction) => {
       // Link the visit the front desk opened today (token and/or appointment), so the queue

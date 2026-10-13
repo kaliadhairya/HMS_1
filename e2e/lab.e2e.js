@@ -7,7 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
-const { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp } = require('./helpers');
+const { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, inCare} = require('./helpers');
 
 const { step, done } = runner('Laboratory workflow');
 
@@ -105,6 +105,7 @@ async function searchTable(page, placeholder, text) {
       });
       assert(p.status === 201, `patient create ${p.status} ${JSON.stringify(p.data).slice(0, 200)}`);
       ctx.patientId = p.data.data?.id || p.data.patient?.id;
+      await inCare(ctx.patientId);
       assert(ctx.patientId, 'patient id missing');
       const e = await api('POST', '/hms/encounters', { token: doctor, body: { patient_id: ctx.patientId, chief_complaint: 'Fatigue (E2E lab)' } });
       assert(e.status === 201, `encounter create ${e.status} ${JSON.stringify(e.data)}`);

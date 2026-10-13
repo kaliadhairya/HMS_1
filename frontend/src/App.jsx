@@ -29,6 +29,10 @@ const NewPatientPage = lazy(() => import('./pages/hms/patients/NewPatientPage'))
 const PatientSearchPage = lazy(() => import('./pages/hms/patients/PatientSearchPage'));
 const DuplicateReviewPage = lazy(() => import('./pages/hms/patients/DuplicateReviewPage'));
 const PractitionersPage = lazy(() => import('./pages/hms/patients/PractitionersPage'));
+const TriagePage = lazy(() => import('./pages/hms/clinical/TriagePage'));
+const ReferralsPage = lazy(() => import('./pages/hms/clinical/ReferralsPage'));
+const ClinicalNotePage = lazy(() => import('./pages/hms/clinical/ClinicalNotePage'));
+const AdmissionMovesPage = lazy(() => import('./pages/hms/clinical/AdmissionMovesPage'));
 const PatientProfilePage = lazy(() => import('./pages/hms/patients/PatientProfilePage'));
 const OPDTokenPage = lazy(() => import('./pages/hms/opd/OPDTokenPage'));
 const AppointmentBookingPage = lazy(() => import('./pages/hms/opd/AppointmentBookingPage'));
@@ -224,6 +228,26 @@ export default function App() {
             <Route path="/hms/patients/new" element={
               <HMSProtectedRoute allowedRoles={['super_admin', 'receptionist', 'doctor']}>
                 <NewPatientPage />
+              </HMSProtectedRoute>
+            } />
+            <Route path="/hms/triage" element={
+              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'doctor']}>
+                <TriagePage />
+              </HMSProtectedRoute>
+            } />
+            <Route path="/hms/referrals" element={
+              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+                <ReferralsPage />
+              </HMSProtectedRoute>
+            } />
+            <Route path="/hms/notes/:id" element={
+              <HMSProtectedRoute allowedRoles={['doctor']}>
+                <ClinicalNotePage />
+              </HMSProtectedRoute>
+            } />
+            <Route path="/hms/adt" element={
+              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'doctor']}>
+                <AdmissionMovesPage />
               </HMSProtectedRoute>
             } />
             <Route path="/hms/practitioners" element={

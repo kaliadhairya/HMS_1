@@ -8,7 +8,7 @@ import EmptyState from '../../../components/ui/EmptyState';
 import Modal from '../../../components/ui/Modal';
 
 // Bed status -> status tone. Anything not listed falls back to neutral.
-const BED_TONE = { Available: 'success', Occupied: 'info', Reserved: 'warning', Cleaning: 'warning', Maintenance: 'neutral' };
+const BED_TONE = { Available: 'success', Occupied: 'info', Reserved: 'warning', Dirty: 'warning', Cleaning: 'warning', OutOfService: 'neutral', Maintenance: 'neutral' };
 const TONE_VARS = {
   success: { bg: 'var(--success-light)', border: 'var(--success-border)', fg: 'var(--success)' },
   info: { bg: 'var(--primary-light)', border: 'var(--primary-border)', fg: 'var(--primary)' },

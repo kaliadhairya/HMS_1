@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { BadgeCheck, CircleSlash, IdCard, TriangleAlert, UserPlus, Users } from 'lucide-react';
 import api from '../../../api/axios';
 import EmptyState from '../../../components/ui/EmptyState';
+import CareTeamSection from './CareTeamSection';
 
 const SYSTEM_LABEL = {
   UHID: 'UHID',
@@ -162,7 +163,8 @@ export default function PatientIdentityPanel({ patientId, role }) {
 
   return (
     <div className="panel-pad stack">
-      <h2 className="panel-subtitle" style={{ marginTop: 0 }}>Identifiers</h2>
+      <CareTeamSection patientId={patientId} role={role} />
+      <h2 className="panel-subtitle">Identifiers</h2>
       <table className="mini-table">
         <thead><tr><th>Type</th><th>Value</th><th>Issued by</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
         <tbody>

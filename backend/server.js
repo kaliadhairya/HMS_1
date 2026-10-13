@@ -137,9 +137,24 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/events', require('./routes/events'));
 app.use('/api/users', require('./routes/users'));
 app.use('/internal/compat', require('./routes/internalCompat'));
+// Care teams and break-glass (before the patient-scope guard below, so a doctor
+// outside a patient's care can still ask for break-glass access).
+app.use('/api/patients', require('./routes/careTeam'));
+// Patient scope (migration 0014): a doctor reads a patient's record only when
+// the patient is in their care. Desk staff and administrators are not limited.
+const { requirePatientInCare } = require('./utils/careTeam');
+app.use('/api/patients/hms/:id', require('./middleware/auth').protect, requirePatientInCare);
+app.use('/api/patients/:id', require('./middleware/auth').protect, requirePatientInCare);
+app.use('/api/hms/vitals/latest/:id', require('./middleware/auth').protect, requirePatientInCare);
+app.use('/api/hms/vitals/history/:id', require('./middleware/auth').protect, requirePatientInCare);
+app.use('/api/hms/prescriptions/patient/:id', require('./middleware/auth').protect, requirePatientInCare);
 app.use('/api/patients', require('./routes/patientIdentity').router);
 app.use('/api/patients', require('./routes/patientMerge').router);
 app.use('/api/practitioners', require('./routes/practitioners'));
+app.use('/api/triage', require('./routes/triage'));
+app.use('/api/clinical-documents', require('./routes/clinicalDocuments'));
+app.use('/api/adt', require('./routes/adt'));
+app.use('/api/referrals', require('./routes/referrals'));
 app.use('/api/patients', require('./routes/patients'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/dashboard', require('./routes/dashboard'));

@@ -6,7 +6,7 @@
 // billing history -> role access.
 // Run: cd e2e && NODE_PATH=$(npm root -g) node ipd.e2e.js
 const fs = require('fs');
-const { chromium, BASE, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp } = require('./helpers');
+const { chromium, BASE, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, inCare} = require('./helpers');
 
 const { step: baseStep, done } = runner('Inpatient workflow');
 // IPD_DEBUG=1 prints the whole error (call log included) for a failing step.
@@ -68,7 +68,9 @@ async function newPatient(name, phonePrefix) {
     },
   });
   assert(p.status === 201, `patient create ${p.status} ${JSON.stringify(p.data).slice(0, 200)}`);
-  return p.data.data?.id || p.data.patient?.id;
+  const id = p.data.data?.id || p.data.patient?.id;
+  await inCare(id);
+  return id;
 }
 
 // ── test ─────────────────────────────────────────────────────────────────────
@@ -430,7 +432,7 @@ async function newPatient(name, phonePrefix) {
       const [bed] = await sql('SELECT status FROM hms_beds WHERE id = $1', [ctx.bed.id]);
       const sums = await sql('SELECT * FROM hms_discharge_summaries WHERE admission_id = $1', [ctx.admissionId]);
       assert(a.status === 'Discharged' && a.discharge_date, `admission ${JSON.stringify(a)}`);
-      assert(bed.status === 'Available', `bed after discharge ${bed.status}`);
+      assert(bed.status === 'Dirty', `bed after discharge ${bed.status}`);
       assert(sums.length === 1 && sums[0].final_diagnosis === `Pneumonia E2E ${s}` && sums[0].discharge_condition === 'Improved' && sums[0].created_by === ctx.uid.doctor
         && JSON.parse(sums[0].discharge_medications)[0].drug === 'Tab Amoxicillin-clavulanate', `summary ${JSON.stringify(sums)}`);
       const again = await api('PATCH', `/ipd/admissions/${ctx.admissionId}/discharge`, { token: await apiLogin('doctor'), body: { finalDiagnosis: 'x' } });

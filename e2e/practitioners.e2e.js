@@ -4,7 +4,7 @@
 // cannot start or finish clinical work; a doctor with no registration recorded
 // is not blocked.
 const crypto = require('crypto');
-const { API, apiLogin, sql, runner, assert, stamp, chromium, BASE, browserAs } = require('./helpers');
+const { API, apiLogin, sql, runner, assert, stamp, chromium, BASE, browserAs, inCare } = require('./helpers');
 
 async function call(method, url, token, body) {
   const res = await fetch(API + url, {
@@ -71,12 +71,13 @@ const yearsAgo = (n) => `${new Date().getFullYear() - n}-01-01`;
       kind: 'medical_registration', identifier: `E2E-${tag}-R`, issuingBody: 'Test Council', validFrom: yearsAgo(1),
     });
     assert(renewed.status === 201, `renew ${renewed.status}`);
+    ctx.renewedCredential = renewed.data.data.id;
     const [patient] = await sql('SELECT id FROM hms_patients WHERE identity_status = $1 ORDER BY id LIMIT 1', ['registered']);
+    await inCare(patient.id, `e2e.doc.${tag}`);
     const r = await call('POST', '/hms/encounters', ctx.token, { patient_id: patient.id, chief_complaint: 'renewed registration check' });
     assert(r.status === 201, `consultation after renewal: ${r.status} ${JSON.stringify(r.data)}`);
     const s = await call('GET', `/practitioners/${ctx.userId}`, admin);
     assert(s.data.data.registration_expired === false, 'still reported expired after renewal');
-    ctx.renewedCredential = renewed.data.data.id;
   });
 
   await step('A registration can be verified once; a second verification of the same number for another practitioner is refused', async () => {

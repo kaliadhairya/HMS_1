@@ -110,4 +110,14 @@ function runner(name) {
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 const stamp = () => String(Date.now()).slice(-7);
 
-module.exports = { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, creds };
+
+// Puts a doctor on a patient's care team, as the front desk does when a patient
+// is queued or booked. Doctors can only open records of patients in their care.
+async function inCare(patientId, username = 'doctor') {
+  const rec = await apiLogin('receptionist');
+  const [u] = await sql('SELECT id FROM hms_users WHERE username = $1', [username]);
+  const r = await api('POST', `/patients/hms/${patientId}/care-team`, { token: rec, body: { practitionerUserId: u.id, role: 'consulting' } });
+  if (r.status !== 201 && r.status !== 409) throw new Error(`care team for ${username}: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
+}
+
+module.exports = { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, creds, inCare };

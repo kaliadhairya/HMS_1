@@ -2,7 +2,7 @@
 
 ## Parallel work in progress (2026-10-13): read docs/PARALLEL_WORK.md first
 
-- **Phase 2 (Claude):** this main folder, branch `phase2/patient-journey`, migrations 0010–0029.
+- **Phase 2 (Claude):** this main folder, branch `phase2/patient-journey`, migrations 0010–0018 in use.
   Do not edit files Phase 2 owns, and do not switch branches in this folder.
 - **Phase 3 (Codex):** your own worktree `../HMS_1-phase3`, branch `phase3/medication-safety`,
   migrations 0030–0049. Prompt: `docs/PHASE3_PROMPT.md`.
@@ -12,6 +12,7 @@
 
 ### Session log
 - 2026-10-13 Claude: Phase 2 part 1 (patient identity) committed fcb87c7; part 1 deployed to Docker 2026-10-13; part 2 (duplicate review and merge) finished and tested; not deployed yet.
+- 2026-10-13 Claude: Phase 2 parts 3–9 built (practitioners 0012, scheduling 0013, care teams 0014, triage 0015, clinical documents 0016, beds/ADT 0017, referrals 0018); see docs/phase2/README.md. Not deployed. Appointment slot resolver now follows the scheduling exclusion rule. The durability e2e suite starts a second backend on port 15103 by default; that port is used by Codex's `hms_p3_final` server, so run it with `E2E_SECOND_PORT=15203`.
 
 ## Status (2026-10-13): Phase 1 complete — you may work
 

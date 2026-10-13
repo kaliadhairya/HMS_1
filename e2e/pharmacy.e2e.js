@@ -3,7 +3,7 @@
 // expiry actions -> reports -> dashboard alerts. Key actions go through the UI as the pharmacist; outcomes are
 // checked in the database.
 // Run: cd e2e && NODE_PATH=$(npm root -g) node pharmacy.e2e.js
-const { chromium, BASE, api, apiLogin, sql, browserAs, runner, assert, stamp } = require('./helpers');
+const { chromium, BASE, api, apiLogin, sql, browserAs, runner, assert, stamp, inCare} = require('./helpers');
 
 const { step, done } = runner('Pharmacy workflow');
 
@@ -61,6 +61,7 @@ async function until(fn, message, timeout = 10000) {
       });
       assert(p.status === 201, `patient create ${p.status} ${JSON.stringify(p.data).slice(0, 200)}`);
       ctx.patientId = p.data.data?.id || p.data.patient?.id;
+      await inCare(ctx.patientId);
       const [row] = await sql('SELECT uhid FROM hms_patients WHERE id = $1', [ctx.patientId]);
       ctx.uhid = row.uhid;
     });

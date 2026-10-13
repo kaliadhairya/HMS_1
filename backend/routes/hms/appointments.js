@@ -1,3 +1,5 @@
+const { conflictResponse } = require('../../utils/dbErrors');
+const { ensureCareTeam } = require('../../utils/careTeam');
 const express = require('express');
 const router = express.Router();
 const { Op, QueryTypes } = require('sequelize');
@@ -68,12 +70,23 @@ async function doctorIdsFor(doctorId) {
   return { ids: doctor ? [doctor.userId] : [], userId: doctor ? doctor.userId : null, departmentId: doctor ? doctor.departmentId : null };
 }
 
+// Minutes past midnight for an "HH:MM" slot time, or null when it is not one.
+function slotMinutes(time) {
+  if (!time) return null;
+  const [hours, minutes] = String(time).split(':').map(Number);
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+  return (hours * 60) + minutes;
+}
+
+// Ranges this doctor's bookings still hold on the day. Matches the database rule
+// (ex_appointments_doctor_no_overlap, migration 0013): only cancelled and no-show
+// bookings release their time. A completed booking still occupied its time.
 async function getBookedSlots(doctorId, appointmentDate, excludeId = null) {
   const { ids } = await doctorIdsFor(doctorId);
   const filters = [
     `DOCTOR_ID IN (:doctorIds)`,
     `trunc(APPOINTMENT_DATE) = TO_DATE(:appointmentDate, 'YYYY-MM-DD')`,
-    `STATUS NOT IN ('Cancelled', 'Completed', 'No Show')`
+    `(STATUS IS NULL OR STATUS NOT IN ('Cancelled', 'No Show'))`
   ];
   const replacements = {
     doctorIds: ids.length ? ids : [Number(doctorId)],
@@ -86,7 +99,7 @@ async function getBookedSlots(doctorId, appointmentDate, excludeId = null) {
   }
 
   const rows = await sequelize.query(
-    `SELECT SLOT_START
+    `SELECT SLOT_START, SLOT_END
        FROM HMS_APPOINTMENTS
       WHERE ${filters.join(' AND ')}`,
     {
@@ -95,23 +108,37 @@ async function getBookedSlots(doctorId, appointmentDate, excludeId = null) {
     }
   );
 
-  return rows.map((row) => row.SLOT_START).filter(Boolean);
+  return rows
+    .map((row) => {
+      const start = slotMinutes(row.SLOT_START);
+      if (start === null) return null;
+      return { start, end: slotMinutes(row.SLOT_END) ?? start + 15 };
+    })
+    .filter(Boolean);
+}
+
+// True when [start, end) overlaps any booked range, not just an identical start time.
+function overlapsBooked(bookedRanges, slotStart, slotEnd) {
+  const start = slotMinutes(slotStart);
+  const end = slotMinutes(slotEnd) ?? (start + 15);
+  return bookedRanges.some((booked) => start < booked.end && booked.start < end);
 }
 
 async function resolveAppointmentSlot({ doctorId, appointmentDate, slotStart, slotEnd, excludeId = null }) {
   const bookedSlots = await getBookedSlots(doctorId, appointmentDate, excludeId);
 
   if (slotStart) {
-    if (bookedSlots.includes(slotStart)) {
-      return { error: 'This slot is already booked.' };
+    const requestedEnd = slotEnd || addFifteenMinutes(slotStart);
+    if (overlapsBooked(bookedSlots, slotStart, requestedEnd)) {
+      return { error: 'This doctor already has an appointment that overlaps this time.' };
     }
     return {
       slotStart,
-      slotEnd: slotEnd || addFifteenMinutes(slotStart),
+      slotEnd: requestedEnd,
     };
   }
 
-  const nextAvailable = DEFAULT_APPOINTMENT_SLOTS.find((candidate) => !bookedSlots.includes(candidate));
+  const nextAvailable = DEFAULT_APPOINTMENT_SLOTS.find((candidate) => !overlapsBooked(bookedSlots, candidate, addFifteenMinutes(candidate)));
   if (!nextAvailable) {
     return { error: 'No appointment slots are available for the selected doctor and date.' };
   }
@@ -189,10 +216,11 @@ router.post('/', protect, restrictTo('super_admin', 'admin', 'doctor', 'receptio
           transaction,
         }
       );
+      await ensureCareTeam(doctorUserId, Number(patient_id), transaction);
       return { id, slot };
     });
     if (booking.error) {
-      return res.status(400).json({ success: false, message: booking.error });
+      return res.status(409).json({ success: false, message: booking.error });
     }
     const apptId = booking.id;
     const resolvedSlot = booking.slot;
@@ -218,6 +246,8 @@ router.post('/', protect, restrictTo('super_admin', 'admin', 'doctor', 'receptio
       }
     });
   } catch (err) {
+    const conflict = conflictResponse(err, { exclusion: 'This doctor already has an appointment that overlaps this time.' });
+    if (conflict) return res.status(conflict.status).json({ success: false, message: conflict.message });
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error booking appointment.' });
   }
@@ -370,7 +400,7 @@ router.put('/:id', protect, restrictTo('super_admin', 'admin', 'doctor', 'recept
         excludeId: req.params.id,
       });
       if (resolvedSlot.error) {
-        return res.status(400).json({ success: false, message: resolvedSlot.error });
+        return res.status(409).json({ success: false, message: resolvedSlot.error });
       }
       nextSlotStart = resolvedSlot.slotStart;
       nextSlotEnd = resolvedSlot.slotEnd;
@@ -429,6 +459,8 @@ router.put('/:id', protect, restrictTo('super_admin', 'admin', 'doctor', 'recept
       }
     });
   } catch (err) {
+    const conflict = conflictResponse(err, { exclusion: 'Moving this appointment would overlap another booking for the same doctor.' });
+    if (conflict) return res.status(conflict.status).json({ success: false, message: conflict.message });
     console.error(err);
     res.status(500).json({ success: false, message: 'Server error updating appointment.' });
   }

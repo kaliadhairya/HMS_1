@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
 const { sequelize } = require('../../models/db');
+const { ensureCareTeam } = require('../../utils/careTeam');
 const { resolveDoctorUser } = require('../../utils/doctorIdentity');
 const { Token, Patient, Doctor, Department, User } = require('../../models');
 const { protect, restrictTo } = require('../../middleware/auth');
@@ -142,6 +143,8 @@ router.post('/', protect, restrictTo('super_admin', 'admin', 'receptionist'), as
         token_number: nextNumber,
         generated_by: req.user.id
       }, { transaction: t });
+      // Queued for this doctor: the patient is now in their care (migration 0014).
+      await ensureCareTeam(Number(doctorIds[0]), Number(patient_id), t);
 
       return token;
     });

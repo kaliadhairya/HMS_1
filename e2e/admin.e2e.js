@@ -9,7 +9,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp } = require('./helpers');
+const { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, inCare} = require('./helpers');
 
 const { step: runStep, done } = runner('Administration, front desk and reports');
 // E2E_ONLY=<regex> runs just the matching steps (for debugging); by default every step runs.
@@ -315,6 +315,7 @@ const ymd = (d) => d.toISOString().slice(0, 10);
       const pt = await api('POST', '/patients/hms', { token: recTok, body: { patientType: 'other', name: ctx.patientName, age: 41, gender: 'Female', opdIndoor: 'OPD', testDate: ymd(new Date()), phoneNumber: `7${S.padStart(9, '0')}` } });
       assert(pt.status === 201 || pt.status === 200, `create patient: ${pt.status} ${JSON.stringify(pt.data).slice(0, 200)}`);
       ctx.patientId = pt.data.data.id;
+      await inCare(ctx.patientId, ctx.clin.username);
       const enc = await api('POST', '/hms/encounters', { token: docTok, body: { patient_id: ctx.patientId, chief_complaint: 'E2E admin test visit' } });
       assert(enc.status === 201 || enc.status === 200, `create encounter: ${enc.status} ${JSON.stringify(enc.data).slice(0, 200)}`);
       const { page } = ad;
