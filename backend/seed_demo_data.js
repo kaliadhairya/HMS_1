@@ -152,6 +152,10 @@ async function seedDemoData() {
       console.log('  ✅ Standard medicines seeded');
     }
 
+    // Doctor logins need practitioner records (migration 0012 backfills only existing rows).
+    await sequelize.query(`INSERT INTO hms_practitioners (user_id, display_name)
+      SELECT u.id, COALESCE(NULLIF(btrim(u.name), ''), u.username) FROM hms_users u WHERE u.role = 'doctor'
+      ON CONFLICT (user_id) DO NOTHING`);
     console.log('\n🎉 Demo data ready.');
     process.exit(0);
   } catch (err) {

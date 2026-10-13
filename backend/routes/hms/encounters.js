@@ -3,6 +3,7 @@ const router = express.Router();
 const { Encounter, Patient, User, Department, Token, Diagnosis, Prescription, PrescriptionItem, InvestigationOrder, InvestigationOrderItem } = require('../../models');
 const { sequelize } = require('../../models/db');
 const { protect, checkPermission } = require('../../middleware/auth');
+const { requireCurrentPractitioner } = require('../../utils/practitioners');
 const { logAction } = require('../../utils/auditLogger');
 const { clobToString } = require('../../utils/clobToString');
 const { Op } = require('sequelize');
@@ -40,7 +41,7 @@ async function findOpenVisit(patientId, userId, transaction) {
 }
 
 // Create a new encounter (Start Consultation)
-router.post('/', protect, checkPermission('consultation', 'write'), async (req, res) => {
+router.post('/', protect, checkPermission('consultation', 'write'), requireCurrentPractitioner, async (req, res) => {
   try {
     const { patient_id, token_id, appointment_id, department_id, chief_complaint, encounter_type } = req.body;
     const patientId = Number(patient_id);
@@ -166,7 +167,7 @@ router.put('/:id', protect, checkPermission('consultation', 'write'), async (req
 });
 
 // Finalize Encounter
-router.patch('/:id/finalize', protect, checkPermission('consultation', 'write'), async (req, res) => {
+router.patch('/:id/finalize', protect, checkPermission('consultation', 'write'), requireCurrentPractitioner, async (req, res) => {
   try {
     const encounter = await Encounter.findByPk(req.params.id);
     if (!encounter) return res.status(404).json({ error: 'Encounter not found' });

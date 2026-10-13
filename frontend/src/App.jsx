@@ -28,6 +28,7 @@ const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
 const NewPatientPage = lazy(() => import('./pages/hms/patients/NewPatientPage'));
 const PatientSearchPage = lazy(() => import('./pages/hms/patients/PatientSearchPage'));
 const DuplicateReviewPage = lazy(() => import('./pages/hms/patients/DuplicateReviewPage'));
+const PractitionersPage = lazy(() => import('./pages/hms/patients/PractitionersPage'));
 const PatientProfilePage = lazy(() => import('./pages/hms/patients/PatientProfilePage'));
 const OPDTokenPage = lazy(() => import('./pages/hms/opd/OPDTokenPage'));
 const AppointmentBookingPage = lazy(() => import('./pages/hms/opd/AppointmentBookingPage'));
@@ -223,6 +224,11 @@ export default function App() {
             <Route path="/hms/patients/new" element={
               <HMSProtectedRoute allowedRoles={['super_admin', 'receptionist', 'doctor']}>
                 <NewPatientPage />
+              </HMSProtectedRoute>
+            } />
+            <Route path="/hms/practitioners" element={
+              <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}>
+                <PractitionersPage />
               </HMSProtectedRoute>
             } />
             <Route path="/hms/patients/duplicates" element={

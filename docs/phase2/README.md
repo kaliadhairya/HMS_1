@@ -7,7 +7,7 @@ Migrations 0010–0029. See `docs/PARALLEL_WORK.md`.
 |---|---|
 | 1. Patient identity | **Done**, deployed to Docker 13 Oct (see below) |
 | 2. Duplicate review and merge | **Done** (see below) |
-| 3. Practitioners | Not started |
+| 3. Practitioners | **Done** (see below) |
 | 4. Scheduling reservations | Not started |
 | 5. Encounters, care teams and patient scope | Not started |
 | 6. Emergency triage | Not started |
@@ -194,3 +194,65 @@ A pair that is open or dismissed is not proposed again.
     phone was not;
   - the merge moved the duplicate's records and the undo restored every
     count exactly.
+
+## Part 3: practitioners and registrations (`0012_practitioners.sql`, `routes/practitioners.js`, `utils/practitioners.js`)
+
+Blueprint 3.3: a practitioner is separate from the login. A login is
+`hms_users.id`; a practitioner is `hms_practitioners.id`. They are never
+interchangeable, and the doctor columns still hold the login ID, as settled in
+part 2.
+
+### Data
+
+- `hms_practitioners`: one per doctor login (`user_id` unique).
+- `hms_practitioner_credentials`: registrations with kind, number, issuing
+  body, valid-from and valid-to dates, verification, and an end record (who
+  ended it and why).
+- A verified registration number is unique per kind and issuing body.
+- Backfill: every doctor login gets a practitioner record. The registration
+  number on each doctor profile becomes an **unverified** medical
+  registration, issued by "not verified (migrated from doctor profile)".
+  Nothing is invented or verified automatically.
+
+### Rule
+
+- `practitioner_credentials_expired(login)` is true when a practitioner has
+  credentials and none is current today.
+- A doctor for whom it is true cannot **create** or **finalise** an encounter
+  (403, `REGISTRATION_EXPIRED`, with the reason).
+- A doctor with **no** credentials recorded is not blocked. Blocking them would
+  stop clinicians on the strength of missing data. The Practitioners page says
+  so, and the owner should record the registrations.
+- Only the encounter create and finalise routes are guarded in this part.
+  Prescribing and dispensing are guarded in the phases that own them (Phase 3
+  will add the same check when prescribing is rebuilt).
+
+### API (`/api/practitioners`)
+
+- `GET /` (admin, front desk): practitioners with their current status.
+- `GET /:userId`: one practitioner with registrations. A doctor may read their
+  own record only.
+- `POST /:userId/credentials` (admins): record a registration (unverified).
+- `POST /:userId/credentials/:id/verify` (admins): verify. A number already
+  verified for another practitioner is refused (409).
+- `POST /:userId/credentials/:id/end` (admins): end with a reason.
+
+### Screen
+
+- **Practitioners** (admin, front desk; recording and verifying for admins):
+  the list shows Current / Expired / None recorded. The detail shows each
+  registration's status, and admins can record, verify and end them.
+
+### Verification (part 3)
+
+- `e2e/practitioners.e2e.js` passes 8/8:
+  - backfill, with the demo registration unverified;
+  - front desk and nurses refused for recording;
+  - a new doctor with only an expired registration is reported expired;
+  - that doctor is refused a consultation with `REGISTRATION_EXPIRED`;
+  - renewal restores consultations;
+  - a registration verifies once, and a duplicate number for another
+    practitioner is refused;
+  - ending needs a reason, and a doctor cannot read another doctor's record;
+  - a browser check of the admin screen.
+- Migration proof passes on PostgreSQL 16 and 18.

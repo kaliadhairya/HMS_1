@@ -9,6 +9,7 @@ const { protect, restrictTo } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const { logAction } = require('../utils/auditLogger');
 const { revokeUserSessions } = require('../utils/sessions');
+const { ensurePractitioner } = require('../utils/practitioners');
 const { sequelize } = require('../models/db');
 
 const ROLES = ['super_admin', 'admin', 'doctor', 'lab_technician', 'receptionist', 'pharmacist', 'nurse'];
@@ -131,6 +132,7 @@ router.post('/', async (req, res) => {
       isActive: isActive !== undefined ? isActive : 1,
       first_login: 'Y',
     });
+    if (user.role === 'doctor') await ensurePractitioner(user.id);
 
     if (user.role === 'doctor') {
       try {
@@ -200,6 +202,7 @@ router.put('/:id(\\d+)', async (req, res) => {
     if (phone !== undefined) user.phone = phone;
 
     await user.save();
+    if (user.role === 'doctor') await ensurePractitioner(user.id);
     // A new password, a role change or deactivation ends the account's current sessions.
     const roleChanged = role && role !== oldData.role;
     if (password || roleChanged || (isActive !== undefined && !user.isActive)) {
