@@ -74,3 +74,11 @@ leave this worktree unchanged.
   Lab and medicine charges are captured by database triggers, so Phase 3 and
   Phase 4 files are not edited. Test databases `hms_p5_*`, API 5032, Vite 5204.
   No shared deployment.
+- 2026-10-14: migrations 0070–0076, services/billing.js, insurance.js,
+  reconciliation.js, routes/finance.js; /api/billing rewired; old IPD
+  draft/generate endpoints return 410; billing screens (account workspace,
+  billing desk, reconciliation, price list). Touched shared files additively:
+  server.js (mount + worker), utils/idempotency.js (/api/finance), App.jsx,
+  navConfig.js. Also routes/receptionist.js (Phase 2, own). Not deployed.
+  See docs/phase5/README.md.
+

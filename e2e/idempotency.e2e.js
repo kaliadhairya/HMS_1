@@ -21,7 +21,9 @@ async function advance(token, key, body) {
   const [patient] = await sql('SELECT id FROM hms_patients ORDER BY id LIMIT 1');
   const [deskUser] = await sql("SELECT id FROM hms_users WHERE username = 'receptionist'");
   const tag = `E2E idem ${stamp()}`;
-  const deposits = async (note) => (await sql('SELECT count(*)::int AS n FROM hms_patient_advances WHERE notes = $1', [note]))[0].n;
+  // Phase 5: an advance is a deposit payment with a receipt (hms_payment_intents carries the note).
+  const deposits = async (note) => (await sql(`SELECT count(*)::int AS n FROM hms_receipts r JOIN hms_payment_intents i ON i.id = r.intent_id
+    WHERE i.purpose = 'deposit' AND i.notes = $1`, [note]))[0].n;
   const body = (note, amount = 101) => ({ patientId: patient.id, amount, paymentMode: 'Cash', notes: note });
 
   await step('A financial command without an Idempotency-Key is refused (428)', async () => {
