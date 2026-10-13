@@ -133,8 +133,8 @@ async function ingest(body, user, tx) {
     throw e;
   }
   await C.q(
-    `UPDATE hms_lab_reconciliation SET state='RESOLVED',resolved_by_user_id= :user,resolution='Matched accession, patient and ordered test; imported provisional result' WHERE id= :id`,
-    { user: user.id, id: record.id },
+    `UPDATE hms_lab_reconciliation SET state='RESOLVED',resolved_by_user_id= :user,resolution='Matched accession, patient and ordered test; imported provisional result',result_version_id=:result WHERE id= :id`,
+    { user: user.id, id: record.id, result: result.result.id },
     tx,
   );
   return { ...result, provisional: true, reconciliation_id: record.id };
@@ -175,17 +175,44 @@ async function resolve(recordId, body, user, header, tx) {
     "Explicitly confirm the corrected patient, accession and ordered item.",
   );
   const original = record.payload.contract;
+  let run = await C.one(
+    "INSERT INTO hms_lab_analyzer_runs(source,instrument,external_run_id,method,created_by_user_id) VALUES(:source,:instrument,:run,:method,:user) ON CONFLICT(source,instrument,external_run_id) DO NOTHING RETURNING *",
+    {
+      source: record.source,
+      instrument: C.text(original.instrument, "Original instrument"),
+      run: C.text(original.run_id, "Original analyzer run"),
+      method: C.text(original.result.method, "Original method"),
+      user: user.id,
+    },
+    tx,
+  );
+  if (!run)
+    run = await C.one(
+      "SELECT * FROM hms_lab_analyzer_runs WHERE source=:source AND instrument=:instrument AND external_run_id=:run",
+      {
+        source: record.source,
+        instrument: original.instrument,
+        run: original.run_id,
+      },
+      tx,
+    );
+  C.check(
+    run.method === original.result.method,
+    "METHOD_MISMATCH",
+    "Original analyzer run and method must agree.",
+  );
+
   const result = await R.write(
     item.id,
-    { ...original.result, specimen_id: specimen.id },
+    { ...original.result, specimen_id: specimen.id, analyzer_run_id: run.id },
     user,
     String(item.lab_revision),
     tx,
     "ANALYZER",
   );
   await C.q(
-    "UPDATE hms_lab_reconciliation SET state='RESOLVED',resolved_by_user_id=:user,resolution=:reason WHERE id=:id",
-    { user: user.id, id: record.id, reason, id: record.id },
+    "UPDATE hms_lab_reconciliation SET state='RESOLVED',resolved_by_user_id=:user,resolution=:reason,result_version_id=:result WHERE id=:id",
+    { user: user.id, id: record.id, reason, result: result.result.id },
     tx,
   );
   return result;
