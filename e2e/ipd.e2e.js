@@ -1,6 +1,6 @@
 // Inpatient (IPD) workflow, end to end, as the real roles:
 // doctor raises an admission request -> nurse admits it into a bed (requests dialog) and a second patient
-// from the bed board -> nurse records vitals / fluid balance (trend charts, out-of-range flags) -> MAR give /
+// from the bed board -> nurse records vitals / fluid balance (trend charts, out-of-range flags) -> old MAR read-only /
 // hold / error toast -> doctor progress note + nursing note -> front-desk advance -> doctor discharges with a
 // discharge summary (list + print) -> IPD bill with bed days, medicines, discount and advance adjustment ->
 // billing history -> role access.
@@ -290,55 +290,30 @@ async function newPatient(name, phonePrefix) {
       noErrors(nurse, 'vitals');
     });
 
-    await step('MAR: nurse gives one dose and holds another with a reason; a stale action shows the error', async () => {
+    await step('MAR: the old chart is read-only; new doses are refused there and go to eMAR', async () => {
+      // A dose recorded before eMAR (historical data) stays readable.
+      const [old] = await sql(`INSERT INTO hms_mar_records (admission_id, medicine_name, dose, route, scheduled_time, status, administered_by, administered_at)
+        VALUES ($1, 'Inj Ceftriaxone', '1 g', 'IV', now() - interval '30 minutes', 'Given', $2, now() - interval '25 minutes') RETURNING id`, [ctx.admissionId, ctx.uid.nurse]);
       const doctor = await apiLogin('doctor');
-      const at = (minAgo) => new Date(Date.now() - minAgo * 60000).toISOString();
-      const doses = [['Inj Ceftriaxone', '1 g', 'IV', 30], ['Tab Paracetamol', '650 mg', 'Oral', 20], ['Inj Pantoprazole', '40 mg', 'IV', 10]];
-      ctx.mar = ctx.mar || {};
-      for (const [name, dose, route, ago] of doses.filter(([name]) => !ctx.mar[name])) {
-        const m = await api('POST', '/ipd/mar', { token: doctor, body: { admissionId: ctx.admissionId, medicineName: name, dose, route, scheduledTime: at(ago) } });
-        assert(m.status === 201, `MAR create ${m.status} ${JSON.stringify(m.data)}`);
-        ctx.mar[name] = m.data.data.id;
-      }
-      const bad = await api('POST', '/ipd/mar', { token: doctor, body: { admissionId: ctx.admissionId, dose: '1', status: 'Given' } });
-      assert(bad.status === 400, `MAR without medicine/time returned ${bad.status}`);
+      const nurseTok = await apiLogin('nurse');
+      const create = await api('POST', '/ipd/mar', { token: doctor, body: { admissionId: ctx.admissionId, medicineName: 'Tab Paracetamol', dose: '650 mg', route: 'Oral', scheduledTime: new Date().toISOString() } });
+      assert(create.status === 410 && create.data.code === 'LEGACY_MAR_RETIRED', `old MAR create ${create.status} ${JSON.stringify(create.data)}`);
+      const give = await api('PATCH', `/ipd/mar/${old.id}/status`, { token: nurseTok, body: { status: 'Held', holdReason: 'should be refused' } });
+      assert(give.status === 410 && give.data.code === 'LEGACY_MAR_RETIRED', `old MAR status change ${give.status}`);
+      const [after] = await sql('SELECT status, hold_reason FROM hms_mar_records WHERE id = $1', [old.id]);
+      assert(after.status === 'Given' && !after.hold_reason, `historical dose changed ${JSON.stringify(after)}`);
+      const read = await api('GET', `/ipd/mar/${ctx.admissionId}`, { token: nurseTok });
+      assert(read.status === 200 && read.data.data.some((m) => Number(m.ID ?? m.id) === Number(old.id)), `old MAR not readable ${read.status}`);
 
       const nurse = await as('nurse');
       const page = nurse.page;
       await page.goto(`${BASE}/ipd/patient/${ctx.admissionId}`, { waitUntil: 'networkidle' });
       await tab(page, 'Medications');
-      const row = (name) => page.locator('tbody tr', { hasText: name });
-      await row('Inj Ceftriaxone').waitFor({ timeout: 10000 });
-      const [{ n: pending }] = await sql("SELECT COUNT(*)::int AS n FROM hms_mar_records WHERE admission_id = $1 AND status = 'Pending'", [ctx.admissionId]);
-      if (pending === 3) { // not yet acted on (a retry after an API restart only re-checks the outcome)
-      await row('Inj Ceftriaxone').getByRole('button', { name: 'Give' }).click();
-      await toast(page, 'Medication marked as given');
-      await row('Inj Ceftriaxone').getByText('Given', { exact: true }).waitFor();
-      await row('Tab Paracetamol').getByRole('button', { name: 'Hold' }).click();
-      const dialog = page.getByRole('dialog');
-      await dialog.getByLabel('Reason for holding').fill('Afebrile, held per protocol (E2E)');
-      await dialog.getByRole('button', { name: 'Hold medication' }).click();
-      await toast(page, 'Medication held');
-      await row('Tab Paracetamol').getByText('Held', { exact: true }).waitFor();
-
-      // Another nurse gives the pantoprazole meanwhile; this page still shows it as pending.
-      const admin = await apiLogin('admin');
-      const other = await api('PATCH', `/ipd/mar/${ctx.mar['Inj Pantoprazole']}/status`, { token: admin, body: { status: 'Given' } });
-      assert(other.status === 200, `admin give ${other.status}`);
-      await row('Inj Pantoprazole').getByRole('button', { name: 'Give' }).click();
-      await toast(page, 'already recorded');
-      await row('Inj Pantoprazole').getByText('Given', { exact: true }).waitFor();
-      }
-
-      const recs = await sql('SELECT id, medicine_name, status, administered_by, administered_at, hold_reason FROM hms_mar_records WHERE admission_id = $1 ORDER BY id', [ctx.admissionId]);
-      const by = Object.fromEntries(recs.map((r) => [r.medicine_name, r]));
-      assert(by['Inj Ceftriaxone'].status === 'Given' && by['Inj Ceftriaxone'].administered_by === ctx.uid.nurse && by['Inj Ceftriaxone'].administered_at, `given ${JSON.stringify(by['Inj Ceftriaxone'])}`);
-      assert(by['Tab Paracetamol'].status === 'Held' && by['Tab Paracetamol'].hold_reason === 'Afebrile, held per protocol (E2E)', `held ${JSON.stringify(by['Tab Paracetamol'])}`);
-      assert(by['Inj Pantoprazole'].administered_by === ctx.uid.admin, 'stale give overwrote the first administration');
-      const noReason = await api('PATCH', `/ipd/mar/${ctx.mar['Inj Ceftriaxone']}/status`, { token: await apiLogin('nurse'), body: { status: 'Held' } });
-      const missing = await api('PATCH', '/ipd/mar/99999999/status', { token: await apiLogin('nurse'), body: { status: 'Given' } });
-      assert(noReason.status === 400 || noReason.status === 409, `hold without reason ${noReason.status}`);
-      assert(missing.status === 404, `unknown MAR record ${missing.status}`);
+      await page.getByRole('heading', { name: 'Earlier medication record (read-only)' }).waitFor({ timeout: 10000 });
+      const row = page.locator('tbody tr', { hasText: 'Inj Ceftriaxone' });
+      await row.getByText('Given', { exact: true }).waitFor();
+      assert(await page.getByRole('button', { name: 'Give' }).count() === 0, 'old chart still offers Give');
+      assert(await page.getByRole('link', { name: 'Open eMAR' }).getAttribute('href') === '/medication/nursing', 'no link to eMAR');
       noErrors(nurse, 'MAR');
     });
 

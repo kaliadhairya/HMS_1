@@ -120,4 +120,11 @@ async function inCare(patientId, username = 'doctor') {
   if (r.status !== 201 && r.status !== 409) throw new Error(`care team for ${username}: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
 }
 
-module.exports = { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, creds, inCare };
+// Suites that write synthetic fixtures straight into the database run only on the
+// throwaway databases AGENTS.md allows (never the shared `hms`).
+const THROWAWAY_DB = /^(hms_e2e|hms_p\d+_|hms_phase1|hms_test|hms_verify)/;
+function requireThrowawayDb() {
+  assert(THROWAWAY_DB.test(process.env.DB_NAME || ''), `Use a throwaway database (hms_e2e, hms_p<N>_*, hms_test*, hms_verify*), not "${process.env.DB_NAME || 'hms'}"`);
+}
+
+module.exports = { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, creds, inCare, requireThrowawayDb };

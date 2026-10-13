@@ -80,6 +80,24 @@ async function loginAs(username, password) {
     assert(mine.status === 201, `consultation in care: ${mine.status} ${JSON.stringify(mine.data)}`);
   });
 
+  await step('Medication records follow the same patient scope (allergies, orders, lists)', async () => {
+    const [other] = await sql("SELECT id FROM hms_patients WHERE identity_status = 'registered' AND id <> $1 ORDER BY id LIMIT 1", [ctx.patient]);
+    const refused = (r, what) => assert(r.status === 403 && r.data?.code === 'PATIENT_NOT_IN_CARE', `${what}: ${r.status} ${JSON.stringify(r.data)}`);
+    refused(await call('GET', `/medication/allergies/${other.id}`, ctx.a.token), 'allergies of a stranger');
+    refused(await call('POST', `/medication/allergies/${other.id}`, ctx.a.token, { clinical_text: 'penicillin' }), 'allergy added for a stranger');
+    refused(await call('POST', '/medication/orders', ctx.a.token, { patient_id: other.id }), 'order for a stranger');
+    refused(await call('GET', `/medication/orders?patient_id=${other.id}`, ctx.a.token), 'orders of a stranger');
+    assert((await call('GET', `/medication/allergies/${ctx.patient}`, ctx.a.token)).status === 200, 'in-care doctor refused allergies');
+    const list = await call('GET', '/medication/orders', ctx.a.token);
+    assert(list.status === 200, `order list ${list.status}`);
+    for (const o of list.data.data) {
+      const [{ ok }] = await sql('SELECT patient_in_care($1, $2) AS ok', [ctx.a.id, o.patient_id]);
+      assert(ok, `order list shows patient ${o.patient_id}, who is not in care`);
+    }
+    const nurse = await apiLogin('nurse');
+    assert((await call('GET', `/medication/allergies/${other.id}`, nurse)).status === 200, 'nurse refused allergies');
+  });
+
   await step('Break-glass needs a real reason, gives one hour, is audited, and waits for review', async () => {
     assert((await call('POST', `/patients/hms/${ctx.patient}/break-glass`, ctx.a.token, { reason: 'x' })).status === 400, 'short reason accepted');
     assert((await call('POST', `/patients/hms/${ctx.patient}/break-glass`, desk, { reason: 'Patient collapsed in the lobby' })).status === 403, 'desk used break-glass');

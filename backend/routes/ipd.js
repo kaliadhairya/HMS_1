@@ -2,7 +2,7 @@ const express = require('express');
 const { openOccupancy, closeOccupancy } = require('../utils/adt');
 const { QueryTypes } = require('sequelize');
 const router = express.Router();
-const { sequelize, Ward, Bed, Admission, Patient, User, ProgressNote, NursingNote, IpdVitals, MarRecord, IpdRequest } = require('../models');
+const { sequelize, Ward, Bed, Admission, Patient, User, ProgressNote, NursingNote, IpdVitals, IpdRequest } = require('../models');
 const { publish } = require('../utils/outbox');
 const { protect, checkPermission } = require('../middleware/auth');
 const logAction = require('../utils/auditLogger');
@@ -915,33 +915,15 @@ router.get('/vitals/patient/:patientId', protect, checkPermission('ipd', 'read')
 });
 
 // ── Medication administration record (MAR) ─────────────────
-// Scheduling a dose takes only the dose fields (status and "administered by" used to be accepted from the
-// request body).
-router.post('/mar', protect, checkPermission('ipd', 'write'), async (req, res) => {
-  try {
-    const medicineName = text(req.body.medicineName);
-    const scheduled = req.body.scheduledTime ? new Date(req.body.scheduledTime) : null;
-    if (!medicineName) return fail(res, 400, 'Medicine name is required.');
-    if (!scheduled || Number.isNaN(scheduled.getTime())) return fail(res, 400, 'Scheduled time is required.');
-    const admission = await activeAdmissionOr(res, req.body.admissionId);
-    if (!admission) return undefined;
-    const m = await MarRecord.create({
-      id: await nextId('hms_mar_seq', 'HMS_MAR_RECORDS'),
-      admissionId: Number(admission.ID),
-      prescriptionItemId: posInt(req.body.prescriptionItemId),
-      medicineName,
-      dose: text(req.body.dose) || null,
-      route: text(req.body.route) || null,
-      scheduledTime: scheduled,
-      status: 'Pending',
-      notes: text(req.body.notes) || null,
-    });
-    return res.status(201).json({ success: true, data: m });
-  } catch (err) {
-    console.error('Failed to save MAR:', err);
-    return fail(res, 500, 'Failed to save MAR');
-  }
+// Retired by Phase 3: doses are scheduled from signed, pharmacist-verified orders and
+// recorded in eMAR (/api/medication/emar), with patient and product checks. The old
+// free-text records stay readable below; writing new ones is refused.
+const LEGACY_MAR_RETIRED = (req, res) => res.status(410).json({
+  success: false,
+  code: 'LEGACY_MAR_RETIRED',
+  message: 'The old medication chart is read-only. Record doses in eMAR (Medications → Nursing).',
 });
+router.post('/mar', protect, checkPermission('ipd', 'write'), LEGACY_MAR_RETIRED);
 
 // Today's doses plus earlier doses still pending: an overdue dose no longer drops off the chart at midnight.
 router.get('/mar/:admissionId', protect, checkPermission('ipd', 'read'), async (req, res) => {
@@ -963,43 +945,7 @@ router.get('/mar/:admissionId', protect, checkPermission('ipd', 'read'), async (
   }
 });
 
-// Give or hold a scheduled dose. The record is locked and must still be Pending: a second "Give" (another
-// nurse, a stale screen) used to overwrite the first administration, and unknown ids answered success.
-router.patch('/mar/:id/status', protect, checkPermission('ipd', 'write'), async (req, res) => {
-  const t = await sequelize.transaction();
-  const abort = async (status, message) => { await t.rollback(); return fail(res, status, message); };
-  try {
-    const { status } = req.body;
-    const holdReason = text(req.body.holdReason);
-    if (!['Given', 'Held'].includes(status)) return abort(400, 'Status must be Given or Held.');
-    if (status === 'Held' && !holdReason) return abort(400, 'Give a reason for holding the dose.');
-    const [[rec]] = await sequelize.query(`
-      SELECT m.ID, m.STATUS, m.MEDICINE_NAME, m.ADMISSION_ID, a.STATUS AS ADMISSION_STATUS, u.NAME AS BY_NAME
-      FROM HMS_MAR_RECORDS m
-      JOIN HMS_ADMISSIONS a ON a.ID = m.ADMISSION_ID
-      LEFT JOIN HMS_USERS u ON u.ID = m.ADMINISTERED_BY
-      WHERE m.ID = :id
-      FOR UPDATE OF m
-    `, { replacements: { id: posInt(req.params.id) || 0 }, transaction: t });
-    if (!rec) return abort(404, 'Medication record not found.');
-    if (rec.ADMISSION_STATUS !== 'Active') return abort(409, 'This patient has been discharged; the MAR is read-only.');
-    if (rec.STATUS !== 'Pending') {
-      return abort(409, `This dose of ${rec.MEDICINE_NAME} was already recorded as ${rec.STATUS}${rec.BY_NAME ? ` by ${rec.BY_NAME}` : ''}.`);
-    }
-    await sequelize.query(`
-      UPDATE HMS_MAR_RECORDS
-      SET STATUS = :status, ADMINISTERED_BY = :userId, ADMINISTERED_AT = CURRENT_TIMESTAMP, HOLD_REASON = :reason
-      WHERE ID = :id
-    `, { replacements: { status, userId: req.user.id, reason: status === 'Held' ? holdReason : null, id: rec.ID }, transaction: t });
-    await t.commit();
-    await logAction(req.user.id, 'UPDATE', 'ipd', rec.ID, null, { action: status === 'Given' ? 'mar_given' : 'mar_held', admissionId: rec.ADMISSION_ID }, req.ip);
-    return res.json({ success: true, data: { id: Number(rec.ID), status } });
-  } catch (err) {
-    await t.rollback().catch(() => {});
-    console.error(err);
-    return fail(res, 500, 'Failed to update medication');
-  }
-});
+router.patch('/mar/:id/status', protect, checkPermission('ipd', 'write'), LEGACY_MAR_RETIRED);
 
 // ── IPD BILLING — WARD RATES & CHARGES ─────────────────────
 

@@ -6,7 +6,7 @@
 // Run: cd e2e && NODE_PATH=$(npm root -g) node opd.e2e.js
 const {
   chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, stamp, sleep,
-  inCare,
+  inCare, requireThrowawayDb,
 } = require('./helpers');
 
 const S = stamp();
@@ -496,7 +496,7 @@ async function pickPatient(page, query, name) {
       assert(disp.status === 409 && disp.data.code === 'CODED_ORDER_REQUIRED', `unsafe legacy dispense ${disp.status}`);
       // Historical invoice compatibility fixture. This is not a new medication
       // supply and never authorizes a dose or alters inventory.
-      assert(/^hms_p3_/.test(process.env.DB_NAME || ''), 'Use a Phase 3 throwaway database for this fixture');
+      requireThrowawayDb();
       const [pharmBill] = await sql(`INSERT INTO hms_bills(patient_id,encounter_id,bill_number,bill_type,status,total_amount,net_payable)
         VALUES($1,$2,$3,'OPD','Pending',20,20) RETURNING id,net_payable`, [pt.data.data.id,enc.id,'HIST-P3-'+S]);
       await sql(`INSERT INTO hms_bill_items(bill_id,item_type,item_name,quantity,rate,amount)

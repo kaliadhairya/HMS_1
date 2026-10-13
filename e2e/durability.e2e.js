@@ -7,7 +7,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
-const { API, apiLogin, sql, runner, assert, sleep } = require('./helpers');
+const { API, apiLogin, sql, runner, assert, sleep, requireThrowawayDb } = require('./helpers');
 const { io } = require('../frontend/node_modules/socket.io-client');
 
 const BACKEND = path.join(__dirname, '..', 'backend');
@@ -66,7 +66,7 @@ function listen(token, event) {
 // A real signed-order amendment replaces the retired free-text status command
 // as the notification trigger; the durable outbox failure scenarios are unchanged.
 async function medicationDraft(token) {
-  assert(/^hms_p3_/.test(process.env.DB_NAME || ''), 'Use an isolated Phase 3 database');
+  requireThrowawayDb();
   const [fixture] = await sql(`SELECT o.patient_id,o.encounter_id,v.product_id,v.dose,v.dose_unit,v.route,v.frequency,v.supply_quantity,v.supply_unit
     FROM hms_med_orders o JOIN hms_med_order_versions v ON v.order_id=o.id AND v.version=o.current_version
     JOIN hms_patients p ON p.id=o.patient_id WHERE p.name LIKE 'Synthetic%' AND v.product_id IS NOT NULL AND v.prn=false ORDER BY o.created_at DESC LIMIT 1`);
@@ -75,6 +75,7 @@ async function medicationDraft(token) {
   const [patient]=await sql("INSERT INTO hms_patients(name,uhid,patienttype,age,gender,opdindoor,testdate) VALUES($1,$2,'other',40,'Other','OPD',CURRENT_DATE) RETURNING id",['Synthetic outbox patient '+tag,'P3-OUTBOX-'+tag]);
   const [prescriber]=await sql("SELECT id FROM hms_users WHERE username='doctor'");
   const [encounter]=await sql("INSERT INTO hms_encounters(patient_id,doctor_id,status) VALUES($1,$2,'Draft') RETURNING id",[patient.id,prescriber.id]);
+  await sql("INSERT INTO hms_care_team_assignments(patient_id,practitioner_user_id,role,assigned_by) VALUES($1,$2,'consulting',$2)",[patient.id,prescriber.id]);
   const body={...fixture,patient_id:patient.id,encounter_id:encounter.id,starts_at:new Date(Date.now()-60000).toISOString(),ends_at:new Date(Date.now()+86400000).toISOString()};
   const r=await call(ORIGIN,'POST','/medication/orders',token,body);
   assert(r.status===201, 'Unable to create coded notification fixture');

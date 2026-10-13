@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import { Link, useParams, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Activity, ClipboardPlus, Droplets, FileText, HeartPulse, LogOut, NotebookPen, Pill } from 'lucide-react';
 import api from '../../../api/axios';
@@ -7,7 +7,6 @@ import Navbar from '../../../components/Navbar';
 import DischargeSummaryModal from '../../../components/DischargeSummaryModal';
 import PageHeader from '../../../components/ui/PageHeader';
 import EmptyState from '../../../components/ui/EmptyState';
-import Modal from '../../../components/ui/Modal';
 import { useAuth } from '../../../context/AuthContext';
 import VitalTrends from '../../../components/patient/VitalTrends';
 
@@ -152,43 +151,6 @@ export default function IPDPatientChartPage() {
       setVitalForm((f) => ({ ...EMPTY_VITALS, shift: f.shift }));
       fetchVitals();
     } catch (err) { toast.error(errMsg(err, 'Could not save vitals')); }
-  };
-
-  // Medication administration (MAR)
-  const [holdTarget, setHoldTarget] = useState(null);
-  const [holdReason, setHoldReason] = useState('');
-  const [marBusy, setMarBusy] = useState(false);
-
-  const giveMedication = async (m) => {
-    setMarBusy(true);
-    try {
-      await api.patch(`/ipd/mar/${m.ID}/status`, { status: 'Given' });
-      toast.success('Medication marked as given');
-      fetchMar();
-    } catch (err) {
-      toast.error(errMsg(err, 'Could not update medication'));
-      fetchMar();
-    } finally {
-      setMarBusy(false);
-    }
-  };
-
-  const submitHold = async (e) => {
-    e.preventDefault();
-    const reason = holdReason.trim();
-    if (!holdTarget || !reason) return;
-    setMarBusy(true);
-    try {
-      await api.patch(`/ipd/mar/${holdTarget.ID}/status`, { status: 'Held', holdReason: reason });
-      toast.success('Medication held');
-      setHoldTarget(null);
-      fetchMar();
-    } catch (err) {
-      toast.error(errMsg(err, 'Could not update medication'));
-      if (err?.response?.status === 409) { setHoldTarget(null); fetchMar(); }
-    } finally {
-      setMarBusy(false);
-    }
   };
 
   if (!admission) {
@@ -540,12 +502,15 @@ export default function IPDPatientChartPage() {
         <section className="panel">
           <div className="panel-head">
             <div className="cell-stack">
-              <h2 className="panel-title" style={{ margin: 0 }}><Pill size={16} aria-hidden="true" /> Scheduled medications (MAR)</h2>
-              <span className="cell-secondary">Today's doses for this admission, and earlier doses still to be given.</span>
+              <h2 className="panel-title" style={{ margin: 0 }}><Pill size={16} aria-hidden="true" /> Earlier medication record (read-only)</h2>
+              <span className="cell-secondary">Doses recorded before eMAR. New doses are given and recorded in eMAR, from signed and verified orders.</span>
             </div>
+            {canNurse && user.role === 'nurse' && (
+              <Link to="/medication/nursing" className="btn btn-primary btn-sm">Open eMAR</Link>
+            )}
           </div>
           {marRecords.length === 0 ? (
-            <EmptyState icon={Pill} title="No medications scheduled today" description="Scheduled doses for this admission appear here." />
+            <EmptyState icon={Pill} title="No earlier medication records" description="Doses for this admission are recorded in eMAR." />
           ) : (
             <div className="dt-scroll">
               <table className="dt-table">
@@ -555,7 +520,6 @@ export default function IPDPatientChartPage() {
                     <th>Medicine</th>
                     <th>Dose and route</th>
                     <th>Status</th>
-                    <th style={{ textAlign: 'right' }}><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -576,14 +540,6 @@ export default function IPDPatientChartPage() {
                           {m.HOLD_REASON && <span className="cell-secondary">Reason: {m.HOLD_REASON}</span>}
                         </span>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
-                        {m.STATUS === 'Pending' && canNurse && (
-                          <span className="inline-actions">
-                            <button type="button" className="btn btn-primary btn-sm" disabled={marBusy} onClick={() => giveMedication(m)}>Give</button>
-                            <button type="button" className="btn btn-secondary btn-sm" disabled={marBusy} onClick={() => { setHoldReason(''); setHoldTarget(m); }}>Hold</button>
-                          </span>
-                        )}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -593,29 +549,6 @@ export default function IPDPatientChartPage() {
         </section>
       )}
     </main>
-
-    <Modal
-      open={Boolean(holdTarget)}
-      onOpenChange={(open) => { if (!open && !marBusy) setHoldTarget(null); }}
-      title="Hold medication"
-      description={holdTarget ? `${holdTarget.MEDICINE_NAME} · ${holdTarget.DOSE} · ${holdTarget.ROUTE}` : ''}
-      size="sm"
-      footer={(
-        <>
-          <button type="button" className="btn btn-ghost btn-md" onClick={() => setHoldTarget(null)} disabled={marBusy}>Cancel</button>
-          <button type="submit" form="hold-form" className="btn btn-primary btn-md" disabled={marBusy || !holdReason.trim()}>
-            {marBusy ? 'Saving…' : 'Hold medication'}
-          </button>
-        </>
-      )}
-    >
-      <form id="hold-form" onSubmit={submitHold}>
-        <div className="form-group">
-          <label className="form-label" htmlFor="hold-reason">Reason for holding</label>
-          <textarea id="hold-reason" className="form-textarea" rows="3" value={holdReason} onChange={(e) => setHoldReason(e.target.value)} required autoFocus />
-        </div>
-      </form>
-    </Modal>
 
     {showDischargeModal && (
       <DischargeSummaryModal 

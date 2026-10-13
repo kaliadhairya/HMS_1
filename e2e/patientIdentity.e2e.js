@@ -104,7 +104,9 @@ const randomAbha = () => Array.from({ length: 14 }, (_, i) => (i === 0 ? 9 : Mat
       call('POST', `/patients/hms/${b.id}/identifiers/${ib}/verify`, admin),
     ]);
     const statuses = results.map((r) => r.status).sort();
-    assert(statuses.join(',') === '200,409', `statuses ${statuses}`);
+    // The loser is refused either by the database (409, when the two overlap) or by the
+    // clash check (202 with a duplicate case, when the first has already committed).
+    assert(['200,409', '200,202'].includes(statuses.join(',')), `statuses ${statuses}`);
     const [count] = await sql("SELECT count(*)::int AS n FROM hms_patient_identifiers WHERE value = $1 AND verification_status = 'verified'", [abha]);
     assert(count.n === 1, `${count.n} verified copies`);
   });

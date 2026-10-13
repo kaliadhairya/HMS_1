@@ -1,11 +1,8 @@
 // Real PostgreSQL and HTTP acceptance tests. Clinical values below are synthetic
 // test fixtures only; no production clinical rule pack is seeded.
-const { api, apiLogin, sql, runner, assert } = require("./helpers");
+const { api, apiLogin, sql, runner, assert, requireThrowawayDb } = require("./helpers");
 const crypto = require("crypto");
-assert(
-  /^hms_p3_/.test(process.env.DB_NAME || ""),
-  "Use a Phase 3 throwaway database",
-);
+requireThrowawayDb();
 const { step, done } = runner("Phase 3 medication safety");
 const tag = crypto.randomUUID().slice(0, 8);
 let doctor,
@@ -207,6 +204,10 @@ const witness = async (action, subject, performer, details, token = nurse) =>
       );
       const [e] = await sql(
         "INSERT INTO hms_encounters(patient_id,doctor_id,status) VALUES($1,$2,'Draft') RETURNING id",
+        [pid, du.id],
+      );
+      await sql(
+        "INSERT INTO hms_care_team_assignments(patient_id,practitioner_user_id,role,assigned_by) VALUES($1,$2,'consulting',$2)",
         [pid, du.id],
       );
       eid = e.id;

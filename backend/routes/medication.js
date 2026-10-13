@@ -7,7 +7,32 @@ const I = require("../services/medicationInventory");
 const N = require("../services/medicationNursing");
 const { beforeSend } = require("../utils/responseGate");
 const { storage } = require("../utils/auditContext");
+const { patientInCare, NOT_IN_CARE } = require("../utils/careTeam");
 const readers = ["doctor", "nurse", "pharmacist"];
+// Patient scope (Phase 2, migration 0014): a doctor works only with patients in
+// their care, as on the patient record routes. Other roles are not limited here.
+async function inCare(r, patientId, t) {
+  if (r.user.role !== "doctor" || patientId == null) return;
+  C.check(
+    await patientInCare(r.user.id, Number(patientId), t),
+    "PATIENT_NOT_IN_CARE",
+    NOT_IN_CARE,
+    403,
+  );
+}
+async function orderInCare(r, orderId, t) {
+  if (r.user.role !== "doctor") return;
+  const row = await C.one(
+    "SELECT patient_id FROM hms_med_orders WHERE id::text=:id",
+    { id: String(orderId) },
+    t,
+  );
+  if (row) await inCare(r, row.patient_id, t);
+}
+// SQL filter for lists: doctors see rows for patients in their care only.
+const careFilter = (column) =>
+  `(:careDoctor::int IS NULL OR patient_in_care(:careDoctor, ${column}))`;
+const careDoctor = (r) => (r.user.role === "doctor" ? r.user.id : null);
 router.use(protect);
 router.use((req, res, next) => {
   res.set("Cache-Control", "no-store");
@@ -148,9 +173,13 @@ read(
     "receptionist",
     "lab_technician",
   ],
-  (r) => O.allergies(r.params.patientId),
+  async (r) => {
+    await inCare(r, C.integer(r.params.patientId, "Patient"));
+    return O.allergies(r.params.patientId);
+  },
 );
-post("/allergies/:patientId/review", ["doctor", "nurse"], (r, t) =>
+post("/allergies/:patientId/review", ["doctor", "nurse"], async (r, t) =>
+  (await inCare(r, C.integer(r.params.patientId, "Patient"), t)) ||
   O.reviewAllergies(
     r.params.patientId,
     r.body,
@@ -162,10 +191,14 @@ post("/allergies/:patientId/review", ["doctor", "nurse"], (r, t) =>
 post(
   "/allergies/:patientId",
   ["doctor", "nurse"],
-  (r, t) => O.addAllergy(r.params.patientId, r.body, r.user, t),
+  async (r, t) => {
+    await inCare(r, C.integer(r.params.patientId, "Patient"), t);
+    return O.addAllergy(r.params.patientId, r.body, r.user, t);
+  },
   201,
 );
-read("/orders", readers, (r) => {
+read("/orders", readers, async (r) => {
+  if (r.query.patient_id) await inCare(r, C.integer(r.query.patient_id, "Patient"));
   const patient = r.query.patient_id
       ? C.integer(r.query.patient_id, "Patient")
       : null,
@@ -178,13 +211,14 @@ read("/orders", readers, (r) => {
  (v.supply_quantity-coalesce((SELECT sum(l.quantity) FROM hms_med_dispense_lines l WHERE l.version_id=v.id),0))::text AS remaining
  FROM hms_med_orders o JOIN hms_med_order_versions v ON v.order_id=o.id AND v.version=o.current_version
  JOIN hms_patients p ON p.id=o.patient_id LEFT JOIN hms_med_verifications z ON z.version_id=v.id LEFT JOIN hms_med_assessments a ON a.id=z.assessment_id
- WHERE (:patient IS NULL OR o.patient_id=:patient) AND (:encounter IS NULL OR o.encounter_id=:encounter)
+ WHERE (:patient IS NULL OR o.patient_id=:patient) AND (:encounter IS NULL OR o.encounter_id=:encounter) AND ${careFilter("o.patient_id")}
  ORDER BY o.created_at DESC LIMIT 200`,
-    { patient, encounter },
+    { patient, encounter, careDoctor: careDoctor(r) },
   );
 });
 read("/orders/:id", readers, async (r) => {
   const { o, v } = await C.order(r.params.id, undefined, false);
+  await inCare(r, o.patient_id);
   return {
     order: o,
     version: v,
@@ -208,6 +242,7 @@ read("/orders/:id", readers, async (r) => {
 });
 post("/orders/:id/assess", ["doctor"], async (r, t) => {
   const { o, v } = await C.order(r.params.id, t);
+  await inCare(r, o.patient_id, t);
   C.expected(r.headers["if-match"], o.revision);
   C.check(
     o.prescriber_user_id === r.user.id && o.state === "DRAFT",
@@ -217,9 +252,18 @@ post("/orders/:id/assess", ["doctor"], async (r, t) => {
   );
   return O.assess(o, v, { ...r.body, preview: true }, r.user, t);
 });
-post("/orders", ["doctor"], (r, t) => O.createOrder(r.body, r.user, t), 201);
+post(
+  "/orders",
+  ["doctor"],
+  async (r, t) => {
+    await inCare(r, C.integer(r.body?.patient_id, "Patient"), t);
+    return O.createOrder(r.body, r.user, t);
+  },
+  201,
+);
 for (const action of ["sign", "hold", "resume", "discontinue", "amend"])
-  post("/orders/:id/" + action, ["doctor"], (r, t) =>
+  post("/orders/:id/" + action, ["doctor"], async (r, t) =>
+    (await orderInCare(r, r.params.id, t)) ||
     O.transition(r.params.id, action, r.body, r.user, r.headers["if-match"], t),
   );
 post("/orders/:id/verify", ["pharmacist"], (r, t) =>
@@ -228,7 +272,8 @@ post("/orders/:id/verify", ["pharmacist"], (r, t) =>
 post(
   "/orders/:id/substitutions",
   ["doctor"],
-  (r, t) =>
+  async (r, t) =>
+    (await orderInCare(r, r.params.id, t)) ||
     I.authorizeSubstitution(
       r.params.id,
       r.body,
@@ -380,8 +425,9 @@ read("/emar", readers, (r) =>
  coalesce((SELECT jsonb_agg(c) FROM hms_med_corrections c WHERE c.administration_id=a.id),'[]') AS corrections
  FROM hms_med_schedules s JOIN hms_med_order_versions v ON v.id=s.version_id JOIN hms_med_orders o ON o.id=v.order_id JOIN hms_patients p ON p.id=s.patient_id
  LEFT JOIN hms_med_administrations a ON a.schedule_id=s.id LEFT JOIN hms_med_documentation_intents i ON i.schedule_id=s.id
- WHERE (:patient IS NULL OR s.patient_id=:patient) ORDER BY s.scheduled_at DESC LIMIT 200`,
+ WHERE (:patient IS NULL OR s.patient_id=:patient) AND ${careFilter("s.patient_id")} ORDER BY s.scheduled_at DESC LIMIT 200`,
     {
+      careDoctor: careDoctor(r),
       patient: r.query.patient_id
         ? C.integer(r.query.patient_id, "Patient")
         : null,

@@ -7,15 +7,17 @@ const {
   browserAs,
   runner,
   assert,
+  requireThrowawayDb,
 } = require("./helpers");
 const crypto = require("crypto");
-assert(
-  /^hms_p3_/.test(process.env.DB_NAME || ""),
-  "Use an isolated Phase 3 database",
-);
+requireThrowawayDb();
 const { step, done } = runner("Phase 3 medication frontend");
 const stamp = crypto.randomUUID().slice(0, 8);
-const dt = (v) => new Date(v).toISOString().slice(0, 16);
+// datetime-local inputs take local time; the browser runs in the machine's time zone.
+const dt = (v) => {
+  const d = new Date(v);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
 let doctor,
   pharmacist,
   nurse,
@@ -57,6 +59,10 @@ const browser = chromium;
         );
         const [e] = await sql(
           "INSERT INTO hms_encounters(patient_id,doctor_id,status) VALUES($1,$2,'Draft') RETURNING id",
+          [pid, u.id],
+        );
+        await sql(
+          "INSERT INTO hms_care_team_assignments(patient_id,practitioner_user_id,role,assigned_by) VALUES($1,$2,'consulting',$2)",
           [pid, u.id],
         );
         eid = e.id;

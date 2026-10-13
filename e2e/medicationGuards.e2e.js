@@ -1,10 +1,7 @@
 // Additional safety guards use only synthetic fixtures in a Phase 3 database.
-const { api, apiLogin, sql, runner, assert } = require("./helpers");
+const { api, apiLogin, sql, runner, assert, requireThrowawayDb } = require("./helpers");
 const crypto = require("crypto");
-assert(
-  /^hms_p3_/.test(process.env.DB_NAME || ""),
-  "Use an isolated Phase 3 database",
-);
+requireThrowawayDb();
 const { step, done } = runner("Medication provenance and timing guards");
 const tag = crypto.randomUUID().slice(0, 8),
   now = (delta = 0) => new Date(Date.now() + delta).toISOString();
@@ -47,6 +44,10 @@ const saved = (r, status = 200) => {
       );
       const [enc] = await sql(
         "INSERT INTO hms_encounters(patient_id,doctor_id,status) VALUES($1,$2,'Draft') RETURNING id",
+        [patient.id, doc.id],
+      );
+      await sql(
+        "INSERT INTO hms_care_team_assignments(patient_id,practitioner_user_id,role,assigned_by) VALUES($1,$2,'consulting',$2)",
         [patient.id, doc.id],
       );
       const draft = saved(
