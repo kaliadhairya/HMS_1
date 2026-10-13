@@ -12,6 +12,7 @@ const { logAction } = require('../utils/auditLogger');
 const { encrypt, decrypt, maskAadhaar } = require('../utils/encryption');
 const { Allergy, ChronicCondition, PatientDocument } = require('../models');
 const { body, validationResult } = require('express-validator');
+const { proposeForPatient } = require('./patientMerge');
 
 const VALID_PATIENT_TYPES = new Set(['corporate_employee', 'other']);
 const PHONE_REQUIRED_PATIENT_TYPES = new Set(['other']);
@@ -166,7 +167,7 @@ router.get('/', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', '
   try {
     const { empNumber, phoneNumber, fromDate, toDate, patientType, page = 1, limit = 20 } = req.query;
 
-    const where = {};
+    const where = { identity_status: { [Op.ne]: 'merged' } };
 
     // Wrap with UPPER() for case-insensitive search
     if (empNumber) {
@@ -351,7 +352,8 @@ router.post('/hms', [
     const resPatient = patient.toJSON();
     delete resPatient.aadhaar;
 
-    res.status(201).json({ success: true, message: 'Patient registered.', data: resPatient });
+    const possibleDuplicates = await proposeForPatient(patient.id, req.user.id);
+    res.status(201).json({ success: true, message: 'Patient registered.', data: { ...resPatient, possibleDuplicates } });
   } catch (err) {
     console.error(err);
     if (err.name === 'SequelizeUniqueConstraintError') {
@@ -463,9 +465,9 @@ router.get('/hms/search', protect, restrictTo('super_admin', 'admin', 'doctor', 
       replacements.toDate = toDate;
     }
 
-    const whereClause = filterClauses.length > 0
-      ? 'WHERE ' + filterClauses.join(' AND ')
-      : '';
+    // A merged duplicate is reached through the record it was merged into.
+    filterClauses.push(`p.IDENTITY_STATUS <> 'merged'`);
+    const whereClause = 'WHERE ' + filterClauses.join(' AND ');
 
     const query = `
       SELECT 
@@ -619,6 +621,10 @@ router.get('/hms/:id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nu
     if (!patient) return res.status(404).json({ success: false, message: 'Patient not found.' });
 
     const pData = patient.toJSON();
+    if (pData.merged_into_patient_id) {
+      const [target] = await sequelize.query('SELECT id, uhid, name FROM hms_patients WHERE id = :id', { replacements: { id: pData.merged_into_patient_id }, type: QueryTypes.SELECT });
+      pData.merged_into = target || null;
+    }
     pData.aadhaar_masked = maskAadhaar(pData.aadhaar);
     delete pData.aadhaar;
 
@@ -902,9 +908,10 @@ router.get('/search', protect, restrictTo('super_admin', 'admin', 'doctor', 'nur
     const q = String(req.query.q || '').trim();
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
     const page = Math.max(Number(req.query.page) || 1, 1);
-    const where = q
-      ? { [Op.or]: ['name', 'uhid', 'phoneNumber', 'empNumber'].map((field) => ({ [field]: { [Op.iLike]: `%${q}%` } })) }
-      : {};
+    const where = {
+      identity_status: { [Op.ne]: 'merged' },
+      ...(q ? { [Op.or]: ['name', 'uhid', 'phoneNumber', 'empNumber'].map((field) => ({ [field]: { [Op.iLike]: `%${q}%` } })) } : {}),
+    };
     const { rows, count } = await Patient.findAndCountAll({
       where,
       order: [['id', 'DESC']],

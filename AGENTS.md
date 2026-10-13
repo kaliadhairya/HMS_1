@@ -11,7 +11,7 @@
 - No one deploys to the shared Docker app without the owner's approval.
 
 ### Session log
-- 2026-10-13 Claude: Phase 2 part 1 (patient identity) committed fcb87c7; starting part 2 (duplicate review and merge).
+- 2026-10-13 Claude: Phase 2 part 1 (patient identity) committed fcb87c7; part 1 deployed to Docker 2026-10-13; part 2 (duplicate review and merge) WIP committed: SQL merge/unmerge verified by hand, API and wiring written, NOT yet e2e-tested, no review-queue screen yet, not deployed.
 
 ## Status (2026-10-13): Phase 1 complete — you may work
 

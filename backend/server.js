@@ -138,6 +138,7 @@ app.use('/api/events', require('./routes/events'));
 app.use('/api/users', require('./routes/users'));
 app.use('/internal/compat', require('./routes/internalCompat'));
 app.use('/api/patients', require('./routes/patientIdentity').router);
+app.use('/api/patients', require('./routes/patientMerge').router);
 app.use('/api/patients', require('./routes/patients'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/dashboard', require('./routes/dashboard'));

@@ -230,7 +230,18 @@ router.post('/hms/:id/identifiers/:identifierId/verify', protect, restrictTo(...
             AND i.valid_to IS NULL AND i.patient_id <> :id`,
         { ...identifier, id: req.params.id }, transaction
       );
-      if (other) return { status: 409, message: `This identifier is already verified for ${other.name} (${other.uhid}). Review the two records as possible duplicates.` };
+      if (other) {
+        // Not verified: the pair goes to the possible-duplicates review instead.
+        const [pa, pb] = [Math.min(Number(other.id), Number(req.params.id)), Math.max(Number(other.id), Number(req.params.id))];
+        await sequelize.query(
+          `INSERT INTO hms_patient_merge_cases (patient_a_id, patient_b_id, evidence, score, detected_by)
+           SELECT :pa, :pb, CAST(:evidence AS jsonb), 60, :userId
+            WHERE NOT EXISTS (SELECT 1 FROM hms_patient_merge_cases WHERE patient_a_id = :pa AND patient_b_id = :pb AND status IN ('open', 'dismissed'))
+           ON CONFLICT DO NOTHING`,
+          { replacements: { pa, pb, evidence: JSON.stringify([`the same ${identifier.system.replace('_', ' ').toLowerCase()} was presented for both`]), userId: req.user.id }, transaction }
+        );
+        return { review: `Not verified: this identifier is already verified for ${other.name} (${other.uhid}). Both records were added to the possible-duplicates review.` };
+      }
       await sequelize.query(
         "UPDATE hms_patient_identifiers SET verification_status = 'verified', verified_at = now(), verified_by = :userId WHERE id = :identifierId",
         { replacements: { identifierId: identifier.id, userId: req.user.id }, transaction }
@@ -238,9 +249,11 @@ router.post('/hms/:id/identifiers/:identifierId/verify', protect, restrictTo(...
       return {};
     });
     if (result.status) return fail(res, result.status, result.message);
+    // 202: the request was handled, but the identifier was not verified.
+    if (result.review) return res.status(202).json({ success: true, verified: false, message: result.review });
     res.json({ success: true, message: 'Identifier verified.' });
   } catch (err) {
-    if (err.name === 'SequelizeUniqueConstraintError') return fail(res, 409, 'This identifier was just verified for another patient. Review the records as possible duplicates.');
+    if (err.name === 'SequelizeUniqueConstraintError') return fail(res, 409, 'This identifier was just verified for another patient at the same moment. Try again to send both records to the possible-duplicates review.');
     console.error('Identifier verify failed:', err.message);
     res.status(500).json({ success: false, message: 'Could not verify the identifier.' });
   }

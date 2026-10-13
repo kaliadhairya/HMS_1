@@ -121,6 +121,23 @@ export default function PatientIdentityPanel({ patientId, role }) {
     const ok = await run(() => api.post(`/patients/hms/${patientId}/related-persons`, { ...personForm, phone: personForm.phone || undefined }), 'Related person added');
     if (ok) setPersonForm({ name: '', relationship: '', phone: '', isGuardian: false, isEmergencyContact: true });
   };
+  // A clash with another patient's verified identifier is answered 202: not
+  // verified, and both records go to the possible-duplicates review.
+  const verify = async (identifier) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/patients/hms/${patientId}/identifiers/${identifier.id}/verify`);
+      if (data.verified === false) toast(data.message, { icon: '⚠️', duration: 8000 });
+      else toast.success('Identifier verified');
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'That did not work.', { duration: 6000 });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const retire = (identifier) => {
     const reason = window.prompt(`Why is this ${SYSTEM_LABEL[identifier.system]} no longer valid?`);
     if (reason) run(() => api.post(`/patients/hms/${patientId}/identifiers/${identifier.id}/retire`, { reason }), 'Identifier retired');
@@ -149,7 +166,7 @@ export default function PatientIdentityPanel({ patientId, role }) {
               </td>
               <td className="text-right">
                 {!i.valid_to && canVerify && i.verification_status !== 'verified' && (
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(() => api.post(`/patients/hms/${patientId}/identifiers/${i.id}/verify`), 'Identifier verified')}>Verify</button>
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => verify(i)}>Verify</button>
                 )}
                 {!i.valid_to && canVerify && i.system !== 'UHID' && (
                   <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => retire(i)}>Retire</button>

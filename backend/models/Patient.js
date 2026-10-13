@@ -63,6 +63,11 @@ const Patient = sequelize.define('Patient', {
     defaultValue: 'registered',
     field: 'IDENTITY_STATUS'
   },
+  merged_into_patient_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    field: 'MERGED_INTO_PATIENT_ID'
+  },
   birth_date_estimated: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
