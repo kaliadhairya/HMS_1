@@ -947,403 +947,46 @@ router.get('/mar/:admissionId', protect, checkPermission('ipd', 'read'), async (
 
 router.patch('/mar/:id/status', protect, checkPermission('ipd', 'write'), LEGACY_MAR_RETIRED);
 
-// ── IPD BILLING — WARD RATES & CHARGES ─────────────────────
-
-const WARD_RATES = {
-  'General': 400,
-  'Private': 800,
-  'Critical Care': 400,
-  'Maternity': 400,
-};
-
-// Medicines added to an admission's bill before it is generated, kept in
-// hms_ipd_draft_charges (migration 0008) so a restart or a second server
-// instance does not lose them. Returned in the shape the billing page uses.
-function toChargeView(r) {
-  const unitPrice = Number(r.unit_price ?? r.UNIT_PRICE);
-  const quantity = Number(r.quantity ?? r.QUANTITY);
-  return {
-    ID: Number(r.id ?? r.ID),
-    ADMISSION_ID: String(r.admission_id ?? r.ADMISSION_ID),
-    MEDICINE_ID: Number(r.medicine_id ?? r.MEDICINE_ID),
-    MEDICINE_NAME: r.medicine_name ?? r.MEDICINE_NAME,
-    FORMULATION: r.formulation ?? r.FORMULATION ?? '',
-    STRENGTH: r.strength ?? r.STRENGTH ?? '',
-    QUANTITY: quantity,
-    UNIT_PRICE: unitPrice,
-    TOTAL_PRICE: round2(unitPrice * quantity),
-    ADDED_BY: r.added_by ?? r.ADDED_BY,
-    ADDED_AT: r.added_at ?? r.ADDED_AT,
-  };
-}
-
-async function draftCharges(admissionId, transaction) {
-  const [rows] = await sequelize.query(
-    'SELECT * FROM hms_ipd_draft_charges WHERE admission_id = :admissionId ORDER BY id',
-    { replacements: { admissionId }, transaction }
-  );
-  return rows.map(toChargeView);
-}
-
-async function admissionForBilling(admissionId, transaction, lock = false) {
-  const [adms] = await sequelize.query(`
-    SELECT a.*, w.TYPE as WARD_TYPE, w.NAME as WARD_NAME, ${STAY_DAYS_SQL} as DAYS_ADMITTED
-    FROM HMS_ADMISSIONS a
-    LEFT JOIN HMS_BEDS b ON b.ID = a.BED_ID
-    LEFT JOIN HMS_WARDS w ON w.ID = b.WARD_ID
-    WHERE a.ID = :admissionId
-    ${lock ? 'FOR UPDATE OF a' : ''}
-  `, { replacements: { admissionId: posInt(admissionId) || 0 }, transaction });
-  return adms[0] || null;
-}
-
-function wardCharges(admission) {
-  const daysAdmitted = Math.max(1, Number(admission.DAYS_ADMITTED) || 1);
-  const wardType = admission.WARD_TYPE || 'General';
-  const wardRate = WARD_RATES[wardType] || 400;
-  return { wardName: admission.WARD_NAME, wardType, wardRate, daysAdmitted, wardTotal: daysAdmitted * wardRate };
-}
-
-// Price of a medicine: MRP of the batch issued first (earliest expiry with stock), else the last purchase MRP.
-async function medicineUnitPrice(medicineId, transaction) {
-  const [batches] = await sequelize.query(`
-    SELECT MRP FROM HMS_MEDICINE_BATCHES
-    WHERE MEDICINE_ID = :medicineId AND QUANTITY > 0
-    ORDER BY EXPIRY_DATE ASC
-    LIMIT 1
-  `, { replacements: { medicineId }, transaction });
-  if (batches.length > 0 && Number(batches[0].MRP) > 0) return Number(batches[0].MRP);
-  const [purchaseItems] = await sequelize.query(`
-    SELECT MRP FROM HMS_PURCHASE_ITEMS WHERE MEDICINE_ID = :medicineId ORDER BY ID DESC LIMIT 1
-  `, { replacements: { medicineId }, transaction }).catch(() => [[]]);
-  return purchaseItems.length > 0 ? Number(purchaseItems[0].MRP) || 0 : 0;
-}
-
-// Every change to an admission's draft charges, and bill generation, first
-// locks the admission row, so drafts cannot change while a bill is made and no
-// draft can be added to an admission that has just been billed.
-async function lockUnbilledAdmission(admissionId, transaction) {
-  if (!posInt(admissionId)) return { status: 404, message: 'Admission not found' };
-  const admission = await admissionForBilling(admissionId, transaction, true);
-  if (!admission) return { status: 404, message: 'Admission not found' };
-  const bill = await existingIpdBill(admissionId, transaction);
-  if (bill) return { status: 409, message: `This admission is already billed (${bill.BILL_NUMBER}).` };
-  return { admission };
-}
-
-async function existingIpdBill(admissionId, transaction) {
-  const [[bill]] = await sequelize.query(`
-    SELECT * FROM HMS_BILLS
-    WHERE ADMISSION_ID = :admissionId AND BILL_TYPE = 'IPD' AND COALESCE(STATUS, '') <> 'Cancelled'
-    ORDER BY ID DESC LIMIT 1
-  `, { replacements: { admissionId: posInt(admissionId) || 0 }, transaction });
-  return bill || null;
-}
-
-async function availableAdvances(admissionId, transaction, lock = false) {
-  const [rows] = await sequelize.query(`
-    SELECT ID, AMOUNT FROM HMS_PATIENT_ADVANCES
-    WHERE ADMISSION_ID = :admissionId AND ADJUSTED_BILL_ID IS NULL AND COALESCE(IS_REFUNDED, 0) = 0
-    ORDER BY RECEIVED_AT ASC, ID ASC
-    ${lock ? 'FOR UPDATE' : ''}
-  `, { replacements: { admissionId: posInt(admissionId) || 0 }, transaction });
-  return rows.map((r) => ({ id: Number(r.ID), amount: Number(r.AMOUNT) || 0 }));
-}
-
-const round2 = (n) => Math.round(Number(n) * 100) / 100;
-
-// ── GET /api/ipd/admissions/:id/charges ────────────────────
-router.get('/admissions/:id/charges', protect, checkPermission('ipd', 'read'), async (req, res) => {
-  try {
-    const admissionId = String(req.params.id);
-    const admission = await admissionForBilling(admissionId);
-    if (!admission) {
-      return res.status(404).json({ success: false, message: 'Admission not found' });
-    }
-
-    const charges = await draftCharges(admissionId);
-    const wardInfo = wardCharges(admission);
-    const medicineTotal = round2(charges.reduce((sum, c) => sum + (c.TOTAL_PRICE || 0), 0));
-    const advances = await availableAdvances(admissionId);
-    const bill = await existingIpdBill(admissionId);
-    let billItems = [];
-    if (bill) {
-      [billItems] = await sequelize.query('SELECT * FROM HMS_BILL_ITEMS WHERE BILL_ID = :billId ORDER BY ID', { replacements: { billId: bill.ID } });
-    }
-
-    res.json({
-      success: true,
-      data: {
-        charges,
-        wardInfo,
-        medicineTotal,
-        grandTotal: round2(wardInfo.wardTotal + medicineTotal),
-        advanceAvailable: round2(advances.reduce((s, a) => s + a.amount, 0)),
-        advances: advances.map((a) => a.amount),
-        canDiscount: isAdminRole(req.user),
-        admissionStatus: admission.STATUS,
-        bill: bill ? { ...normalizeRowKeys(bill), items: billItems.map(normalizeRowKeys) } : null,
-      }
-    });
-  } catch (err) {
-    console.error('Fetch charges failed:', err.message);
-    res.status(500).json({ success: false, message: 'Failed to fetch charges' });
-  }
+// ── IPD BILLING (retired in Phase 5) ───────────────────────
+// Inpatient charges are recorded as they happen (bed days from the bed
+// history, dispensed medicines, tests, items added on the billing page) on the
+// admission's billing account, and billed through /api/finance. The old
+// draft-and-generate endpoints answer 410 so no client builds a bill from a
+// page draft again.
+const IPD_BILLING_MOVED = (req, res) => res.status(410).json({
+  success: false,
+  code: 'IPD_BILLING_MOVED',
+  message: 'Inpatient billing moved to the billing account (/api/finance/accounts/by-episode?admissionId=...).',
 });
-
-// ── POST /api/ipd/admissions/:id/charges ───────────────────
-router.post('/admissions/:id/charges', protect, checkPermission('ipd', 'write'), async (req, res) => {
-  try {
-    const admissionId = String(req.params.id);
-    const { formulation, strength } = req.body;
-    const medicineId = posInt(req.body.medicineId);
-    const quantity = posInt(req.body.quantity);
-    if (!medicineId || !text(req.body.medicineName) || !quantity) {
-      return res.status(400).json({ success: false, message: 'Medicine ID, name, and quantity are required' });
-    }
-    if (quantity > 999) return fail(res, 400, 'Quantity must be 999 or less.');
-
-    const result = await sequelize.transaction(async (transaction) => {
-      const locked = await lockUnbilledAdmission(admissionId, transaction);
-      if (locked.status) return locked;
-      const unitPrice = await medicineUnitPrice(medicineId, transaction);
-      const [[row]] = await sequelize.query(
-        `INSERT INTO hms_ipd_draft_charges (admission_id, medicine_id, medicine_name, formulation, strength, quantity, unit_price, added_by)
-         VALUES (:admissionId, :medicineId, :medicineName, :formulation, :strength, :quantity, :unitPrice, :addedBy)
-         RETURNING *`,
-        {
-          replacements: {
-            admissionId, medicineId, medicineName: text(req.body.medicineName),
-            formulation: formulation || '', strength: strength || '', quantity, unitPrice, addedBy: req.user.id,
-          },
-          transaction,
-        }
-      );
-      return { row };
-    });
-    if (result.status) return fail(res, result.status, result.message);
-    res.json({ success: true, data: toChargeView(result.row) });
-  } catch (err) {
-    console.error('Add charge failed:', err.message);
-    res.status(500).json({ success: false, message: 'Failed to add charge' });
-  }
-});
-
-// ── PATCH /api/ipd/admissions/:id/charges/:chargeId ────────
-router.patch('/admissions/:id/charges/:chargeId', protect, checkPermission('ipd', 'write'), async (req, res) => {
-  try {
-    const admissionId = String(req.params.id);
-    const chargeId = Number(req.params.chargeId);
-    if (!posInt(chargeId) || !posInt(admissionId)) return res.status(404).json({ success: false, message: 'Charge not found' });
-    const quantity = posInt(req.body.quantity);
-    if (!quantity || quantity > 999) return fail(res, 400, 'Quantity must be a whole number from 1 to 999.');
-
-    const result = await sequelize.transaction(async (transaction) => {
-      const locked = await lockUnbilledAdmission(admissionId, transaction);
-      if (locked.status) return locked;
-      const [rows] = await sequelize.query(
-        'UPDATE hms_ipd_draft_charges SET quantity = :quantity WHERE id = :chargeId AND admission_id = :admissionId RETURNING *',
-        { replacements: { quantity, chargeId, admissionId }, transaction }
-      );
-      return rows.length ? { row: rows[0] } : { status: 404, message: 'Charge not found' };
-    });
-    if (result.status) return fail(res, result.status, result.message);
-    res.json({ success: true, data: toChargeView(result.row) });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Failed to update charge' });
-  }
-});
-
-// ── DELETE /api/ipd/admissions/:id/charges/:chargeId ───────
-router.delete('/admissions/:id/charges/:chargeId', protect, checkPermission('ipd', 'write'), async (req, res) => {
-  try {
-    const admissionId = String(req.params.id);
-    const chargeId = Number(req.params.chargeId);
-    if (!posInt(chargeId) || !posInt(admissionId)) return res.status(404).json({ success: false, message: 'Charge not found' });
-    const result = await sequelize.transaction(async (transaction) => {
-      const locked = await lockUnbilledAdmission(admissionId, transaction);
-      if (locked.status) return locked;
-      const [rows] = await sequelize.query(
-        'DELETE FROM hms_ipd_draft_charges WHERE id = :chargeId AND admission_id = :admissionId RETURNING id',
-        { replacements: { chargeId, admissionId }, transaction }
-      );
-      return rows.length ? {} : { status: 404, message: 'Charge not found' };
-    });
-    if (result.status) return fail(res, result.status, result.message);
-    res.json({ success: true, message: 'Charge removed' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Failed to remove charge' });
-  }
-});
-
-// ── POST /api/ipd/admissions/:id/generate-bill ─────────────
-// One IPD bill per admission: bed days (up to discharge) + medicines, less an approved discount, less the
-// advances taken against the admission. Body: { items?: [{ medicineId, quantity, medicineName?, strength? }],
-// discountAmount? }. Prices are always looked up here, never taken from the browser.
-router.post('/admissions/:id/generate-bill', protect, checkPermission('ipd', 'write'), async (req, res) => {
-  const t = await sequelize.transaction();
-  const abort = async (status, message) => { await t.rollback(); return fail(res, status, message); };
-  try {
-    const admissionId = String(req.params.id);
-    const admission = await admissionForBilling(admissionId, t, true);
-    if (!admission) return abort(404, 'Admission not found');
-    const existing = await existingIpdBill(admissionId, t);
-    if (existing) return abort(409, `This admission is already billed (${existing.BILL_NUMBER}).`);
-
-    const discountAmount = round2(req.body?.discountAmount || 0);
-    if (!Number.isFinite(discountAmount) || discountAmount < 0) return abort(400, 'Discount must be zero or more.');
-    if (discountAmount > 0 && !isAdminRole(req.user)) return abort(403, 'Only administrators can approve discounts.');
-
-    // Medicine lines are the saved drafts, stable under the admission lock taken
-    // above. The billing page sends the list it shows; if that differs from the
-    // drafts (a charge was added, changed or removed elsewhere since it loaded),
-    // refuse rather than bill one list and delete the other.
-    const lines = await draftCharges(admissionId, t);
-    if (Array.isArray(req.body?.items)) {
-      const signature = (items) => items
-        .map((it) => `${posInt(it.medicineId ?? it.MEDICINE_ID)}:${posInt(it.quantity ?? it.QUANTITY)}`)
-        .sort().join(',');
-      if (signature(req.body.items) !== signature(lines)) {
-        return abort(409, 'The medicines on this bill changed since the page was loaded. Reload the bill and try again.');
-      }
-    }
-
-    const ward = wardCharges(admission);
-    const medicineTotal = round2(lines.reduce((sum, c) => sum + (c.TOTAL_PRICE || 0), 0));
-    const totalAmount = round2(ward.wardTotal + medicineTotal);
-    if (discountAmount > totalAmount) return abort(400, 'Discount cannot be more than the bill total.');
-
-    // Advances against this admission, oldest first, each used whole while it fits in what is still payable.
-    // One that does not fit stays available (refund or adjust at the cash desk) rather than being split.
-    let payable = round2(totalAmount - discountAmount);
-    const applied = [];
-    for (const adv of await availableAdvances(admissionId, t, true)) {
-      if (adv.amount > 0 && adv.amount <= payable + 0.001) {
-        applied.push(adv);
-        payable = round2(payable - adv.amount);
-      }
-    }
-    const advanceAdjusted = round2(applied.reduce((s, a) => s + a.amount, 0));
-    const advanceRemaining = round2((await availableAdvances(admissionId, t)).reduce((s, a) => s + a.amount, 0) - advanceAdjusted);
-    const netPayable = Math.max(0, payable);
-    const status = netPayable <= 0 ? 'Paid' : 'Pending';
-
-    const billId = await nextId('hms_bills_seq', 'HMS_BILLS', t);
-    const billNumber = `IPD-${new Date().getFullYear()}-${String(billId).padStart(6, '0')}`;
-
-    await sequelize.query(`
-      INSERT INTO HMS_BILLS (
-        ID, PATIENT_ID, ADMISSION_ID, BILL_TYPE, BILL_NUMBER, STATUS,
-        TOTAL_AMOUNT, DISCOUNT_AMOUNT, DISCOUNT_APPROVED_BY, GST_AMOUNT, NET_PAYABLE, ADVANCE_ADJUSTED,
-        CREATED_BY, CREATED_AT, UPDATED_AT
-      ) VALUES (
-        :id, :patientId, :admissionId, 'IPD', :billNumber, :status,
-        :totalAmount, :discountAmount, :approvedBy, 0, :netPayable, :advanceAdjusted,
-        :createdBy, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-      )
-    `, {
-      replacements: {
-        id: billId,
-        patientId: admission.PATIENT_ID,
-        admissionId: Number(admissionId),
-        billNumber,
-        status,
-        totalAmount,
-        discountAmount,
-        approvedBy: discountAmount > 0 ? req.user.id : null,
-        netPayable,
-        advanceAdjusted,
-        createdBy: req.user.id,
-      },
-      transaction: t,
-    });
-
-    const items = [{
-      type: 'Ward',
-      name: `${admission.WARD_NAME || ward.wardType} Ward Charges (${ward.daysAdmitted} days)`,
-      qty: ward.daysAdmitted, rate: ward.wardRate, amount: ward.wardTotal,
-    }, ...lines.map((c) => ({
-      type: 'Medicine',
-      name: `${c.MEDICINE_NAME}${c.STRENGTH ? ' ' + c.STRENGTH : ''}`,
-      qty: c.QUANTITY, rate: c.UNIT_PRICE, amount: c.TOTAL_PRICE,
-    }))];
-    for (const item of items) {
-      await sequelize.query(`
-        INSERT INTO HMS_BILL_ITEMS (ID, BILL_ID, ITEM_TYPE, ITEM_NAME, QUANTITY, RATE, AMOUNT, SERVICE_DATE)
-        VALUES (:id, :billId, :type, :name, :qty, :rate, :amount, CURRENT_TIMESTAMP)
-      `, {
-        replacements: { id: await nextId('hms_bill_items_seq', 'HMS_BILL_ITEMS', t), billId, ...item },
-        transaction: t,
-      });
-    }
-    if (applied.length) {
-      await sequelize.query('UPDATE HMS_PATIENT_ADVANCES SET ADJUSTED_BILL_ID = :billId WHERE ID IN (:ids)', {
-        replacements: { billId, ids: applied.map((a) => a.id) }, transaction: t,
-      });
-    }
-
-    // The drafts become the bill: removed in the same transaction that creates it.
-    await sequelize.query('DELETE FROM hms_ipd_draft_charges WHERE admission_id = :admissionId', { replacements: { admissionId }, transaction: t });
-    await t.commit();
-    await logAction(req.user.id, 'CREATE', 'billing', billId, null, { action: 'generate_ipd_bill', billNumber, admissionId, discountAmount, advanceAdjusted }, req.ip);
-
-    return res.status(201).json({
-      success: true,
-      data: {
-        billId,
-        billNumber,
-        status,
-        totalAmount,
-        wardTotal: ward.wardTotal,
-        medicineTotal,
-        discountAmount,
-        advanceAdjusted,
-        advanceRemaining,
-        netPayable,
-      }
-    });
-  } catch (err) {
-    await t.rollback().catch(() => {});
-    console.error('Generate IPD bill failed:', err.message);
-    return fail(res, 500, 'Failed to generate IPD bill');
-  }
-});
+router.get('/admissions/:id/charges', protect, checkPermission('ipd', 'read'), IPD_BILLING_MOVED);
+router.post('/admissions/:id/charges', protect, checkPermission('ipd', 'write'), IPD_BILLING_MOVED);
+router.patch('/admissions/:id/charges/:chargeId', protect, checkPermission('ipd', 'write'), IPD_BILLING_MOVED);
+router.delete('/admissions/:id/charges/:chargeId', protect, checkPermission('ipd', 'write'), IPD_BILLING_MOVED);
+router.post('/admissions/:id/generate-bill', protect, checkPermission('ipd', 'write'), IPD_BILLING_MOVED);
 
 // ── GET /api/ipd/billing/saved-drafts ───────────────────────
+// Admissions with charges not billed yet (what the old "saved drafts" listed).
 router.get('/billing/saved-drafts', protect, checkPermission('ipd', 'read'), async (req, res) => {
   try {
-    const [draftRows] = await sequelize.query(
-      `SELECT admission_id, count(*)::int AS item_count, sum(quantity * unit_price) AS draft_total
-         FROM hms_ipd_draft_charges GROUP BY admission_id`
-    );
-    const drafts = new Map(draftRows.map((r) => [String(r.admission_id ?? r.ADMISSION_ID), r]));
-    const draftAdmissionIds = [...drafts.keys()];
-
-    if (draftAdmissionIds.length === 0) {
-      return res.json({ success: true, data: [] });
-    }
-
-    const [admissions] = await sequelize.query(`
-      SELECT a.*, p.NAME as PATIENT_NAME, p.UHID,
-             b.BED_NUMBER, w.NAME as WARD_NAME
-      FROM HMS_ADMISSIONS a
-      JOIN HMS_PATIENTS p ON p.ID = a.PATIENT_ID
-      LEFT JOIN HMS_BEDS b ON b.ID = a.BED_ID
-      LEFT JOIN HMS_WARDS w ON w.ID = b.WARD_ID
-      WHERE a.ID IN (:ids)
-    `, { replacements: { ids: draftAdmissionIds } });
-
-    const results = admissions.map(normalizeRowKeys).map(adm => {
-      const draft = drafts.get(String(adm.ID));
-      return { ...adm, draftTotal: round2(Number(draft.draft_total ?? draft.DRAFT_TOTAL)), itemCount: Number(draft.item_count ?? draft.ITEM_COUNT) };
-    });
-
-    res.json({ success: true, data: results });
+    const [rows] = await sequelize.query(`
+      SELECT a.*, p.NAME AS PATIENT_NAME, p.UHID, b.BED_NUMBER, w.NAME AS WARD_NAME, acc.id AS ACCOUNT_ID,
+             count(c.id)::int AS ITEM_COUNT, COALESCE(sum(c.amount + c.gst_amount), 0) AS DRAFT_TOTAL
+        FROM hms_billing_accounts acc
+        JOIN hms_admissions a ON a.id = acc.admission_id
+        JOIN hms_patients p ON p.id = a.patient_id
+        LEFT JOIN hms_beds b ON b.id = a.bed_id
+        LEFT JOIN hms_wards w ON w.id = b.ward_id
+        JOIN hms_charge_events c ON c.account_id = acc.id
+       WHERE c.source_type NOT IN ('reversal', 'ward_day')
+         AND NOT EXISTS (SELECT 1 FROM hms_charge_events r WHERE r.reverses_id = c.id)
+         AND NOT EXISTS (SELECT 1 FROM hms_invoice_lines l JOIN hms_invoices i ON i.id = l.invoice_id
+                          WHERE l.charge_event_id = c.id AND NOT l.released AND i.status <> 'Draft')
+       GROUP BY a.id, p.NAME, p.UHID, b.BED_NUMBER, w.NAME, acc.id
+       ORDER BY a.admission_date DESC`);
+    res.json({ success: true, data: rows.map(normalizeRowKeys).map((r) => ({ ...r, draftTotal: Math.round(Number(r.DRAFT_TOTAL) * 100) / 100, itemCount: Number(r.ITEM_COUNT) })) });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
+    console.error('Unbilled admissions failed:', err.message);
+    res.status(500).json({ success: false, message: 'Could not list unbilled admissions.' });
   }
 });
 

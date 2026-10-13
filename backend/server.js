@@ -16,6 +16,7 @@ const { schemaProblems } = require('./migrate');
 const { requestContext, bindAuditActor } = require('./utils/auditContext');
 const { startAuditSealer } = require('./utils/auditSealer');
 const { startOutboxDispatcher } = require('./utils/outbox');
+const { startFinanceWorker } = require('./services/reconciliation');
 const { startSocketSessionGuard } = require('./utils/socketSessions');
 const securitySettings = require('./utils/settings');
 const { validateToken } = require('./utils/identityClient');
@@ -185,6 +186,7 @@ app.use('/api/hms/icd10', require('./routes/hms/icd10'));
 // Part B - IPD & Billing APIs
 app.use('/api/ipd', require('./routes/ipd'));
 app.use('/api/billing', require('./routes/billing'));
+app.use('/api/finance', require('./routes/finance'));
 
 // Part C - Admin Settings & PDF APIs
 app.use('/api/admin', require('./routes/admin'));
@@ -313,6 +315,7 @@ async function start() {
   });
   startAuditSealer(sequelize);
   startOutboxDispatcher(io);
+  startFinanceWorker();
   startSocketSessionGuard(io);
 }
 
