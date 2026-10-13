@@ -4,6 +4,7 @@ import { Plus, Printer, ShoppingCart, Trash2 } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
+import { SaveStatus, MedicationLinks, useCommand } from './MedicationUI';
 
 const suggestionBox = {
   position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, zIndex: 10, maxHeight: 220, overflowY: 'auto',
@@ -17,12 +18,19 @@ const suggestionItem = {
 const emptyRow = () => ({ id: Date.now() + Math.random(), medicineId: '', medicineSearch: '', batchId: '', quantity: 1, mrp: 0, gstRate: 0, suggestions: [], batches: [] });
 
 export default function OTCSalePage() {
+  const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
+  const [reviewReason, setReviewReason] = useState('');
   const [patientId, setPatientId] = useState('');
   const [patientError, setPatientError] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [items, setItems] = useState([emptyRow()]);
   const [loading, setLoading] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+  const command = useCommand((response, attempt) => {
+    setReceiptData({ billNumber:response.billNumber,totalAmount:response.totalAmount,gstAmount:response.gstAmount,
+      paymentMode:attempt.body.paymentMode,patientUhid:attempt.body.patientId,date:new Date().toLocaleString(),
+      items:(response.items||[]).map(i=>({name:i.medicineName,quantity:i.quantity,rate:i.rate,gstAmount:i.gstAmount,amount:i.amount})) });
+  }, '/pharmacy');
 
   // Immutable row updates: the old handler mutated rows in place and raced with its own async search.
   const patchRow = (rowId, patch) => setItems((prev) => prev.map((it) => (it.id === rowId ? { ...it, ...patch } : it)));
@@ -116,6 +124,8 @@ export default function OTCSalePage() {
       const payload = {
         patientId: patientId.trim() || null,
         paymentMode,
+        clinicalReviewAcknowledged: reviewAcknowledged,
+        clinicalReviewReason: reviewReason,
         items: validItems.map(i => ({
           medicineId: i.medicineId,
           batchId: i.batchId,
@@ -123,29 +133,14 @@ export default function OTCSalePage() {
         }))
       };
 
-      const res = await api.post('/pharmacy/otc', payload);
+      const result = await command.run('/otc', payload);
+      if (!result) return;
       toast.success('Sale completed');
-
-      // Receipt from the server's own figures (rate = batch MRP, GST from the medicine).
-      setReceiptData({
-        billNumber: res.data.billNumber,
-        totalAmount: res.data.totalAmount,
-        gstAmount: res.data.gstAmount,
-        paymentMode,
-        patientUhid: payload.patientId,
-        date: new Date().toLocaleString(),
-        items: (res.data.items || []).map(i => ({
-          name: i.medicineName,
-          quantity: i.quantity,
-          rate: i.rate,
-          gstAmount: i.gstAmount,
-          amount: i.amount,
-        }))
-      });
-
       // Reset
       setItems([emptyRow()]);
       setPatientId('');
+      setReviewAcknowledged(false);
+      setReviewReason('');
     } catch (err) {
       const message = err.response?.data?.message || 'The sale could not be completed';
       if (/patient/i.test(message) && err.response?.status === 400) setPatientError(message);
@@ -244,7 +239,16 @@ export default function OTCSalePage() {
         description="Sell medicines over the counter. Stock is taken from the batch you choose, earliest expiry first."
       />
 
+      <MedicationLinks />
+      <SaveStatus value={command.status} />
       <form onSubmit={handleSubmit} className="stack">
+        <section className="card" style={{padding:16}}>
+          <h2>Pharmacist counter-sale review</h2>
+          <p>Only products with explicit formulary permission may be sold without an order. Clinical coverage remains incomplete. Known ingredient allergies and controlled drugs require the coded prescribing workflow. A counter-sale receipt does not authorize an inpatient dose.</p>
+          <label><input type="checkbox" required checked={reviewAcknowledged} onChange={e=>setReviewAcknowledged(e.target.checked)} /> I reviewed counter-sale permission and incomplete patient context.</label>
+          <label htmlFor="otc-review-reason">Pharmacist review reason / source</label>
+          <input id="otc-review-reason" className="form-input" required value={reviewReason} onChange={e=>setReviewReason(e.target.value)} />
+        </section>
         <section className="panel panel-pad">
           <h2 className="panel-title">Customer and payment</h2>
           <div className="form-row-2">

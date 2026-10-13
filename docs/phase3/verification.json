@@ -1,0 +1,219 @@
+{
+  "started_at": "2026-10-13T13:51:09.284Z",
+  "database": "hms_p3_candidate",
+  "branch": "phase3/medication-safety",
+  "suites": [
+    {
+      "name": "backend-unit",
+      "exit_code": 0,
+      "duration_ms": 156,
+      "log_file": "backend-unit.log",
+      "command": "(cd backend && HMS_TEST_DATABASE=false npm test)"
+    },
+    {
+      "name": "phase1-foundation",
+      "exit_code": 0,
+      "duration_ms": 3526,
+      "log_file": "phase1-foundation.log",
+      "command": "HMS_TEST_DATABASE=true node backend/scripts/verify-phase3-foundation.js"
+    },
+    {
+      "name": "medication",
+      "exit_code": 0,
+      "duration_ms": 64888,
+      "log_file": "medication.log",
+      "passed": 20,
+      "total": 20,
+      "command": "HMS_TEST_DATABASE=true node e2e/medication.e2e.js"
+    },
+    {
+      "name": "medicationGuards",
+      "exit_code": 0,
+      "duration_ms": 1950,
+      "log_file": "medicationGuards.log",
+      "passed": 9,
+      "total": 9,
+      "command": "HMS_TEST_DATABASE=true node e2e/medicationGuards.e2e.js"
+    },
+    {
+      "name": "medicationFrontend",
+      "exit_code": 0,
+      "duration_ms": 15672,
+      "log_file": "medicationFrontend.log",
+      "passed": 6,
+      "total": 6,
+      "command": "HMS_TEST_DATABASE=true node e2e/medicationFrontend.e2e.js"
+    },
+    {
+      "name": "pharmacy",
+      "exit_code": 0,
+      "duration_ms": 20435,
+      "log_file": "pharmacy.log",
+      "passed": 18,
+      "total": 18,
+      "command": "HMS_TEST_DATABASE=true node e2e/pharmacy.e2e.js"
+    },
+    {
+      "name": "opd",
+      "exit_code": 0,
+      "duration_ms": 21556,
+      "log_file": "opd.log",
+      "passed": 20,
+      "total": 20,
+      "command": "HMS_TEST_DATABASE=true node e2e/opd.e2e.js"
+    },
+    {
+      "name": "lab",
+      "exit_code": 0,
+      "duration_ms": 18455,
+      "log_file": "lab.log",
+      "passed": 10,
+      "total": 10,
+      "command": "HMS_TEST_DATABASE=true node e2e/lab.e2e.js"
+    },
+    {
+      "name": "ipd",
+      "exit_code": 0,
+      "duration_ms": 30938,
+      "log_file": "ipd.log",
+      "passed": 13,
+      "total": 13,
+      "command": "HMS_TEST_DATABASE=true node e2e/ipd.e2e.js"
+    },
+    {
+      "name": "admin",
+      "exit_code": 0,
+      "duration_ms": 35494,
+      "log_file": "admin.log",
+      "passed": 28,
+      "total": 28,
+      "command": "HMS_TEST_DATABASE=true node e2e/admin.e2e.js"
+    },
+    {
+      "name": "authorization",
+      "exit_code": 0,
+      "duration_ms": 4011,
+      "log_file": "authorization.log",
+      "passed": 5,
+      "total": 5,
+      "command": "HMS_TEST_DATABASE=true node e2e/authorization.e2e.js"
+    },
+    {
+      "name": "sessions",
+      "exit_code": 0,
+      "duration_ms": 5049,
+      "log_file": "sessions.log",
+      "passed": 7,
+      "total": 7,
+      "command": "HMS_TEST_DATABASE=true node e2e/sessions.e2e.js"
+    },
+    {
+      "name": "idempotency",
+      "exit_code": 0,
+      "duration_ms": 1481,
+      "log_file": "idempotency.log",
+      "passed": 8,
+      "total": 8,
+      "command": "HMS_TEST_DATABASE=true node e2e/idempotency.e2e.js"
+    },
+    {
+      "name": "durability",
+      "exit_code": 0,
+      "duration_ms": 8490,
+      "log_file": "durability.log",
+      "passed": 11,
+      "total": 11,
+      "command": "HMS_TEST_DATABASE=true node e2e/durability.e2e.js"
+    },
+    {
+      "name": "frontendReliability",
+      "exit_code": 0,
+      "duration_ms": 3764,
+      "log_file": "frontendReliability.log",
+      "passed": 2,
+      "total": 2,
+      "command": "HMS_TEST_DATABASE=true node e2e/frontendReliability.e2e.js"
+    },
+    {
+      "name": "ipdDrafts",
+      "exit_code": 0,
+      "duration_ms": 746,
+      "log_file": "ipdDrafts.log",
+      "passed": 2,
+      "total": 2,
+      "command": "HMS_TEST_DATABASE=true node e2e/ipdDrafts.e2e.js"
+    },
+    {
+      "name": "audit",
+      "exit_code": 0,
+      "duration_ms": 2917,
+      "log_file": "audit.log",
+      "passed": 7,
+      "total": 7,
+      "command": "HMS_TEST_DATABASE=true node e2e/audit.e2e.js"
+    }
+  ],
+  "finished_at": "2026-10-13T13:55:08.820Z",
+  "passed": true,
+  "code_commit": "a7548b412ab4ca0d3882f18d2ba8ff0ebafdc874",
+  "base_commit": "09df78e",
+  "source_backup": "/home/kalmaf/hms-backups/20261013-150841/hms.dump",
+  "foundation_database": "hms_p3_foundation_release",
+  "backend_unit": {
+    "passed": 10,
+    "skipped": 1
+  },
+  "phase1_foundation": {
+    "passed": 16,
+    "failed": 0
+  },
+  "schema_verification": [
+    {
+      "postgresql_major": 16,
+      "fresh_matches_legacy_upgrade": true,
+      "fingerprint_facts": 2118,
+      "through_migration": "0043_medication_counter_review.sql",
+      "log_sha256": "b74215f9f314bd4fe32a18f651c6a81f7643c3a9887fbedefe88e0bcd1d9caeb"
+    },
+    {
+      "postgresql_major": 18,
+      "fresh_matches_legacy_upgrade": true,
+      "fingerprint_facts": 2118,
+      "through_migration": "0043_medication_counter_review.sql",
+      "log_sha256": "9b6f10c4d0ba0ea3f72e85253bce4463baa71902f659286b88915e5acf7aeb71"
+    }
+  ],
+  "frontend_build": {
+    "passed": true,
+    "output_directory": "/tmp/hms-phase3-work/frontend-build",
+    "log_sha256": "1dca7bcb5d82616b2c78bfae2202a09100234192eb4251948a7115280340925b"
+  },
+  "log_directory": "/tmp/hms-phase3-work/candidate-evidence",
+  "suite_log_sha256": {
+    "backend-unit": "b6f55c87d95444bb393ff156b15a6f440cb246eb4114fb474ec4522303a7352a",
+    "phase1-foundation": "dafd1b25a9578b06f2d8496c4fcf82be5a38f46dcd11a00a4ceb0fd5070f4330",
+    "medication": "10c609f3369df4b094729e358142bc7eec6392c88bb03c059be7825ae7022ff9",
+    "medicationGuards": "e7e55fc66182ca7c77491ea00e706f2e90eb47075dc0c9b42d879ab65cd85548",
+    "medicationFrontend": "a607ea82d883a15f5bf5da4cf5606125edf2fb2b2a93c03d1c152ae72a6fcc1a",
+    "pharmacy": "d5db0cdb7c39a360752f3a7f0486a8ad72d755e30d420586d174b2621a118abd",
+    "opd": "7b99661acab388f7c33a96130dadd1696002bbebf7754e779a4c35d291a269c7",
+    "lab": "df73c0195bde33e8fad93869b100134f0b0e99e71e53d4b894f20f341c373eb1",
+    "ipd": "441b1cd5a30353e3103e52c28550081d9bf255be882d9f6777676cbcfff67974",
+    "admin": "815bba18c4e0dfee420ea5215d009d1cf7a0bd7c97e0cc3311319aee3ea086cc",
+    "authorization": "d4764c54d0bb2e4fabcdb5e024543563a2b54005077f37c7162a6011f9e6d40b",
+    "sessions": "a600af13903bc4a971ff860084f047d4bbf967c6a100ef9eed2219505af25b7a",
+    "idempotency": "3fbfb5b73bd8ff1b2badffdb48c7f2bc2bb8fafa34b8c26591ff82268be7032c",
+    "durability": "d468b5768a21080f1ab02e185935163c21ebaa49d5be1658879f9f9ac3165623",
+    "frontendReliability": "7f838a34bc030770955cfd66fbcc6ac794a94f1130e89f5c54dab374a4e49a86",
+    "ipdDrafts": "548c652c48877b538d7b862c6a37b0271a5114652adae88d5496473ea84ae452",
+    "audit": "f2334f500a88e8aafa40b75bac54d2472ff63f39c93793d6c72c3a5a6049f7c7"
+  },
+  "clinical_go_live_ready": false,
+  "remaining_integration_gates": [
+    "Phase 2 merge and rebase with care-team/practitioner integration",
+    "Phase 2 retirement of free-text MAR write handlers",
+    "Clinical-owner content approval and workflow validation",
+    "Phase 5 episode invoice and credit integration"
+  ],
+  "implementation_tree_changed_after_verification": false
+}

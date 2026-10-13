@@ -181,6 +181,7 @@ router.get('/medicines/:id/batches', async (req, res) => {
         medicineId: id,
         quantity: { [Op.gt]: 0 },
         expiryDate: { [Op.gte]: sequelize.literal('CURRENT_DATE') },
+        [Op.and]: sequelize.literal("LOT_STATUS = 'AVAILABLE'"),
       },
       order: [['EXPIRY_DATE', 'ASC'], ['ID', 'ASC']]
     });

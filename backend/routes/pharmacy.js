@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { sequelize } = require('../models/db');
 const { publish } = require('../utils/outbox');
-const { protect, checkPermission } = require('../middleware/auth');
+const { protect, checkPermission, restrictTo } = require('../middleware/auth');
 const { logAction } = require('../utils/auditLogger');
 const {
   Medicine, MedicineBatch, StockLedger, Supplier,
@@ -65,9 +65,9 @@ async function lockBatch(batchId, transaction) {
   const id = Number(batchId);
   if (!Number.isInteger(id) || id <= 0) return null;
   const [rows] = await sequelize.query(`
-    SELECT b.ID, b.MEDICINE_ID, b.SUPPLIER_ID, b.BATCH_NUMBER, b.EXPIRY_DATE, b.QUANTITY, b.MRP, b.PURCHASE_RATE,
-           (b.EXPIRY_DATE < CURRENT_DATE) AS IS_EXPIRED,
-           m.GENERIC_NAME, m.STRENGTH, m.STRENGTH_UNIT, m.GST_RATE
+    SELECT b.ID, b.MEDICINE_ID, b.SUPPLIER_ID, b.BATCH_NUMBER, b.EXPIRY_DATE, b.QUANTITY, b.MRP, b.PURCHASE_RATE, b.LOT_STATUS,
+           (b.EXPIRY_DATE < (current_timestamp AT TIME ZONE (SELECT timezone FROM hms_med_locations WHERE code='MAIN'))::date) AS IS_EXPIRED,
+           m.GENERIC_NAME, m.STRENGTH, m.STRENGTH_UNIT, m.GST_RATE, m.IS_CONTROLLED
     FROM HMS_MEDICINE_BATCHES b
     JOIN HMS_MEDICINES m ON m.ID = b.MEDICINE_ID
     WHERE b.ID = :id
@@ -134,6 +134,7 @@ router.get('/medicines/:id/batches', checkPermission('pharmacy', 'read'), async 
         medicineId: id,
         quantity: { [Op.gt]: 0 },
         expiryDate: { [Op.gte]: sequelize.literal('CURRENT_DATE') },
+        [Op.and]: sequelize.literal("LOT_STATUS = 'AVAILABLE'"),
       },
       order: [['EXPIRY_DATE', 'ASC'], ['ID', 'ASC']], // FEFO
     });
@@ -188,7 +189,7 @@ router.get('/stock/batches-by-name', checkPermission('pharmacy', 'read'), async 
 
     const [rows] = await sequelize.query(`
       SELECT b.ID as BATCH_ID, b.BATCH_NUMBER, b.EXPIRY_DATE,
-             b.QUANTITY, b.MRP, b.PURCHASE_RATE,
+             b.QUANTITY, b.MRP, b.PURCHASE_RATE, b.LOT_STATUS,
              s.NAME as SUPPLIER_NAME,
              m.ID as MEDICINE_ID,
              (SELECT MIN(sl.TRANSACTION_DATE) FROM HMS_STOCK_LEDGER sl
@@ -218,7 +219,7 @@ router.get('/stock/batches/:medicineId', checkPermission('pharmacy', 'read'), as
     const medicineId = req.params.medicineId;
     const [rows] = await sequelize.query(`
       SELECT b.ID as BATCH_ID, b.BATCH_NUMBER, b.EXPIRY_DATE,
-             b.QUANTITY, b.MRP, b.PURCHASE_RATE,
+             b.QUANTITY, b.MRP, b.PURCHASE_RATE, b.LOT_STATUS,
              b.SUPPLIER_ID, s.NAME as SUPPLIER_NAME,
              (b.EXPIRY_DATE < CURRENT_DATE) as IS_EXPIRED
       FROM HMS_MEDICINE_BATCHES b
@@ -362,7 +363,8 @@ router.post('/grn', [
     let totalGst = 0;
 
     // 2. Process each item
-    for (const item of items) {
+    for (const item of [...items].sort((a, b) => a.medicineId - b.medicineId || a.batchNumber.localeCompare(b.batchNumber))) {
+      await sequelize.query('SELECT pg_advisory_xact_lock(727285, :medicine)', { replacements: { medicine: item.medicineId }, transaction: t });
       const [med] = await sequelize.query('SELECT ID FROM HMS_MEDICINES WHERE ID = :id', { replacements: { id: item.medicineId }, transaction: t });
       if (!med.length) throw httpError(400, `Medicine ${item.medicineId} is not in the catalogue.`);
 
@@ -421,10 +423,10 @@ router.post('/grn', [
         await sequelize.query(`
           INSERT INTO HMS_MEDICINE_BATCHES (
             ID, MEDICINE_ID, SUPPLIER_ID, BATCH_NUMBER, EXPIRY_DATE,
-            QUANTITY, PURCHASE_RATE, MRP, GST_AMOUNT
+            QUANTITY, PURCHASE_RATE, MRP, GST_AMOUNT, LOT_STATUS, PROVENANCE
           ) VALUES (
             :id, :medicineId, :supplierId, :batchNumber, TO_DATE(:expiryDate, 'YYYY-MM-DD'),
-            :quantity, :purchaseRate, :mrp, :gstAmount
+            :quantity, :purchaseRate, :mrp, :gstAmount, :lotStatus, CAST(:provenance AS jsonb)
           )
         `, {
           replacements: {
@@ -437,6 +439,8 @@ router.post('/grn', [
             purchaseRate: item.purchaseRate,
             mrp: item.mrp,
             gstAmount: itemGst,
+            lotStatus: invoiceNumber && supplierId ? 'AVAILABLE' : 'QUARANTINED',
+            provenance: JSON.stringify({ source: 'declared manufacturer lot and expiry on supplier invoice', document_ref: invoiceNumber || null, manufacturer_lot: item.batchNumber, expiry_date: item.expiryDate, supplier_id: supplierId || null, purchase_order_id: po.id, recorded_by_user_id: req.user.id }),
           },
           transaction: t,
         });
@@ -503,266 +507,18 @@ router.get('/dispense-queue', checkPermission('pharmacy', 'read'), dispenseQueue
 //   recorded with their reason in HMS_AUDIT_LOGS (module 'pharmacy', action 'DISPENSE', record = dispensing
 //   record), because HMS_DISPENSING_ITEMS needs a medicine and a batch for every row.
 async function dispenseHandler(req, res) {
-  const prescriptionId = toPositiveInt(req.body.prescriptionId);
-  const items = Array.isArray(req.body.items) ? req.body.items : [];
-  const notDispensedIn = Array.isArray(req.body.notDispensed) ? req.body.notDispensed : [];
-  const userId = req.user.id;
-  if (!prescriptionId) return res.status(400).json({ success: false, message: 'prescriptionId is required.' });
-  if (items.length === 0) {
-    return res.status(400).json({ success: false, message: 'Select at least one medicine to dispense. Lines that cannot be supplied can be marked as not dispensed.' });
-  }
-
-  const t = await sequelize.transaction();
-  try {
-    const { Admission } = require('../models');
-
-    // 1. Lock the prescription and make sure it is waiting to be dispensed.
-    const [rxRows] = await sequelize.query(
-      'SELECT ID, PATIENT_ID, ENCOUNTER_ID, STATUS FROM HMS_PRESCRIPTIONS WHERE ID = :id FOR UPDATE',
-      { replacements: { id: prescriptionId }, transaction: t }
-    );
-    const rx = rxRows[0];
-    if (!rx) throw httpError(404, 'Prescription not found.');
-    if (rx.STATUS === 'Dispensed') throw httpError(409, 'This prescription has already been dispensed.');
-    if (rx.STATUS !== 'Finalized') throw httpError(409, `Only finalised prescriptions can be dispensed. This one is ${rx.STATUS || 'not finalised'}.`);
-
-    const patientId = rx.PATIENT_ID;
-    const encounterId = rx.ENCOUNTER_ID;
-
-    const [lines] = await sequelize.query(
-      'SELECT ID, MEDICINE_NAME, GENERIC_NAME FROM HMS_PRESCRIPTION_ITEMS WHERE PRESCRIPTION_ID = :id ORDER BY ID',
-      { replacements: { id: prescriptionId }, transaction: t }
-    );
-    const lineById = new Map(lines.map((l) => [Number(l.ID), l]));
-    // Same rule the prescription API uses to link a line to the catalogue (generic name before any bracket).
-    const lineBaseName = (l) => String(l.GENERIC_NAME || l.MEDICINE_NAME || '').split('(')[0].trim().toUpperCase();
-    const accountsForLines = items.some((i) => i.prescriptionItemId !== undefined && i.prescriptionItemId !== null);
-
-    // 2. Identify Billing Context (IPD vs OPD)
-    const activeAdmissions = await Admission.findAll({
-      where: { patientId, status: 'Active' },
-      transaction: t,
-    });
-    const activeAdmission = activeAdmissions.length > 0 ? activeAdmissions[0] : null;
-
-    let billId = null;
-    if (activeAdmission) {
-      billId = await findPendingBill({ admissionId: activeAdmission.id }, t);
-    } else {
-      billId = await findPendingBill({ encounterId }, t);
-    }
-
-    if (!billId) {
-      billId = await nextval('HMS_BILLS_SEQ', t);
-      // Same numbering as /api/billing (both come from HMS_BILLS_SEQ).
-      const billNumber = `BILL-${new Date().getFullYear()}-${String(billId).padStart(6, '0')}`;
-      await sequelize.query(`
-        INSERT INTO HMS_BILLS (
-          ID, PATIENT_ID, ADMISSION_ID, ENCOUNTER_ID, BILL_TYPE, BILL_NUMBER, STATUS,
-          TOTAL_AMOUNT, DISCOUNT_AMOUNT, GST_AMOUNT, NET_PAYABLE, ADVANCE_ADJUSTED,
-          CREATED_BY, CREATED_AT, UPDATED_AT
-        ) VALUES (
-          :id, :patientId, :admissionId, :encounterId, :billType, :billNumber, 'Pending',
-          0, 0, 0, 0, 0,
-          :createdBy, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-        )
-      `, {
-        replacements: {
-          id: billId,
-          patientId,
-          admissionId: activeAdmission?.id || null,
-          encounterId: activeAdmission ? null : encounterId,
-          billType: activeAdmission ? 'IPD' : 'OPD',
-          billNumber,
-          createdBy: userId,
-        },
-        transaction: t,
-      });
-    }
-
-    // 3. Create Dispensing Record (total filled in below)
-    const dispRecordId = await nextval('HMS_DISPENSING_RECORDS_SEQ', t);
-    await sequelize.query(`
-      INSERT INTO HMS_DISPENSING_RECORDS (
-        ID, PRESCRIPTION_ID, PATIENT_ID, DISPENSED_BY, DISPENSED_AT, TOTAL_AMOUNT, BILL_ID
-      ) VALUES (
-        :id, :prescriptionId, :patientId, :dispensedBy, CURRENT_TIMESTAMP, 0, :billId
-      )
-    `, {
-      replacements: { id: dispRecordId, prescriptionId, patientId, dispensedBy: userId, billId },
-      transaction: t,
-    });
-
-    // 4. Process Each Item (Stock + Bill Item)
-    const dispensed = [];
-    const dispensedLineIds = new Set();
-    for (const item of items) {
-      const label = item.medicineName || 'this medicine';
-      const quantity = toPositiveInt(item.quantity);
-      if (!quantity) throw httpError(400, `Enter a whole-number quantity above zero for ${label}.`);
-      const batch = await lockBatch(item.batchId, t);
-      if (!batch) throw httpError(400, `Select a batch for ${label}.`);
-      if (item.medicineId && Number(item.medicineId) !== Number(batch.MEDICINE_ID)) {
-        throw httpError(400, `Batch ${batch.BATCH_NUMBER} is not a batch of ${label}.`);
-      }
-
-      let line = null;
-      if (accountsForLines) {
-        line = lineById.get(Number(item.prescriptionItemId));
-        if (!line) throw httpError(400, `${label} is not on this prescription.`);
-        if (dispensedLineIds.has(Number(line.ID))) throw httpError(400, `${line.MEDICINE_NAME} is listed twice.`);
-        if (lineBaseName(line) !== String(batch.GENERIC_NAME || '').trim().toUpperCase()) {
-          throw httpError(400, `Batch ${batch.BATCH_NUMBER} (${batch.GENERIC_NAME}) does not match the prescribed ${line.MEDICINE_NAME}.`);
-        }
-        dispensedLineIds.add(Number(line.ID));
-      }
-      if (batch.IS_EXPIRED) throw httpError(400, `Batch ${batch.BATCH_NUMBER} of ${batch.GENERIC_NAME} has expired and cannot be dispensed.`);
-      if (Number(batch.QUANTITY) < quantity) {
-        throw httpError(400, `Insufficient stock for ${batch.GENERIC_NAME}: batch ${batch.BATCH_NUMBER} has ${batch.QUANTITY} left.`);
-      }
-
-      const rate = round2(batch.MRP || 0);
-      const amount = round2(rate * quantity);
-      const medicineName = String(line?.MEDICINE_NAME || item.medicineName || batch.GENERIC_NAME).slice(0, 200);
-
-      await setBatchQuantity(batch.ID, Number(batch.QUANTITY) - quantity, t);
-      await addLedger(t, {
-        medicineId: batch.MEDICINE_ID, batchId: batch.ID, type: 'OUT', quantity,
-        referenceType: 'DISPENSING', referenceId: dispRecordId, userId,
-      });
-
-      const dispensingItemId = await nextval('HMS_DISPENSING_ITEMS_SEQ', t);
-      await sequelize.query(`
-        INSERT INTO HMS_DISPENSING_ITEMS (
-          ID, DISPENSING_RECORD_ID, MEDICINE_ID, BATCH_ID, QUANTITY, RATE, AMOUNT
-        ) VALUES (
-          :id, :dispensingRecordId, :medicineId, :batchId, :quantity, :rate, :amount
-        )
-      `, {
-        replacements: {
-          id: dispensingItemId, dispensingRecordId: dispRecordId, medicineId: batch.MEDICINE_ID,
-          batchId: batch.ID, quantity, rate, amount,
-        },
-        transaction: t,
-      });
-
-      const billItemId = await nextval('HMS_BILL_ITEMS_SEQ', t);
-      await sequelize.query(`
-        INSERT INTO HMS_BILL_ITEMS (
-          ID, BILL_ID, ITEM_TYPE, ITEM_NAME, QUANTITY, RATE, GST_RATE, GST_AMOUNT, AMOUNT, SERVICE_DATE
-        ) VALUES (
-          :id, :billId, 'Medicine', :itemName, :quantity, :rate, 0, 0, :amount, CURRENT_TIMESTAMP
-        )
-      `, {
-        replacements: { id: billItemId, billId, itemName: medicineName, quantity, rate, amount },
-        transaction: t,
-      });
-
-      dispensed.push({
-        prescriptionItemId: line ? Number(line.ID) : null,
-        medicineId: batch.MEDICINE_ID,
-        medicineName,
-        batchId: batch.ID,
-        batchNumber: batch.BATCH_NUMBER,
-        expiryDate: batch.EXPIRY_DATE,
-        quantity,
-        rate,
-        amount,
-      });
-    }
-
-    // Every prescription line that was not dispensed, with the pharmacist's reason when one was given.
-    const reasonById = new Map(notDispensedIn
-      .filter((n) => n && n.prescriptionItemId !== undefined && n.prescriptionItemId !== null)
-      .map((n) => [Number(n.prescriptionItemId), String(n.reason || '').trim().slice(0, 200)]));
-    const notDispensed = accountsForLines
-      ? lines.filter((l) => !dispensedLineIds.has(Number(l.ID))).map((l) => ({
-        prescriptionItemId: Number(l.ID),
-        medicineName: l.MEDICINE_NAME,
-        reason: reasonById.get(Number(l.ID)) || 'Not dispensed',
-      }))
-      : [];
-
-    const totalDispenseAmount = round2(dispensed.reduce((sum, d) => sum + d.amount, 0));
-    await sequelize.query('UPDATE HMS_DISPENSING_RECORDS SET TOTAL_AMOUNT = :total WHERE ID = :id', {
-      replacements: { id: dispRecordId, total: totalDispenseAmount }, transaction: t,
-    });
-
-    // 5. Update Bill Totals. Net payable keeps the bill's GST, discount and advance (same formula as the
-    // discount endpoint in /api/billing) instead of being reset to the item total.
-    const [billTotals] = await sequelize.query(`
-      SELECT COALESCE(SUM(bi.AMOUNT), 0) AS TOTAL_AMOUNT,
-             MAX(b.GST_AMOUNT) AS GST_AMOUNT, MAX(b.DISCOUNT_AMOUNT) AS DISCOUNT_AMOUNT,
-             MAX(b.ADVANCE_ADJUSTED) AS ADVANCE_ADJUSTED, MAX(b.BILL_NUMBER) AS BILL_NUMBER
-      FROM HMS_BILLS b
-      LEFT JOIN HMS_BILL_ITEMS bi ON bi.BILL_ID = b.ID
-      WHERE b.ID = :billId
-    `, { replacements: { billId }, transaction: t });
-    const bt = billTotals[0] || {};
-    const newTotal = round2(bt.TOTAL_AMOUNT || 0);
-    const netPayable = Math.max(0, round2(newTotal + Number(bt.GST_AMOUNT || 0) - Number(bt.DISCOUNT_AMOUNT || 0) - Number(bt.ADVANCE_ADJUSTED || 0)));
-    await sequelize.query(`
-      UPDATE HMS_BILLS
-      SET TOTAL_AMOUNT = :totalAmount,
-          NET_PAYABLE = :netPayable,
-          UPDATED_AT = CURRENT_TIMESTAMP
-      WHERE ID = :billId
-    `, {
-      replacements: { billId, totalAmount: newTotal, netPayable },
-      transaction: t,
-    });
-
-    // 6. Mark Prescription as Dispensed
-    await sequelize.query("UPDATE HMS_PRESCRIPTIONS SET STATUS = 'Dispensed', UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = :id", {
-      replacements: { id: prescriptionId }, transaction: t,
-    });
-
-    await auditInTransaction(t, {
-      userId,
-      action: 'DISPENSE',
-      recordId: dispRecordId,
-      ip: req.ip,
-      value: {
-        prescriptionId,
-        billId,
-        totalAmount: totalDispenseAmount,
-        dispensed: dispensed.map((d) => ({ prescriptionItemId: d.prescriptionItemId, medicineName: d.medicineName, batchNumber: d.batchNumber, quantity: d.quantity, rate: d.rate })),
-        notDispensed,
-      },
-    });
-
-    // 7. Real-time events, committed with the dispense
-    await publish('stock_updated', 'pharmacist', { reason: 'dispensed' }, { transaction: t });
-    await publish('billing_updated', 'receptionist', { patientId, billId }, { transaction: t });
-    await publish('prescription_dispensed', 'doctor', { prescriptionId }, { transaction: t });
-    await t.commit();
-
-    res.json({
-      success: true,
-      status: 'success',
-      message: notDispensed.length
-        ? `Dispensed ${dispensed.length} of ${dispensed.length + notDispensed.length} medicines and updated the bill.`
-        : 'Prescription dispensed and billing updated successfully.',
-      dispensingRecordId: dispRecordId,
-      billId,
-      billNumber: bt.BILL_NUMBER || null,
-      billType: activeAdmission ? 'IPD' : 'OPD',
-      totalAmount: totalDispenseAmount,
-      dispensedAt: new Date().toISOString(),
-      items: dispensed,
-      notDispensed,
-    });
-  } catch (err) {
-    await t.rollback();
-    sendError(res, err, 'Dispensing failed.');
-  }
+  // Free-text legacy lines cannot authorize medication supply. Both namespaces
+  // share this boundary; the new endpoint requires the exact coded order version.
+  return res.status(409).json({ success: false, code: 'CODED_ORDER_REQUIRED',
+    message: 'This legacy prescription needs a coded signed order and pharmacist verification. Open Medication workflows → Pharmacist verification & supply.' });
 }
+
 router.post('/dispense', checkPermission('pharmacy', 'write'), dispenseHandler);
 
 // ─── POST /api/pharmacy/otc ────────────────────────────────────
 // Rate is the batch MRP and GST is the medicine's GST rate on top, both read here; the client sends only
 // batch and quantity. Unknown UHIDs and patient IDs are rejected rather than stored.
-router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
+router.post('/otc', restrictTo('pharmacist'), checkPermission('pharmacy', 'write'), async (req, res) => {
   const { paymentMode } = req.body;
   const items = Array.isArray(req.body.items) ? req.body.items : [];
   if (items.length === 0) {
@@ -789,6 +545,29 @@ router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
 
   const t = await sequelize.transaction();
   try {
+    const C = require('../services/medicationCommon'), I = require('../services/medicationInventory'), O = require('../services/medicationOrders');
+    if (patientId) await C.q('SELECT id FROM hms_patients WHERE id=:id FOR SHARE', { id: patientId }, t);
+    const allergy = patientId ? await O.allergies(patientId, t) : null;
+    const permissions = new Map();
+    // Lock approved product identities before stock, in a deterministic order.
+    const identities = await C.q(`SELECT DISTINCT p.id,p.legacy_medicine_id FROM hms_medicine_batches b
+      JOIN hms_med_products p ON p.legacy_medicine_id=b.medicine_id WHERE b.id IN (:ids) ORDER BY p.id`, { ids: items.map(i => Number(i.batchId)||0) }, t);
+    for (const identity of identities) {
+      const p = await I.product(identity.id, t);
+      const formulary = await C.one(`SELECT * FROM hms_med_formulary WHERE product_id=:id AND effective_at<=now()
+        AND (expires_at IS NULL OR expires_at>now()) ORDER BY revision DESC LIMIT 1`, { id:p.id }, t);
+      if (formulary?.restrictions?.otc_allowed !== true || p.controlled)
+        throw httpError(409, 'This product requires a coded order; no approved permission for counter sale exists.');
+      const composition = await C.q('SELECT ingredient_id FROM hms_med_product_ingredients WHERE product_id=:id', {id:p.id}, t);
+      if (allergy?.allergies.some(a => a.ingredient_id && composition.some(i => i.ingredient_id===a.ingredient_id)))
+        throw httpError(409, 'Known ingredient allergy requires a prescriber order and independent override review; counter sale is blocked.');
+      permissions.set(p.legacy_medicine_id, { product_id:p.id, formulary_revision:formulary.revision });
+    }
+    if(req.body.clinicalReviewAcknowledged !== true) throw httpError(422, 'Explicit pharmacist review of counter-sale permission and incomplete clinical context is required.');
+    const reviewReason=C.text(req.body.clinicalReviewReason, 'Pharmacist counter-sale review reason');
+    const clinicalReview={ state:'PHARMACIST_REVIEWED',coverage:'INCOMPLETE_CLINICAL_CONTEXT',review_reason:reviewReason,reviewer_user_id:req.user.id,
+      allergy_review_state:allergy?.review_state || 'PATIENT_CONTEXT_UNAVAILABLE',allergy_fingerprint:allergy ? O.allergyFingerprint(allergy) : null,
+      products:[...permissions.values()] };
     const saleId = await nextval('HMS_OTC_SALES_SEQ', t);
     const billNumber = `OTC-${Date.now()}`;
     await sequelize.query(`
@@ -812,15 +591,17 @@ router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
     let totalGst = 0;
     const lines = [];
 
-    for (const item of items) {
+    for (const item of [...items].sort((a,b) => Number(a.batchId)-Number(b.batchId))) {
       const quantity = toPositiveInt(item.quantity);
       if (!quantity) throw httpError(400, 'Enter a whole-number quantity above zero for every medicine.');
       const batch = await lockBatch(item.batchId, t);
       if (!batch) throw httpError(400, 'Select a batch for every medicine.');
+      if (!permissions.has(batch.MEDICINE_ID)) throw httpError(409, 'Counter sale requires an approved coded product and explicit formulary permission.');
       if (item.medicineId && Number(item.medicineId) !== Number(batch.MEDICINE_ID)) {
         throw httpError(400, `Batch ${batch.BATCH_NUMBER} does not belong to the selected medicine.`);
       }
-      if (batch.IS_EXPIRED) throw httpError(400, `Batch ${batch.BATCH_NUMBER} of ${batch.GENERIC_NAME} has expired and cannot be sold.`);
+      if (batch.IS_EXPIRED || batch.LOT_STATUS !== 'AVAILABLE') throw httpError(400, `Batch ${batch.BATCH_NUMBER} is expired or unavailable and cannot be sold.`);
+      if (Number(batch.IS_CONTROLLED) !== 0 || batch.IS_CONTROLLED == null) throw httpError(409, 'Controlled drugs require a coded order and independently witnessed supply.');
       if (Number(batch.QUANTITY) < quantity) {
         throw httpError(400, `Insufficient stock for ${batch.GENERIC_NAME}: batch ${batch.BATCH_NUMBER} has ${batch.QUANTITY} left.`);
       }
@@ -869,6 +650,7 @@ router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
       replacements: { id: saleId, totalAmount },
       transaction: t,
     });
+    await sequelize.query('UPDATE hms_otc_sales SET clinical_review=CAST(:review AS jsonb) WHERE id=:id', { replacements:{review:JSON.stringify(clinicalReview),id:saleId},transaction:t });
     await publish('stock_updated', 'pharmacist', { reason: 'otc' }, { transaction: t });
     await t.commit();
 
@@ -884,7 +666,7 @@ router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
 
 // ─── POST /api/pharmacy/return ──────────────────────────────────
 // Stock movements that are not sales: { batchId, quantity, type, reason, patientId? }
-//   patient_return  stock back from a patient     ledger RETURN  (+)  ref 'Patient Return', patient ID
+//   patient_return  quarantined patient stock    ledger RETURN       ref 'Patient Return', patient ID
 //   vendor_return   stock sent back to supplier   ledger DISCARD (-)  ref 'Vendor Return', supplier ID
 //   discard         disposal (expired, damaged)   ledger DISCARD (-)  ref 'Disposal'
 //   adjust_in/out   count correction              ledger ADJUSTMENT, signed quantity, ref 'Stock Adjustment'
@@ -914,6 +696,7 @@ async function stockMoveHandler(req, res) {
   try {
     const batch = await lockBatch(batchId, t);
     if (!batch) throw httpError(404, 'Batch not found.');
+    if (Number(batch.IS_CONTROLLED) !== 0 || batch.IS_CONTROLLED == null) throw httpError(409, 'Controlled-drug movements require the witnessed Medication workflows.');
     const current = Number(batch.QUANTITY || 0);
     if (move.sign < 0 && current < quantity) {
       throw httpError(400, `Only ${current} left in batch ${batch.BATCH_NUMBER}.`);
@@ -966,7 +749,8 @@ async function stockMoveHandler(req, res) {
       referenceId = patientId;
     }
 
-    await setBatchQuantity(batch.ID, current + move.sign * quantity, t);
+    // Patient-returned stock is quarantined, never returned to the pickable main balance.
+    if (type !== 'patient_return') await setBatchQuantity(batch.ID, current + move.sign * quantity, t);
     const ledgerId = await addLedger(t, {
       medicineId: batch.MEDICINE_ID,
       batchId: batch.ID,
@@ -976,6 +760,11 @@ async function stockMoveHandler(req, res) {
       referenceId,
       userId: req.user.id,
     });
+    if (type === 'patient_return') {
+      const I = require('../services/medicationInventory');
+      const [[quarantine]] = await sequelize.query("SELECT * FROM hms_med_locations WHERE code = 'QUARANTINE'", { transaction: t });
+      await I.move(batch.ID, quarantine, String(quantity), 'LEGACY_RETURN', String(ledgerId), reason || 'Legacy patient return', req.user, t);
+    }
     await auditInTransaction(t, { userId: req.user.id, action: move.action, module: 'pharmacy_stock', recordId: ledgerId, value: details, ip: req.ip });
 
     await publish('stock_updated', 'pharmacist', { reason: type }, { transaction: t });
@@ -984,7 +773,7 @@ async function stockMoveHandler(req, res) {
     }
     await t.commit();
 
-    res.json({ success: true, status: 'success', message: `Stock ${type.replace('_', ' ')} recorded.`, ledgerId, batchQuantity: current + move.sign * quantity });
+    res.json({ success: true, status: 'success', message: `Stock ${type.replace('_', ' ')} recorded.`, ledgerId, batchQuantity: type === 'patient_return' ? current : current + move.sign * quantity, disposition: type === 'patient_return' ? 'QUARANTINED' : batch.LOT_STATUS });
   } catch (err) {
     await t.rollback();
     sendError(res, err, 'Operation failed.');
@@ -1037,7 +826,7 @@ async function returnsListHandler(req, res) {
         items: `${r.GENERIC_NAME}${strength ? ` ${strength}` : ''} · batch ${r.BATCH_NUMBER} · ${qty}`,
         reason: details.reason || '',
         value: round2(qty * unit),
-        status: isVendor ? 'Returned to supplier' : 'Restocked',
+        status: isVendor ? 'Returned to supplier' : 'Quarantined; credit pending',
         recordedBy: r.PERFORMED_BY_NAME || null,
       };
     });

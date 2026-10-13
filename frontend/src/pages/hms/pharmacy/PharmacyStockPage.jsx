@@ -1,3 +1,4 @@
+import {MedicationLinks} from './MedicationUI';
 import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { Boxes, Layers, PackagePlus, Pencil, Pill, RefreshCw, ScrollText, Search } from 'lucide-react';
@@ -415,7 +416,7 @@ export default function PharmacyStockPage() {
 
   return (
     <>
-    <Navbar />
+    <Navbar /><MedicationLinks/>
     <main className="app-page">
       <PageHeader
         title="Pharmacy stock"

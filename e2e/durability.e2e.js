@@ -33,11 +33,11 @@ async function waitUntil(fn, ms = 15000) {
   return false;
 }
 
-async function call(base, method, url, token, body) {
+async function call(base, method, url, token, body, headers = {}) {
   const res = await fetch(`${base}/api${url}`, {
     method,
     headers: {
-      'content-type': 'application/json', authorization: `Bearer ${token}`,
+      'content-type': 'application/json', authorization: `Bearer ${token}`, ...headers,
       ...(method !== 'GET' ? { 'idempotency-key': crypto.randomUUID() } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -61,6 +61,29 @@ function listen(token, event) {
     socket.on('connect', () => resolve({ socket, received }));
     socket.on('connect_error', reject);
   });
+}
+
+// A real signed-order amendment replaces the retired free-text status command
+// as the notification trigger; the durable outbox failure scenarios are unchanged.
+async function medicationDraft(token) {
+  assert(/^hms_p3_/.test(process.env.DB_NAME || ''), 'Use an isolated Phase 3 database');
+  const [fixture] = await sql(`SELECT o.patient_id,o.encounter_id,v.product_id,v.dose,v.dose_unit,v.route,v.frequency,v.supply_quantity,v.supply_unit
+    FROM hms_med_orders o JOIN hms_med_order_versions v ON v.order_id=o.id AND v.version=o.current_version
+    JOIN hms_patients p ON p.id=o.patient_id WHERE p.name LIKE 'Synthetic%' AND v.product_id IS NOT NULL AND v.prn=false ORDER BY o.created_at DESC LIMIT 1`);
+  assert(fixture, 'Run medication acceptance fixtures first');
+  const tag=crypto.randomUUID().slice(0,8);
+  const [patient]=await sql("INSERT INTO hms_patients(name,uhid,patienttype,age,gender,opdindoor,testdate) VALUES($1,$2,'other',40,'Other','OPD',CURRENT_DATE) RETURNING id",['Synthetic outbox patient '+tag,'P3-OUTBOX-'+tag]);
+  const [prescriber]=await sql("SELECT id FROM hms_users WHERE username='doctor'");
+  const [encounter]=await sql("INSERT INTO hms_encounters(patient_id,doctor_id,status) VALUES($1,$2,'Draft') RETURNING id",[patient.id,prescriber.id]);
+  const body={...fixture,patient_id:patient.id,encounter_id:encounter.id,starts_at:new Date(Date.now()-60000).toISOString(),ends_at:new Date(Date.now()+86400000).toISOString()};
+  const r=await call(ORIGIN,'POST','/medication/orders',token,body);
+  assert(r.status===201, 'Unable to create coded notification fixture');
+  const signed=await call(ORIGIN,'POST','/medication/orders/'+r.data.data.order.id+'/sign',token,{reason:'Synthetic outbox authorization'},{'if-match':'1'});
+  assert(signed.status===200, 'Unable to authorize the outbox fixture');
+  return {id:r.data.data.order.id,revision:2,body};
+}
+async function amend(base,token,rx) {
+  return call(base,'POST',`/medication/orders/${rx.id}/amend`,token,{...rx.body,reason:'Synthetic durable notification test'}, {'if-match':String(rx.revision)});
 }
 
 (async () => {
@@ -131,21 +154,24 @@ function listen(token, event) {
         const charges = (await call(SECOND, 'GET', `/ipd/admissions/${admission.id}/charges`, sa2)).data.data.charges;
         assert(charges.some((c) => c.ID === added.data.data.ID && c.QUANTITY === 2), 'second process does not see the draft charge');
         const [ip] = await sql("SELECT value FROM hms_app_settings WHERE key = 'session_timeout'");
-        const shown = (await call(SECOND, 'GET', '/security/sessions', sa2)).data.data.timeout_settings;
-        assert(JSON.stringify(shown) === JSON.stringify(ip.value), 'second process has different settings');
+        const consistent=await waitUntil(async()=>{
+          const observed=(await call(SECOND,'GET','/security/sessions',sa2)).data.data.timeout_settings;
+          return require('node:util').isDeepStrictEqual(observed,ip.value);
+        },12000);
+        assert(consistent, 'second process has different settings beyond the refresh interval');
       } finally {
         await call(ORIGIN, 'DELETE', `/ipd/admissions/${admission.id}/charges/${added.data.data.ID}`, sa);
       }
     });
 
     await step('A change and its notification commit together; connected clients receive it with an event ID', async () => {
-      const [rx] = await sql('SELECT id, status FROM hms_prescriptions ORDER BY id LIMIT 1');
-      const { socket, received } = await listen(doctor, 'prescription_status_change');
+      const rx = await medicationDraft(doctor);
+      const { socket, received } = await listen(doctor, 'medication_order_changed');
       try {
-        const r = await call(ORIGIN, 'PATCH', `/hms/prescriptions/${rx.id}/status`, doctor, { status: rx.status });
+        const r = await amend(ORIGIN, doctor, rx);
         assert(r.status === 200, `status change ${r.status}`);
         const events = await sql('SELECT id, audience FROM hms_outbox WHERE request_id = $1 ORDER BY id', [r.requestId]);
-        assert(events.length === 2, `expected 2 outbox events, found ${events.length}`);
+        assert(events.length === 3, `expected 3 outbox events, found ${events.length}`);
         assert(await waitUntil(async () => received.some((e) => events.some((ev) => Number(ev.id) === e.event_id))), 'event not delivered to the doctor');
       } finally {
         socket.close();
@@ -157,11 +183,11 @@ function listen(token, event) {
       second = startSecondServer({ OUTBOX_DISPATCH: 'off' });
       assert(await waitUntil(async () => (await fetch(`${SECOND}/api/ready`)).ok, 30000), 'second server did not restart');
       const doctor2 = await loginAt(SECOND, 'doctor', 'Doctor@123');
-      const [rx] = await sql('SELECT id, status FROM hms_prescriptions ORDER BY id LIMIT 1');
+      const rx = await medicationDraft(doctor);
       // Saved by the second server, whose dispatcher is off: the event waits in the outbox.
-      const { socket, received } = await listen(doctor, 'prescription_status_change');
+      const { socket, received } = await listen(doctor, 'medication_order_changed');
       try {
-        const r = await call(SECOND, 'PATCH', `/hms/prescriptions/${rx.id}/status`, doctor2, { status: rx.status });
+        const r = await amend(SECOND, doctor2, rx);
         assert(r.status === 200, `status change ${r.status}`);
         const [event] = await sql("SELECT id FROM hms_outbox WHERE request_id = $1 AND audience = 'doctor'", [r.requestId]);
         second.kill('SIGKILL');
@@ -198,14 +224,14 @@ function listen(token, event) {
 
     await step('A client that was disconnected catches up, and only on events meant for its role', async () => {
       const [{ id: before }] = await sql('SELECT COALESCE(max(id), 0) AS id FROM hms_outbox');
-      const [rx] = await sql('SELECT id, status FROM hms_prescriptions ORDER BY id LIMIT 1');
-      const r = await call(ORIGIN, 'PATCH', `/hms/prescriptions/${rx.id}/status`, doctor, { status: rx.status });
+      const rx = await medicationDraft(doctor);
+      const r = await amend(ORIGIN, doctor, rx);
       assert(r.status === 200, `status change ${r.status}`);
       assert(await waitUntil(async () => (await sql('SELECT count(*)::int AS n FROM hms_outbox WHERE request_id = $1 AND delivered_at IS NULL', [r.requestId]))[0].n === 0), 'not delivered');
       const forDoctor = (await call(ORIGIN, 'GET', `/events?after=${before}`, doctor)).data.data;
-      assert(forDoctor.some((e) => e.type === 'prescription_status_change'), 'doctor missed event not returned');
+      assert(forDoctor.some((e) => e.type === 'medication_order_changed'), 'doctor missed event not returned');
       const forLab = (await call(ORIGIN, 'GET', `/events?after=${before}`, lab)).data.data;
-      assert(!forLab.some((e) => e.type === 'prescription_status_change'), 'lab technician received a doctor/pharmacist event');
+      assert(!forLab.some((e) => e.type === 'medication_order_changed'), 'lab technician received a doctor/pharmacist event');
     });
 
     await step('The inbox accepts a message once', async () => {
@@ -227,7 +253,7 @@ function listen(token, event) {
       assert(await waitUntil(async()=> (await fetch(`${SECOND}/api/ready`)).ok,30000),'second replica did not start');
       const token=await loginAt(ORIGIN,'doctor','Doctor@123');
       assert((await call(SECOND,'GET','/auth/me',token)).status===200,'session not portable across replicas');
-      const {socket}=await listen(token,'prescription_status_change');
+      const {socket}=await listen(token,'medication_order_changed');
       try {
         assert((await call(SECOND,'POST','/auth/logout',token,{})).status===200,'remote logout failed');
         assert(await waitUntil(async()=>!socket.connected,5000),'revoked socket survived on the original replica');

@@ -19,7 +19,7 @@ const step = (title, fn) => (!only || only.test(title) ? runStep(title, fn) : Pr
 // ── helpers ──────────────────────────────────────────────────────────────────
 function noErrors(session, label) {
   const errs = session.errors.splice(0);
-  assert(errs.length === 0, `${label}: page errors:\n${errs.join('\n')}`);
+  assert(errs.length === 0, `${label}: page errors: ${errs.join(' | ')}`);
 }
 
 // Browser session for an account that is not one of the seeded roles (signs in through the real form).

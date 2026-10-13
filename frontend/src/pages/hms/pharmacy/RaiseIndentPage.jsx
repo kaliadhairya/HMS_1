@@ -1,3 +1,4 @@
+import {MedicationLinks} from './MedicationUI';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -293,7 +294,7 @@ export default function RaiseIndentPage() {
 
   return (
     <>
-      <Navbar />
+      <Navbar /><MedicationLinks/>
       <main className="app-page">
         <PageHeader
           title="Raise indent"

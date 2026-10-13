@@ -1,3 +1,4 @@
+import {MedicationLinks} from './MedicationUI';
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { ClipboardList, PackageCheck, Plus, Search, Trash2, X } from 'lucide-react';
@@ -218,7 +219,7 @@ export default function GRNPage() {
 
   return (
     <>
-    <Navbar />
+    <Navbar /><MedicationLinks/>
     <main className="app-page">
       <PageHeader
         title="Goods receipt"

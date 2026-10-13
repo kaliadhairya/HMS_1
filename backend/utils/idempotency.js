@@ -5,6 +5,9 @@ const { storage } = require('./auditContext');
 const { beforeSend } = require('./responseGate');
 
 const REQUIRED = [
+  /^\/api\/(pharmacy|pharmacist_lms|medicines|suppliers)(?:\/.*)?$/,
+  /^\/api\/hms\/medicines(?:\/.*)?$/,
+  /^\/api\/medication(?:\/.*)?$/,
   /^\/api\/patients(?:\/.*)?$/,
   /^\/api\/ipd(?:\/.*)?$/,
   /^\/api\/doctor\/(prescriptions|referrals)(?:\/.*)?$/,

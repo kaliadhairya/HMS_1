@@ -43,3 +43,20 @@ Phase 2 on a new branch cut from `phase1/integrity-foundation`.
 - Run tests only against throwaway databases (`hms_e2e`, `hms_phase1*`, `hms_test*`, `hms_verify*`), never `hms`.
 - Never claim a deployment, test pass or evidence file you have not checked exists.
 - Do not delete backups in `~/hms-backups/` or any AI tool's session data.
+
+## Phase 3 (Codex)
+
+Phase 3 feature branch completed and reviewed in `HMS_1-phase3`, branch
+`phase3/medication-safety`. Phase 2 integration and owner-approved merge remain
+required; leave Phase 2's implementation files unchanged.
+- 2026-10-13: read Phase 3 and parallel-work instructions; implementing migrations
+  0030–0049, medication orders/CDS, inventory, eMAR and nursing workflows;
+  touching Phase 3-owned files and additive route/idempotency registrations.
+- Tests use `hms_p3_*` on Docker PostgreSQL 5434, backend 5012, Vite 5184.
+- No shared-app deployment or merge.
+
+- 2026-10-13: paused at owner request; progress recorded in docs/phase3/RESUME.md.
+
+- 2026-10-13: resumed; reviewing medication schema and implementing Phase 3-owned domain services, routes, UI and acceptance tests.
+
+- 2026-10-13: completed medication/backend/frontend implementation and review; all 17 verifier suites pass, PG16/18 migrations match through 0043, build passes. Evidence: docs/phase3/verification.json. No shared deployment/merge. Phase 4 awaits the merged base required by the main parallel-work rules.

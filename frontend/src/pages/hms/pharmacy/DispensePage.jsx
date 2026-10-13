@@ -1,3 +1,4 @@
+import {MedicationLinks} from './MedicationUI';
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { ArrowLeft, ClipboardList, Info, PackageCheck, Printer, RefreshCw } from 'lucide-react';
@@ -247,7 +248,7 @@ export default function DispensePage() {
 
   return (
     <>
-    <Navbar />
+    <Navbar /><MedicationLinks/>
     <main className="app-page">
       <PageHeader
         title="Dispense prescriptions"

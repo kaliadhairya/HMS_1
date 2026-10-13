@@ -6,7 +6,8 @@ import Modal from '../../../components/ui/Modal';
 // Patient-safety helpers shared by the consultation page, the prescription slip and quick consult.
 //
 // The allergy record is fetched on its own so each screen can tell three states apart:
-//   'ok'      the allergies API answered (with allergies, or with none: "No known allergies")
+//   'ok' is a recorded allergy list; 'none-known' requires an explicit review.
+//   'unreviewed' is an empty list without that review.
 //   'error'   it could not be loaded: "Allergies not checked", never "No known allergies"
 //   'loading' / 'idle' (no patient yet)
 
@@ -21,12 +22,13 @@ export function usePatientAllergies(patientId) {
     }
     let cancelled = false;
     setState({ status: 'loading', allergies: [] });
-    api.get(`/patients/hms/${patientId}/allergies`)
+    api.get(`/medication/allergies/${patientId}`)
       .then((res) => {
         if (cancelled) return;
-        const list = res.data?.data;
+        const record = res.data?.data;
+        const list = [...(record?.allergies || []).map(a => ({...a,allergen:a.clinical_text})), ...(record?.legacy_allergies || [])];
         if (!Array.isArray(list)) throw new Error('Unexpected allergies response');
-        setState({ status: 'ok', allergies: list.filter((a) => String(a?.allergen || '').trim()) });
+        setState({ status: record?.review_state === 'NONE_KNOWN' && !list.length ? 'none-known' : list.length ? 'ok' : 'unreviewed', allergies: list.filter((a) => String(a?.allergen || '').trim()), reviewState: record?.review_state });
       })
       .catch(() => { if (!cancelled) setState({ status: 'error', allergies: [] }); });
     return () => { cancelled = true; };
@@ -83,13 +85,15 @@ export function AllergyStatusPanel({ status, allergies, onRetry, style }) {
         </div>
       </div>
     );
-  } else if (status === 'ok') {
+  } else if (status === 'none-known') {
     body = (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span className="status status-neutral"><ShieldCheck size={13} aria-hidden="true" /> No known allergies</span>
-        <span className="muted">None recorded for this patient.</span>
+        <span className="muted">Explicitly reviewed: none known.</span>
       </div>
     );
+  } else if (status === 'unreviewed' || status === 'ok') {
+    body = <p role="status"><ShieldQuestion size={16} aria-hidden="true" /> Allergy status unknown / not reviewed. An empty list does not mean no known allergies.</p>;
   } else if (status === 'error') {
     body = (
       <div className="alert-strip alert-warning" role="status" style={{ marginBottom: 0, flexWrap: 'wrap' }}>
@@ -162,7 +166,7 @@ export function useAllergyGate({ status, allergies }) {
   const ask = (next) => { pendingRef.current = next; setPending(next); };
 
   const check = useCallback((names, label, onAllow) => {
-    if (status !== 'ok') {
+    if (status !== 'ok' && status !== 'none-known') {
       ask({ medicineName: label, matches: [], unchecked: true, onAllow });
       return;
     }
