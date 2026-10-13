@@ -1,5 +1,10 @@
 # Instructions for coding agents (Codex, Claude, others)
 
+## STOP — Claude is working on Phase 2 (2026-10-13)
+
+Branch `phase2/patient-journey`. Do not edit, commit, migrate or deploy in
+this repository until this notice is removed. Reading is fine.
+
 ## Status (2026-10-13): Phase 1 complete — you may work
 
 Phase 1 is committed on branch `phase1/integrity-foundation` (head of the
