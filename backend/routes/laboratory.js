@@ -335,8 +335,8 @@ router.get(
   restrictTo(...readers),
   wrap((r) =>
     C.q(
-      `SELECT * FROM hms_lab_critical_tasks WHERE (:doctor::int IS NULL OR patient_in_care(:doctor,patient_id)) ORDER BY created_at DESC LIMIT 200`,
-      { doctor: doctor(r) },
+      `SELECT * FROM hms_lab_critical_tasks WHERE (state<>'CLOSED' OR :includeClosed) AND (:doctor::int IS NULL OR patient_in_care(:doctor,patient_id)) ORDER BY created_at ASC LIMIT 200`,
+      { doctor: doctor(r), includeClosed: r.query.include_closed === "true" },
     ),
   ),
 );
@@ -400,8 +400,8 @@ router.get(
   restrictTo(...readers),
   wrap((r) =>
     C.q(
-      `SELECT * FROM hms_lab_review_tasks WHERE (:doctor::int IS NULL OR patient_in_care(:doctor,patient_id)) ORDER BY created_at DESC LIMIT 200`,
-      { doctor: doctor(r) },
+      `SELECT * FROM hms_lab_review_tasks WHERE (state<>'CLOSED' OR :includeClosed) AND (:doctor::int IS NULL OR patient_in_care(:doctor,patient_id)) ORDER BY created_at ASC LIMIT 200`,
+      { doctor: doctor(r), includeClosed: r.query.include_closed === "true" },
     ),
   ),
 );
@@ -486,13 +486,11 @@ router.get("/reports/:id/pdf", restrictTo(...readers), async (r, res) => {
     doc.end();
   } catch (e) {
     if (!res.headersSent)
-      res
-        .status(e.status || 500)
-        .json({
-          success: false,
-          code: e.code || "REPORT_UNAVAILABLE",
-          message: e.status ? e.message : "Report unavailable.",
-        });
+      res.status(e.status || 500).json({
+        success: false,
+        code: e.code || "REPORT_UNAVAILABLE",
+        message: e.status ? e.message : "Report unavailable.",
+      });
   }
 });
 module.exports = router;

@@ -42,6 +42,7 @@ const suites = [
   ...[
     "laboratory",
     "laboratoryGuards",
+    "laboratoryWorker",
     "laboratoryFrontend",
     "medication",
     "medicationGuards",

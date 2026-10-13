@@ -22,6 +22,7 @@ function Field({ label, children }) {
 export default function LaboratoryWorkspace({ initialTab = "orders" }) {
   const { user } = useAuth(),
     [params] = useSearchParams();
+  const [includeClosed, setIncludeClosed] = useState(false);
   const [tab, setTab] = useState(initialTab),
     [orders, setOrders] = useState([]),
     [catalogue, setCatalogue] = useState([]),
@@ -91,8 +92,8 @@ export default function LaboratoryWorkspace({ initialTab = "orders" }) {
               : ""),
         ),
         api.get("/laboratory/catalogue"),
-        api.get("/laboratory/critical-tasks"),
-        api.get("/laboratory/review-tasks"),
+        api.get("/laboratory/critical-tasks?include_closed=" + includeClosed),
+        api.get("/laboratory/review-tasks?include_closed=" + includeClosed),
         api.get("/laboratory/recollections"),
         api.get("/laboratory/privileges"),
       ];
@@ -121,7 +122,7 @@ export default function LaboratoryWorkspace({ initialTab = "orders" }) {
     } finally {
       setLoading(false);
     }
-  }, [clinical, laboratory, params]);
+  }, [clinical, laboratory, params, includeClosed]);
   useEffect(() => {
     reload();
   }, [reload]);
@@ -945,6 +946,18 @@ export default function LaboratoryWorkspace({ initialTab = "orders" }) {
           <>
             <section className="panel" style={{ padding: 16 }}>
               <h2>Critical-result follow-up</h2>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={includeClosed}
+                  onChange={(e) => setIncludeClosed(e.target.checked)}
+                />
+                Include closed tasks
+              </label>
+              <p className="muted">
+                Oldest 200 matching tasks shown. Unresolved work remains
+                prioritized; no missing observations imply closure.
+              </p>
               <p>
                 Notification and report opening do not acknowledge or close a
                 task. Discharge does not close follow-up.
