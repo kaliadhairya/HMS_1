@@ -56,11 +56,24 @@ const Patient = sequelize.define('Patient', {
     allowNull: false,
     field: 'AGE'
   },
+  // Migration 0010: temporary identities for unknown arrivals; estimated birth dates.
+  identity_status: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    defaultValue: 'registered',
+    field: 'IDENTITY_STATUS'
+  },
+  birth_date_estimated: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    field: 'BIRTH_DATE_ESTIMATED'
+  },
   gender: {
     type: DataTypes.STRING(10),                           // ✅ ENUM → STRING
     allowNull: false,
     validate: {
-      isIn: [['Male', 'Female', 'Other']]}, field: 'GENDER',
+      isIn: [['Male', 'Female', 'Other', 'Unknown']]}, field: 'GENDER',
   },
   opdIndoor: {
     type: DataTypes.STRING(10),                           // ✅ ENUM → STRING

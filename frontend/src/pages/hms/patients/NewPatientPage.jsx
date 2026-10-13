@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Barcode from 'react-barcode';
 import api from '../../../api/axios';
-import { ArrowLeft, ArrowRight, BadgeIndianRupee, CircleCheck, IdCard, Phone, Printer, ShieldAlert, UserPlus, UserRound, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Baby, BadgeIndianRupee, CircleCheck, IdCard, Phone, Printer, ShieldAlert, Siren, UserPlus, UserRound, Users } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
 
@@ -146,13 +146,14 @@ export default function NewPatientPage() {
   }
 
   if (step === 'selection') {
+    const card = { textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 };
     return (
       <>
         <Navbar />
         <main className="app-page">
           <PageHeader
             title="New patient intake"
-            description="Choose the patient category to start registration."
+            description="Choose how to register the patient."
             actions={(
               <button type="button" className="btn btn-ghost btn-md" onClick={() => navigate(-1)}>
                 <ArrowLeft size={16} aria-hidden="true" /> Back
@@ -160,27 +161,39 @@ export default function NewPatientPage() {
             )}
           />
 
-          <section
-            className="panel panel-pad"
-            style={{ maxWidth: 460, margin: '0 auto', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, cursor: 'pointer' }}
-            onClick={() => {
-              setFormData(p => ({ ...p, patientType: 'other' }));
-              setStep('form');
-            }}
-          >
-            <span className="empty-state-icon" aria-hidden="true"><Users size={22} strokeWidth={1.75} /></span>
-            <h2 style={{ fontSize: '1.1rem', fontWeight: 650 }}>General patient (external)</h2>
-            <p className="muted" style={{ maxWidth: 360 }}>
-              Walk-in patients or external referrals. Needs basic contact information to register.
-            </p>
-            <button type="button" className="btn btn-primary btn-md btn-full">
-              Begin general registration <ArrowRight size={16} aria-hidden="true" />
-            </button>
-          </section>
+          <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', maxWidth: 1000, margin: '0 auto' }}>
+            <section className="panel panel-pad" style={card}>
+              <span className="empty-state-icon" aria-hidden="true"><Users size={22} strokeWidth={1.75} /></span>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 650 }}>General patient (external)</h2>
+              <p className="muted">Walk-in patients or external referrals. Needs basic contact information to register.</p>
+              <button type="button" className="btn btn-primary btn-md btn-full" onClick={() => { setFormData((p) => ({ ...p, patientType: 'other' })); setStep('form'); }}>
+                Begin general registration <ArrowRight size={16} aria-hidden="true" />
+              </button>
+            </section>
+            <section className="panel panel-pad" style={card}>
+              <span className="empty-state-icon" aria-hidden="true"><Siren size={22} strokeWidth={1.75} /></span>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 650 }}>Unknown / emergency patient</h2>
+              <p className="muted">Unidentified or unconscious arrival. No name, phone or payment needed; confirm the identity later.</p>
+              <button type="button" className="btn btn-secondary btn-md btn-full" onClick={() => setStep('temporary')}>
+                Register unknown patient <ArrowRight size={16} aria-hidden="true" />
+              </button>
+            </section>
+            <section className="panel panel-pad" style={card}>
+              <span className="empty-state-icon" aria-hidden="true"><Baby size={22} strokeWidth={1.75} /></span>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 650 }}>Newborn</h2>
+              <p className="muted">A baby born here, age 0, linked to the mother as guardian.</p>
+              <button type="button" className="btn btn-secondary btn-md btn-full" onClick={() => setStep('newborn')}>
+                Register newborn <ArrowRight size={16} aria-hidden="true" />
+              </button>
+            </section>
+          </div>
         </main>
       </>
     );
   }
+
+  if (step === 'temporary') return <TemporaryRegistration onBack={() => setStep('selection')} />;
+  if (step === 'newborn') return <NewbornRegistration onBack={() => setStep('selection')} />;
 
   return (
     <>
@@ -387,6 +400,136 @@ export default function NewPatientPage() {
             </div>
           </div>
         </form>
+      </main>
+    </>
+  );
+}
+
+// An unknown or unconscious arrival: only an estimated age is needed.
+function TemporaryRegistration({ onBack }) {
+  const navigate = useNavigate();
+  const [form, setForm] = useState({ gender: 'Unknown', estimatedAge: '', arrivalNote: '' });
+  const [saving, setSaving] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    try {
+      const { data } = await api.post('/patients/hms/temporary', { ...form, estimatedAge: Number(form.estimatedAge) });
+      toast.success(`Registered as ${data.data.uhid}`);
+      navigate(`/hms/patients/${data.data.id}`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not register the patient.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <>
+      <Navbar />
+      <main className="app-page">
+        <PageHeader title="Unknown / emergency patient" description="Registers a temporary identity now. Confirm the real identity from the patient's profile when it is known." />
+        <form className="panel panel-pad stack" style={{ maxWidth: 520, margin: '0 auto' }} onSubmit={submit}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="tmp-gender">Gender (if apparent)</label>
+            <select id="tmp-gender" className="form-input" value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })}>
+              <option value="Unknown">Unknown</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="tmp-age">Estimated age (years)</label>
+            <input id="tmp-age" className="form-input" type="number" min="0" max="130" required value={form.estimatedAge} onChange={(e) => setForm({ ...form, estimatedAge: e.target.value })} />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="tmp-note">Arrival note (optional)</label>
+            <input id="tmp-note" className="form-input" maxLength={300} placeholder="For example: brought by ambulance, unconscious" value={form.arrivalNote} onChange={(e) => setForm({ ...form, arrivalNote: e.target.value })} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+            <button type="button" className="btn btn-ghost btn-md" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Back</button>
+            <button type="submit" className="btn btn-primary btn-md" disabled={saving}>{saving ? 'Registering…' : 'Register unknown patient'}</button>
+          </div>
+        </form>
+      </main>
+    </>
+  );
+}
+
+// A newborn: find the mother, then register the baby at age 0.
+function NewbornRegistration({ onBack }) {
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  const [matches, setMatches] = useState([]);
+  const [mother, setMother] = useState(null);
+  const [form, setForm] = useState({ gender: 'Unknown', birthDate: new Date().toISOString().slice(0, 10), name: '' });
+  const [saving, setSaving] = useState(false);
+  const search = async (e) => {
+    e.preventDefault();
+    if (!query.trim()) return;
+    try {
+      const { data } = await api.get('/patients/hms/search', { params: { q: query.trim() } });
+      setMatches(data.data || []);
+      if (!(data.data || []).length) toast.error('No patient found.');
+    } catch {
+      toast.error('Search failed.');
+    }
+  };
+  const submit = async () => {
+    if (saving || !mother) return;
+    setSaving(true);
+    try {
+      const { data } = await api.post('/patients/hms/newborn', { motherPatientId: mother.id, ...form, name: form.name || undefined });
+      toast.success(`Registered as ${data.data.uhid}`);
+      navigate(`/hms/patients/${data.data.id}`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not register the newborn.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <>
+      <Navbar />
+      <main className="app-page">
+        <PageHeader title="Newborn" description="Registers the baby at age 0 and links the mother as guardian." />
+        <section className="panel panel-pad stack" style={{ maxWidth: 620, margin: '0 auto' }}>
+          {!mother ? (
+            <>
+              <form onSubmit={search} style={{ display: 'flex', gap: 8 }}>
+                <label className="sr-only" htmlFor="nb-mother">Find the mother by name, UHID or phone</label>
+                <input id="nb-mother" className="form-input" placeholder="Mother's name, UHID or phone" value={query} onChange={(e) => setQuery(e.target.value)} />
+                <button type="submit" className="btn btn-secondary btn-md">Search</button>
+              </form>
+              {matches.map((m) => (
+                <button key={m.id} type="button" className="btn btn-ghost btn-md" style={{ justifyContent: 'space-between' }} onClick={() => setMother(m)}>
+                  <span>{m.patient_name}</span><span className="mono">{m.uhid}</span>
+                </button>
+              ))}
+            </>
+          ) : (
+            <>
+              <p>Mother: <strong>{mother.patient_name}</strong> <span className="mono">{mother.uhid}</span>{' '}
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMother(null)}>Change</button></p>
+              <div className="form-group">
+                <label className="form-label" htmlFor="nb-gender">Baby's sex</label>
+                <select id="nb-gender" className="form-input" value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })}>
+                  <option value="Unknown">Not yet recorded</option><option value="Female">Female</option><option value="Male">Male</option><option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="nb-date">Date of birth</label>
+                <input id="nb-date" className="form-input" type="date" max={new Date().toISOString().slice(0, 10)} value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="nb-name">Name (optional)</label>
+                <input id="nb-name" className="form-input" maxLength={100} placeholder={`Baby of ${mother.patient_name}`} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </div>
+            </>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}>
+            <button type="button" className="btn btn-ghost btn-md" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Back</button>
+            <button type="button" className="btn btn-primary btn-md" disabled={!mother || saving} onClick={submit}>{saving ? 'Registering…' : 'Register newborn'}</button>
+          </div>
+        </section>
       </main>
     </>
   );

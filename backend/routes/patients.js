@@ -49,7 +49,8 @@ router.post('/', [
     } = req.body;
     const { firstName, lastName } = splitPatientName(name);
 
-    if (!patientType || !name || !age || !gender || !opdIndoor || !testDate) {
+    // Age 0 is a newborn, not a missing age.
+    if (!patientType || !name || age === undefined || age === null || age === '' || !gender || !opdIndoor || !testDate) {
       return res.status(400).json({ success: false, message: 'Required fields missing.' });
     }
     if (patientType === 'corporate_employee' && !empNumber) {
@@ -268,7 +269,9 @@ router.post('/hms', [
       aadhaar, photo_url, empNumber, relationship
     } = req.body;
 
-    if (!name || !age || !gender || !patientType || !opdIndoor || !testDate) {
+    // Age 0 is a newborn, not a missing age.
+    const ageMissing = age === undefined || age === null || age === '';
+    if (!name || ageMissing || !gender || !patientType || !opdIndoor || !testDate) {
       return res.status(400).json({ success: false, message: 'Required core fields missing.' });
     }
     if (!VALID_PATIENT_TYPES.has(patientType)) {
@@ -326,6 +329,20 @@ router.post('/hms', [
     patientData.uhid = uhid;
 
     const patient = await Patient.create(patientData);
+    // The emergency contact is also kept as a related person (migration 0010).
+    if (patientData.emergency_contact_name) {
+      await sequelize.query(
+        `INSERT INTO hms_related_persons (patient_id, name, relationship, phone, is_emergency_contact, created_by)
+         VALUES (:patientId, :name, :relationship, :phone, true, :userId)`,
+        {
+          replacements: {
+            patientId: patient.id, name: patientData.emergency_contact_name,
+            relationship: patientData.emergency_contact_relation || 'Unspecified',
+            phone: patientData.emergency_contact_phone, userId: req.user.id,
+          },
+        }
+      );
+    }
 
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(req.user.id, 'CREATE', 'patient', patient.id, null, { name: patient.name, type: patientType }, ip);
