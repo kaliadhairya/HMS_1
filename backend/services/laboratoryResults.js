@@ -124,7 +124,7 @@ async function write(itemId, body, user, header, tx, source = "MANUAL") {
     flag = "NOT_ASSESSABLE";
     if (/^[+-]?\d+(?:\.\d+)?$/.test(normalized)) {
       const n = await C.one(
-        `SELECT CASE WHEN :low::numeric IS NOT NULL AND :value::numeric < :low::numeric THEN 'LOW' WHEN :high::numeric IS NOT NULL AND :value::numeric > :high::numeric THEN 'HIGH' ELSE 'IN_RANGE' END AS flag`,
+        `SELECT CASE WHEN :low::numeric IS NOT NULL AND (:value::numeric < :low::numeric OR (NOT :lowInclusive AND :value::numeric = :low::numeric)) THEN 'LOW' WHEN :high::numeric IS NOT NULL AND (:value::numeric > :high::numeric OR (NOT :highInclusive AND :value::numeric = :high::numeric)) THEN 'HIGH' ELSE 'IN_RANGE' END AS flag`,
         {
           low: interval.lower_bound,
           high: interval.upper_bound,

@@ -123,8 +123,8 @@ async function verified(result, item, order, user, tx) {
   const p = await policy("hms_lab_critical_policies", result, item, tx);
   if (!p || !/^[+-]?\d+(?:\.\d+)?$/.test(result.normalized_value)) return null;
   const match = await C.one(
-    `SELECT (:lower::numeric IS NOT NULL AND :value::numeric < :lower::numeric)
- OR (:upper::numeric IS NOT NULL AND :value::numeric > :upper::numeric) AS critical`,
+    `SELECT (:lower::numeric IS NOT NULL AND (:value::numeric < :lower::numeric OR (:lowInclusive AND :value::numeric = :lower::numeric)))
+ OR (:upper::numeric IS NOT NULL AND (:value::numeric > :upper::numeric OR (:highInclusive AND :value::numeric = :upper::numeric))) AS critical`,
     {
       lower: p.lower_bound,
       upper: p.upper_bound,
