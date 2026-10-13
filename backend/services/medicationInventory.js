@@ -429,8 +429,8 @@ async function receive(b, u, tx) {
       );
     else
       batch = await one(
-        `INSERT INTO hms_medicine_batches(medicine_id,supplier_id,batch_number,expiry_date,quantity,purchase_rate,mrp,provenance)
- VALUES(:med,:supplier,:lot,:expiry,0,:rate,:mrp,CAST(:source AS jsonb)) RETURNING *`,
+        `INSERT INTO hms_medicine_batches(medicine_id,supplier_id,batch_number,expiry_date,quantity,purchase_rate,mrp,provenance,lot_status)
+ VALUES(:med,:supplier,:lot,:expiry,0,:rate,:mrp,CAST(:source AS jsonb),'AVAILABLE') RETURNING *`,
         {
           med: p.legacy_medicine_id,
           supplier,
@@ -744,12 +744,32 @@ async function setLotStatus(batchId, b, u, tx) {
   );
   text(b.reason, "Disposition reason");
   check(
+    batch.lot_status !== "RECALLED" || b.status === "RECALLED",
+    "LOT_CANNOT_RELEASE",
+    "A recalled lot cannot be relabelled to bypass its recall.",
+    409,
+  );
+  const businessDate = await one(
+    "SELECT (now() AT TIME ZONE timezone)::date::text AS day FROM hms_med_locations WHERE code='MAIN'",
+    {},
+    tx,
+  );
+  check(
     b.status !== "AVAILABLE" ||
       (batch.lot_status !== "RECALLED" &&
-        C.epoch(batch.expiry_date) >=
-          C.epoch(new Date().toISOString().slice(0, 10))),
+        new Date(batch.expiry_date).toISOString().slice(0, 10) >=
+          businessDate.day),
     "LOT_CANNOT_RELEASE",
     "Recalled or expired stock cannot be released.",
+    409,
+  );
+  const documentRef = b.document_ref
+    ? text(b.document_ref, "Verified lot/expiry source document")
+    : batch.provenance.document_ref;
+  check(
+    b.status !== "AVAILABLE" || documentRef?.trim(),
+    "LOT_PROVENANCE_REQUIRED",
+    "Verify the manufacturer lot and expiry against a source document before release.",
     409,
   );
   const result = await one(
@@ -758,6 +778,15 @@ async function setLotStatus(batchId, b, u, tx) {
       id: batch.id,
       status: b.status,
       review: JSON.stringify({
+        ...(documentRef
+          ? {
+              document_ref: documentRef,
+              manufacturer_lot: batch.batch_number,
+              expiry_date: new Date(batch.expiry_date)
+                .toISOString()
+                .slice(0, 10),
+            }
+          : {}),
         disposition_reason: b.reason,
         reviewer_user_id: u.id,
         reviewed_at: new Date().toISOString(),
@@ -837,6 +866,28 @@ async function requisitionAction(rid, action, b, u, header, tx) {
       {},
       tx,
     );
+    if (p.controlled)
+      check(
+        b.product_id === r.product_id &&
+          b.destination_id === r.destination_id &&
+          (
+            await one(
+              "SELECT CAST(:proposed AS numeric)=CAST(:approved AS numeric) AS matches",
+              {
+                proposed: decimal(
+                  b.quantity,
+                  "Witnessed transfer quantity",
+                  p.quantity_precision,
+                ),
+                approved: r.quantity,
+              },
+              tx,
+            )
+          ).matches,
+        "TRANSFER_CONTEXT_MISMATCH",
+        "Witness the approved product, quantity and receiving location.",
+        409,
+      );
     const chosen = await pick(p, main, r.quantity, tx);
     const w = p.controlled ? await witness("TRANSFER", r.id, b, u, tx) : null;
     for (const lot of chosen) {

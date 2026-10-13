@@ -191,11 +191,18 @@ async function addFormulary(product, b, u, tx) {
         "max_age",
         "required_context",
         "review_note",
+        "otc_allowed",
       ].includes(k),
     ),
     "UNSUPPORTED_RESTRICTION",
     "Unsupported formulary restriction.",
   );
+  if (restrictions.otc_allowed !== undefined)
+    check(
+      typeof restrictions.otc_allowed === "boolean",
+      "INVALID_RESTRICTIONS",
+      "Counter-sale permission must be explicitly true or false.",
+    );
   if (restrictions.routes)
     check(
       Array.isArray(restrictions.routes) &&
@@ -567,6 +574,12 @@ async function versionValues(b, u, tx) {
       "Supply must be in the product base unit.",
     );
   }
+  if (b.prn)
+    check(
+      Number(b.max_period_hours) < 1000000,
+      "INVALID_PRN_PERIOD",
+      "The PRN period exceeds the supported numeric representation.",
+    );
   return {
     product: p?.id || null,
     ingredient: b.ingredient_id || null,
@@ -582,7 +595,7 @@ async function versionValues(b, u, tx) {
     prn: b.prn === true,
     indication: b.prn ? text(b.indication, "PRN indication") : null,
     max: b.prn ? decimal(b.max_dose, "PRN maximum") : null,
-    period: b.prn ? decimal(b.max_period_hours, "PRN maximum period") : null,
+    period: b.prn ? decimal(b.max_period_hours, "PRN maximum period", 4) : null,
     interval: b.prn
       ? integer(b.min_interval_minutes, "PRN minimum interval")
       : null,
@@ -746,9 +759,10 @@ async function assess(o, v, b, u, tx) {
   const coverage = {
     ALLERGY:
       Boolean(covered && pack.coverage.checks.includes("ALLERGY")) &&
-      (allergy.review_state === "NONE_KNOWN" ||
+      !allergy.legacy_allergies.length &&
+      ((allergy.review_state === "NONE_KNOWN" && !allergy.allergies.length) ||
         (allergy.review_state === "ALLERGIES_RECORDED" &&
-          !allergy.legacy_allergies.length &&
+          allergy.allergies.length > 0 &&
           allergy.allergies.every(
             (a) => a.ingredient_id && a.verification_status === "CONFIRMED",
           ))),
@@ -816,8 +830,13 @@ async function assess(o, v, b, u, tx) {
       missing = v.dose_unit !== r.unit;
       violated =
         !missing &&
-        (Number(v.dose) > Number(r.max) ||
-          (r.min != null && Number(v.dose) < Number(r.min)));
+        (
+          await one(
+            "SELECT CAST(:dose AS numeric)>CAST(:max AS numeric) OR (CAST(:min AS numeric) IS NOT NULL AND CAST(:dose AS numeric)<CAST(:min AS numeric)) AS violated",
+            { dose: v.dose, max: r.max, min: r.min ?? null },
+            tx,
+          )
+        ).violated;
     }
     if (r.type === "ROUTE") violated = !r.routes.includes(v.route);
     if (r.type === "CONTEXT")

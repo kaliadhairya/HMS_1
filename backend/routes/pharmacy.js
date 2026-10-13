@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { sequelize } = require('../models/db');
 const { publish } = require('../utils/outbox');
-const { protect, checkPermission } = require('../middleware/auth');
+const { protect, checkPermission, restrictTo } = require('../middleware/auth');
 const { logAction } = require('../utils/auditLogger');
 const {
   Medicine, MedicineBatch, StockLedger, Supplier,
@@ -423,10 +423,10 @@ router.post('/grn', [
         await sequelize.query(`
           INSERT INTO HMS_MEDICINE_BATCHES (
             ID, MEDICINE_ID, SUPPLIER_ID, BATCH_NUMBER, EXPIRY_DATE,
-            QUANTITY, PURCHASE_RATE, MRP, GST_AMOUNT
+            QUANTITY, PURCHASE_RATE, MRP, GST_AMOUNT, LOT_STATUS, PROVENANCE
           ) VALUES (
             :id, :medicineId, :supplierId, :batchNumber, TO_DATE(:expiryDate, 'YYYY-MM-DD'),
-            :quantity, :purchaseRate, :mrp, :gstAmount
+            :quantity, :purchaseRate, :mrp, :gstAmount, :lotStatus, CAST(:provenance AS jsonb)
           )
         `, {
           replacements: {
@@ -439,6 +439,8 @@ router.post('/grn', [
             purchaseRate: item.purchaseRate,
             mrp: item.mrp,
             gstAmount: itemGst,
+            lotStatus: invoiceNumber && supplierId ? 'AVAILABLE' : 'QUARANTINED',
+            provenance: JSON.stringify({ source: 'declared manufacturer lot and expiry on supplier invoice', document_ref: invoiceNumber || null, manufacturer_lot: item.batchNumber, expiry_date: item.expiryDate, supplier_id: supplierId || null, purchase_order_id: po.id, recorded_by_user_id: req.user.id }),
           },
           transaction: t,
         });
@@ -516,7 +518,7 @@ router.post('/dispense', checkPermission('pharmacy', 'write'), dispenseHandler);
 // ─── POST /api/pharmacy/otc ────────────────────────────────────
 // Rate is the batch MRP and GST is the medicine's GST rate on top, both read here; the client sends only
 // batch and quantity. Unknown UHIDs and patient IDs are rejected rather than stored.
-router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
+router.post('/otc', restrictTo('pharmacist'), checkPermission('pharmacy', 'write'), async (req, res) => {
   const { paymentMode } = req.body;
   const items = Array.isArray(req.body.items) ? req.body.items : [];
   if (items.length === 0) {
@@ -543,6 +545,29 @@ router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
 
   const t = await sequelize.transaction();
   try {
+    const C = require('../services/medicationCommon'), I = require('../services/medicationInventory'), O = require('../services/medicationOrders');
+    if (patientId) await C.q('SELECT id FROM hms_patients WHERE id=:id FOR SHARE', { id: patientId }, t);
+    const allergy = patientId ? await O.allergies(patientId, t) : null;
+    const permissions = new Map();
+    // Lock approved product identities before stock, in a deterministic order.
+    const identities = await C.q(`SELECT DISTINCT p.id,p.legacy_medicine_id FROM hms_medicine_batches b
+      JOIN hms_med_products p ON p.legacy_medicine_id=b.medicine_id WHERE b.id IN (:ids) ORDER BY p.id`, { ids: items.map(i => Number(i.batchId)||0) }, t);
+    for (const identity of identities) {
+      const p = await I.product(identity.id, t);
+      const formulary = await C.one(`SELECT * FROM hms_med_formulary WHERE product_id=:id AND effective_at<=now()
+        AND (expires_at IS NULL OR expires_at>now()) ORDER BY revision DESC LIMIT 1`, { id:p.id }, t);
+      if (formulary?.restrictions?.otc_allowed !== true || p.controlled)
+        throw httpError(409, 'This product requires a coded order; no approved permission for counter sale exists.');
+      const composition = await C.q('SELECT ingredient_id FROM hms_med_product_ingredients WHERE product_id=:id', {id:p.id}, t);
+      if (allergy?.allergies.some(a => a.ingredient_id && composition.some(i => i.ingredient_id===a.ingredient_id)))
+        throw httpError(409, 'Known ingredient allergy requires a prescriber order and independent override review; counter sale is blocked.');
+      permissions.set(p.legacy_medicine_id, { product_id:p.id, formulary_revision:formulary.revision });
+    }
+    if(req.body.clinicalReviewAcknowledged !== true) throw httpError(422, 'Explicit pharmacist review of counter-sale permission and incomplete clinical context is required.');
+    const reviewReason=C.text(req.body.clinicalReviewReason, 'Pharmacist counter-sale review reason');
+    const clinicalReview={ state:'PHARMACIST_REVIEWED',coverage:'INCOMPLETE_CLINICAL_CONTEXT',review_reason:reviewReason,reviewer_user_id:req.user.id,
+      allergy_review_state:allergy?.review_state || 'PATIENT_CONTEXT_UNAVAILABLE',allergy_fingerprint:allergy ? O.allergyFingerprint(allergy) : null,
+      products:[...permissions.values()] };
     const saleId = await nextval('HMS_OTC_SALES_SEQ', t);
     const billNumber = `OTC-${Date.now()}`;
     await sequelize.query(`
@@ -566,16 +591,17 @@ router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
     let totalGst = 0;
     const lines = [];
 
-    for (const item of items) {
+    for (const item of [...items].sort((a,b) => Number(a.batchId)-Number(b.batchId))) {
       const quantity = toPositiveInt(item.quantity);
       if (!quantity) throw httpError(400, 'Enter a whole-number quantity above zero for every medicine.');
       const batch = await lockBatch(item.batchId, t);
       if (!batch) throw httpError(400, 'Select a batch for every medicine.');
+      if (!permissions.has(batch.MEDICINE_ID)) throw httpError(409, 'Counter sale requires an approved coded product and explicit formulary permission.');
       if (item.medicineId && Number(item.medicineId) !== Number(batch.MEDICINE_ID)) {
         throw httpError(400, `Batch ${batch.BATCH_NUMBER} does not belong to the selected medicine.`);
       }
       if (batch.IS_EXPIRED || batch.LOT_STATUS !== 'AVAILABLE') throw httpError(400, `Batch ${batch.BATCH_NUMBER} is expired or unavailable and cannot be sold.`);
-      if (batch.IS_CONTROLLED === 1) throw httpError(409, 'Controlled drugs require a coded order and independently witnessed supply.');
+      if (Number(batch.IS_CONTROLLED) !== 0 || batch.IS_CONTROLLED == null) throw httpError(409, 'Controlled drugs require a coded order and independently witnessed supply.');
       if (Number(batch.QUANTITY) < quantity) {
         throw httpError(400, `Insufficient stock for ${batch.GENERIC_NAME}: batch ${batch.BATCH_NUMBER} has ${batch.QUANTITY} left.`);
       }
@@ -624,6 +650,7 @@ router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
       replacements: { id: saleId, totalAmount },
       transaction: t,
     });
+    await sequelize.query('UPDATE hms_otc_sales SET clinical_review=CAST(:review AS jsonb) WHERE id=:id', { replacements:{review:JSON.stringify(clinicalReview),id:saleId},transaction:t });
     await publish('stock_updated', 'pharmacist', { reason: 'otc' }, { transaction: t });
     await t.commit();
 
@@ -639,7 +666,7 @@ router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
 
 // ─── POST /api/pharmacy/return ──────────────────────────────────
 // Stock movements that are not sales: { batchId, quantity, type, reason, patientId? }
-//   patient_return  stock back from a patient     ledger RETURN  (+)  ref 'Patient Return', patient ID
+//   patient_return  quarantined patient stock    ledger RETURN       ref 'Patient Return', patient ID
 //   vendor_return   stock sent back to supplier   ledger DISCARD (-)  ref 'Vendor Return', supplier ID
 //   discard         disposal (expired, damaged)   ledger DISCARD (-)  ref 'Disposal'
 //   adjust_in/out   count correction              ledger ADJUSTMENT, signed quantity, ref 'Stock Adjustment'
@@ -669,7 +696,7 @@ async function stockMoveHandler(req, res) {
   try {
     const batch = await lockBatch(batchId, t);
     if (!batch) throw httpError(404, 'Batch not found.');
-    if (batch.IS_CONTROLLED === 1) throw httpError(409, 'Controlled-drug movements require the witnessed Medication workflows.');
+    if (Number(batch.IS_CONTROLLED) !== 0 || batch.IS_CONTROLLED == null) throw httpError(409, 'Controlled-drug movements require the witnessed Medication workflows.');
     const current = Number(batch.QUANTITY || 0);
     if (move.sign < 0 && current < quantity) {
       throw httpError(400, `Only ${current} left in batch ${batch.BATCH_NUMBER}.`);
@@ -799,7 +826,7 @@ async function returnsListHandler(req, res) {
         items: `${r.GENERIC_NAME}${strength ? ` ${strength}` : ''} · batch ${r.BATCH_NUMBER} · ${qty}`,
         reason: details.reason || '',
         value: round2(qty * unit),
-        status: isVendor ? 'Returned to supplier' : 'Restocked',
+        status: isVendor ? 'Returned to supplier' : 'Quarantined; credit pending',
         recordedBy: r.PERFORMED_BY_NAME || null,
       };
     });

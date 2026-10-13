@@ -14,6 +14,33 @@ assert.match(
   /^hms_p3_/,
   "Use a Phase 3 throwaway database",
 );
+const testEnv = {
+  ...process.env,
+  DB_NAME: process.env.PHASE3_FOUNDATION_DB_NAME || process.env.DB_NAME,
+};
+assert.match(testEnv.DB_NAME, /^hms_p3_/, "Use a Phase 3 foundation database");
+// Drain restored unsequenced history before the original ordering fixture.
+// Use a database without a live dispatcher; assertions in the suite remain unchanged.
+const preparation = spawnSync(
+  process.execPath,
+  [
+    "-e",
+    `
+ const { sequelize } = require('./models/db'); const { allocateSequences } = require('./utils/outbox');
+ (async () => { try { for (let n=0;n<10000;n++) {
+   const [[row]]=await sequelize.query('SELECT count(*)::int AS n FROM hms_outbox WHERE delivery_sequence IS NULL');
+   if(!row.n) return; await allocateSequences();
+ } throw new Error('Foundation outbox preparation did not finish'); } finally { await sequelize.close(); } })().catch(e=>{console.error(e.message);process.exitCode=1;});
+`,
+  ],
+  {
+    cwd: path.join(__dirname, ".."),
+    env: testEnv,
+    stdio: "inherit",
+    timeout: 30000,
+  },
+);
+assert.equal(preparation.status, 0, "Foundation preparation failed");
 const original = path.join(__dirname, "../tests/phase1.integration.test.js");
 const source = fs.readFileSync(original, "utf8");
 const guard = "/^hms_(phase1|test|ci|verify)/";
@@ -33,7 +60,8 @@ try {
   });
   const result = spawnSync(process.execPath, ["--test", temporary], {
     stdio: "inherit",
-    env: process.env,
+    timeout: 60000,
+    env: testEnv,
   });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;

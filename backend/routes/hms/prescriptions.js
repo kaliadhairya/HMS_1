@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Prescription, PrescriptionItem, Medicine, Patient, User, Encounter, Diagnosis } = require('../../models');
 const { sequelize } = require('../../models/db');
+const C = require('../../services/medicationCommon');
 const { publish } = require('../../utils/outbox');
 const { protect, checkPermission, restrictTo } = require('../../middleware/auth');
 
@@ -120,9 +121,12 @@ router.post('/', protect, checkPermission('consultation', 'write'), async (req, 
     
     // Check if one exists; the change and the pharmacists' notification commit together.
     const prescription = await sequelize.transaction(async (transaction) => {
+      const encounter = await C.one('SELECT id,patient_id,status FROM hms_encounters WHERE id=:id FOR UPDATE', {id:C.integer(encounter_id, 'Encounter')}, transaction);
+      C.check(encounter && encounter.patient_id===Number(patient_id), 'PATIENT_ENCOUNTER_MISMATCH', 'Legacy note must belong to the encounter patient.');
       const prescriptions = await Prescription.findAll({ where: { encounter_id }, transaction });
       let current = prescriptions.length > 0 ? prescriptions[0] : null;
       if (!current) {
+        C.check(encounter.status!=='Finalized','ENCOUNTER_FINALIZED','Finalized encounters cannot acquire a new legacy prescription.',400);
         const [[{ NEXTVAL: nextId }]] = await sequelize.query(
           "SELECT nextval('hms_prescriptions_seq') AS \"NEXTVAL\"", { transaction }
         );
@@ -132,15 +136,12 @@ router.post('/', protect, checkPermission('consultation', 'write'), async (req, 
           encounter_id,
           patient_id,
           doctor_id: req.user.id,
-          status: status || 'Pending',
+          status: 'Pending',
           type: type || 'OPD'
         }, { transaction });
-      } else {
-        await current.update({
-          type: current.type || type || 'OPD',
-          status: status || current.status || 'Pending',
-        }, { transaction });
-      }
+      } else if (encounter.status!=='Finalized') {
+        await current.update({ type: current.type || type || 'OPD' }, { transaction });
+      } else return current;
       await publish('new_prescription', 'pharmacist', {
         id: current.id,
         patient_id: current.patient_id,
@@ -151,6 +152,7 @@ router.post('/', protect, checkPermission('consultation', 'write'), async (req, 
 
     res.status(200).json(prescription);
   } catch (error) {
+    if (error.status) return res.status(error.status).json({code:error.code,error:error.message});
     console.error('Error creating prescription:', error);
     res.status(500).json({ error: 'Failed to create prescription shell' });
   }
@@ -177,10 +179,13 @@ router.put('/:id/items', protect, checkPermission('consultation', 'write'), asyn
     // Free-text medicines are NOT added to the medicine catalogue any more: that created 0-stock
     // catalogue entries (category 'Prescription') for every typed name, cluttering the catalogue and
     // low-stock lists and making the pharmacy show "Out of stock" instead of "Not in catalogue".
-    // Lines are linked to the catalogue on read (resolveItemsForRead) when the generic name matches.
+    // Historical free text stays unlinked; it never authorizes coded medication supply.
 
     // Step 2: Atomic delete-then-insert inside a transaction (prevents data loss if insert fails)
     await sequelize.transaction(async (t) => {
+      const current = await C.one('SELECT e.id,e.status FROM hms_encounters e JOIN hms_prescriptions p ON p.encounter_id=e.id WHERE p.id=:id FOR UPDATE OF e', {id:Number(prescription_id)}, t);
+      C.check(current && current.status!=='Finalized','ENCOUNTER_FINALIZED','The consultation is finalized; its prescription can no longer be changed',400);
+      await C.q('SELECT id FROM hms_prescriptions WHERE id=:id FOR UPDATE', {id:Number(prescription_id)}, t);
       // Clear existing items
       await PrescriptionItem.destroy({ where: { prescription_id }, transaction: t });
 
@@ -200,7 +205,7 @@ router.put('/:id/items', protect, checkPermission('consultation', 'write'), asyn
         await PrescriptionItem.bulkCreate(itemsToInsert, { transaction: t });
 
         await Prescription.update(
-          { status: status || 'Consulted' },
+          { status: 'Consulted' },
           { where: { id: prescription_id }, transaction: t }
         );
       }
@@ -211,6 +216,7 @@ router.put('/:id/items', protect, checkPermission('consultation', 'write'), asyn
     const updatedItems = await resolveItemsForRead(prescription_id);
     res.json(updatedItems);
   } catch (error) {
+    if (error.status) return res.status(error.status).json({code:error.code,error:error.message});
     if (error.name === 'SequelizeForeignKeyConstraintError') {
       return res.status(409).json({ error: 'Some of these medicines have already been given to the patient, so the prescription lines cannot be replaced.' });
     }

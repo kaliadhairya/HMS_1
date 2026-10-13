@@ -56,12 +56,30 @@ const decimal = (v, name, precision = 6, allowZero = false) => {
 const epoch = (value) =>
   value instanceof Date ? value.getTime() : Date.parse(value);
 const instant = (v, name) => {
-  check(
+  const parts =
     typeof v === "string" &&
-      /(?:Z|[+-]\d\d:\d\d)$/.test(v) &&
+    v.match(
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2})$/,
+    );
+  const calendar = new Date(0);
+  if (parts) {
+    calendar.setUTCFullYear(
+      Number(parts[1]),
+      Number(parts[2]) - 1,
+      Number(parts[3]),
+    );
+  }
+  check(
+    parts &&
+      calendar.getUTCFullYear() === Number(parts[1]) &&
+      calendar.getUTCMonth() === Number(parts[2]) - 1 &&
+      calendar.getUTCDate() === Number(parts[3]) &&
+      Number(parts[4]) < 24 &&
+      Number(parts[5]) < 60 &&
+      Number(parts[6] || 0) < 60 &&
       Number.isFinite(Date.parse(v)),
     "INVALID_TIME",
-    `${name} requires an ISO timestamp with timezone.`,
+    `${name} requires a valid ISO calendar timestamp with timezone and at most millisecond precision.`,
   );
   return new Date(v).toISOString();
 };

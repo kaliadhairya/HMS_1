@@ -953,7 +953,7 @@ const witness = async (action, subject, performer, details, token = nurse) =>
       const cp = ok(
         await call("POST", "/products", pharmacist, {
           code: "CONTROLLED-" + tag,
-          name: "Synthetic controlled product",
+          name: "Synthetic controlled product " + tag,
           strength: "1",
           strength_unit: "mg",
           dose_form: "TEST-FORM",
@@ -1187,7 +1187,7 @@ const witness = async (action, subject, performer, details, token = nurse) =>
       const p = ok(
         await call("POST", "/products", pharmacist, {
           code: "LATE-" + tag,
-          name: "Synthetic late-documentation product",
+          name: "Synthetic late-documentation product " + tag,
           strength: "1",
           strength_unit: "mg",
           dose_form: "TEST-FORM",
