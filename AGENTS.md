@@ -61,3 +61,13 @@ required; leave Phase 2's implementation files unchanged.
 - 2026-10-13: resumed; reviewing medication schema and implementing Phase 3-owned domain services, routes, UI and acceptance tests.
 
 - 2026-10-13: completed medication/backend/frontend implementation and review; all 17 verifier suites pass, PG16/18 migrations match through 0043, build passes. Evidence: docs/phase3/verification.json. No shared deployment/merge. Phase 4 awaits the merged base required by the main parallel-work rules.
+
+## Phase 4 (Codex)
+
+STOP: Phase 4 laboratory files are owned by Codex in `HMS_1-phase4` on
+`phase4/laboratory`. Other agents must leave this worktree unchanged.
+- 2026-10-13: started from integrated Phase 2/3 `01c19aa`; read Phase 4 prompt,
+  parallel rules, foundation/medication evidence and laboratory blueprint.
+  Implementing laboratory-owned routes/UI, migrations 0050–0069 and tests;
+  shared changes limited to additive registrations. Private test databases
+  `hms_p4_*`, API 5022 and Vite 5194. No shared deployment.
