@@ -169,7 +169,7 @@ export default function AccountWorkspace({ episode, accountId, medicineSearch = 
   const admissionDone = acc.episode_type === 'admission' && acc.admission_status !== 'Active';
 
   return (
-    <div className="stack">
+    <div className="stack" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
       <div className="kpi-strip">
         <div className="panel kpi"><div className="kpi-label">Charges recorded</div><div className="kpi-value">{inr(t.charges)}</div></div>
         <div className="panel kpi"><div className="kpi-label">Invoiced</div><div className="kpi-value">{inr(t.invoiced)}</div></div>
@@ -178,7 +178,7 @@ export default function AccountWorkspace({ episode, accountId, medicineSearch = 
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
-        <div className="stack" style={{ flex: '2 1 520px', minWidth: 0 }}>
+        <div className="stack" style={{ flex: '2 1 520px', minWidth: 0, gridTemplateColumns: 'minmax(0, 1fr)' }}>
           {medicineSearch && acc.status === 'Open' && (
             <section className="panel panel-pad">
               <h2 className="panel-title"><Pill size={16} aria-hidden="true" /> Add medicines and consumables</h2>
@@ -300,7 +300,7 @@ export default function AccountWorkspace({ episode, accountId, medicineSearch = 
                         <td><span className={`status status-${INVOICE_TONE[inv.status] || 'info'}`}>{inv.status}</span></td>
                         <td className="tabular" style={{ textAlign: 'right' }}>{inr(inv.total)}{Number(inv.payer_amount) > 0 ? ` (payer ${inr(inv.payer_amount)})` : ''}</td>
                         <td className="tabular" style={{ textAlign: 'right' }}>{inr(Math.max(0, Number(inv.patient_due)))}</td>
-                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <td><span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end' }}>
                           <button type="button" className="btn btn-ghost btn-sm" onClick={() => openInvoice(inv.id)}><Printer size={14} aria-hidden="true" /> View</button>
                           {isDesk && Number(inv.patient_due) > 0 && inv.status !== 'Void' && (
                             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPayment({ invoiceId: inv.id, number: inv.invoice_number, amount: money(inv.patient_due), method: 'Cash', reference: '', outcome: 'confirmed' })}>
@@ -312,7 +312,7 @@ export default function AccountWorkspace({ episode, accountId, medicineSearch = 
                           {isDesk && Number(inv.payer_amount) > 0 && !['Void'].includes(inv.status) && (
                             <button type="button" className="btn btn-ghost btn-sm" onClick={() => act(() => api.post(`/finance/invoices/${inv.id}/claim`), (c) => `Claim ${c.claim_number} prepared`)}>Claim</button>
                           )}
-                        </td>
+                        </span></td>
                       </tr>
                     ))}
                   </tbody>
@@ -364,7 +364,7 @@ export default function AccountWorkspace({ episode, accountId, medicineSearch = 
           )}
         </div>
 
-        <div className="stack" style={{ flex: '1 1 320px', minWidth: 0 }}>
+        <div className="stack" style={{ flex: '1 1 320px', minWidth: 0, gridTemplateColumns: 'minmax(0, 1fr)' }}>
           <section className="panel">
             <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><Receipt size={16} aria-hidden="true" /> Bill summary</h2></div>
             <div className="panel-pad stack-sm">
