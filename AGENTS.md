@@ -11,7 +11,7 @@
 - No one deploys to the shared Docker app without the owner's approval.
 
 ### Session log
-- 2026-10-13 Claude: started Phase 2 part 1 (patient identity) in the main folder.
+- 2026-10-13 Claude: Phase 2 part 1 (patient identity) committed fcb87c7; starting part 2 (duplicate review and merge).
 
 ## Status (2026-10-13): Phase 1 complete — you may work
 
