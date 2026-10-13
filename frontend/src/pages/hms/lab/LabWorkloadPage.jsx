@@ -41,12 +41,12 @@ export default function LabWorkloadPage() {
               <div className="panel kpi"><div className="kpi-label">Completed today</div><div className="kpi-value tabular">{completed}</div></div>
               <div className="panel kpi">
                 <div className="kpi-label">Average turnaround</div>
-                <div className="kpi-value" style={{ color: stats.avgTatMinutes > 60 ? 'var(--amber)' : undefined }}>{stats.avgTat}</div>
-                <div className="kpi-sub">Order to result, today. Target {stats.targetTat}</div>
+                <div className="kpi-value" style={{ color: undefined }}>{stats.avgTat}</div>
+                <div className="kpi-sub">Order to authorized result, today. No approved turnaround target configured.</div>
               </div>
               <div className="panel kpi">
                 <div className="kpi-label">Abnormal results today</div>
-                <div className="kpi-value tabular" style={{ color: Number(stats.criticalFlagged) > 0 ? 'var(--red)' : undefined }}>{stats.criticalFlagged}</div>
+                <div className="kpi-value tabular" style={{ color: Number(stats.abnormalFlagged) > 0 ? 'var(--red)' : undefined }}>{stats.abnormalFlagged}</div>
                 <div className="kpi-sub">Outside the reference range</div>
               </div>
             </div>

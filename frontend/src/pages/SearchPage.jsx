@@ -60,7 +60,7 @@ export default function SearchPage() {
         navigate(`/report/${data.report.id}`, { state: { patient: data.patient } });
       } else {
         // Patients registered at the front desk have no report yet: start one (created on first save).
-        navigate(`/report/new?patient_id=${patientId}`, { state: { patient: data.patient } });
+        navigate(`/lab/governed?patient_id=${patientId}`, { state: { patient: data.patient } });
       }
     } catch {
       toast.error('Failed to load patient report.');
