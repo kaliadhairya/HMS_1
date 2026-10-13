@@ -350,13 +350,13 @@ async function pickPatient(page, query, name) {
       await page.goto(`${BASE}/hms/consultation/${state.encounterId}`);
       await page.getByRole('region', { name: 'Patient allergies' }).getByText(ALLERGEN).waitFor();
       assert(await page.getByRole('button', { name: 'Finalize encounter' }).count() === 0, 'finalize offered on a finalized encounter');
-      await page.route('**/api/patients/hms/*/allergies', (route) => route.abort());
+      await page.route('**/api/medication/allergies/*', (route) => route.abort());
       await page.reload();
       const box = page.getByRole('region', { name: 'Patient allergies' });
       await box.getByText('Allergies not checked').waitFor();
       const text = await box.textContent();
       assert(!text.includes('No known allergies'), 'claims no known allergies when the check failed');
-      await page.unroute('**/api/patients/hms/*/allergies');
+      await page.unroute('**/api/medication/allergies/*');
       noPageErrors(errors.filter((e) => !/ERR_FAILED|Failed to load allerg/i.test(e)), 'read-only consultation');
     });
 
@@ -471,7 +471,7 @@ async function pickPatient(page, query, name) {
       noPageErrors(errors, 'billing again');
     });
 
-    await step('Medicines dispensed before billing: the OPD bill adds the consultation fee to the pharmacy\'s bill (API)', async () => {
+    await step('Legacy dispensing is blocked; a historical pharmacy invoice receives one OPD consultation fee (API)', async () => {
       const [rec, doc, ph] = [await apiLogin('receptionist'), await apiLogin('doctor'), await apiLogin('pharmacist')];
       const pt = await api('POST', '/patients/hms', { token: rec, body: { patientType: 'other', name: `E2E OPD Rx ${S}`, age: 29, gender: 'Female', opdIndoor: 'OPD', testDate: new Date().toISOString().slice(0, 10), phoneNumber: `6${S.padStart(9, '0')}` } });
       assert(pt.status === 201, `patient ${pt.status}`);
@@ -488,9 +488,14 @@ async function pickPatient(page, query, name) {
       assert(lines.status === 200, `items ${lines.status}`);
       assert((await api('PATCH', `/hms/encounters/${enc.id}/finalize`, { token: doc, body: {} })).status === 200, 'finalize failed');
       const disp = await api('POST', '/pharmacy/dispense', { token: ph, body: { prescriptionId: rx.id, items: [{ prescriptionItemId: lines.data[0].id, medicineId: m.id, batchId: batch.id, quantity: 2 }] } });
-      assert(disp.status === 200 || disp.status === 201, `dispense ${disp.status} ${JSON.stringify(disp.data).slice(0, 200)}`);
-      const [pharmBill] = await sql("SELECT id, net_payable FROM hms_bills WHERE encounter_id = $1 AND status = 'Pending'", [enc.id]);
-      assert(pharmBill && Number(pharmBill.net_payable) === 20, `pharmacy bill ${JSON.stringify(pharmBill)}`);
+      assert(disp.status === 409 && disp.data.code === 'CODED_ORDER_REQUIRED', `unsafe legacy dispense ${disp.status}`);
+      // Historical invoice compatibility fixture. This is not a new medication
+      // supply and never authorizes a dose or alters inventory.
+      assert(/^hms_p3_/.test(process.env.DB_NAME || ''), 'Use a Phase 3 throwaway database for this fixture');
+      const [pharmBill] = await sql(`INSERT INTO hms_bills(patient_id,encounter_id,bill_number,bill_type,status,total_amount,net_payable)
+        VALUES($1,$2,$3,'OPD','Pending',20,20) RETURNING id,net_payable`, [pt.data.data.id,enc.id,'HIST-P3-'+S]);
+      await sql(`INSERT INTO hms_bill_items(bill_id,item_type,item_name,quantity,rate,amount)
+        VALUES($1,'Medicine','Synthetic historical invoice item',2,10,20)`,[pharmBill.id]);
       const fee = Number((await sql("SELECT rate FROM hms_bill_items WHERE bill_id = $1 AND item_type = 'Consultation'", [state.bill.id]))[0].rate);
       for (let i = 0; i < 2; i++) {
         const r = await api('POST', '/billing/opd', { token: rec, body: { encounterId: enc.id } });
@@ -501,7 +506,7 @@ async function pickPatient(page, query, name) {
       assert(bills.length === 1, `${bills.length} bills for the visit`);
       assert(items.filter((it) => it.item_type === 'Consultation').length === 1, `consultation lines ${JSON.stringify(items)}`);
       assert(Number(bills[0].net_payable) === 20 + fee && Number(bills[0].total_amount) === 20 + fee, `bill total ${JSON.stringify(bills[0])}, expected ${20 + fee}`);
-      await api('POST', '/pharmacy/return', { token: ph, body: { batchId: batch.id, quantity: 8, type: 'discard', reason: 'E2E test cleanup' } });
+      await api('POST', '/pharmacy/return', { token: ph, body: { batchId: batch.id, quantity: 10, type: 'discard', reason: 'E2E test cleanup' } });
     });
 
     // ── 8. Profile and journey ──────────────────────────────────────

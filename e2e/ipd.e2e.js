@@ -534,7 +534,7 @@ async function newPatient(name, phonePrefix) {
       assert(money(b.total_amount) === ctx.total && money(b.discount_amount) === ctx.discount && money(b.advance_adjusted) === 500 && money(b.net_payable) === ctx.net
         && b.discount_approved_by === ctx.uid.admin && b.patient_id === ctx.patientId && b.status === 'Pending', `bill ${JSON.stringify(b)}`);
       const items = await sql('SELECT item_type, quantity, rate, amount FROM hms_bill_items WHERE bill_id = $1 ORDER BY id', [b.id]);
-      assert(items.length === 2 && items[0].item_type === 'Ward' && money(items[0].amount) === ctx.wardTotal && items[1].item_type === 'Medicine' && items[1].quantity === 4 && money(items[1].amount) === ctx.medTotal,
+      assert(items.length === 2 && items[0].item_type === 'Ward' && money(items[0].amount) === ctx.wardTotal && items[1].item_type === 'Medicine' && Number(items[1].quantity) === 4 && money(items[1].amount) === ctx.medTotal,
         `bill items ${JSON.stringify(items)}`);
       const [adv] = await sql('SELECT adjusted_bill_id FROM hms_patient_advances WHERE patient_id = $1', [ctx.patientId]);
       assert(adv.adjusted_bill_id === b.id, 'advance not marked as adjusted against the bill');
