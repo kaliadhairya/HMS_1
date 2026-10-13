@@ -63,10 +63,12 @@ async function accrueWard(admissionId, t) {
 
 // Medicine sold at the MRP of the batch the pharmacy would issue first.
 async function medicinePrice(medicineId, t) {
-  const b = await one(`SELECT mrp FROM hms_medicine_batches WHERE medicine_id = :id AND quantity > 0 AND COALESCE(lot_status, 'Available') = 'Available'
-    ORDER BY expiry_date ASC LIMIT 1`, { id: medicineId }, t).catch(() => null);
+  // Usable stock only: not quarantined, recalled or expired (Phase 3 lot status).
+  const b = await one(`SELECT mrp FROM hms_medicine_batches WHERE medicine_id = :id AND quantity > 0 AND COALESCE(lot_status, 'AVAILABLE') = 'AVAILABLE'
+      AND expiry_date >= CURRENT_DATE
+    ORDER BY expiry_date ASC LIMIT 1`, { id: medicineId }, t);
   if (b && Number(b.mrp) > 0) return Number(b.mrp);
-  const p = await one('SELECT mrp FROM hms_purchase_items WHERE medicine_id = :id ORDER BY id DESC LIMIT 1', { id: medicineId }, t).catch(() => null);
+  const p = await one('SELECT mrp FROM hms_purchase_items WHERE medicine_id = :id ORDER BY id DESC LIMIT 1', { id: medicineId }, t);
   return p ? Number(p.mrp) || 0 : 0;
 }
 

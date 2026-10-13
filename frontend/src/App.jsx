@@ -81,6 +81,10 @@ const IPDBillingPage = lazy(() => import('./pages/hms/ipd/IPDBillingPage'));
 const IPDSavedBillsPage = lazy(() => import('./pages/hms/ipd/IPDSavedBillsPage'));
 const OPDBillingPage = lazy(() => import('./pages/hms/billing/OPDBillingPage'));
 const BillingHistoryPage = lazy(() => import('./pages/hms/billing/BillingHistoryPage'));
+const BillingAccountPage = lazy(() => import('./pages/hms/billing/BillingAccountPage'));
+const FinanceDeskPage = lazy(() => import('./pages/hms/billing/FinanceDeskPage'));
+const ReconciliationPage = lazy(() => import('./pages/hms/billing/ReconciliationPage'));
+const PriceListPage = lazy(() => import('./pages/hms/billing/PriceListPage'));
 
 // Part C - Reports & Admin Settings Pages
 const AdminSettingsPage = lazy(() => import('./pages/AdminSettingsPage'));
@@ -466,6 +470,12 @@ export default function App() {
                 <BillingHistoryPage />
               </HMSProtectedRoute>
             } />
+
+            {/* Phase 5 — revenue cycle */}
+            <Route path="/billing/accounts/:accountId" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}><BillingAccountPage /></HMSProtectedRoute>} />
+            <Route path="/billing/desk" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}><FinanceDeskPage /></HMSProtectedRoute>} />
+            <Route path="/billing/reconciliation" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}><ReconciliationPage /></HMSProtectedRoute>} />
+            <Route path="/billing/price-list" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin']}><PriceListPage /></HMSProtectedRoute>} />
 
             {/* Part C — Admin Settings & Reports Routes */}
             <Route path="/admin/settings" element={

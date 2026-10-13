@@ -54,14 +54,14 @@ export default function IPDSavedBillsPage() {
       cell: ({ getValue }) => <span className="tabular">{getValue()}</span>,
     },
     {
-      id: 'total', header: 'Draft total', accessorFn: (d) => Number(d.draftTotal || 0), meta: { width: 150, align: 'right' },
+      id: 'total', header: 'Not billed yet', accessorFn: (d) => Number(d.draftTotal || 0), meta: { width: 150, align: 'right' },
       cell: ({ getValue }) => <span className="tabular" style={{ fontWeight: 600 }}>{inr(getValue())}</span>,
     },
     {
       id: 'actions', header: () => <span className="sr-only">Actions</span>, enableSorting: false, meta: { width: 170, align: 'right' },
       cell: ({ row }) => (
         <button type="button" className="btn btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); openDraft(row.original); }}>
-          Review and finalize <ArrowRight size={14} aria-hidden="true" />
+          Open billing <ArrowRight size={14} aria-hidden="true" />
         </button>
       ),
     },
@@ -73,8 +73,8 @@ export default function IPDSavedBillsPage() {
       <Navbar />
       <main className="app-page">
         <PageHeader
-          title="Saved billing drafts"
-          description="IPD bills saved as drafts. Open one to edit items or finalize the bill."
+          title="Unbilled inpatient charges"
+          description="Admissions with medicines, tests or services recorded but not yet on an invoice (bed days not counted)."
           meta={!loading && <span className="muted">{drafts.length} {drafts.length === 1 ? 'draft' : 'drafts'}</span>}
           actions={(
             <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/ipd/billing')}>
@@ -95,8 +95,8 @@ export default function IPDSavedBillsPage() {
             empty={(
               <EmptyState
                 icon={FileText}
-                title="No saved drafts"
-                description="Drafts appear here when you save charges for an admitted patient in IPD billing."
+                title="Nothing waiting to be billed"
+                description="Admissions appear here when items are charged to them and not yet billed."
                 action={<button type="button" className="btn btn-secondary btn-md" onClick={() => navigate('/ipd/billing')}>Go to IPD billing</button>}
               />
             )}

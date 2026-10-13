@@ -76,21 +76,25 @@ async function buildNotifications() {
 
   const [billRows] = await sequelize.query(`
     SELECT
-      COALESCE(b.ID, e.ID) AS ID,
+      e.ID AS ID,
       e.ID AS ENCOUNTER_ID,
       p.NAME AS PATIENT_NAME,
       p.UHID,
-      COALESCE(b.NET_PAYABLE, 0) AS AMOUNT,
+      COALESCE(bills.DUE, 0) AS AMOUNT,
       e.ENCOUNTER_DATE
     FROM HMS_ENCOUNTERS e
     JOIN HMS_PATIENTS p ON p.ID = e.PATIENT_ID
-    LEFT JOIN HMS_BILLS b ON b.ENCOUNTER_ID = e.ID
+      LEFT JOIN LATERAL (
+        -- A visit can have more than one bill (Phase 5: an earlier bill plus a
+        -- new invoice); list the visit once with what is still owed on it.
+        SELECT count(*) AS BILLS,
+               SUM(CASE WHEN b.STATUS IN ('Pending', 'Partially Paid')
+                        THEN b.NET_PAYABLE - COALESCE((SELECT SUM(pm.AMOUNT) FROM HMS_PAYMENTS pm WHERE pm.BILL_ID = b.ID), 0) ELSE 0 END) AS DUE
+          FROM HMS_BILLS b WHERE b.ENCOUNTER_ID = e.ID AND COALESCE(b.STATUS, '') <> 'Cancelled'
+      ) bills ON true
     WHERE trunc(e.ENCOUNTER_DATE) = trunc(CURRENT_TIMESTAMP)
       AND e.STATUS = 'Finalized'
-      AND (
-        b.ID IS NULL
-        OR (b.STATUS IN ('Pending', 'Partially Paid') AND COALESCE(b.NET_PAYABLE, 0) > 0)
-      )
+      AND (bills.BILLS = 0 OR bills.DUE > 0)
     ORDER BY e.ENCOUNTER_DATE DESC
     LIMIT 10
   `);
@@ -255,19 +259,23 @@ router.get('/billing-summary', async (req, res) => {
         p.NAME AS PATIENT,
         u.NAME AS DOCTOR,
         COALESCE(d.NAME, e.ENCOUNTER_TYPE) AS DEPARTMENT,
-        COALESCE(b.NET_PAYABLE, 0) - COALESCE((SELECT SUM(pm.AMOUNT) FROM HMS_PAYMENTS pm WHERE pm.BILL_ID = b.ID), 0) AS AMOUNT,
+        COALESCE(bills.DUE, 0) AS AMOUNT,
         e.ENCOUNTER_DATE AS ENCOUNTER_DATE
       FROM HMS_ENCOUNTERS e
       JOIN HMS_PATIENTS p ON p.ID = e.PATIENT_ID
       JOIN HMS_USERS u ON u.ID = e.DOCTOR_ID
       LEFT JOIN HMS_DEPARTMENTS d ON d.ID = e.DEPARTMENT_ID
-      LEFT JOIN HMS_BILLS b ON b.ENCOUNTER_ID = e.ID
+      LEFT JOIN LATERAL (
+        -- A visit can have more than one bill (Phase 5: an earlier bill plus a
+        -- new invoice); list the visit once with what is still owed on it.
+        SELECT count(*) AS BILLS,
+               SUM(CASE WHEN b.STATUS IN ('Pending', 'Partially Paid')
+                        THEN b.NET_PAYABLE - COALESCE((SELECT SUM(pm.AMOUNT) FROM HMS_PAYMENTS pm WHERE pm.BILL_ID = b.ID), 0) ELSE 0 END) AS DUE
+          FROM HMS_BILLS b WHERE b.ENCOUNTER_ID = e.ID AND COALESCE(b.STATUS, '') <> 'Cancelled'
+      ) bills ON true
       WHERE trunc(e.ENCOUNTER_DATE) = trunc(CURRENT_TIMESTAMP)
         AND e.STATUS = 'Finalized'
-        AND (
-          b.ID IS NULL
-          OR (b.STATUS IN ('Pending', 'Partially Paid') AND COALESCE(b.NET_PAYABLE, 0) > 0)
-        )
+        AND (bills.BILLS = 0 OR bills.DUE > 0)
       ORDER BY e.ENCOUNTER_DATE DESC
     `);
 
@@ -353,10 +361,16 @@ router.get('/ipd-admissions', async (req, res) => {
       LEFT JOIN HMS_BEDS b ON b.ID = a.BED_ID
       LEFT JOIN HMS_WARDS w ON w.ID = b.WARD_ID
       LEFT JOIN (
-        SELECT ADMISSION_ID, SUM(AMOUNT) AS ADVANCE_PAID
-        FROM HMS_PATIENT_ADVANCES
-        WHERE COALESCE(IS_REFUNDED, 0) = 0
-        GROUP BY ADMISSION_ID
+        -- Deposits taken against the admission (Phase 5 billing account) plus
+        -- advances recorded before Phase 5 (also carried over as deposits, so
+        -- only receipt-backed deposits are added here).
+        SELECT admission_id AS ADMISSION_ID, SUM(amount) AS ADVANCE_PAID FROM (
+          SELECT acc.admission_id, f.amount FROM hms_patient_funds f
+            JOIN hms_billing_accounts acc ON acc.id = f.account_id
+           WHERE f.kind = 'deposit' AND f.receipt_id IS NOT NULL AND acc.admission_id IS NOT NULL
+          UNION ALL
+          SELECT ADMISSION_ID, AMOUNT FROM HMS_PATIENT_ADVANCES WHERE COALESCE(IS_REFUNDED, 0) = 0
+        ) d GROUP BY admission_id
       ) adv ON adv.ADMISSION_ID = a.ID
       WHERE a.STATUS IN ('Active', 'Discharge Pending', 'Pending Discharge')
       ORDER BY a.ADMISSION_DATE DESC
