@@ -9,7 +9,7 @@ You are building **Phase 4 (the complete laboratory loop)** of HMS_1, a
 hospital management system (Node/Express + Sequelize + PostgreSQL, React/Vite,
 Docker Compose). The main folder is `~/Desktop/projects all i made/HMS_1`.
 Other phases may be in progress in parallel. **You must work in your own git
-worktree and follow `docs/PARALLEL_WORK.md` exactly.**
+worktree and follow `~/Desktop/projects all i made/HMS_1/docs/PARALLEL_WORK.md` exactly (read it from the main folder: your worktree may not contain it).**
 
 ## Before writing any code
 
