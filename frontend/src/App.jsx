@@ -45,6 +45,13 @@ const RestFormPrintPage = lazy(() => import('./pages/hms/doctor/RestFormPrintPag
 
 // Sprint 4 — Pharmacy Pages
 const MedicineMasterPage = lazy(() => import('./pages/hms/pharmacy/MedicineMasterPage'));
+const MedicationOrdersPage = lazy(() => import('./pages/hms/consultation/MedicationOrdersPage'));
+const MedicationPharmacyPage = lazy(() => import('./pages/hms/pharmacy/MedicationPharmacyPage'));
+const MedicationNursingPage = lazy(() => import('./pages/hms/pharmacy/MedicationNursingPage'));
+const MedicationStockPage = lazy(() => import('./pages/hms/pharmacy/MedicationStockPage'));
+const MedicationControlledPage = lazy(() => import('./pages/hms/pharmacy/MedicationControlledPage'));
+const MedicationCataloguePage = lazy(() => import('./pages/hms/pharmacy/MedicationCataloguePage'));
+const MedicationWitnessPage = lazy(() => import('./pages/hms/pharmacy/MedicationWitnessPage'));
 const PharmacyStockPage = lazy(() => import('./pages/hms/pharmacy/PharmacyStockPage'));
 const GRNPage = lazy(() => import('./pages/hms/pharmacy/GRNPage'));
 const DispensePage = lazy(() => import('./pages/hms/pharmacy/DispensePage'));
@@ -315,6 +322,13 @@ export default function App() {
             } />
 
             {/* Sprint 4 — Pharmacy Routes */}
+            <Route path="/medication/witness" element={<HMSProtectedRoute allowedRoles={['doctor','nurse','pharmacist']}><MedicationWitnessPage /></HMSProtectedRoute>} />
+            <Route path="/medication/orders" element={<HMSProtectedRoute allowedRoles={['doctor']}><MedicationOrdersPage /></HMSProtectedRoute>} />
+            <Route path="/medication/pharmacy" element={<HMSProtectedRoute allowedRoles={['pharmacist']}><MedicationPharmacyPage /></HMSProtectedRoute>} />
+            <Route path="/medication/nursing" element={<HMSProtectedRoute allowedRoles={['nurse']}><MedicationNursingPage /></HMSProtectedRoute>} />
+            <Route path="/medication/stock" element={<HMSProtectedRoute allowedRoles={['nurse','pharmacist']}><MedicationStockPage /></HMSProtectedRoute>} />
+            <Route path="/medication/controlled" element={<HMSProtectedRoute allowedRoles={['nurse','pharmacist']}><MedicationControlledPage /></HMSProtectedRoute>} />
+            <Route path="/medication/catalogue" element={<HMSProtectedRoute allowedRoles={['pharmacist']}><MedicationCataloguePage /></HMSProtectedRoute>} />
             <Route path="/pharmacy/medicines" element={
               <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist']}>
                 <MedicineMasterPage />

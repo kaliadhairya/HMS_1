@@ -1,3 +1,5 @@
+import MedicationAllergyPanel from './MedicationAllergyPanel';
+import MedicationOrderPanel from './MedicationOrderPanel';
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
@@ -543,6 +545,9 @@ export default function ConsultationPage() {
 
             {activeTab === 'prescription' && (
               <div className="stack">
+                {patient?.id&&<MedicationAllergyPanel patientId={patient.id}/>}
+                <MedicationOrderPanel patientId={patient?.id} encounterId={id} />
+                <p role="status">The free-text entries below are legacy documentation. Coded signed orders above authorize pharmacist verification and supply.</p>
                 <div className="form-group">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <label className="form-label" htmlFor="cn-med-search">Search medicine</label>

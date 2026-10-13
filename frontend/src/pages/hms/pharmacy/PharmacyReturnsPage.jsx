@@ -1,3 +1,4 @@
+import {MedicationLinks} from './MedicationUI';
 import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Undo2 } from 'lucide-react';
@@ -95,7 +96,7 @@ export default function PharmacyReturnsPage() {
     }
   };
 
-  // A patient return can go back to any batch of the medicine; a vendor return needs stock and a supplier.
+  // A patient return must match issued stock and enters quarantine; a vendor return needs stock and a supplier.
   const batchOptions = useMemo(
     () => (kind === 'vendor' ? batches.filter((b) => Number(b.QUANTITY) > 0 && b.SUPPLIER_ID) : batches),
     [batches, kind],
@@ -170,7 +171,7 @@ export default function PharmacyReturnsPage() {
     },
     {
       id: 'status', header: 'Status', accessorFn: (r) => r.status || '', meta: { width: 170 },
-      cell: ({ getValue }) => <span className={`status ${getValue() === 'Restocked' ? 'status-success' : 'status-warning'}`}>{getValue() || '—'}</span>,
+      cell: ({ getValue }) => <span className={`status ${'status-warning'}`}>{getValue() || '—'}</span>,
     },
   ], []);
 
@@ -178,11 +179,11 @@ export default function PharmacyReturnsPage() {
 
   return (
     <>
-      <Navbar />
+      <Navbar /><MedicationLinks/>
       <main className="app-page">
         <PageHeader
           title="Returns and replacements"
-          description="Patient returns that go back into stock, and vendor returns that go back to the supplier."
+          description="Patient returns enter quarantine with credit handled separately. Vendor returns go back to the supplier."
           actions={(
             <>
               <button type="button" className="btn btn-secondary btn-md" onClick={() => openForm('vendor')}>

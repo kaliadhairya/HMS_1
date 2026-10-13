@@ -1,3 +1,4 @@
+import {MedicationLinks} from './MedicationUI';
 import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { Pencil, Pill, Plus, Power, PowerOff, Search, X } from 'lucide-react';
@@ -327,7 +328,7 @@ export default function MedicineMasterPage() {
 
   return (
     <>
-      <Navbar />
+      <Navbar /><MedicationLinks/>
       <main className="app-page">
         <PageHeader
           title="Medicines"

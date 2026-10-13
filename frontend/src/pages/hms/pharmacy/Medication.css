@@ -1,0 +1,20 @@
+.medication-nav { display:flex; gap:10px; flex-wrap:wrap; border-bottom:1px solid var(--border); }
+.medication-nav a { color:var(--text-primary); text-decoration:none; padding:8px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); font-weight:600; }
+.medication-nav a:focus-visible { outline:3px solid var(--blue,#1976d2); outline-offset:2px; }
+.medication-page { padding:24px; display:grid; gap:18px; max-width:1600px; margin:0 auto; }
+.medication-page h1,.medication-page h2,.medication-panel h2 { margin:0 0 10px; }
+.medication-page p,.medication-panel p { line-height:1.55; margin:8px 0 12px; }
+.medication-page .panel,.medication-panel { padding:18px; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
+.medication-page .form-grid,.medication-panel .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px; align-items:end; }
+.medication-page .stack,.medication-panel .stack { display:grid; gap:14px; }
+.medication-page button:not(.btn),.medication-panel button:not(.btn) { padding:8px 12px; margin:4px; border:1px solid var(--border); border-radius:7px; background:var(--surface); color:var(--text-primary); cursor:pointer; font-weight:600; }
+.medication-page button:disabled,.medication-panel button:disabled { cursor:not-allowed; opacity:.55; }
+.medication-page button:focus-visible,.medication-panel button:focus-visible { outline:3px solid var(--blue,#1976d2); outline-offset:2px; }
+.medication-page .mini-table { width:100%; display:block; overflow:auto; border:1px solid var(--border); border-radius:10px; }
+.medication-page .mini-table th,.medication-page .mini-table td { padding:12px; max-width:360px; vertical-align:top; overflow-wrap:anywhere; }
+.medication-page details { padding:16px; border:1px solid var(--border); border-radius:10px; background:var(--surface); }
+.medication-page summary { cursor:pointer; font-weight:600; padding:4px 0 10px; }
+.medication-page ul { padding-left:24px; }
+.medication-page li { margin:10px 0; }
+.medication-page [role=alert],.medication-panel [role=alert] { border-left:4px solid var(--amber,#b97500); padding:12px; background:var(--surface); }
+@media(max-width:700px) { .medication-page { padding:12px; }.medication-page .form-grid,.medication-panel .form-grid { grid-template-columns:1fr; } }
