@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const { sequelize } = require('../models/db');
 const { protect } = require('../middleware/auth');
 const { logAction } = require('../utils/auditLogger');
 const { setActor } = require('../utils/auditContext');
@@ -127,7 +128,7 @@ router.post('/login', [
       first_login: user.first_login || 'N',
     });
   } catch (err) {
-    console.error(err);
+    if (!err.status) console.error('Authentication operation failed:', err.code || err.name);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 });
@@ -152,7 +153,7 @@ router.post('/logout', protect, async (req, res) => {
     await logAction(req.user.id, 'LOGOUT', 'auth', null, null, null, req.ip || null);
     res.json({ success: true, message: 'Signed out.' });
   } catch (err) {
-    console.error(err);
+    if (!err.status) console.error('Authentication operation failed:', err.code || err.name);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 });
@@ -175,34 +176,26 @@ router.post('/change-password', protect, async (req, res) => {
       });
     }
 
-    // Get user with password
-    const user = await User.findByPk(req.user.id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    const isMatch = await user.comparePassword(currentPassword);
-    if (!isMatch) {
-      // 400, not 401: the session is valid, and the web client signs the user out on any 401.
-      return res.status(400).json({ success: false, message: 'Current password is incorrect.' });
-    }
-    if (await user.comparePassword(newPassword)) {
-      return res.status(400).json({ success: false, message: 'Choose a new password that is different from the current one.' });
-    }
-
-    user.password = newPassword; // beforeUpdate hook will hash it
-    user.first_login = 'N';
-    await user.save();
-    // Sign out every other device; this one stays signed in.
-    await revokeUserSessions(user.id, 'password changed', { io: req.app.get('io'), exceptSessionId: req.user.sessionId || null });
+    await sequelize.transaction(async (transaction) => {
+      const user = await User.findByPk(req.user.id, { transaction, lock: transaction.LOCK.UPDATE });
+      const reject = (message, status = 400) => { const error = new Error(message); error.status = status; throw error; };
+      if (!user) reject('User not found.', 404);
+      if (!await user.comparePassword(currentPassword)) reject('Current password is incorrect.');
+      if (await user.comparePassword(newPassword)) reject('Choose a new password that is different from the current one.');
+      user.password = newPassword;
+      user.first_login = 'N';
+      await user.save({ transaction });
+      await revokeUserSessions(user.id, 'password changed', { transaction, io: req.app.get('io'), exceptSessionId: req.user.sessionId || null });
+    });
+    const user = { id: req.user.id };
 
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(user.id, 'UPDATE', 'auth', user.id, null, { action: 'password_changed' }, ip);
 
     res.json({ success: true, message: 'Password changed successfully.' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error.' });
+    if (!err.status) console.error('Authentication operation failed:', err.code || err.name);
+    res.status(err.status || 500).json({ success: false, message: err.status ? err.message : 'Server error.' });
   }
 });
 
@@ -246,7 +239,7 @@ router.post('/forgot-password', async (req, res) => {
 
     res.json(responsePayload);
   } catch (err) {
-    console.error(err);
+    if (!err.status) console.error('Authentication operation failed:', err.code || err.name);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 });
@@ -280,7 +273,7 @@ router.post('/verify-otp', async (req, res) => {
 
     res.json({ success: true, resetToken });
   } catch (err) {
-    console.error(err);
+    if (!err.status) console.error('Authentication operation failed:', err.code || err.name);
     res.status(500).json({ success: false, message: 'Server error.' });
   }
 });
@@ -310,26 +303,29 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid or expired reset token.' });
     }
 
-    const user = await User.findByPk(decoded.id);
-    if (!user || !resetTokenMatchesUser(decoded, user)) {
-      // A changed password means this token was already used.
-      return res.status(400).json({ success: false, message: 'Invalid or expired reset token.' });
-    }
-
-    user.password = newPassword; // hook hashes it
-    user.otp_code = null;
-    user.otp_expires = null;
-    user.first_login = 'N';
-    await user.save();
-    await revokeUserSessions(user.id, 'password reset', { io: req.app.get('io') });
+    await sequelize.transaction(async (transaction) => {
+      const user = await User.findByPk(decoded.id, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!user || !resetTokenMatchesUser(decoded, user)) {
+        const error = new Error('Invalid or expired reset token.'); error.status = 400; throw error;
+      }
+      setActor(user);
+      await sequelize.query("SELECT set_config('hms.actor_user_id', :actor, true)", { replacements: { actor: String(user.id) }, transaction });
+      user.password = newPassword;
+      user.otp_code = null;
+      user.otp_expires = null;
+      user.first_login = 'N';
+      await user.save({ transaction });
+      await revokeUserSessions(user.id, 'password reset', { transaction, io: req.app.get('io') });
+    });
+    const user = { id: decoded.id };
 
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(user.id, 'UPDATE', 'auth', user.id, null, { action: 'password_reset' }, ip);
 
     res.json({ success: true, message: 'Password has been reset successfully.' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error.' });
+    if (!err.status) console.error('Authentication operation failed:', err.code || err.name);
+    res.status(err.status || 500).json({ success: false, message: err.status ? err.message : 'Server error.' });
   }
 });
 

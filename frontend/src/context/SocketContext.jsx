@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import api from '../api/axios';
+import { createEventReplay } from '../utils/eventReplay.mjs';
 
 const SocketContext = createContext();
 const socketUrl = import.meta.env.VITE_SOCKET_URL || window.location.origin;
@@ -18,6 +20,17 @@ export const SocketProvider = ({ children }) => {
         withCredentials: true,
       });
 
+      const replay = createEventReplay(async (sequence) => {
+        const { data } = await api.get('/events', { params: sequence === null ? {} : { after_sequence: sequence } });
+        return data;
+      }, (type, data) => newSocket.listeners(type).forEach((listener) => listener(data)));
+      const receive = newSocket.onevent;
+      newSocket.onevent = function receiveOnce(packet) {
+        if (replay.accept(packet.data?.[1])) receive.call(this, packet);
+      };
+      const catchUp = () => replay.catchUp().catch(() => {});
+      newSocket.on('connect', catchUp);
+      const catchUpTimer = setInterval(() => { if (newSocket.connected) catchUp(); }, 5000);
       newSocket.on('connect', () => {
         console.log('🔌 Connected to real-time server:', newSocket.id);
         // Join a room based on the user's role
@@ -130,11 +143,13 @@ export const SocketProvider = ({ children }) => {
       setSocket(newSocket);
 
       return () => {
+        clearInterval(catchUpTimer);
+        replay.stop();
         newSocket.close();
         console.log('🔌 Disconnected from real-time server');
       };
     }
-  }, [user]);
+  }, [user?.id, user?.role]);
 
   return (
     <SocketContext.Provider value={socket}>

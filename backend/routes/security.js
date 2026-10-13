@@ -204,10 +204,10 @@ router.post('/sessions/:userId/force-logout', protect, restrictTo('super_admin')
 // Update session timeout settings
 router.put('/sessions/timeout', protect, restrictTo('super_admin'), async (req, res) => {
   try {
-    securitySettings.session_timeout = { ...securitySettings.session_timeout, ...req.body };
+    const updated = await securitySettings.saveSetting('session_timeout', (current) => ({ ...current, ...req.body }), req.user.id);
     const ip = req.ip || req.connection?.remoteAddress || null;
-    await logAction(req.user.id, 'UPDATE', 'security', null, null, { action: 'session_timeout_updated', settings: securitySettings.session_timeout }, ip);
-    res.json({ success: true, data: securitySettings.session_timeout });
+    await logAction(req.user.id, 'UPDATE', 'security', null, null, { action: 'session_timeout_updated', settings: updated }, ip);
+    res.json({ success: true, data: updated });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to update timeout.' });
   }
@@ -239,10 +239,10 @@ router.get('/2fa', protect, restrictTo('super_admin'), async (req, res) => {
 
 router.put('/2fa', protect, restrictTo('super_admin'), async (req, res) => {
   try {
-    securitySettings.twofa_enforced_roles = req.body.enforced_roles || [];
+    const updated = await securitySettings.saveSetting('twofa_enforced_roles', req.body.enforced_roles || [], req.user.id);
     const ip = req.ip || req.connection?.remoteAddress || null;
-    await logAction(req.user.id, 'UPDATE', 'security', null, null, { action: '2fa_config_updated', roles: securitySettings.twofa_enforced_roles }, ip);
-    res.json({ success: true, data: { enforced_roles: securitySettings.twofa_enforced_roles } });
+    await logAction(req.user.id, 'UPDATE', 'security', null, null, { action: '2fa_config_updated', roles: updated }, ip);
+    res.json({ success: true, data: { enforced_roles: updated } });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to update 2FA.' });
   }
@@ -265,38 +265,27 @@ router.put('/ip-rules', protect, restrictTo('super_admin'), async (req, res) => 
   try {
     const ip = req.ip || req.connection?.remoteAddress || null;
     const clean = (list) => [...new Set((Array.isArray(list) ? list : []).map((r) => String(r || '').trim()).filter(Boolean))];
-    const whitelist = req.body.whitelist !== undefined ? clean(req.body.whitelist) : securitySettings.ip_whitelist;
-    const blacklist = req.body.blacklist !== undefined ? clean(req.body.blacklist) : securitySettings.ip_blacklist;
-
-    const invalid = [...whitelist, ...blacklist].filter((r) => !parseIpRule(r));
-    if (invalid.length) {
-      return res.status(400).json({
-        success: false,
-        message: `Not a valid IP address or IPv4 range: ${invalid.join(', ')}. Use forms like 203.0.113.7 or 203.0.113.0/24.`,
-      });
-    }
-    // Never let a save lock out the server itself or the administrator making the change.
-    const protectedIps = [...new Set([...LOOPBACK, normalizeIp(ip)].filter(Boolean))];
-    const selfBlocked = blacklist.filter((rule) => protectedIps.some((p) => ipRuleMatches(rule, p)));
-    if (selfBlocked.length) {
-      return res.status(400).json({
-        success: false,
-        message: `${selfBlocked.join(', ')} would block this server or your own address (${normalizeIp(ip)}). Remove it from the block list.`,
-      });
-    }
-    if (whitelist.length && !whitelist.some((rule) => ipRuleMatches(rule, ip))) {
-      return res.status(400).json({
-        success: false,
-        message: `The allow list does not include your own address (${normalizeIp(ip)}), so saving it would lock you out. Add your address or range first.`,
-      });
-    }
-
-    securitySettings.ip_whitelist = whitelist;
-    securitySettings.ip_blacklist = blacklist;
+    const invalidInput = [...clean(req.body.whitelist), ...clean(req.body.blacklist)].filter((rule) => !parseIpRule(rule));
+    if (invalidInput.length) return res.status(400).json({ success: false, message: `Not a valid IP address or IPv4 range: ${invalidInput.join(', ')}.` });
+    const reject = (message) => { const error = new Error(message); error.status = 400; throw error; };
+    const { whitelist, blacklist } = await sequelize.transaction(async (transaction) => {
+      const whitelist = await securitySettings.saveSetting('ip_whitelist', (current) => {
+        const value = req.body.whitelist === undefined ? current : clean(req.body.whitelist);
+        if (value.length && !value.some((rule) => ipRuleMatches(rule, ip))) reject(`The allow list does not include your own address (${normalizeIp(ip)}).`);
+        return value;
+      }, req.user.id, { transaction });
+      const blacklist = await securitySettings.saveSetting('ip_blacklist', (current) => {
+        const value = req.body.blacklist === undefined ? current : clean(req.body.blacklist);
+        const protectedIps = [...new Set([...LOOPBACK, normalizeIp(ip)].filter(Boolean))];
+        if (value.some((rule) => protectedIps.some((address) => ipRuleMatches(rule, address)))) reject('This rule would block this server or your own address.');
+        return value;
+      }, req.user.id, { transaction });
+      return { whitelist, blacklist };
+    });
     await logAction(req.user.id, 'UPDATE', 'security', null, null, { action: 'ip_rules_updated' }, ip);
-    res.json({ success: true, data: { whitelist: securitySettings.ip_whitelist, blacklist: securitySettings.ip_blacklist } });
+    res.json({ success: true, data: { whitelist, blacklist } });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Failed to update IP rules.' });
+    res.status(err.status || 500).json({ success: false, message: err.status ? err.message : 'Failed to update IP rules.' });
   }
 });
 
@@ -457,13 +446,13 @@ router.get('/maintenance', protect, restrictTo('super_admin'), (req, res) => {
 
 router.put('/maintenance', protect, restrictTo('super_admin'), async (req, res) => {
   try {
-    securitySettings.maintenance_mode = req.body.enabled ?? false;
-    securitySettings.maintenance_message = req.body.message || securitySettings.maintenance_message;
+    const enabled = await securitySettings.saveSetting('maintenance_mode', req.body.enabled ?? false, req.user.id);
+    const message = await securitySettings.saveSetting('maintenance_message', (current) => req.body.message || current, req.user.id);
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(req.user.id, 'UPDATE', 'security', null, null, {
-      action: securitySettings.maintenance_mode ? 'maintenance_enabled' : 'maintenance_disabled',
+      action: enabled ? 'maintenance_enabled' : 'maintenance_disabled',
     }, ip);
-    res.json({ success: true, data: { enabled: securitySettings.maintenance_mode, message: securitySettings.maintenance_message } });
+    res.json({ success: true, data: { enabled, message } });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to update maintenance mode.' });
   }
@@ -487,7 +476,7 @@ router.post('/announcements', protect, restrictTo('super_admin'), async (req, re
       created_at: new Date().toISOString(),
       active: true,
     };
-    securitySettings.announcements.unshift(announcement);
+    await securitySettings.saveSetting('announcements', (current) => { while (current.some((entry) => entry.id === announcement.id)) announcement.id++; return [announcement, ...current]; }, req.user.id);
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(req.user.id, 'CREATE', 'announcements', null, null, { title }, ip);
     res.json({ success: true, data: announcement });
@@ -498,7 +487,7 @@ router.post('/announcements', protect, restrictTo('super_admin'), async (req, re
 
 router.delete('/announcements/:id', protect, restrictTo('super_admin'), async (req, res) => {
   try {
-    securitySettings.announcements = securitySettings.announcements.filter(a => String(a.id) !== req.params.id);
+    await securitySettings.saveSetting('announcements', (current) => current.filter(a => String(a.id) !== req.params.id), req.user.id);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to delete.' });
@@ -516,22 +505,28 @@ router.get('/error-logs', protect, restrictTo('super_admin'), (req, res) => {
 // 11. API KEYS — /api/security/api-keys
 // ═══════════════════════════════════════════════════════
 router.get('/api-keys', protect, restrictTo('super_admin'), (req, res) => {
-  res.json({ success: true, data: securitySettings.api_keys });
+  // Stored keys are hashes; the list shows only each key's prefix.
+  res.json({ success: true, data: securitySettings.api_keys.map(({ key_hash: _hash, ...k }) => k) });
 });
 
 router.post('/api-keys', protect, restrictTo('super_admin'), async (req, res) => {
   try {
     const { name, permissions } = req.body;
     const key = 'hms_' + require('crypto').randomBytes(24).toString('hex');
-    const apiKey = {
+    const stored = {
       id: Date.now(),
-      name, key, permissions: permissions || ['read'],
+      name, permissions: permissions || ['read'],
+      key_prefix: key.slice(0, 10),
+      key_hash: securitySettings.hashApiKey(key),
       created_at: new Date().toISOString(),
       last_used: null,
       requests: 0,
       active: true,
     };
-    securitySettings.api_keys.push(apiKey);
+    await securitySettings.saveSetting('api_keys', (current) => { while (current.some((entry) => entry.id === stored.id)) stored.id++; return [...current, stored]; }, req.user.id);
+    // The full key is returned this once and never stored.
+    const { key_hash: _hash, ...shown } = stored;
+    const apiKey = { ...shown, key };
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(req.user.id, 'CREATE', 'api_keys', null, null, { name }, ip);
     res.json({ success: true, data: apiKey });
@@ -542,7 +537,7 @@ router.post('/api-keys', protect, restrictTo('super_admin'), async (req, res) =>
 
 router.delete('/api-keys/:id', protect, restrictTo('super_admin'), async (req, res) => {
   try {
-    securitySettings.api_keys = securitySettings.api_keys.filter(k => String(k.id) !== req.params.id);
+    await securitySettings.saveSetting('api_keys', (current) => current.filter(k => String(k.id) !== req.params.id), req.user.id);
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(req.user.id, 'DELETE', 'api_keys', null, null, { id: req.params.id }, ip);
     res.json({ success: true });
@@ -554,56 +549,56 @@ router.delete('/api-keys/:id', protect, restrictTo('super_admin'), async (req, r
 // ═══════════════════════════════════════════════════════
 // 12. INTEGRATION HUB — /api/security/integrations
 // ═══════════════════════════════════════════════════════
-const integrations = [
-  { id: 1, name: 'HL7 FHIR Gateway', category: 'EHR', status: 'active', endpoint: 'https://fhir.hospital.local/api', last_sync: new Date(Date.now() - 3600000).toISOString(), requests_today: 245 },
-  { id: 2, name: 'Insurance Portal (NHCX)', category: 'Insurance', status: 'inactive', endpoint: 'https://nhcx.nha.gov.in', last_sync: null, requests_today: 0 },
-  { id: 3, name: 'SMS Gateway (MSG91)', category: 'Communication', status: 'active', endpoint: 'https://api.msg91.com/v5', last_sync: new Date(Date.now() - 7200000).toISOString(), requests_today: 87 },
-  { id: 4, name: 'Email Service (SMTP)', category: 'Communication', status: 'active', endpoint: 'smtp://mail.hospital.local:587', last_sync: new Date(Date.now() - 1800000).toISOString(), requests_today: 32 },
-  { id: 5, name: 'Lab Machine Interface', category: 'Lab', status: 'inactive', endpoint: 'tcp://192.168.1.50:9100', last_sync: null, requests_today: 0 },
-  { id: 6, name: 'Payment Gateway (Razorpay)', category: 'Billing', status: 'active', endpoint: 'https://api.razorpay.com/v1', last_sync: new Date(Date.now() - 900000).toISOString(), requests_today: 15 },
-];
 
 router.get('/integrations', protect, restrictTo('super_admin'), (req, res) => {
-  res.json({ success: true, data: integrations });
+  res.json({ success: true, data: securitySettings.integrations });
 });
 
 router.put('/integrations/:id/toggle', protect, restrictTo('super_admin'), async (req, res) => {
-  const intg = integrations.find(i => i.id === Number(req.params.id));
-  if (!intg) return res.status(404).json({ success: false, message: 'Not found' });
-  intg.status = intg.status === 'active' ? 'inactive' : 'active';
-  const ip = req.ip || req.connection?.remoteAddress || null;
-  await logAction(req.user.id, 'UPDATE', 'integrations', intg.id, null, { name: intg.name, status: intg.status }, ip);
-  res.json({ success: true, data: intg });
+  try {
+    let intg;
+    await securitySettings.saveSetting('integrations', (current) => current.map((entry) => {
+      if (entry.id !== Number(req.params.id)) return entry;
+      intg = { ...entry, status: entry.status === 'active' ? 'inactive' : 'active' };
+      return intg;
+    }), req.user.id);
+    if (!intg) return res.status(404).json({ success: false, message: 'Not found' });
+    await logAction(req.user.id, 'UPDATE', 'integrations', intg.id, null, { name: intg.name, status: intg.status }, req.ip);
+    res.json({ success: true, data: intg });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed to update integration.' }); }
 });
 
 // ═══════════════════════════════════════════════════════
 // 13. NOTIFICATION CONFIG — /api/security/notifications
 // ═══════════════════════════════════════════════════════
-const notificationRules = [
-  { id: 1, event: 'Login Failed (5+ attempts)', channel: 'SMS + Email', recipients: 'super_admin', threshold: 5, active: true },
-  { id: 2, event: 'System Downtime', channel: 'SMS + Email', recipients: 'all_admins', threshold: 1, active: true },
-  { id: 3, event: 'Low Medicine Stock', channel: 'Email', recipients: 'pharmacist', threshold: 10, active: true },
-  { id: 4, event: 'Critical Lab Result', channel: 'SMS', recipients: 'doctor', threshold: 1, active: false },
-  { id: 5, event: 'Backup Failure', channel: 'Email', recipients: 'super_admin', threshold: 1, active: true },
-  { id: 6, event: 'New User Registration', channel: 'Email', recipients: 'super_admin', threshold: 1, active: false },
-];
 
 router.get('/notifications', protect, restrictTo('super_admin'), (req, res) => {
-  res.json({ success: true, data: notificationRules });
+  res.json({ success: true, data: securitySettings.notification_rules });
 });
 
 router.put('/notifications/:id/toggle', protect, restrictTo('super_admin'), async (req, res) => {
-  const rule = notificationRules.find(r => r.id === Number(req.params.id));
-  if (!rule) return res.status(404).json({ success: false, message: 'Not found' });
-  rule.active = !rule.active;
-  res.json({ success: true, data: rule });
+  try {
+    let rule;
+    await securitySettings.saveSetting('notification_rules', (current) => current.map((entry) => {
+      if (entry.id !== Number(req.params.id)) return entry;
+      rule = { ...entry, active: !entry.active };
+      return rule;
+    }), req.user.id);
+    if (!rule) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true, data: rule });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed to update notification rule.' }); }
 });
 
 router.post('/notifications', protect, restrictTo('super_admin'), async (req, res) => {
-  const { event, channel, recipients, threshold } = req.body;
-  const rule = { id: Date.now(), event, channel, recipients, threshold: threshold || 1, active: true };
-  notificationRules.push(rule);
-  res.json({ success: true, data: rule });
+  try {
+    const { event, channel, recipients, threshold } = req.body;
+    const rule = { id: Date.now(), event, channel, recipients, threshold: threshold || 1, active: true };
+    await securitySettings.saveSetting('notification_rules', (current) => { while (current.some((entry) => entry.id === rule.id)) rule.id++; return [...current, rule]; }, req.user.id);
+    res.json({ success: true, data: rule });
+  } catch (err) {
+    console.error('Notification rule save failed:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to save notification rule.' });
+  }
 });
 
 // ═══════════════════════════════════════════════════════
@@ -628,9 +623,9 @@ router.get('/compliance', protect, restrictTo('super_admin'), async (req, res) =
         checks: [
           { name: 'Password Policy', status: 'pass', detail: 'Min 8 chars, uppercase, number, special char enforced', category: 'Authentication' },
           { name: 'Account Lockout', status: 'pass', detail: '5 failed attempts = 15 min lock', category: 'Authentication' },
-          { name: 'Session Timeout', status: 'fail', detail: `Per-role timeouts can be saved but are not enforced; a session lasts until its token expires (${process.env.JWT_EXPIRES_IN || '8h'})`, category: 'Authentication' },
-          { name: 'Audit Logging', status: 'warn', detail: `${Number(totalAudit[0]?.CNT || totalAudit[0]?.cnt || 0)} events recorded; entries are written outside the business transaction and can be lost`, category: 'Audit' },
-          { name: 'Role-Based Access', status: 'warn', detail: '7 roles; several patient and chart endpoints check sign-in but not role or patient scope', category: 'Access Control' },
+          { name: 'Session Timeout', status: 'pass', detail: 'Per-role idle timeouts are enforced; sign-out, password changes and deactivation end sessions at once', category: 'Authentication' },
+          { name: 'Audit Logging', status: 'pass', detail: `Every row change is recorded in the same transaction; ${Number(totalAudit[0]?.CNT || totalAudit[0]?.cnt || 0)} activity entries; append-only, hash-chained and checkpointed`, category: 'Audit' },
+          { name: 'Role-Based Access', status: 'warn', detail: 'Every endpoint checks the role; access is not yet limited to the patients in a clinician\'s care', category: 'Access Control' },
           { name: 'Two-Factor Auth', status: 'fail', detail: 'Roles can be marked for 2FA, but login never asks for a second factor', category: 'Authentication' },
           { name: 'Data Encryption (at rest)', status: 'warn', detail: 'PostgreSQL pgcrypto/TDE not configured', category: 'Data Protection' },
           { name: 'Data Encryption (transit)', status: 'warn', detail: 'The app serves plain HTTP; HTTPS depends on a reverse proxy in front of it', category: 'Data Protection' },
@@ -657,70 +652,44 @@ router.get('/compliance', protect, restrictTo('super_admin'), async (req, res) =
 // ═══════════════════════════════════════════════════════
 // 15. DATA GOVERNANCE — /api/security/data-governance
 // ═══════════════════════════════════════════════════════
-const dataGovernance = {
-  retention_policies: [
-    { id: 1, entity: 'Audit Logs', retention: '7 years', auto_purge: true, last_purge: null, records: 0 },
-    { id: 2, entity: 'Patient Records', retention: 'Permanent', auto_purge: false, last_purge: null, records: 0 },
-    { id: 3, entity: 'Prescription Data', retention: '10 years', auto_purge: false, last_purge: null, records: 0 },
-    { id: 4, entity: 'Lab Reports', retention: '10 years', auto_purge: false, last_purge: null, records: 0 },
-    { id: 5, entity: 'Session Logs', retention: '90 days', auto_purge: true, last_purge: new Date(Date.now() - 86400000).toISOString(), records: 0 },
-    { id: 6, entity: 'Error Logs', retention: '30 days', auto_purge: true, last_purge: new Date(Date.now() - 172800000).toISOString(), records: 0 },
-  ],
-  pii_fields: [
-    { table: 'HMS_PATIENTS', field: 'AADHAAR', masked: true, masking_rule: 'Show last 4 digits' },
-    { table: 'HMS_PATIENTS', field: 'PHONE', masked: false, masking_rule: 'None' },
-    { table: 'HMS_PATIENTS', field: 'ADDRESS', masked: false, masking_rule: 'None' },
-    { table: 'HMS_USERS', field: 'PASSWORD', masked: true, masking_rule: 'bcrypt hash' },
-    { table: 'HMS_USERS', field: 'PHONE', masked: false, masking_rule: 'None' },
-  ],
-};
 
 router.get('/data-governance', protect, restrictTo('super_admin'), (req, res) => {
-  res.json({ success: true, data: dataGovernance });
+  res.json({ success: true, data: securitySettings.data_governance });
 });
 
-router.put('/data-governance/pii/:index/toggle', protect, restrictTo('super_admin'), (req, res) => {
-  const idx = Number(req.params.index);
-  if (dataGovernance.pii_fields[idx]) {
-    dataGovernance.pii_fields[idx].masked = !dataGovernance.pii_fields[idx].masked;
-  }
-  res.json({ success: true, data: dataGovernance });
+router.put('/data-governance/pii/:index/toggle', protect, restrictTo('super_admin'), async (req, res) => {
+  try {
+    const idx = Number(req.params.index);
+    const updated = await securitySettings.saveSetting('data_governance', (current) => ({ ...current,
+      pii_fields: current.pii_fields.map((field, i) => i === idx ? { ...field, masked: !field.masked } : field),
+    }), req.user.id);
+    res.json({ success: true, data: updated });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed to update governance.' }); }
 });
 
 // ═══════════════════════════════════════════════════════
 // 16. LICENSE MANAGER — /api/security/licenses
 // ═══════════════════════════════════════════════════════
-const licenses = [
-  { id: 1, name: 'PostgreSQL Database', vendor: 'PostgreSQL Global Development Group', type: 'Open Source', expiry: 'Perpetual', status: 'active', seats: 'Unlimited' },
-  { id: 2, name: 'HMS Core Platform', vendor: 'Hospital IT Department', type: 'Internal', expiry: 'Perpetual', status: 'active', seats: 'Unlimited' },
-  { id: 3, name: 'SMS Gateway (MSG91)', vendor: 'MSG91', type: 'Subscription', expiry: '2026-12-31', status: 'active', seats: '10,000 SMS/mo' },
-  { id: 4, name: 'SSL Certificate', vendor: "Let's Encrypt", type: 'Free', expiry: '2026-07-01', status: 'expiring_soon', seats: '1 domain' },
-  { id: 5, name: 'Razorpay Payment', vendor: 'Razorpay', type: 'Subscription', expiry: '2026-12-31', status: 'active', seats: 'Pay-per-use' },
-];
 
 router.get('/licenses', protect, restrictTo('super_admin'), (req, res) => {
-  res.json({ success: true, data: licenses });
+  res.json({ success: true, data: securitySettings.licenses });
 });
 
 router.post('/licenses', protect, restrictTo('super_admin'), async (req, res) => {
-  const { name, vendor, type, expiry, seats } = req.body;
-  const lic = { id: Date.now(), name, vendor, type, expiry, status: 'active', seats: seats || '1' };
-  licenses.push(lic);
-  res.json({ success: true, data: lic });
+  try {
+    const { name, vendor, type, expiry, seats } = req.body;
+    const lic = { id: Date.now(), name, vendor, type, expiry, status: 'active', seats: seats || '1' };
+    await securitySettings.saveSetting('licenses', (current) => { while (current.some((entry) => entry.id === lic.id)) lic.id++; return [...current, lic]; }, req.user.id);
+    res.json({ success: true, data: lic });
+  } catch (err) {
+    console.error('License save failed:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to save license.' });
+  }
 });
 
 // ═══════════════════════════════════════════════════════
 // 17. ROLE TEMPLATES — /api/security/role-templates
 // ═══════════════════════════════════════════════════════
-const roleTemplates = [
-  { id: 1, role: 'doctor', label: 'Doctor', permissions: ['view_patients', 'edit_consultations', 'write_prescriptions', 'order_labs', 'view_reports'], color: '#3b82f6' },
-  { id: 2, role: 'nurse', label: 'Nurse', permissions: ['view_patients', 'record_vitals', 'view_consultations'], color: '#8b5cf6' },
-  { id: 3, role: 'receptionist', label: 'Receptionist', permissions: ['register_patients', 'generate_tokens', 'book_appointments', 'view_patients'], color: '#10b981' },
-  { id: 4, role: 'pharmacist', label: 'Pharmacist', permissions: ['view_prescriptions', 'dispense_medicine', 'manage_stock', 'otc_sales'], color: '#f59e0b' },
-  { id: 5, role: 'lab_technician', label: 'Lab Technician', permissions: ['view_lab_orders', 'enter_results', 'generate_reports'], color: '#ef4444' },
-  { id: 6, role: 'admin', label: 'Admin', permissions: ['manage_users', 'view_reports', 'system_settings', 'view_audit_logs'], color: '#6366f1' },
-  { id: 7, role: 'super_admin', label: 'Super Admin', permissions: ['full_access', 'manage_users', 'security_settings', 'system_config', 'compliance', 'view_audit_logs'], color: '#dc2626' },
-];
 
 const allPermissions = [
   'view_patients', 'register_patients', 'edit_patients', 'delete_patients',
@@ -733,16 +702,21 @@ const allPermissions = [
 ];
 
 router.get('/role-templates', protect, restrictTo('super_admin'), (req, res) => {
-  res.json({ success: true, data: { templates: roleTemplates, all_permissions: allPermissions } });
+  res.json({ success: true, data: { templates: securitySettings.role_templates, all_permissions: allPermissions } });
 });
 
 router.put('/role-templates/:id', protect, restrictTo('super_admin'), async (req, res) => {
-  const tmpl = roleTemplates.find(t => t.id === Number(req.params.id));
-  if (!tmpl) return res.status(404).json({ success: false, message: 'Not found' });
-  tmpl.permissions = req.body.permissions || tmpl.permissions;
-  const ip = req.ip || req.connection?.remoteAddress || null;
-  await logAction(req.user.id, 'UPDATE', 'role_templates', tmpl.id, null, { role: tmpl.role, permissions: tmpl.permissions }, ip);
-  res.json({ success: true, data: tmpl });
+  try {
+    let tmpl;
+    await securitySettings.saveSetting('role_templates', (current) => current.map((entry) => {
+      if (entry.id !== Number(req.params.id)) return entry;
+      tmpl = { ...entry, permissions: req.body.permissions || entry.permissions };
+      return tmpl;
+    }), req.user.id);
+    if (!tmpl) return res.status(404).json({ success: false, message: 'Not found' });
+    await logAction(req.user.id, 'UPDATE', 'role_templates', tmpl.id, null, { role: tmpl.role, permissions: tmpl.permissions }, req.ip);
+    res.json({ success: true, data: tmpl });
+  } catch (error) { res.status(500).json({ success: false, message: 'Failed to update role template.' }); }
 });
 
 // ═══════════════════════════════════════════════════════

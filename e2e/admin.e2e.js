@@ -400,13 +400,14 @@ const ymd = (d) => d.toISOString().slice(0, 10);
     });
 
     await step('Security centre: an IP block list entry is saved, enforced at sign-in and removed; unsafe rules are refused', async () => {
+      const saveRules = () => Promise.all([page.waitForResponse((response) => response.url().includes('/api/security/ip-rules') && response.request().method() === 'PUT'), page.getByRole('button', { name: 'Save IP rules', exact: true }).click()]);
       const before = (await api('GET', '/security/ip-rules', { token: saTok })).data.data;
       restore.ipRules = before;
       const { page } = sa;
       await page.locator('#sec-tab-ip-rules').click();
       await page.locator('#ip-block').fill('203.0.113.0/24');
       await page.getByRole('button', { name: 'Block', exact: true }).click();
-      await page.getByRole('button', { name: 'Save IP rules' }).click();
+      await saveRules();
       await toast(page, 'IP rules saved');
       const saved = (await api('GET', '/security/ip-rules', { token: saTok })).data.data;
       assert(saved.blacklist.includes('203.0.113.0/24'), `block list: ${JSON.stringify(saved)}`);
@@ -417,18 +418,18 @@ const ymd = (d) => d.toISOString().slice(0, 10);
       // Blocking loopback, or an allow list that leaves out the admin's own address, is refused.
       await page.locator('#ip-block').fill('127.0.0.0/8');
       await page.getByRole('button', { name: 'Block', exact: true }).click();
-      await page.getByRole('button', { name: 'Save IP rules' }).click();
+      await saveRules();
       await toast(page, 'would block this server or your own address');
       await page.getByRole('button', { name: 'Remove 127.0.0.0/8 from the block list' }).click();
       await page.locator('#ip-allow').fill('10.0.0.0/8');
       await page.locator('#ip-allow').press('Enter');
-      await page.getByRole('button', { name: 'Save IP rules' }).click();
+      await saveRules();
       await toast(page, 'does not include your own address');
       await page.getByRole('button', { name: 'Remove 10.0.0.0/8 from the allow list' }).click();
       const mid = (await api('GET', '/security/ip-rules', { token: saTok })).data.data;
       assert(mid.whitelist.length === before.whitelist.length && !mid.blacklist.includes('127.0.0.0/8'), `unsafe rule was saved: ${JSON.stringify(mid)}`);
       await page.getByRole('button', { name: 'Remove 203.0.113.0/24 from the block list' }).click();
-      await page.getByRole('button', { name: 'Save IP rules' }).click();
+      await saveRules();
       await toast(page, 'IP rules saved');
       const after = (await api('GET', '/security/ip-rules', { token: saTok })).data.data;
       assert(!after.blacklist.includes('203.0.113.0/24'), `rule not removed: ${JSON.stringify(after)}`);

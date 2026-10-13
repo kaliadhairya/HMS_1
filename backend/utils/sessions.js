@@ -1,6 +1,7 @@
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models/db');
 const securitySettings = require('./settings');
+const { storage } = require('./auditContext');
 
 const COOKIE_NAME = 'hms_session';
 const LAST_SEEN_RESOLUTION_MS = 60 * 1000;
@@ -71,16 +72,18 @@ async function revokeSession(sessionId, reason) {
 }
 
 // Ends every live session of a user (optionally keeping one) and drops their sockets.
-async function revokeUserSessions(userId, reason, { io = null, exceptSessionId = null } = {}) {
+async function revokeUserSessions(userId, reason, { io = null, exceptSessionId = null, transaction = null } = {}) {
   const rows = await sequelize.query(
     `UPDATE hms_sessions SET revoked_at = now(), revoked_reason = :reason
       WHERE user_id = :userId AND revoked_at IS NULL
         AND (CAST(:exceptSessionId AS uuid) IS NULL OR id <> CAST(:exceptSessionId AS uuid))
       RETURNING id`,
-    { replacements: { userId, reason, exceptSessionId }, type: QueryTypes.SELECT }
+    { replacements: { userId, reason, exceptSessionId }, type: QueryTypes.SELECT, transaction: transaction || undefined }
   );
   if (io) {
-    for (const r of rows) io.in(`session:${r.id || r.ID}`).disconnectSockets(true);
+    const disconnect = () => { for (const row of rows) io.in(`session:${row.id || row.ID}`).disconnectSockets(true); };
+    let owner = transaction || storage.getStore()?.command?.transaction;
+    if (owner) { while (owner.parent) owner = owner.parent; owner.afterCommit(disconnect); } else disconnect();
   }
   return rows.length;
 }

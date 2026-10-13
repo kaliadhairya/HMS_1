@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { sequelize } = require('../models/db');
+const { publish } = require('../utils/outbox');
 const { protect, checkPermission } = require('../middleware/auth');
 const { logAction } = require('../utils/auditLogger');
 const {
@@ -457,13 +458,11 @@ router.post('/grn', [
       transaction: t,
     });
 
+    await publish('stock_updated', 'pharmacist', { reason: 'grn' }, { transaction: t });
     await t.commit();
 
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(req.user.id, 'CREATE', 'pharmacy', po.id, null, { action: 'grn_received', itemsProcessed: items.length }, ip);
-
-    const io = req.app.get('io');
-    if (io) io.to('pharmacist').emit('stock_updated', { reason: 'grn' });
 
     res.json({ success: true, purchaseOrderId: po.id, itemsProcessed: items.length });
   } catch (err) {
@@ -732,15 +731,11 @@ async function dispenseHandler(req, res) {
       },
     });
 
+    // 7. Real-time events, committed with the dispense
+    await publish('stock_updated', 'pharmacist', { reason: 'dispensed' }, { transaction: t });
+    await publish('billing_updated', 'receptionist', { patientId, billId }, { transaction: t });
+    await publish('prescription_dispensed', 'doctor', { prescriptionId }, { transaction: t });
     await t.commit();
-
-    // 7. Real-time Events
-    const io = req.app.get('io');
-    if (io) {
-      io.to('pharmacist').emit('stock_updated', { reason: 'dispensed' });
-      io.to('receptionist').emit('billing_updated', { patientId, billId });
-      io.to('doctor').emit('prescription_dispensed', { prescriptionId });
-    }
 
     res.json({
       success: true,
@@ -874,13 +869,11 @@ router.post('/otc', checkPermission('pharmacy', 'write'), async (req, res) => {
       replacements: { id: saleId, totalAmount },
       transaction: t,
     });
+    await publish('stock_updated', 'pharmacist', { reason: 'otc' }, { transaction: t });
     await t.commit();
 
     const ip = req.ip || req.connection?.remoteAddress || null;
     await logAction(req.user.id, 'CREATE', 'pharmacy', saleId, null, { action: 'otc_sale', billNumber }, ip);
-
-    const io = req.app.get('io');
-    if (io) io.to('pharmacist').emit('stock_updated', { reason: 'otc' });
 
     res.json({ success: true, saleId, billNumber, patientId, totalAmount, gstAmount: round2(totalGst), items: lines });
   } catch (err) {
@@ -985,11 +978,11 @@ async function stockMoveHandler(req, res) {
     });
     await auditInTransaction(t, { userId: req.user.id, action: move.action, module: 'pharmacy_stock', recordId: ledgerId, value: details, ip: req.ip });
 
+    await publish('stock_updated', 'pharmacist', { reason: type }, { transaction: t });
+    if (type === 'patient_return' || type === 'vendor_return') {
+      await publish('return_processed', 'pharmacist', { ledgerId }, { transaction: t });
+    }
     await t.commit();
-
-    const io = req.app.get('io');
-    if (io) io.to('pharmacist').emit('stock_updated', { reason: type });
-    if (io && (type === 'patient_return' || type === 'vendor_return')) io.to('pharmacist').emit('return_processed', { ledgerId });
 
     res.json({ success: true, status: 'success', message: `Stock ${type.replace('_', ' ')} recorded.`, ledgerId, batchQuantity: current + move.sign * quantity });
   } catch (err) {

@@ -32,8 +32,9 @@ async function main() {
     for (const file of files) {
       const { signature, ...body } = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
       const expected = crypto.createHmac('sha256', key).update(JSON.stringify(body)).digest('hex');
-      if (signature !== expected) { problems.push(`${file}: signature does not match`); continue; }
+      if (typeof signature !== 'string' || !/^[a-f0-9]{64}$/.test(signature) || !crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) { problems.push(`${file}: signature does not match`); continue; }
       for (const head of body.heads) {
+        if (!CHAINS.includes(head.chain) || !Number.isSafeInteger(head.seq) || head.seq < 0) { problems.push(`${file}: invalid chain reference`); continue; }
         if (!head.seq) continue;
         const [row] = await sequelize.query(`SELECT encode(row_hash, 'hex') AS hash FROM ${head.chain} WHERE chain_seq = :seq`, { replacements: { seq: head.seq }, type: QueryTypes.SELECT });
         const actual = row?.hash ?? row?.HASH;

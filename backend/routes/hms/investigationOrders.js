@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { InvestigationOrder, InvestigationOrderItem, Patient, Encounter } = require('../../models');
 const { sequelize } = require('../../models/db');
+const { publish } = require('../../utils/outbox');
 const { protect, checkPermission } = require('../../middleware/auth');
 const { loadOrders } = require('../lab');
 
@@ -83,20 +84,16 @@ router.post('/', protect, checkPermission('consultation', 'write'), async (req, 
         orderItems.push({ id: itemId, order_id: created.id, ...item, status: 'Pending' });
       }
       await InvestigationOrderItem.bulkCreate(orderItems, { transaction });
-      return created;
-    });
-
-    // Emit real-time notification to Lab Technicians
-    const io = req.app.get('io');
-    if (io) {
-      io.to('lab_technician').emit('new_lab_order', {
-        order_id: order.id,
+      // Lab technicians are notified through the outbox, committed with the order.
+      await publish('new_lab_order', 'lab_technician', {
+        order_id: created.id,
         patient_id: patientId,
-        investigation_type: order.investigation_type,
+        investigation_type: created.investigation_type,
         priority,
         tests: tests.map((item) => item.test_name),
-      });
-    }
+      }, { transaction });
+      return created;
+    });
 
     res.status(201).json(order);
   } catch (error) {

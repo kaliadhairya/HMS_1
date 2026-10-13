@@ -41,6 +41,12 @@ function addUpperKeys(row) {
 }
 const rawQuery = sequelize.query.bind(sequelize);
 sequelize.query = async function query(sql, options = {}) {
+  const command = require('../utils/auditContext').storage.getStore()?.command;
+  if (command) {
+    if (!command.active) throw new Error('Clinical command already finished');
+    if (options.transaction === null) throw new Error('Clinical command cannot escape its transaction');
+    options = { ...options, transaction: options.transaction || command.transaction, retry: { max: 0 } };
+  }
   const result = await rawQuery(sql, options);
   if (options && (options.model || options.instance)) return result;
   const rows = options && options.type === 'SELECT' ? result : Array.isArray(result) ? result[0] : null;
@@ -49,4 +55,32 @@ sequelize.query = async function query(sql, options = {}) {
   return result;
 };
 
+// Existing route transactions become savepoints of the command transaction.
+const transaction = sequelize.transaction.bind(sequelize);
+function protectCommitHooks(tx) {
+  if (tx.hmsProtectedCommit || tx.parent) return tx;
+  tx.hmsProtectedCommit = true;
+  const commit = tx.commit.bind(tx);
+  tx.commit = async () => {
+    // Sequelize 6 invokes afterCommit hooks in finally, including on failure.
+    // Publish settings and revocations only after a confirmed successful commit.
+    const hooks = tx._afterCommitHooks;
+    tx._afterCommitHooks = [];
+    await commit();
+    for (const hook of hooks) {
+      try { await hook.call(tx, tx); } catch (error) { console.error('Post-commit observation failed:', error.code || error.name); }
+    }
+  };
+  return tx;
+}
+sequelize.transaction = function commandTransaction(options, callback) {
+  if (typeof options === 'function') { callback = options; options = {}; }
+  options = options || {};
+  const command = require('../utils/auditContext').storage.getStore()?.command;
+  if (command) {
+    if (!command.active) throw new Error('Clinical command already finished');
+    options = { ...options, transaction: options.transaction || command.transaction };
+  }
+  return callback ? transaction(options, (tx) => callback(protectCommitHooks(tx))) : transaction(options).then(protectCommitHooks);
+};
 module.exports = { sequelize };

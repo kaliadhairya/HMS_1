@@ -30,11 +30,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // API call with retry while the backend restarts (node --watch) — connection errors only.
 async function api(method, url, { token, body, headers = {} } = {}) {
+  // One key per call, reused by the connection retries below, as the app does.
+  const idempotencyKey = require('crypto').randomUUID();
   for (let attempt = 0; attempt < 20; attempt++) {
     try {
       const res = await fetch(API + url, {
         method,
-        headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers },
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+          ...(method !== 'GET' ? { 'idempotency-key': idempotencyKey } : {}),
+          ...headers,
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       const text = await res.text();

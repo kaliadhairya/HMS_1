@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Prescription, PrescriptionItem, Medicine, Patient, User, Encounter, Diagnosis } = require('../../models');
 const { sequelize } = require('../../models/db');
+const { publish } = require('../../utils/outbox');
 const { protect, checkPermission } = require('../../middleware/auth');
 
 function canReadPrescription(req) {
@@ -133,38 +134,36 @@ router.post('/', protect, checkPermission('consultation', 'write'), async (req, 
       type,
     } = req.body;
     
-    // Check if one exists
-    const prescriptions = await Prescription.findAll({ where: { encounter_id } });
-    let prescription = prescriptions.length > 0 ? prescriptions[0] : null;
-    if (!prescription) {
-      const [[{ NEXTVAL: nextId }]] = await sequelize.query(
-        "SELECT nextval('hms_prescriptions_seq') AS \"NEXTVAL\""
-      );
+    // Check if one exists; the change and the pharmacists' notification commit together.
+    const prescription = await sequelize.transaction(async (transaction) => {
+      const prescriptions = await Prescription.findAll({ where: { encounter_id }, transaction });
+      let current = prescriptions.length > 0 ? prescriptions[0] : null;
+      if (!current) {
+        const [[{ NEXTVAL: nextId }]] = await sequelize.query(
+          "SELECT nextval('hms_prescriptions_seq') AS \"NEXTVAL\"", { transaction }
+        );
 
-      prescription = await Prescription.create({
-        id: nextId,
-        encounter_id,
-        patient_id,
-        doctor_id: req.user.id,
-        status: status || 'Pending',
-        type: type || 'OPD'
-      });
-    } else {
-      await prescription.update({
-        type: prescription.type || type || 'OPD',
-        status: status || prescription.status || 'Pending',
-      });
-    }
-    
-    // Emit real-time notification to Pharmacists
-    const io = req.app.get('io');
-    if (io) {
-      io.to('pharmacist').emit('new_prescription', {
-        id: prescription.id,
-        patient_id: prescription.patient_id,
-        doctor_id: prescription.doctor_id
-      });
-    }
+        current = await Prescription.create({
+          id: nextId,
+          encounter_id,
+          patient_id,
+          doctor_id: req.user.id,
+          status: status || 'Pending',
+          type: type || 'OPD'
+        }, { transaction });
+      } else {
+        await current.update({
+          type: current.type || type || 'OPD',
+          status: status || current.status || 'Pending',
+        }, { transaction });
+      }
+      await publish('new_prescription', 'pharmacist', {
+        id: current.id,
+        patient_id: current.patient_id,
+        doctor_id: current.doctor_id
+      }, { transaction });
+      return current;
+    });
 
     res.status(200).json(prescription);
   } catch (error) {
@@ -221,11 +220,8 @@ router.put('/:id/items', protect, checkPermission('consultation', 'write'), asyn
           { where: { id: prescription_id }, transaction: t }
         );
       }
+      await publish('prescription_items_updated', 'pharmacist', { prescription_id }, { transaction: t });
     });
-    
-    // Notify Pharmacist that items were updated
-    const io = req.app.get('io');
-    if (io) io.to('pharmacist').emit('prescription_items_updated', { prescription_id });
 
     // Fetch and return the updated lists
     const updatedItems = await resolveItemsForRead(prescription_id);
@@ -247,14 +243,11 @@ router.patch('/:id/status', protect, checkPermission('consultation', 'write'), a
     const { status } = req.body;
     const prescription = await Prescription.findByPk(req.params.id);
     if (!prescription) return res.status(404).json({ error: 'Not found' });
-    await prescription.update({ status });
-
-    // Emit socket event
-    const io = req.app.get('io');
-    if (io) {
-      io.to('pharmacist').emit('prescription_status_change', { id: prescription.id, status });
-      io.to('doctor').emit('prescription_status_change', { id: prescription.id, status });
-    }
+    await sequelize.transaction(async (transaction) => {
+      await prescription.update({ status }, { transaction });
+      await publish('prescription_status_change', 'pharmacist', { id: prescription.id, status }, { transaction });
+      await publish('prescription_status_change', 'doctor', { id: prescription.id, status }, { transaction });
+    });
 
     res.json(prescription);
   } catch (error) {

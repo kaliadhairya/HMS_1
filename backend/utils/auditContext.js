@@ -9,7 +9,8 @@ const storage = new AsyncLocalStorage();
 // First middleware: gives every request an ID and an audit context.
 function requestContext(req, res, next) {
   const incoming = req.headers['x-request-id'];
-  req.id = typeof incoming === 'string' && /^[\w.:-]{8,100}$/.test(incoming) ? incoming : crypto.randomUUID();
+  req.id = crypto.randomUUID();
+  req.correlationId = typeof incoming === 'string' && /^[\w.:-]{8,100}$/.test(incoming) ? incoming : null;
   res.setHeader('X-Request-Id', req.id);
   storage.run({ requestId: req.id, userId: null, sessionId: null }, next);
 }
@@ -34,10 +35,13 @@ function bindAuditActor(sequelize) {
     const values = [store.userId == null ? '' : String(store.userId), store.sessionId || '', store.requestId || ''];
     const key = values.join('|');
     if (connection.hmsAuditKey !== key) {
-      await connection.query(
+      try { await connection.query(
         "SELECT set_config('hms.actor_user_id', $1, false), set_config('hms.session_id', $2, false), set_config('hms.request_id', $3, false)",
         values
-      );
+      ); } catch (error) {
+        await manager.releaseConnection(connection).catch(() => {});
+        throw error;
+      }
       connection.hmsAuditKey = key;
     }
     return connection;

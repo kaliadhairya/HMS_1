@@ -1,4 +1,6 @@
 const { sequelize } = require('../models/db');
+const { storage } = require('../utils/auditContext');
+const { beforeSend } = require('../utils/responseGate');
 
 // Records who read patient data and every refused request in
 // audit.access_events (migration 0006). Row changes are captured by the
@@ -21,17 +23,18 @@ function patientIdOf(req) {
 
 function classify(req, status) {
   if (status === 401) return 'unauthenticated';
-  if (status === 403) return 'denied';
+  if (status >= 400 && status < 500) return 'denied';
   if (req.method === 'GET' && status < 400 && PATIENT_DATA_PREFIXES.some((p) => req.originalUrl.startsWith(p))) return 'read';
   return null;
 }
 
 module.exports = function accessAudit(req, res, next) {
   if (!req.originalUrl.startsWith('/api/')) return next();
-  res.on('finish', () => {
+  beforeSend(res, 20, async () => {
     const outcome = classify(req, res.statusCode);
     if (!outcome) return;
-    sequelize.query(
+    const context = { ...(storage.getStore() || {}), command: null };
+    await storage.run(context, () => sequelize.query(
       `INSERT INTO audit.access_events (user_id, session_id, request_id, method, path, status, outcome, patient_id, ip, detail)
        VALUES (:userId, :sessionId, :requestId, :method, :path, :status, :outcome, :patientId, :ip, :detail)`,
       {
@@ -40,7 +43,7 @@ module.exports = function accessAudit(req, res, next) {
           sessionId: req.user?.sessionId ?? null,
           requestId: req.id ?? null,
           method: req.method,
-          path: req.originalUrl.slice(0, 500),
+          path: req.originalUrl.split('?')[0].slice(0, 500),
           status: res.statusCode,
           outcome,
           patientId: patientIdOf(req),
@@ -48,7 +51,7 @@ module.exports = function accessAudit(req, res, next) {
           detail: outcome === 'read' ? null : String(res.statusMessage || '').slice(0, 200) || null,
         },
       }
-    ).catch((err) => console.error('Access audit write failed:', err.message));
+    ));
   });
   return next();
 };

@@ -8,6 +8,7 @@ const {
   User,
 } = require('../models');
 const { sequelize } = require('../models/db');
+const { publish } = require('../utils/outbox');
 const { checkPermission } = require('../middleware/auth');
 
 // Item statuses: Pending (ordered, no sample) -> Collected (sample logged) -> Completed (result entered).
@@ -297,13 +298,14 @@ router.patch('/queue/:id', canWrite, async (req, res) => {
           { replacements: { orderId, outstanding: OUTSTANDING_ITEM_STATUSES }, transaction }
         );
         await setOrderStatus(orderId, 'Cancelled', transaction);
+        await publish('lab_status_change', 'doctor', { orderId, status }, { transaction });
       });
     } else {
-      await setOrderStatus(orderId, status);
+      await sequelize.transaction(async (transaction) => {
+        await setOrderStatus(orderId, status, transaction);
+        await publish('lab_status_change', 'doctor', { orderId, status }, { transaction });
+      });
     }
-
-    const io = req.app.get('io');
-    if (io) io.to('doctor').emit('lab_status_change', { orderId, status });
 
     res.json({ status: 'success', message: 'Status updated' });
   } catch (err) {
@@ -368,11 +370,11 @@ router.post('/samples', canWrite, async (req, res) => {
     const startsOrder = ['Pending', 'Ordered'].includes(item.order?.status);
     await sequelize.transaction(async (transaction) => {
       await setItemStatus(itemId, { status: 'Collected' }, transaction);
-      if (startsOrder) await setOrderStatus(item.order_id, 'In Progress', transaction);
+      if (startsOrder) {
+        await setOrderStatus(item.order_id, 'In Progress', transaction);
+        await publish('lab_status_change', 'doctor', { orderId: item.order_id, status: 'In Progress' }, { transaction });
+      }
     });
-
-    const io = req.app.get('io');
-    if (io && startsOrder) io.to('doctor').emit('lab_status_change', { orderId: item.order_id, status: 'In Progress' });
 
     res.status(201).json({ status: 'success', message: 'Sample logged successfully' });
   } catch (err) {
@@ -462,11 +464,9 @@ router.post('/results/:itemId', canWrite, async (req, res) => {
       );
       const next = Number(outstanding) === 0 ? 'Completed' : 'In Progress';
       await setOrderStatus(item.order_id, next, transaction);
+      await publish('lab_result_ready', 'doctor', { itemId, orderId: item.order_id, test: item.test_name, result_value: resultValue, flag, orderStatus: next }, { transaction });
       return next;
     });
-
-    const io = req.app.get('io');
-    if (io) io.to('doctor').emit('lab_result_ready', { itemId, orderId: item.order_id, test: item.test_name, result_value: resultValue, flag, orderStatus });
 
     res.json({ status: 'success', message: 'Result saved and notified.', data: { itemId, flag, orderStatus } });
   } catch (err) {

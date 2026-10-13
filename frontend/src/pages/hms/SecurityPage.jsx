@@ -420,6 +420,7 @@ function IPRulesPanel() {
   const [newWL, setNewWL] = useState('');
   const [newBL, setNewBL] = useState('');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api.get('/security/ip-rules')
@@ -429,14 +430,17 @@ function IPRulesPanel() {
   }, []);
 
   const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    toast.dismiss('ip-rules-save');
     try {
       const { data } = await api.put('/security/ip-rules', { whitelist, blacklist });
       setWhitelist(data.data.whitelist);
       setBlacklist(data.data.blacklist);
-      toast.success('IP rules saved');
+      toast.success('IP rules saved', { id: 'ip-rules-save' });
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save IP rules');
-    }
+      toast.error(err.response?.data?.message || 'Failed to save IP rules', { id: 'ip-rules-save' });
+    } finally { setSaving(false); }
   };
 
   if (loading) return <Loading />;
@@ -446,7 +450,7 @@ function IPRulesPanel() {
       <SubHead
         title="IP access control"
         description="Restrict sign-in to trusted networks, and block known bad addresses."
-        actions={<button type="button" className="btn btn-primary btn-md" onClick={save}><Save size={16} aria-hidden="true" /> Save IP rules</button>}
+        actions={<button type="button" className="btn btn-primary btn-md" onClick={save} disabled={saving} aria-busy={saving}><Save size={16} aria-hidden="true" /> {saving ? 'Saving IP rules…' : 'Save IP rules'}</button>}
       />
 
       <div className="split-2" style={{ alignItems: 'start' }}>
@@ -776,6 +780,8 @@ function APIManagerPanel() {
   const [newName, setNewName] = useState('');
   const [newPerms, setNewPerms] = useState(['read']);
   const [revokeTarget, setRevokeTarget] = useState(null);
+  // The server keeps only a hash, so a new key can be shown this once.
+  const [createdKey, setCreatedKey] = useState(null);
 
   const load = () => api.get('/security/api-keys').then((r) => setKeys(r.data.data)).catch(console.error).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
@@ -783,7 +789,8 @@ function APIManagerPanel() {
   const create = async () => {
     if (!newName) return;
     try {
-      await api.post('/security/api-keys', { name: newName, permissions: newPerms });
+      const { data } = await api.post('/security/api-keys', { name: newName, permissions: newPerms });
+      setCreatedKey(data.data);
       setNewName(''); setShowCreate(false); load();
       toast.success('API key generated');
     } catch { toast.error('Failed to generate API key'); }
@@ -802,7 +809,7 @@ function APIManagerPanel() {
 
   const columns = useMemo(() => [
     { id: 'name', header: 'Name', accessorFn: (k) => k.name || '', cell: ({ getValue }) => <span className="cell-primary">{getValue()}</span> },
-    { id: 'key', header: 'Key', accessorFn: (k) => k.key || '', enableSorting: false, cell: ({ row }) => <span className="mono">{row.original.key?.substring(0, 20)}…</span> },
+    { id: 'key', header: 'Key', accessorFn: (k) => k.key_prefix || '', enableSorting: false, cell: ({ row }) => <span className="mono">{row.original.key_prefix}…</span> },
     {
       id: 'perms', header: 'Permissions', accessorFn: (k) => (k.permissions || []).join(', '), enableSorting: false,
       cell: ({ row }) => <span className="chip-row">{(row.original.permissions || []).map((p) => <span key={p} className="tag">{p}</span>)}</span>,
@@ -828,6 +835,13 @@ function APIManagerPanel() {
 
   return (
     <div className="stack">
+      {createdKey && (
+        <section className="panel panel-pad" role="status">
+          <p><strong>Copy this key now.</strong> It is not stored and will not be shown again.</p>
+          <p className="mono" style={{ wordBreak: 'break-all' }}>{createdKey.key}</p>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCreatedKey(null)}>Done</button>
+        </section>
+      )}
       <SubHead title="API keys" description="Generate, manage and revoke keys for integrations." actions={generateButton} />
 
       <section className="panel">

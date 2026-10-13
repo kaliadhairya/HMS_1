@@ -25,7 +25,7 @@ function verify(withCheckpoints) {
 async function call(method, url, token, body) {
   const res = await fetch(API + url, {
     method,
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, ...(method !== 'GET' ? { 'idempotency-key': require('crypto').randomUUID() } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return { status: res.status, requestId: res.headers.get('x-request-id'), data: await res.json().catch(() => null) };
@@ -132,7 +132,7 @@ async function waitFor(fn, ms = 15000) {
       const files = require('fs').readdirSync(process.env.AUDIT_CHECKPOINT_DIR).sort();
       const last = JSON.parse(require('fs').readFileSync(path.join(process.env.AUDIT_CHECKPOINT_DIR, files[files.length - 1]), 'utf8'));
       return last.heads.find((h) => h.chain === 'audit.row_changes').seq >= Number(target.chain_seq);
-    }, 20000);
+    }, Math.max(20000, Number(process.env.AUDIT_CHECKPOINT_INTERVAL_MS || 60000) + 10000));
     assert(covered, 'no checkpoint covers the target entry');
     await sql(`DO $$ BEGIN
       ALTER TABLE audit.row_changes DISABLE TRIGGER trg_row_changes_append_only;

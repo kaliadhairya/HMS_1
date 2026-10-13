@@ -4,6 +4,7 @@ const { readTrustedContext } = require('./trustedContext');
 const { verifySessionToken } = require('../utils/authTokens');
 const { COOKIE_NAME, checkSession, readCookie } = require('../utils/sessions');
 const { setActor } = require('../utils/auditContext');
+const { idempotencyGuard } = require('../utils/idempotency');
 
 // Browsers send the session in an HttpOnly cookie; scripts and services send
 // a bearer token.
@@ -118,13 +119,13 @@ const restrictTo = (...roles) => (req, res, next) => {
   if (!req.user || !roles.includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'You do not have permission to perform this action.' });
   }
-  return next();
+  return idempotencyGuard(req, res, next).catch(next);
 };
 
 const checkPermission = (module, action) => (req, res, next) => {
   const role = req.user?.role;
   if (!role) return res.status(403).json({ success: false, message: 'Access denied.' });
-  if (role === 'super_admin' || role === 'admin') return next();
+  if (role === 'super_admin' || role === 'admin') return idempotencyGuard(req, res, next).catch(next);
   if (!['read', 'write', 'edit', 'delete'].includes(action)) {
     return res.status(400).json({ success: false, message: 'Invalid permission action.' });
   }
@@ -132,7 +133,7 @@ const checkPermission = (module, action) => (req, res, next) => {
   if (!permission?.[action]) {
     return res.status(403).json({ success: false, message: 'Access denied. Insufficient permissions.' });
   }
-  return next();
+  return idempotencyGuard(req, res, next).catch(next);
 };
 
 // Verify a token without an HTTP request (used by socket.io). Returns the user or null.

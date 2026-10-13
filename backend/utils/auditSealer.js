@@ -42,9 +42,14 @@ async function writeCheckpoint(sequelize, dir, key) {
   const rows = await sequelize.query("SELECT chain, seq, encode(head_hash, 'hex') AS hash FROM audit.chain_heads ORDER BY chain", { type: QueryTypes.SELECT });
   const heads = rows.map((r) => ({ chain: r.chain || r.CHAIN, seq: Number(r.seq ?? r.SEQ), hash: r.hash || r.HASH }));
   const checkpoint = signCheckpoint(heads, key);
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `audit-checkpoint-${checkpoint.created_at.replace(/[:.]/g, '-')}.json`);
-  fs.writeFileSync(file, `${JSON.stringify(checkpoint, null, 2)}\n`, { flag: 'wx' });
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const file = path.join(dir, `audit-checkpoint-${checkpoint.created_at.replace(/[:.]/g, '-')}-${crypto.randomUUID()}.json`);
+  const temporary = `${file}.tmp`;
+  const fd = fs.openSync(temporary, 'wx', 0o600);
+  try { fs.writeFileSync(fd, `${JSON.stringify(checkpoint, null, 2)}\n`); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  fs.renameSync(temporary, file);
+  const directory = fs.openSync(dir, 'r');
+  try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
   return file;
 }
 

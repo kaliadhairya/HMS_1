@@ -8,7 +8,7 @@ const { protect, checkPermission } = require('../middleware/auth');
 const logAction = require('../utils/auditLogger');
 
 // ── Multer config for logo upload ────────────────────────────
-const uploadDir = path.join(__dirname, '..', 'uploads', 'logo');
+const uploadDir = path.join(process.env.HMS_UPLOAD_DIR || path.join(__dirname, '..', 'uploads'), 'logo');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -51,7 +51,9 @@ router.get('/hospital-profile', async (req, res) => {
 // PUT /api/admin/hospital-profile  (Admin only + logo upload)
 const uploadLogo = (req, res, next) => upload.single('logo')(req, res, (err) => {
   if (err) return res.status(400).json({ success: false, message: err.message || 'Logo upload failed' });
-  return next();
+  req.multipartParsed = true;
+  const { idempotencyGuard } = require('../utils/idempotency');
+  return idempotencyGuard(req, res, next).catch(next);
 });
 
 router.put('/hospital-profile', protect, checkPermission('admin', 'write'), uploadLogo, async (req, res) => {

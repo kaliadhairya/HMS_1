@@ -15,6 +15,9 @@ const { sequelize } = require('./models');
 const { schemaProblems } = require('./migrate');
 const { requestContext, bindAuditActor } = require('./utils/auditContext');
 const { startAuditSealer } = require('./utils/auditSealer');
+const { startOutboxDispatcher } = require('./utils/outbox');
+const { startSocketSessionGuard } = require('./utils/socketSessions');
+const securitySettings = require('./utils/settings');
 const { validateToken } = require('./utils/identityClient');
 const { resolveTokenUser, socketToken, identityServiceEnabled } = require('./middleware/auth');
 const {
@@ -23,6 +26,13 @@ const {
   httpRequestsTotal,
   activeSocketConnections,
 } = require('./utils/metrics');
+// Express 4 does not catch a rejected promise from an async handler. Log it
+// instead of letting it end the process and every request in flight; handlers
+// are expected to answer their own errors.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason?.original?.message || reason?.message || reason);
+});
+
 const app = express();
 // Database audit triggers attribute every row change to the request's user (migration 0006).
 bindAuditActor(sequelize);
@@ -114,7 +124,7 @@ app.use('/api', apiLimiter);
 // ── Static Files ────────────────────────────────────────────────
 // Only the hospital logo is public (it appears on pages and printouts).
 // Nothing else under uploads/ is served without an authorized route.
-app.use('/uploads/logo', express.static(path.join(__dirname, 'uploads', 'logo')));
+app.use('/uploads/logo', express.static(path.join(process.env.HMS_UPLOAD_DIR || path.join(__dirname, 'uploads'), 'logo')));
 
 // -- Global Audit Logger -----------------------------------------
 const auditLogger = require('./middleware/auditLogger');
@@ -124,6 +134,7 @@ app.use(require('./middleware/accessAudit'));
 
 // ── Routes ──────────────────────────────────────────────────────
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/events', require('./routes/events'));
 app.use('/api/users', require('./routes/users'));
 app.use('/internal/compat', require('./routes/internalCompat'));
 app.use('/api/patients', require('./routes/patients'));
@@ -235,6 +246,7 @@ io.use(async (socket, next) => {
       : await resolveTokenUser(token);
     if (!context) return next(new Error('Invalid or inactive session'));
     socket.user = context;
+    socket.hmsAccessToken = token;
     return next();
   } catch (error) {
     console.warn('Socket authentication failed:', error.message);
@@ -274,10 +286,15 @@ async function start() {
     process.exit(1);
   }
   console.log('✅ PostgreSQL DB connected; schema is current');
+  // Settings live in hms_app_settings; load them before serving and keep them fresh.
+  await securitySettings.loadSettings();
+  securitySettings.startSettingsRefresh();
   server.listen(PORT, process.env.BACKEND_HOST || '0.0.0.0', () => {
     console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
   });
   startAuditSealer(sequelize);
+  startOutboxDispatcher(io);
+  startSocketSessionGuard(io);
 }
 
 start();

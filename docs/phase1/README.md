@@ -9,8 +9,8 @@ Branch `phase1/integrity-foundation`, started from `phase0/safety-fixes`.
 | 3. Revocable sessions (logout, deactivation and password change end a session at once) | **Done** (see below) |
 | 4. Action and patient-scope authorization | **Done for roles**; patient scope needs Phase 2 care teams (see below) |
 | 5. Transactional, tamper-evident audit trail | **Done** (see below) |
-| 6. Idempotency for retried clinical and financial commands | Not started |
-| 7. Durable state: settings and IPD draft charges out of process memory; outbox for events | Not started |
+| 6. Idempotency for retried clinical and financial commands | **Implemented and failure-tested**; claims, changes and responses commit atomically |
+| 7. Durable state: settings and IPD draft charges out of process memory; outbox for events | **Implemented and failure-tested**; versioned settings and paginated delivery sequences |
 | 8. Readiness checks | **Done** with part 1 |
 
 ## Part 1: versioned migrations
@@ -143,6 +143,77 @@ Branch `phase1/integrity-foundation`, started from `phase0/safety-fixes`.
 - That run produced 269 row changes and 598 access events with no sealing errors. The only changes without a user are sign-in bookkeeping before authentication, and those are now attributed after a successful sign-in.
 - `verify-migrations.sh` passes on PostgreSQL 16 and 18. It now compares the `audit` schema too and checks audit-trigger coverage, which was confirmed to catch a deliberately unaudited table.
 
-### Not yet applied
+## Completion work — 13 October 2026
 
-The local PostgreSQL 18 database (`backend/.env`) has not been migrated. A server started against it now refuses to start until `cd backend && npm run migrate` is run. The same upgrade was verified on a copy of it; it will move 128 orphaned rows into `quarantine`.
+### Atomic command receipts
+
+Authenticated clinical mutations require an `Idempotency-Key`. Authorization precedes claiming the key. The request hash uses canonical JSON, query parameters and uploaded-file checksums, excluding query credentials.
+
+A request holds its key inside the same PostgreSQL transaction as its clinical/financial changes, row-change audit and outbox events. The exact JSON response is stored before committing and before sending HTTP output. Existing Sequelize route transactions become savepoints of this transaction; ordinary queries inherit its client through the request context. Queries cannot escape into autocommit or continue after the command has finished.
+
+There is no timeout-based takeover and no inference of complete success from an arbitrary audit row. Concurrent retries wait briefly and receive `IDEMPOTENCY_IN_PROGRESS`. A process/database-connection failure rolls back both claim and domain changes. A committed result is replayed exactly. Legacy incomplete receipts remain blocked with `IDEMPOTENCY_OUTCOME_UNKNOWN` until reviewed; they are never automatically deleted or executed again.
+
+One-time API-key secrets are not retained in receipts. A repeated creation request returns `ONE_TIME_SECRET_ALREADY_ISSUED` with nonsecret metadata; an operator can revoke and replace a key whose original response was lost.
+
+### Durable configuration and events
+
+Migration `0009_phase1_completion.sql` adds setting revisions and stable event delivery sequences without editing prior applied migrations.
+
+Settings transforms read the current database value under a lock. Cache updates occur only after a confirmed outer commit, and older refresh results cannot overwrite newer revisions. IP-rule pairs commit together; repeated list edits retain both changes. The frontend marks IP-rule saves as pending and prevents overlapping submissions.
+
+Events are inserted with the domain transaction and assigned a monotonically ordered delivery sequence only after becoming visible. Dispatch uses bounded batches. `GET /api/events?after_sequence=<cursor>` returns `data`, `next_sequence`, `latest_sequence`, and `has_more`. Clients fetch every page; live events do not advance past missing ranges, repeated deliveries are suppressed, and logout cancels in-flight replay. Event IDs remain stable; sequence gaps from aborted allocators are allowed. The old `after=<event_id>` interface is retained for compatibility, but new clients use delivery sequences. Socket emission is not evidence that a human has acknowledged a clinical result.
+
+Inbox deduplication requires the same transaction as message processing. An aborted consumer can receive the message again.
+
+### Audit, sessions and frontend failure behavior
+
+Access audit is persisted before the first HTTP response byte, including streamed PDFs. If it cannot be persisted, clinical content is withheld with a typed 503. Rejected client commands are audited. Server-generated request IDs prevent caller-provided correlation IDs from impersonating another operation. Readable action audit stays in the tenant database transaction rather than publishing a potentially rolled-back action to an external service.
+
+Password updates and session revocation commit together. Reset credentials are consumed under a user-row lock, so simultaneous reset attempts cannot both succeed. Settings and socket-revocation callbacks run only after successful commits, including when Sequelize reports a commit failure.
+
+Application replicas share their tenant's signing material and session database. Connected sockets are revalidated without renewing idle leases; outbound notifications are checked against current sessions, and logout on one replica disconnects sockets on another. Patient/facility/worklist scoping remains Phase 2 work.
+
+The frontend preserves the active screen and draft on HTTP 503. Network retries and typed ambiguous-commit responses reuse the original request key. Cancellation and authentication calls are not automatically retried. A fresh user action has a new key; clients must reuse the original key when reconciling an uncertain previous action.
+
+Signed checkpoint files are written atomically and fsynced. Checkpoint verification accepts only known chains and validates signatures. Production checkpoint storage and signing-key governance must remain outside the database administrator's write boundary; local checkpoint files demonstrate functionality, not that production isolation requirement.
+
+### Reproducible checks
+
+- `npm test` runs token and browser replay unit tests. With `HMS_TEST_DATABASE=true` and an isolated `DB_NAME` beginning `hms_phase1`, `hms_test`, `hms_ci`, or `hms_verify`, it also runs real database failure tests.
+- The failure suite covers atomic response receipts, nested rollback, rejected commands, stalled originals, terminated connections, lost HTTP responses, streaming audit failure, stale refreshes, failed commits, concurrent resets, revocation rollback, late event commits, paginated backlogs, and inbox rollback.
+- CI now runs these transaction acceptance tests on a fresh PostgreSQL 18 database. Migration compatibility remains checked on PostgreSQL 16 and 18.
+- End-to-end suites cover OPD, pharmacy, lab, administration, IPD, authorization, sessions, audit, idempotency, durability, and frontend reliability. Run them only against an isolated database; audit tests deliberately tamper with history.
+
+Final regression and deployment evidence is in **Phase 1 completion** below. The two established IPD billing failures remain Phase 5 release blockers. Patient identity reconciliation, care-team authorization and the other clinical release gates remain mandatory before clinical go-live.
+
+## Phase 1 completion
+
+Parts 6 and 7 were first built by Claude, reviewed by 4 independent reviewers
+with 3 adversarial verifiers per finding (29 confirmed defects), then largely
+redesigned by Codex (13 October: one transaction per command, sequenced event
+delivery, versioned settings). Claude then fixed what remained:
+
+- **Bill generation dropped charges.** It billed the browser's list and deleted every
+  saved draft, so a charge added after the page loaded was lost. It now bills
+  exactly the saved drafts; a page whose list differs gets 409 and nothing is
+  lost. Adding, changing or removing a draft locks the admission first, so no
+  draft can be orphaned on a just-billed admission (`e2e/ipdDrafts.e2e.js`).
+- Two Security handlers without error handling (notification rules,
+  licenses) could crash the process on a failed save; both now answer 500, and
+  `server.js` logs any stray unhandled rejection instead of exiting.
+- Alias command paths (`/api/lab/results/RES-<id>`, `/api/pharmacist_lms/*`)
+  now require an Idempotency-Key.
+
+### Verification (13 October 2026, throwaway databases only)
+
+| Check | Result |
+|---|---|
+| `npm test` | 10 passed, 1 skipped (the database suite, run separately) |
+| `tests/phase1.integration.test.js` (`HMS_TEST_DATABASE=true`) | 16/16 |
+| `verify-migrations.sh`, PostgreSQL 16 and 18 | Pass (1131 schema facts) |
+| OPD / pharmacy / lab / admin | 20/20, 18/18, 10/10, 28/28 |
+| Authorization / sessions / audit | 5/5, 7/7, 7/7 |
+| Idempotency / durability / frontend reliability / IPD drafts | 8/8, 11/11, 2/2, 2/2 |
+| Inpatient | 11/13: the two known IPD-billing failures (Phase 5) |
+
+Deployment to the Docker app is recorded in the commit that applies it.

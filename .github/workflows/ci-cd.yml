@@ -91,10 +91,44 @@ jobs:
           DB_PASSWORD: postgres
         run: backend/scripts/verify-migrations.sh
 
+  phase1-acceptance:
+    name: Phase 1 Failure and Transaction Acceptance
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hms_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: hms_ci
+      HMS_TEST_DATABASE: 'true'
+      NODE_ENV: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+        working-directory: backend
+      - run: node migrate.js up && node seed_demo_data.js
+        working-directory: backend
+      - run: npm test
+        working-directory: backend
+
   # Stage 2: Container Image Build Verification
   docker-build-check:
     name: Docker Container Build & Topology Verification
-    needs: [test-and-verify, migrations]
+    needs: [test-and-verify, migrations, phase1-acceptance]
     runs-on: ubuntu-latest
 
     steps:
