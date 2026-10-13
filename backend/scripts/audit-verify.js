@@ -30,7 +30,16 @@ async function main() {
     if (!key) throw new Error('AUDIT_CHECKPOINT_KEY is required to check checkpoints');
     const files = fs.readdirSync(dir).filter((f) => f.startsWith('audit-checkpoint-') && f.endsWith('.json')).sort();
     for (const file of files) {
-      const { signature, ...body } = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+      let parsed;
+      try {
+        parsed = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+      } catch (err) {
+        // An empty or truncated file is a lost checkpoint (for example a crash
+        // mid-write before writes were made atomic): report it, keep checking.
+        problems.push(`${file}: unreadable checkpoint (${err.message})`);
+        continue;
+      }
+      const { signature, ...body } = parsed;
       const expected = crypto.createHmac('sha256', key).update(JSON.stringify(body)).digest('hex');
       if (typeof signature !== 'string' || !/^[a-f0-9]{64}$/.test(signature) || !crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) { problems.push(`${file}: signature does not match`); continue; }
       for (const head of body.heads) {
