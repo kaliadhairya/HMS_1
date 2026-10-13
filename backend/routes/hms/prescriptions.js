@@ -3,7 +3,7 @@ const router = express.Router();
 const { Prescription, PrescriptionItem, Medicine, Patient, User, Encounter, Diagnosis } = require('../../models');
 const { sequelize } = require('../../models/db');
 const { publish } = require('../../utils/outbox');
-const { protect, checkPermission } = require('../../middleware/auth');
+const { protect, checkPermission, restrictTo } = require('../../middleware/auth');
 
 function canReadPrescription(req) {
   return ['super_admin', 'admin', 'doctor', 'receptionist', 'nurse', 'pharmacist'].includes(req.user?.role);
@@ -62,12 +62,6 @@ async function resolveItemsForRead(prescriptionId) {
     ORDER BY pi.ID ASC
   `, { replacements: { prescriptionId } });
 
-  const [medicines] = await sequelize.query(`
-    SELECT ID, GENERIC_NAME, STRENGTH, STRENGTH_UNIT
-    FROM HMS_MEDICINES
-    WHERE IS_ACTIVE = 1
-  `);
-
   return rows.map((row) => {
     const rId = row.ID ?? row.id;
     const rPresId = row.PRESCRIPTION_ID ?? row.prescription_id;
@@ -85,22 +79,12 @@ async function resolveItemsForRead(prescriptionId) {
     const rCreatedAt = row.CREATED_AT ?? row.created_at;
     const rUpdatedAt = row.UPDATED_AT ?? row.updated_at;
 
-    const baseName = String(rGenName || rMedName || '')
-      .split('(')[0]
-      .trim()
-      .toUpperCase();
-    const matchedMedicine = medicines.find((medicine) => {
-      const mGenName = medicine.GENERIC_NAME ?? medicine.generic_name;
-      const medicineName = String(mGenName || '').trim().toUpperCase();
-      return medicineName && medicineName === baseName;
-    });
-
-    const mId = matchedMedicine ? (matchedMedicine.ID ?? matchedMedicine.id) : null;
-
     return {
       id: rId,
       prescription_id: rPresId,
-      medicine_id: mId || null,
+      medicine_id: null,
+      legacy: true,
+      reconciliation_required: true,
       medicine_name: rMedName,
       generic_name: rGenName,
       dose: rDose,
@@ -239,20 +223,7 @@ router.put('/:id/items', protect, checkPermission('consultation', 'write'), asyn
 
 // Update prescription status
 router.patch('/:id/status', protect, checkPermission('consultation', 'write'), async (req, res) => {
-  try {
-    const { status } = req.body;
-    const prescription = await Prescription.findByPk(req.params.id);
-    if (!prescription) return res.status(404).json({ error: 'Not found' });
-    await sequelize.transaction(async (transaction) => {
-      await prescription.update({ status }, { transaction });
-      await publish('prescription_status_change', 'pharmacist', { id: prescription.id, status }, { transaction });
-      await publish('prescription_status_change', 'doctor', { id: prescription.id, status }, { transaction });
-    });
-
-    res.json(prescription);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update status' });
-  }
+  return res.status(409).json({ error: 'Legacy prescription status does not authorize supply. Use the coded medication order sign, hold, resume and discontinue commands.', code: 'CODED_ORDER_REQUIRED' });
 });
 
 // Get Prescription by Encounter ID
@@ -293,7 +264,7 @@ router.get('/encounter/:encounter_id', protect, checkPermission('consultation', 
   }
 });
 
-router.get('/patient/:patient_id', protect, async (req, res) => {
+router.get('/patient/:patient_id', protect, restrictTo('super_admin','admin','doctor','receptionist','nurse','pharmacist'), async (req, res) => {
   try {
     if (!canReadPrescription(req)) {
       return res.status(403).json({ error: 'Not authorized to access prescriptions' });
@@ -301,38 +272,8 @@ router.get('/patient/:patient_id', protect, async (req, res) => {
 
     const patientId = req.params.patient_id;
 
-    // Step 1: Find all related patient IDs (same person, different registrations)
-    // For corporate employees: match by EMPNUMBER + NAME
-    // For others: match by NAME + PHONENUMBER
-    const [currentPatient] = await sequelize.query(
-      `SELECT ID, NAME, EMPNUMBER, PHONENUMBER, PATIENTTYPE FROM HMS_PATIENTS WHERE ID = :patientId`,
-      { replacements: { patientId } }
-    );
-
-    let relatedPatientIds = [Number(patientId)];
-
-    if (currentPatient.length > 0) {
-      const pat = currentPatient[0];
-      let relatedRows = [];
-
-      if (pat.PATIENTTYPE === 'corporate_employee' && pat.EMPNUMBER && pat.NAME) {
-        // Corporate: match by employee number + name (same dependent)
-        [relatedRows] = await sequelize.query(
-          `SELECT ID FROM HMS_PATIENTS WHERE EMPNUMBER = :empNum AND UPPER(NAME) = UPPER(:name) AND ID != :currentId`,
-          { replacements: { empNum: pat.EMPNUMBER, name: pat.NAME, currentId: patientId } }
-        );
-      } else if (pat.PHONENUMBER && pat.NAME) {
-        // Others: match by phone + name
-        [relatedRows] = await sequelize.query(
-          `SELECT ID FROM HMS_PATIENTS WHERE PHONENUMBER = :phone AND UPPER(NAME) = UPPER(:name) AND ID != :currentId`,
-          { replacements: { phone: pat.PHONENUMBER, name: pat.NAME, currentId: patientId } }
-        );
-      }
-
-      if (relatedRows.length > 0) {
-        relatedPatientIds.push(...relatedRows.map(r => r.ID));
-      }
-    }
+    // Identity links belong to Phase 2. Never union charts by names or phone numbers.
+    const relatedPatientIds = [Number(patientId)];
 
     // Step 2: Fetch prescriptions for ALL related patient IDs
     const idPlaceholders = relatedPatientIds.map((_, i) => `:pid${i}`).join(', ');
