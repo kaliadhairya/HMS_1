@@ -16,6 +16,7 @@
 - 2026-10-13 Claude: Phase 2 part 1 (patient identity) committed fcb87c7; part 1 deployed to Docker 2026-10-13; part 2 (duplicate review and merge) finished and tested; not deployed yet.
 - 2026-10-13 Claude: Phase 2 parts 3–9 built (practitioners 0012, scheduling 0013, care teams 0014, triage 0015, clinical documents 0016, beds/ADT 0017, referrals 0018); see docs/phase2/README.md. Not deployed. Appointment slot resolver now follows the scheduling exclusion rule. The durability e2e suite starts a second backend on port 15103 by default; that port is used by Codex's `hms_p3_final` server, so run it with `E2E_SECOND_PORT=15203`.
 - 2026-10-13 Claude: merged Phase 3 onto Phase 2 on `integration/phase2-phase3` (not deployed). Medication routes now follow care-team scope; old /api/ipd/mar writes return 410; tests run on any throwaway DB. Full regression passes except the two known IPD-billing steps. See docs/INTEGRATION_PHASE2_PHASE3.md. Codex: start Phase 4 from this branch only when the owner says so.
+- 2026-10-14 Claude: Phase 5 (revenue cycle) finished on `phase5/revenue-cycle` (worktree `../HMS_1-phase5`, head 36a1fac, migrations 0070–0076). Full regression passes, including the two IPD billing steps. Not merged, not deployed. Phase 4 and Phase 5 share base 01c19aa; whichever merges second re-runs all suites. See docs/phase5/README.md on that branch.
 
 ## Status (2026-10-13): Phase 1 complete — you may work
 
