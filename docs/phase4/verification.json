@@ -1,0 +1,649 @@
+{
+  "status": "PASS",
+  "generated_at": "2026-10-13T19:44:12.583035+00:00",
+  "implementation_commit": "dccf04f691baeee7c411e83d23d315ad26c25c6d",
+  "base_commit": "01c19aa",
+  "branch": "phase4/laboratory",
+  "laboratory_scenarios": 38,
+  "suite_count": 30,
+  "full_regression": {
+    "started_at": "2026-10-13T19:32:48.795Z",
+    "database": "hms_p4_release",
+    "branch": "phase4/laboratory",
+    "suites": [
+      {
+        "name": "backend-unit",
+        "exit_code": 0,
+        "duration_ms": 398,
+        "log_file": "backend-unit.log",
+        "sha256": "e855fd02855880c6cbb2e87737054ca68c469d7fe09a6c168dece7548a0f0f2b",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/backend-unit.log"
+      },
+      {
+        "name": "phase1-foundation",
+        "exit_code": 0,
+        "duration_ms": 4452,
+        "log_file": "phase1-foundation.log",
+        "sha256": "32ea1d6a7aa5dacaaef82599c97350c87ea844b96c61adfd9cd9a78a88abe0f1",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/phase1-foundation.log"
+      },
+      {
+        "name": "laboratory",
+        "exit_code": 0,
+        "duration_ms": 8905,
+        "log_file": "laboratory.log",
+        "passed": 21,
+        "total": 21,
+        "sha256": "0f5e7ad6515bc4eeecca887e33f4fdafc96a3923dce6c7deef742f97065ad224",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/laboratory.log"
+      },
+      {
+        "name": "laboratoryGuards",
+        "exit_code": 0,
+        "duration_ms": 3406,
+        "log_file": "laboratoryGuards.log",
+        "passed": 8,
+        "total": 8,
+        "sha256": "7bdc5d34f72b29d9a5ba772bbba6ca7dda6498f3bcd6f60a4766b19ed08feca7",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/laboratoryGuards.log"
+      },
+      {
+        "name": "laboratoryFrontend",
+        "exit_code": 0,
+        "duration_ms": 15518,
+        "log_file": "laboratoryFrontend.log",
+        "passed": 6,
+        "total": 6,
+        "sha256": "464544dab6e9cebb0f971038f91e32b1ffeb217a5e4a92f1adfb378ab23be680",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/laboratoryFrontend.log"
+      },
+      {
+        "name": "medication",
+        "exit_code": 0,
+        "duration_ms": 69375,
+        "log_file": "medication.log",
+        "passed": 20,
+        "total": 20,
+        "sha256": "10c609f3369df4b094729e358142bc7eec6392c88bb03c059be7825ae7022ff9",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/medication.log"
+      },
+      {
+        "name": "medicationGuards",
+        "exit_code": 0,
+        "duration_ms": 3201,
+        "log_file": "medicationGuards.log",
+        "passed": 9,
+        "total": 9,
+        "sha256": "e7e55fc66182ca7c77491ea00e706f2e90eb47075dc0c9b42d879ab65cd85548",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/medicationGuards.log"
+      },
+      {
+        "name": "medicationFrontend",
+        "exit_code": 0,
+        "duration_ms": 24018,
+        "log_file": "medicationFrontend.log",
+        "passed": 6,
+        "total": 6,
+        "sha256": "a607ea82d883a15f5bf5da4cf5606125edf2fb2b2a93c03d1c152ae72a6fcc1a",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/medicationFrontend.log"
+      },
+      {
+        "name": "pharmacy",
+        "exit_code": 0,
+        "duration_ms": 30978,
+        "log_file": "pharmacy.log",
+        "passed": 18,
+        "total": 18,
+        "sha256": "d5db0cdb7c39a360752f3a7f0486a8ad72d755e30d420586d174b2621a118abd",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/pharmacy.log"
+      },
+      {
+        "name": "opd",
+        "exit_code": 0,
+        "duration_ms": 36218,
+        "log_file": "opd.log",
+        "passed": 20,
+        "total": 20,
+        "sha256": "c07a41face7eb8408e67f42a599dd13c74c9dc4730770ba873c71144cb7d826d",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/opd.log"
+      },
+      {
+        "name": "lab",
+        "exit_code": 0,
+        "duration_ms": 9655,
+        "log_file": "lab.log",
+        "passed": 10,
+        "total": 10,
+        "sha256": "efaf1ffcf81ac20b2811e69b417c2cc974c94c48f7816f8240fb96dfd3dbbb46",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/lab.log"
+      },
+      {
+        "name": "ipd",
+        "exit_code": 0,
+        "duration_ms": 41699,
+        "log_file": "ipd.log",
+        "passed": 13,
+        "total": 13,
+        "sha256": "d072ffd179c3f57b7a44af2039d252bd06c964bb8b63de7c074b36bcc12549c3",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/ipd.log"
+      },
+      {
+        "name": "admin",
+        "exit_code": 1,
+        "duration_ms": 54267,
+        "log_file": "admin.log",
+        "passed": 27,
+        "total": 28,
+        "sha256": "b7050ef141e4f636d580e84fd8e232b40895afa042e7dd640d9a131253df3fb7",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/admin.log"
+      },
+      {
+        "name": "authorization",
+        "exit_code": 0,
+        "duration_ms": 7169,
+        "log_file": "authorization.log",
+        "passed": 5,
+        "total": 5,
+        "sha256": "d4764c54d0bb2e4fabcdb5e024543563a2b54005077f37c7162a6011f9e6d40b",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/authorization.log"
+      },
+      {
+        "name": "sessions",
+        "exit_code": 0,
+        "duration_ms": 6835,
+        "log_file": "sessions.log",
+        "passed": 7,
+        "total": 7,
+        "sha256": "a600af13903bc4a971ff860084f047d4bbf967c6a100ef9eed2219505af25b7a",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/sessions.log"
+      },
+      {
+        "name": "idempotency",
+        "exit_code": 0,
+        "duration_ms": 2335,
+        "log_file": "idempotency.log",
+        "passed": 8,
+        "total": 8,
+        "sha256": "3fbfb5b73bd8ff1b2badffdb48c7f2bc2bb8fafa34b8c26591ff82268be7032c",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/idempotency.log"
+      },
+      {
+        "name": "durability",
+        "exit_code": 0,
+        "duration_ms": 16178,
+        "log_file": "durability.log",
+        "passed": 11,
+        "total": 11,
+        "sha256": "d468b5768a21080f1ab02e185935163c21ebaa49d5be1658879f9f9ac3165623",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/durability.log"
+      },
+      {
+        "name": "frontendReliability",
+        "exit_code": 0,
+        "duration_ms": 5819,
+        "log_file": "frontendReliability.log",
+        "passed": 2,
+        "total": 2,
+        "sha256": "7f838a34bc030770955cfd66fbcc6ac794a94f1130e89f5c54dab374a4e49a86",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/frontendReliability.log"
+      },
+      {
+        "name": "ipdDrafts",
+        "exit_code": 0,
+        "duration_ms": 1663,
+        "log_file": "ipdDrafts.log",
+        "passed": 2,
+        "total": 2,
+        "sha256": "548c652c48877b538d7b862c6a37b0271a5114652adae88d5496473ea84ae452",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/ipdDrafts.log"
+      },
+      {
+        "name": "patientIdentity",
+        "exit_code": 0,
+        "duration_ms": 6990,
+        "log_file": "patientIdentity.log",
+        "passed": 9,
+        "total": 9,
+        "sha256": "b29762f4ebbc8ee4b25b06e7287a7f1cfe6229300a0483b339391ca70e204d3b",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/patientIdentity.log"
+      },
+      {
+        "name": "patientMerge",
+        "exit_code": 0,
+        "duration_ms": 7229,
+        "log_file": "patientMerge.log",
+        "passed": 8,
+        "total": 8,
+        "sha256": "57c14c5ab1ea94da9b5f1654b1bb9c39464afac518837b42bfcd4149da167147",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/patientMerge.log"
+      },
+      {
+        "name": "practitioners",
+        "exit_code": 0,
+        "duration_ms": 6513,
+        "log_file": "practitioners.log",
+        "passed": 8,
+        "total": 8,
+        "sha256": "6c2bb27335fead306018d9bcf6a3e2f742f13379895a924c33b1597206cabae0",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/practitioners.log"
+      },
+      {
+        "name": "scheduling",
+        "exit_code": 0,
+        "duration_ms": 2573,
+        "log_file": "scheduling.log",
+        "passed": 6,
+        "total": 6,
+        "sha256": "1b50df594d69db5677472e44411064f13cd49d6a84f0f507eef9a5ad1f8f4ea0",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/scheduling.log"
+      },
+      {
+        "name": "careTeam",
+        "exit_code": 0,
+        "duration_ms": 4679,
+        "log_file": "careTeam.log",
+        "passed": 10,
+        "total": 10,
+        "sha256": "711c1f200bb1675ae34d434d9029b493d50e208087f1226cc165274b13079e9d",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/careTeam.log"
+      },
+      {
+        "name": "triage",
+        "exit_code": 0,
+        "duration_ms": 2856,
+        "log_file": "triage.log",
+        "passed": 7,
+        "total": 7,
+        "sha256": "6cdc601f222250108c07a74920d54169bcdac38f8e8c342b80965a163dfa2d2b",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/triage.log"
+      },
+      {
+        "name": "clinicalDocuments",
+        "exit_code": 0,
+        "duration_ms": 2485,
+        "log_file": "clinicalDocuments.log",
+        "passed": 8,
+        "total": 8,
+        "sha256": "020fae2b7e07ded438464fb76565a5b5355864b600b9f89e2f83108cf51ed0b0",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/clinicalDocuments.log"
+      },
+      {
+        "name": "adt",
+        "exit_code": 0,
+        "duration_ms": 2667,
+        "log_file": "adt.log",
+        "passed": 8,
+        "total": 8,
+        "sha256": "628afedf128da07623efd40f8ce1f5b9f333bda719d8765e27cd440785a0f175",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/adt.log"
+      },
+      {
+        "name": "referrals",
+        "exit_code": 0,
+        "duration_ms": 3166,
+        "log_file": "referrals.log",
+        "passed": 8,
+        "total": 8,
+        "sha256": "2251b328050a8c4d1b72c474aadbdbd7ad1c3ff02da9263394bf6cac6e645723",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/referrals.log"
+      },
+      {
+        "name": "audit",
+        "exit_code": 0,
+        "duration_ms": 8880,
+        "log_file": "audit.log",
+        "passed": 7,
+        "total": 7,
+        "sha256": "f2334f500a88e8aafa40b75bac54d2472ff63f39c93793d6c72c3a5a6049f7c7",
+        "log_path": "/tmp/hms-phase4-work/release-evidence/audit.log"
+      }
+    ],
+    "finished_at": "2026-10-13T19:39:18.948Z",
+    "passed": false
+  },
+  "post_review_validation": {
+    "database": "hms_p4_validation",
+    "code_commit": "dccf04f691baeee7c411e83d23d315ad26c25c6d",
+    "suites": [
+      {
+        "name": "laboratory",
+        "exit_code": 0,
+        "duration_ms": 7853,
+        "log_file": "laboratory.log",
+        "sha256": "0f5e7ad6515bc4eeecca887e33f4fdafc96a3923dce6c7deef742f97065ad224",
+        "passed": 21,
+        "total": 21,
+        "log_path": "/tmp/hms-phase4-work/validation-evidence/laboratory.log"
+      },
+      {
+        "name": "laboratoryGuards",
+        "exit_code": 0,
+        "duration_ms": 3075,
+        "log_file": "laboratoryGuards.log",
+        "sha256": "7bdc5d34f72b29d9a5ba772bbba6ca7dda6498f3bcd6f60a4766b19ed08feca7",
+        "passed": 8,
+        "total": 8,
+        "log_path": "/tmp/hms-phase4-work/validation-evidence/laboratoryGuards.log"
+      },
+      {
+        "name": "laboratoryWorker",
+        "exit_code": 0,
+        "duration_ms": 2853,
+        "log_file": "laboratoryWorker.log",
+        "sha256": "8115bec6e6c04c943fd784e7d0afaba697ef0480a456a9e12e6c6e861c9fc5b4",
+        "passed": 3,
+        "total": 3,
+        "log_path": "/tmp/hms-phase4-work/validation-evidence/laboratoryWorker.log"
+      },
+      {
+        "name": "laboratoryFrontend",
+        "exit_code": 0,
+        "duration_ms": 13814,
+        "log_file": "laboratoryFrontend.log",
+        "sha256": "464544dab6e9cebb0f971038f91e32b1ffeb217a5e4a92f1adfb378ab23be680",
+        "passed": 6,
+        "total": 6,
+        "log_path": "/tmp/hms-phase4-work/validation-evidence/laboratoryFrontend.log"
+      },
+      {
+        "name": "lab",
+        "exit_code": 0,
+        "duration_ms": 9918,
+        "log_file": "lab.log",
+        "sha256": "efaf1ffcf81ac20b2811e69b417c2cc974c94c48f7816f8240fb96dfd3dbbb46",
+        "passed": 10,
+        "total": 10,
+        "log_path": "/tmp/hms-phase4-work/validation-evidence/lab.log"
+      },
+      {
+        "name": "admin",
+        "exit_code": 0,
+        "duration_ms": 49048,
+        "log_file": "admin.log",
+        "sha256": "815bba18c4e0dfee420ea5215d009d1cf7a0bd7c97e0cc3311319aee3ea086cc",
+        "passed": 28,
+        "total": 28,
+        "log_path": "/tmp/hms-phase4-work/validation-evidence/admin.log"
+      }
+    ],
+    "passed": true
+  },
+  "latest_suite_results": [
+    {
+      "name": "backend-unit",
+      "exit_code": 0,
+      "duration_ms": 398,
+      "log_file": "backend-unit.log"
+    },
+    {
+      "name": "phase1-foundation",
+      "exit_code": 0,
+      "duration_ms": 4452,
+      "log_file": "phase1-foundation.log"
+    },
+    {
+      "name": "laboratory",
+      "exit_code": 0,
+      "duration_ms": 7853,
+      "log_file": "laboratory.log",
+      "sha256": "0f5e7ad6515bc4eeecca887e33f4fdafc96a3923dce6c7deef742f97065ad224",
+      "passed": 21,
+      "total": 21
+    },
+    {
+      "name": "laboratoryGuards",
+      "exit_code": 0,
+      "duration_ms": 3075,
+      "log_file": "laboratoryGuards.log",
+      "sha256": "7bdc5d34f72b29d9a5ba772bbba6ca7dda6498f3bcd6f60a4766b19ed08feca7",
+      "passed": 8,
+      "total": 8
+    },
+    {
+      "name": "laboratoryFrontend",
+      "exit_code": 0,
+      "duration_ms": 13814,
+      "log_file": "laboratoryFrontend.log",
+      "sha256": "464544dab6e9cebb0f971038f91e32b1ffeb217a5e4a92f1adfb378ab23be680",
+      "passed": 6,
+      "total": 6
+    },
+    {
+      "name": "medication",
+      "exit_code": 0,
+      "duration_ms": 69375,
+      "log_file": "medication.log",
+      "passed": 20,
+      "total": 20
+    },
+    {
+      "name": "medicationGuards",
+      "exit_code": 0,
+      "duration_ms": 3201,
+      "log_file": "medicationGuards.log",
+      "passed": 9,
+      "total": 9
+    },
+    {
+      "name": "medicationFrontend",
+      "exit_code": 0,
+      "duration_ms": 24018,
+      "log_file": "medicationFrontend.log",
+      "passed": 6,
+      "total": 6
+    },
+    {
+      "name": "pharmacy",
+      "exit_code": 0,
+      "duration_ms": 30978,
+      "log_file": "pharmacy.log",
+      "passed": 18,
+      "total": 18
+    },
+    {
+      "name": "opd",
+      "exit_code": 0,
+      "duration_ms": 36218,
+      "log_file": "opd.log",
+      "passed": 20,
+      "total": 20
+    },
+    {
+      "name": "lab",
+      "exit_code": 0,
+      "duration_ms": 9918,
+      "log_file": "lab.log",
+      "sha256": "efaf1ffcf81ac20b2811e69b417c2cc974c94c48f7816f8240fb96dfd3dbbb46",
+      "passed": 10,
+      "total": 10
+    },
+    {
+      "name": "ipd",
+      "exit_code": 0,
+      "duration_ms": 41699,
+      "log_file": "ipd.log",
+      "passed": 13,
+      "total": 13
+    },
+    {
+      "name": "admin",
+      "exit_code": 0,
+      "duration_ms": 49048,
+      "log_file": "admin.log",
+      "sha256": "815bba18c4e0dfee420ea5215d009d1cf7a0bd7c97e0cc3311319aee3ea086cc",
+      "passed": 28,
+      "total": 28
+    },
+    {
+      "name": "authorization",
+      "exit_code": 0,
+      "duration_ms": 7169,
+      "log_file": "authorization.log",
+      "passed": 5,
+      "total": 5
+    },
+    {
+      "name": "sessions",
+      "exit_code": 0,
+      "duration_ms": 6835,
+      "log_file": "sessions.log",
+      "passed": 7,
+      "total": 7
+    },
+    {
+      "name": "idempotency",
+      "exit_code": 0,
+      "duration_ms": 2335,
+      "log_file": "idempotency.log",
+      "passed": 8,
+      "total": 8
+    },
+    {
+      "name": "durability",
+      "exit_code": 0,
+      "duration_ms": 16178,
+      "log_file": "durability.log",
+      "passed": 11,
+      "total": 11
+    },
+    {
+      "name": "frontendReliability",
+      "exit_code": 0,
+      "duration_ms": 5819,
+      "log_file": "frontendReliability.log",
+      "passed": 2,
+      "total": 2
+    },
+    {
+      "name": "ipdDrafts",
+      "exit_code": 0,
+      "duration_ms": 1663,
+      "log_file": "ipdDrafts.log",
+      "passed": 2,
+      "total": 2
+    },
+    {
+      "name": "patientIdentity",
+      "exit_code": 0,
+      "duration_ms": 6990,
+      "log_file": "patientIdentity.log",
+      "passed": 9,
+      "total": 9
+    },
+    {
+      "name": "patientMerge",
+      "exit_code": 0,
+      "duration_ms": 7229,
+      "log_file": "patientMerge.log",
+      "passed": 8,
+      "total": 8
+    },
+    {
+      "name": "practitioners",
+      "exit_code": 0,
+      "duration_ms": 6513,
+      "log_file": "practitioners.log",
+      "passed": 8,
+      "total": 8
+    },
+    {
+      "name": "scheduling",
+      "exit_code": 0,
+      "duration_ms": 2573,
+      "log_file": "scheduling.log",
+      "passed": 6,
+      "total": 6
+    },
+    {
+      "name": "careTeam",
+      "exit_code": 0,
+      "duration_ms": 4679,
+      "log_file": "careTeam.log",
+      "passed": 10,
+      "total": 10
+    },
+    {
+      "name": "triage",
+      "exit_code": 0,
+      "duration_ms": 2856,
+      "log_file": "triage.log",
+      "passed": 7,
+      "total": 7
+    },
+    {
+      "name": "clinicalDocuments",
+      "exit_code": 0,
+      "duration_ms": 2485,
+      "log_file": "clinicalDocuments.log",
+      "passed": 8,
+      "total": 8
+    },
+    {
+      "name": "adt",
+      "exit_code": 0,
+      "duration_ms": 2667,
+      "log_file": "adt.log",
+      "passed": 8,
+      "total": 8
+    },
+    {
+      "name": "referrals",
+      "exit_code": 0,
+      "duration_ms": 3166,
+      "log_file": "referrals.log",
+      "passed": 8,
+      "total": 8
+    },
+    {
+      "name": "audit",
+      "exit_code": 0,
+      "duration_ms": 8880,
+      "log_file": "audit.log",
+      "passed": 7,
+      "total": 7
+    },
+    {
+      "name": "laboratoryWorker",
+      "exit_code": 0,
+      "duration_ms": 2853,
+      "log_file": "laboratoryWorker.log",
+      "sha256": "8115bec6e6c04c943fd784e7d0afaba697ef0480a456a9e12e6c6e861c9fc5b4",
+      "passed": 3,
+      "total": 3
+    }
+  ],
+  "checks": {
+    "postgresql16": {
+      "status": "PASS",
+      "log_path": "/tmp/hms-phase4-work/migrations16-release.log",
+      "sha256": "763f09f6e1d0bba89fb4a1e85423957cea6cb95f3121cce284c3dbd2f5478cc4"
+    },
+    "postgresql18": {
+      "status": "PASS",
+      "log_path": "/tmp/hms-phase4-work/migrations18-release.log",
+      "sha256": "834d1d04505a39e9f018ccffea090d63841965e24f1f789de2076795acdb331f"
+    },
+    "frontend_build": {
+      "status": "PASS",
+      "log_path": "/tmp/hms-phase4-work/build-final.log",
+      "sha256": "e71f0aea9e53895071f9a8004caefe12cb06a9d599df27779886980614137410"
+    },
+    "backend_static": {
+      "status": "PASS",
+      "log_path": "/tmp/hms-phase4-work/static-backend-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "frontend_static": {
+      "status": "PASS",
+      "log_path": "/tmp/hms-phase4-work/static-frontend-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "frontend_visual": {
+      "status": "PASS",
+      "image_path": "/tmp/hms-phase4-work/laboratory-screen.png",
+      "sha256": "518cd0c33db9d25bb5d6bd931061c7e55a003860f4341bdff74d5aa8cdf22a0a",
+      "detail": "Loaded screen visually inspected; browser assertions check no script errors or horizontal overflow."
+    }
+  },
+  "qualification": "Full regression caught an abnormal-count dashboard compatibility failure; the final affected-scope rerun passes all six suites. Earlier failure evidence is retained, not rewritten. No shared deployment performed."
+}
