@@ -1,9 +1,17 @@
 # Instructions for coding agents (Codex, Claude, others)
 
-## STOP — Claude is working on Phase 2 (2026-10-13)
+## Parallel work in progress (2026-10-13): read docs/PARALLEL_WORK.md first
 
-Branch `phase2/patient-journey`. Do not edit, commit, migrate or deploy in
-this repository until this notice is removed. Reading is fine.
+- **Phase 2 (Claude):** this main folder, branch `phase2/patient-journey`, migrations 0010–0029.
+  Do not edit files Phase 2 owns, and do not switch branches in this folder.
+- **Phase 3 (Codex):** your own worktree `../HMS_1-phase3`, branch `phase3/medication-safety`,
+  migrations 0030–0049. Prompt: `docs/PHASE3_PROMPT.md`.
+- **Phase 4 (Codex, after Phase 3):** worktree `../HMS_1-phase4`, migrations 0050–0069.
+  Prompt: `docs/PHASE4_PROMPT.md`.
+- No one deploys to the shared Docker app without the owner's approval.
+
+### Session log
+- 2026-10-13 Claude: started Phase 2 part 1 (patient identity) in the main folder.
 
 ## Status (2026-10-13): Phase 1 complete — you may work
 
