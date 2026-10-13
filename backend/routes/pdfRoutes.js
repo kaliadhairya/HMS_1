@@ -395,7 +395,7 @@ async function generateLabOrderPDF(orderId, res, { download = false } = {}) {
   drawLetterhead(doc, hosp, MARGIN, CONTENT);
 
   doc.fontSize(13).font('Helvetica-Bold').fillColor('#000000')
-    .text('LABORATORY REPORT', MARGIN, doc.y + 2, { align: 'center', width: CONTENT });
+    .text('HISTORICAL LABORATORY EVIDENCE', MARGIN, doc.y + 2, { align: 'center', width: CONTENT });
   doc.moveDown(0.6);
 
   // Patient and order details
@@ -479,6 +479,12 @@ router.get('/lab-report/:orderId', protect, checkPermission('lab', 'read'), asyn
   try {
     const orderId = parseInt(String(req.params.orderId).replace(/^(ORD|REP)-/, ''), 10);
     if (!Number.isInteger(orderId)) return res.status(400).json({ success: false, message: 'Invalid order id' });
+    const C = require('../services/laboratoryCommon');
+    const order = await C.one('SELECT patient_id FROM hms_investigation_orders WHERE id=:id', { id: orderId });
+    if (!order) return res.status(404).json({ code: 'NOT_FOUND', message: 'Order not found.' });
+    if (req.user.role === 'doctor' && !await require('../utils/careTeam').patientInCare(req.user.id, order.patient_id)) return res.status(403).json({ code: 'PATIENT_NOT_IN_CARE', message: require('../utils/careTeam').NOT_IN_CARE });
+    const governed = await C.one('SELECT v.id FROM hms_lab_report_versions v JOIN hms_lab_reports p ON p.id=v.report_id WHERE p.order_id=:id ORDER BY v.version DESC LIMIT 1', { id: orderId });
+    if (governed) return res.redirect(307, '/api/laboratory/reports/' + governed.id + '/pdf');
     await generateLabOrderPDF(orderId, res, { download: req.query.download === 'true' });
   } catch (err) {
     console.error(err);

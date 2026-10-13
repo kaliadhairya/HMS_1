@@ -80,6 +80,10 @@ const isAbnormal = (flag) => flag === 'High' || flag === 'Low';
 
 // ── Shared loader: orders with their items (raw SQL so the timestamps come back) ─────────────
 async function loadOrders({ where = '1=1', replacements = {}, limit = null } = {}) {
+  const actor = require('../utils/auditContext').storage.getStore()?.userId ?? null;
+  where = `(${where}) AND (NOT EXISTS (SELECT 1 FROM hms_users caller WHERE caller.id=:careActor AND caller.role='doctor') OR patient_in_care(:careActor, o.patient_id))`;
+  replacements = { ...replacements, careActor: actor };
+
   const orders = await sequelize.query(`
     SELECT o.ID, o.ENCOUNTER_ID, o.PATIENT_ID, o.DOCTOR_ID, o.ORDER_TYPE, o.URGENCY, o.STATUS,
            o.CLINICAL_NOTES, o.CREATED_AT, o.UPDATED_AT,
@@ -94,14 +98,17 @@ async function loadOrders({ where = '1=1', replacements = {}, limit = null } = {
   if (orders.length === 0) return [];
 
   const items = await sequelize.query(`
-    SELECT ID, ORDER_ID, ITEM_NAME, TEST_CATEGORY, STATUS, RESULT_VALUE, REFERENCE_RANGE, REMARKS, CREATED_AT, UPDATED_AT
-      FROM HMS_INVESTIGATION_ORDER_ITEMS
-     WHERE ORDER_ID IN (:ids)
-     ORDER BY ID`, { replacements: { ids: orders.map((o) => o.id) }, type: QueryTypes.SELECT });
+    SELECT i.ID, i.ORDER_ID, i.ITEM_NAME, i.TEST_CATEGORY, i.STATUS, i.RESULT_VALUE, i.REFERENCE_RANGE, i.REMARKS, i.CREATED_AT, i.UPDATED_AT,
+             i.lab_test_version_id, r.abnormal_flag AS governed_flag
+      FROM HMS_INVESTIGATION_ORDER_ITEMS i
+      LEFT JOIN LATERAL (SELECT v.abnormal_flag FROM hms_lab_result_versions v JOIN hms_lab_report_results l ON l.result_version_id=v.id JOIN hms_lab_report_versions p ON p.id=l.report_version_id
+        WHERE v.item_id=i.id ORDER BY p.released_at DESC,p.version DESC LIMIT 1) r ON true
+     WHERE i.ORDER_ID IN (:ids)
+     ORDER BY i.ID`, { replacements: { ids: orders.map((o) => o.id) }, type: QueryTypes.SELECT });
 
   const byOrder = new Map();
   for (const it of items) {
-    const flag = it.status === 'Completed' ? abnormalFlag(it.result_value, it.reference_range) : null;
+    const flag = it.status === 'Completed' ? (it.lab_test_version_id ? ({ LOW: 'Low', HIGH: 'High', IN_RANGE: 'Normal' }[it.governed_flag] || null) : abnormalFlag(it.result_value, it.reference_range)) : null;
     const entry = {
       itemId: it.id,
       test: it.item_name,
@@ -169,13 +176,15 @@ const minutesBetween = (from, to) => (new Date(to).getTime() - new Date(from).ge
 // Completed items whose result was entered today, with their flags and turnaround.
 async function itemsCompletedToday() {
   const rows = await sequelize.query(`
-    SELECT i.ID, i.RESULT_VALUE, i.REFERENCE_RANGE, i.CREATED_AT, i.UPDATED_AT, o.CREATED_AT AS ORDERED_AT
+    SELECT i.ID, i.RESULT_VALUE, i.REFERENCE_RANGE, i.CREATED_AT, i.UPDATED_AT, o.CREATED_AT AS ORDERED_AT, i.lab_test_version_id, r.abnormal_flag AS governed_flag
       FROM HMS_INVESTIGATION_ORDER_ITEMS i
       JOIN HMS_INVESTIGATION_ORDERS o ON o.ID = i.ORDER_ID
+      LEFT JOIN LATERAL (SELECT v.abnormal_flag FROM hms_lab_result_versions v JOIN hms_lab_report_results l ON l.result_version_id=v.id
+        JOIN hms_lab_report_versions p ON p.id=l.report_version_id WHERE v.item_id=i.id ORDER BY p.released_at DESC,p.version DESC LIMIT 1) r ON true
      WHERE i.STATUS = 'Completed' AND i.UPDATED_AT >= CURRENT_DATE`, { type: QueryTypes.SELECT });
   return rows.map((r) => ({
     id: r.id,
-    flag: abnormalFlag(r.result_value, r.reference_range),
+    flag: r.lab_test_version_id ? ({ LOW: 'Low', HIGH: 'High', IN_RANGE: 'Normal' }[r.governed_flag] || null) : abnormalFlag(r.result_value, r.reference_range),
     // Items completed before status changes were stamped still have UPDATED_AT = CREATED_AT; their
     // completion time is unknown, so they carry no turnaround.
     tatMinutes: r.updated_at && r.ordered_at && new Date(r.updated_at) > new Date(r.created_at) ? minutesBetween(r.ordered_at, r.updated_at) : null,
@@ -235,7 +244,8 @@ router.get('/dashboard', canRead, async (req, res) => {
 router.get('/queue', canRead, async (req, res) => {
   try {
     const orders = await InvestigationOrder.findAll({
-      where: { status: OPEN_ORDER_STATUSES },
+      where: { status: OPEN_ORDER_STATUSES, ...(req.user.role === 'doctor' ? { patient_id: { [require('sequelize').Op.in]: sequelize.literal(`(SELECT id FROM hms_patients WHERE patient_in_care(${Number(req.user.id)},id))`) } } : {}) },
+      attributes: { include: [[sequelize.literal(`(SELECT count(DISTINCT l.item_id) FROM hms_lab_specimen_links l JOIN hms_lab_specimens s ON s.id=l.specimen_id JOIN hms_investigation_order_items i ON i.id=l.item_id WHERE i.order_id=InvestigationOrder.id AND s.state IN ('COLLECTED','SENT','RECEIVED','STORED'))`), 'usable_collected']] },
       include: [
         { model: Patient, as: 'patient', attributes: ['id', 'name', 'first_name', 'last_name', 'uhid'] },
         { model: User, as: 'doctor', attributes: ['id', 'name'] },
@@ -254,7 +264,7 @@ router.get('/queue', canRead, async (req, res) => {
         doctor: order.doctor?.name || 'Unknown',
         dept: order.investigation_type || 'General',
         tests: items.map((item) => item.test_name),
-        collected: items.filter((item) => item.status !== 'Pending').length,
+        collected: Number(order.get('usable_collected') || 0),
         priority: order.priority || 'Routine',
         status: order.status,
         time: order.order_date ? new Date(order.order_date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '---',
@@ -274,206 +284,40 @@ router.get('/queue', canRead, async (req, res) => {
 const QUEUE_STATUSES = ['In Progress', 'Cancelled'];
 router.patch('/queue/:id', canWrite, async (req, res) => {
   try {
-    const orderId = parseInt(String(req.params.id).replace('ORD-', ''), 10);
-    const { status } = req.body || {};
-    if (!QUEUE_STATUSES.includes(status)) {
-      return res.status(400).json({ status: 'error', message: `status must be one of: ${QUEUE_STATUSES.join(', ')}.` });
-    }
-
-    const order = Number.isInteger(orderId) ? await InvestigationOrder.findByPk(orderId) : null;
-    if (!order) return res.status(404).json({ status: 'error', message: 'Investigation order not found.' });
-    if (!OPEN_ORDER_STATUSES.includes(order.status)) {
-      return res.status(409).json({ status: 'error', message: `This order is already ${String(order.status).toLowerCase()}.` });
-    }
-
-    if (status === 'Cancelled') {
-      const reported = await InvestigationOrderItem.count({ where: { order_id: orderId, status: 'Completed' } });
-      if (reported > 0) {
-        return res.status(409).json({ status: 'error', message: 'Results have already been reported for this order, so it cannot be cancelled.' });
-      }
-      await sequelize.transaction(async (transaction) => {
-        await sequelize.query(
-          `UPDATE HMS_INVESTIGATION_ORDER_ITEMS SET STATUS = 'Cancelled', UPDATED_AT = CURRENT_TIMESTAMP
-            WHERE ORDER_ID = :orderId AND STATUS IN (:outstanding)`,
-          { replacements: { orderId, outstanding: OUTSTANDING_ITEM_STATUSES }, transaction }
-        );
-        await setOrderStatus(orderId, 'Cancelled', transaction);
-        await publish('lab_status_change', 'doctor', { orderId, status }, { transaction });
-      });
-    } else {
-      await sequelize.transaction(async (transaction) => {
-        await setOrderStatus(orderId, status, transaction);
-        await publish('lab_status_change', 'doctor', { orderId, status }, { transaction });
-      });
-    }
-
-    res.json({ status: 'success', message: 'Status updated' });
-  } catch (err) {
-    console.error('Lab queue status error:', err);
-    res.status(500).json({ status: 'error', message: 'Failed to update investigation status.' });
-  }
+    const C = require('../services/laboratoryCommon');
+    if (req.body.status !== 'Cancelled') return res.status(410).json({ code: 'LEGACY_LAB_WRITE_RETIRED', message: 'Use specimen custody and result processing commands.' });
+    const data = await sequelize.transaction(tx => require('../services/laboratoryOrders').cancel(String(req.params.id).replace('ORD-', ''), req.user, req.headers['if-match'], tx));
+    res.json({ success: true, data });
+  } catch (e) { res.status(e.status || 500).json({ success: false, code: e.code || 'LAB_COMMAND_FAILED', message: e.status ? e.message : 'Command could not be confirmed.' }); }
 });
 
 // ── Samples ──────────────────────────────────────────────────────────────────
 router.get('/samples', canRead, async (req, res) => {
   try {
-    const items = await InvestigationOrderItem.findAll({
-      include: [{
-        model: InvestigationOrder,
-        as: 'order',
-        include: [{ model: Patient, as: 'patient', attributes: ['id', 'name', 'first_name', 'last_name', 'uhid'] }],
-      }],
-      where: { status: [...OUTSTANDING_ITEM_STATUSES, 'Completed'] },
-      order: [['id', 'DESC']],
-      limit: 100, // most recent 100 samples
-    });
-
-    const data = items.map((item) => ({
-      id: `SMP-${item.id}`,
-      itemId: item.id,
-      barcode: `${89100000 + item.id}`,
-      patient: displayPatientName(item.order?.patient),
-      uhid: item.order?.patient?.uhid || '---',
-      tests: item.test_name,
-      priority: item.order?.priority || 'Routine',
-      type: deriveSampleType(item.test_name),
-      collectedAt: item.status === 'Pending' ? 'Pending' : 'Logged',
-      collector: 'Lab Technician',
-      status: item.status === 'Pending' ? 'Pending Collection' : item.status,
-      storage: item.status === 'Pending' ? 'Pending' : 'Room Temperature',
-    }));
-
-    res.json({ status: 'success', data, source: 'live' });
-  } catch (err) {
-    console.error('Lab samples error:', err);
-    res.status(500).json({ status: 'error', message: 'Failed to load sample log.' });
-  }
+    const rows = await sequelize.query(`SELECT s.*,p.name AS patient,p.uhid,u.name AS collector FROM hms_lab_specimens s
+      JOIN hms_patients p ON p.id=s.patient_id LEFT JOIN hms_users u ON u.id=s.collector_user_id
+      WHERE (:doctor::int IS NULL OR patient_in_care(:doctor,s.patient_id)) ORDER BY s.created_at DESC LIMIT 200`,
+      { replacements: { doctor: req.user.role === 'doctor' ? req.user.id : null }, type: QueryTypes.SELECT });
+    res.json({ success: true, data: rows, source: 'accessions' });
+  } catch (e) { res.status(503).json({ success: false, message: 'Specimen observations unavailable.' }); }
 });
 
-router.post('/samples', canWrite, async (req, res) => {
-  try {
-    const itemId = parseInt(req.body?.itemId, 10);
-    if (!Number.isInteger(itemId)) {
-      return res.status(400).json({ status: 'error', message: 'itemId is required.' });
-    }
-
-    const item = await InvestigationOrderItem.findByPk(itemId, { include: [{ model: InvestigationOrder, as: 'order' }] });
-    if (!item) {
-      return res.status(404).json({ status: 'error', message: 'Investigation item not found.' });
-    }
-    // Only an uncollected sample can be logged. Re-logging used to push a completed test back to
-    // "Collected" and reopen its order.
-    if (item.status !== 'Pending') {
-      return res.status(409).json({ status: 'error', message: `This sample is already ${String(item.status).toLowerCase()}.` });
-    }
-
-    const startsOrder = ['Pending', 'Ordered'].includes(item.order?.status);
-    await sequelize.transaction(async (transaction) => {
-      await setItemStatus(itemId, { status: 'Collected' }, transaction);
-      if (startsOrder) {
-        await setOrderStatus(item.order_id, 'In Progress', transaction);
-        await publish('lab_status_change', 'doctor', { orderId: item.order_id, status: 'In Progress' }, { transaction });
-      }
-    });
-
-    res.status(201).json({ status: 'success', message: 'Sample logged successfully' });
-  } catch (err) {
-    console.error('Lab sample log error:', err);
-    res.status(500).json({ status: 'error', message: 'Failed to log sample.' });
-  }
-});
+router.post('/samples', canWrite, (req, res) => res.status(410).json({ success: false, code: 'LEGACY_LAB_WRITE_RETIRED', message: 'Use accession-based specimens and versioned result entry in the laboratory workflow.' }));
 
 // ── Results ──────────────────────────────────────────────────────────────────
 // Only tests whose sample has been logged are waiting for a result.
 router.get('/results', canRead, async (req, res) => {
   try {
-    const items = await InvestigationOrderItem.findAll({
-      where: { status: COLLECTED_STATUSES },
-      include: [{
-        model: InvestigationOrder,
-        as: 'order',
-        include: [
-          { model: Patient, as: 'patient', attributes: ['id', 'name', 'first_name', 'last_name', 'uhid'] },
-          { model: User, as: 'doctor', attributes: ['name'] },
-        ],
-      }],
-      order: [['id', 'ASC']],
-    });
-
-    const data = items.map((item) => ({
-      id: `RES-${item.id}`,
-      itemId: item.id,
-      orderId: item.order_id,
-      patient: displayPatientName(item.order?.patient),
-      uhid: item.order?.patient?.uhid || '---',
-      test: item.test_name,
-      department: item.department || null,
-      sampleBarcode: `${89100000 + item.id}`,
-      orderedBy: item.order?.doctor?.name || 'Unknown',
-      priority: item.order?.priority || 'Routine',
-      time: item.order?.order_date ? new Date(item.order.order_date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '---',
-      ordered_at: item.order?.order_date || null,
-      currentResult: item.result_value || '',
-      referenceRange: item.reference_range || '',
-      remarks: item.remarks || '',
-    }));
-
-    res.json({ status: 'success', data, source: 'live' });
-  } catch (err) {
-    console.error('Lab results error:', err);
-    res.status(500).json({ status: 'error', message: 'Failed to load pending lab results.' });
-  }
+    const rows = await sequelize.query(`SELECT i.*,o.patient_id,p.name AS patient,p.uhid FROM hms_investigation_order_items i
+      JOIN hms_investigation_orders o ON o.id=i.order_id JOIN hms_patients p ON p.id=o.patient_id
+      WHERE i.lab_state IN ('PROCESSING','ENTERED','VERIFIED','REPEAT')
+      AND (:doctor::int IS NULL OR patient_in_care(:doctor,o.patient_id)) ORDER BY i.id LIMIT 200`,
+      { replacements: { doctor: req.user.role === 'doctor' ? req.user.id : null }, type: QueryTypes.SELECT });
+    res.json({ success: true, data: rows, source: 'governed' });
+  } catch (e) { res.status(503).json({ success: false, message: 'Result observations unavailable.' }); }
 });
 
-router.post('/results/:itemId', canWrite, async (req, res) => {
-  try {
-    const itemId = parseInt(String(req.params.itemId).replace('RES-', ''), 10);
-    const resultValue = String(req.body?.result_value ?? '').trim();
-    const referenceRange = req.body?.reference_range === undefined ? undefined : String(req.body.reference_range ?? '').trim();
-    const remarks = String(req.body?.remarks ?? '').trim();
-
-    if (!resultValue) {
-      return res.status(400).json({ status: 'error', message: 'result_value is required.' });
-    }
-    if (resultValue.length > 500 || (referenceRange && referenceRange.length > 500)) {
-      return res.status(400).json({ status: 'error', message: 'Result and reference range must be 500 characters or fewer.' });
-    }
-
-    const item = Number.isInteger(itemId) ? await InvestigationOrderItem.findByPk(itemId) : null;
-    if (!item) return res.status(404).json({ status: 'error', message: 'Investigation item not found.' });
-    if (item.status === 'Pending') {
-      return res.status(409).json({ status: 'error', message: 'Log the sample collection before entering a result.' });
-    }
-    if (item.status === 'Completed') {
-      return res.status(409).json({ status: 'error', message: 'A final result is already recorded for this test.' });
-    }
-    if (!COLLECTED_STATUSES.includes(item.status)) {
-      return res.status(409).json({ status: 'error', message: `This test is ${String(item.status).toLowerCase()}.` });
-    }
-
-    const range = referenceRange === undefined ? item.reference_range : (referenceRange || null);
-    const flag = abnormalFlag(resultValue, range);
-
-    const orderStatus = await sequelize.transaction(async (transaction) => {
-      await setItemStatus(itemId, {
-        status: 'Completed', result_value: resultValue, reference_range: range, remarks: remarks || null,
-      }, transaction);
-      const [[{ outstanding }]] = await sequelize.query(
-        'SELECT COUNT(*) AS OUTSTANDING FROM HMS_INVESTIGATION_ORDER_ITEMS WHERE ORDER_ID = :orderId AND STATUS IN (:open)',
-        { replacements: { orderId: item.order_id, open: OUTSTANDING_ITEM_STATUSES }, transaction }
-      );
-      const next = Number(outstanding) === 0 ? 'Completed' : 'In Progress';
-      await setOrderStatus(item.order_id, next, transaction);
-      await publish('lab_result_ready', 'doctor', { itemId, orderId: item.order_id, test: item.test_name, result_value: resultValue, flag, orderStatus: next }, { transaction });
-      return next;
-    });
-
-    res.json({ status: 'success', message: 'Result saved and notified.', data: { itemId, flag, orderStatus } });
-  } catch (err) {
-    console.error('Lab result save error:', err);
-    res.status(500).json({ status: 'error', message: 'Failed to save lab result.' });
-  }
-});
+router.post('/results/:itemId', canWrite, (req, res) => res.status(410).json({ success: false, code: 'LEGACY_LAB_WRITE_RETIRED', message: 'Use accession-based specimens and versioned result entry in the laboratory workflow.' }));
 
 // ── Reports: one per order with at least one reported test ──────────────────────
 router.get('/reports', canRead, async (req, res) => {
@@ -531,8 +375,9 @@ router.get('/workload', canRead, async (req, res) => {
         testsCompleted: completedItems.length,
         avgTat: avgTatMinutes === null ? 'N/A' : `${avgTatMinutes} min`,
         avgTatMinutes,
-        targetTat: '60 min',
-        criticalFlagged: completedItems.filter((i) => isAbnormal(i.flag)).length,
+        targetTat: null,
+        abnormalFlagged: completedItems.filter((i) => isAbnormal(i.flag)).length,
+        unresolvedCritical: Number((await sequelize.query("SELECT count(*)::int AS n FROM hms_lab_critical_tasks WHERE state<>'CLOSED'", { type: QueryTypes.SELECT }))[0].n),
         shift: 'Operational',
       },
     });
