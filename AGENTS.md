@@ -170,3 +170,15 @@ go through `docs/requests/clinical-final-coordination.md`.
   each, sessions 5/5, administration browser 4/4, scoped receipts 4/4, financial
   idempotency 8/8 and Phase 1 failure acceptance 16/16 on PG18. Typecheck/build
   pass. Packages remain partial; continuing complete clinical/worker/v2 integration.
+
+### Claude completion packages (2026-10-15)
+
+All eight Claude packages are engineering-complete on `completion/claude-final`
+(rebased onto Codex `0d904fb`), handed to Codex for C8 review/integration;
+nothing deployed or pushed. A7 `130b4fe`, A8 `bc5363e`, C6 `870a078`,
+C3 `14335fa`, C2 `2a0604d`, A4 `aed506c`, B2 `840bf23`, then B7 + A8
+facility scope + A4 restore verifier + C6 per facility `d10b0e9`.
+Migrations 0150–0156. Handoff, shared-file list and remaining Codex-area
+failures: `docs/requests/claude-final-handoff.md`. External gates (sandbox,
+licensed content, ClamAV, target-region drills, owner review, language
+review) stay open and are named in each package's state.
