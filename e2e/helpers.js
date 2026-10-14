@@ -96,7 +96,11 @@ function runner(name) {
   async function step(title, fn) {
     const t0 = Date.now();
     try { await fn(); results.push({ title, ok: true, ms: Date.now() - t0 }); console.log(`  ✓ ${title}`); }
-    catch (e) { results.push({ title, ok: false, err: e.message }); console.log(`  ✗ ${title}\n      ${String(e.message).split('\n')[0]}`); }
+    catch (e) {
+      results.push({ title, ok: false, err: e.message });
+      // E2E_VERBOSE=1 prints the whole message (Playwright names the element it waited for).
+      console.log(`  ✗ ${title}\n      ${process.env.E2E_VERBOSE ? String(e.message).split('\n').slice(0, 8).join('\n      ') : String(e.message).split('\n')[0]}`);
+    }
   }
   function done() {
     const failed = results.filter((r) => !r.ok);

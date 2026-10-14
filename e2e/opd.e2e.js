@@ -17,7 +17,6 @@ const QC_NAME = `E2E Allergy QC ${S}`;
 const PHONE = `9${S.padStart(9, '0')}`;
 const EMP_NO = `EMP-${S}`;
 const ALLERGEN = 'Amoxicillin';
-const SAFE_MEDICINE = 'Paracetamol';
 const LAB_TEST = 'CBC';
 
 const state = {};
@@ -231,9 +230,9 @@ async function pickPatient(page, query, name) {
 
     await step('Consultation shows the allergy and the nurse\'s vitals with their unit', async () => {
       const { page, errors } = fresh(doc);
-      const allergyBox = page.getByRole('region', { name: 'Patient allergies' });
-      await allergyBox.getByText(ALLERGEN).waitFor();
-      assert(!(await allergyBox.textContent()).includes('No known allergies'), 'claims no known allergies');
+      const allergyBox = page.getByRole('region', { name: 'Governed allergy review' });
+      await allergyBox.getByText(new RegExp(ALLERGEN)).first().waitFor();
+      assert(await allergyBox.locator('strong').filter({ hasText: /^Reviewed: no known allergies$/ }).count() === 0, 'claims no known allergies');
       const vitalsBox = page.getByRole('region', { name: 'Latest vitals' });
       await vitalsBox.getByText('150/95').waitFor();
       await vitalsBox.getByText(/38\.2\s*°C/).waitFor();
@@ -253,32 +252,14 @@ async function pickPatient(page, query, name) {
       noPageErrors(errors, 'history/diagnosis');
     });
 
-    await step('Prescribing a medicine the patient is allergic to needs explicit confirmation', async () => {
+    await step('Prescribing is by coded order only, with no invented dose; the uncoded allergy is flagged as incomplete', async () => {
       const { page, errors } = fresh(doc);
       await page.getByRole('tab', { name: 'Prescription' }).click();
-      const rxTable = page.locator('table', { hasText: 'Frequency' });
-      // A medicine with no recorded allergy is added straight away.
-      await page.getByLabel('Search medicine').fill(SAFE_MEDICINE);
-      await page.getByRole('button', { name: new RegExp(`^${SAFE_MEDICINE}`) }).first().click();
-      await rxTable.getByText(SAFE_MEDICINE).waitFor();
-      assert(await page.getByRole('dialog').count() === 0, 'warning shown for a safe medicine');
-      // Allergy match: warning names the allergy; Cancel keeps it off the prescription.
-      await page.getByLabel('Search medicine').fill(ALLERGEN);
-      await page.getByRole('button', { name: new RegExp(`^${ALLERGEN}`) }).first().click();
-      let dialog = page.getByRole('dialog');
-      await dialog.waitFor();
-      const text = await dialog.textContent();
-      assert(/allerg/i.test(text) && text.includes(ALLERGEN), `warning does not name the allergy: ${text}`);
-      await dialog.getByRole('button', { name: 'Cancel' }).click();
-      await dialog.waitFor({ state: 'detached' });
-      assert(await rxTable.getByText(ALLERGEN).count() === 0, 'cancelled medicine was added');
-      // Prescribe anyway adds it, and the row stays flagged.
-      await page.getByLabel('Search medicine').fill(ALLERGEN);
-      await page.getByRole('button', { name: new RegExp(`^${ALLERGEN}`) }).first().click();
-      dialog = page.getByRole('dialog');
-      await dialog.getByRole('button', { name: 'Prescribe anyway' }).click();
-      await dialog.waitFor({ state: 'detached' });
-      await rxTable.getByText(ALLERGEN).first().waitFor();
+      await page.getByLabel('Approved product', { exact: true }).waitFor();
+      assert(await page.getByLabel('Dose', { exact: true }).inputValue() === '', 'a dose was invented');
+      assert(await page.getByLabel('Search medicine').count() === 0, 'the free-text medicine writer is still offered');
+      const allergyBox = page.getByRole('region', { name: 'Governed allergy review' });
+      await allergyBox.getByText(new RegExp(`${ALLERGEN}.*coding incomplete`)).first().waitFor();
       noPageErrors(errors, 'prescription');
     });
 
@@ -309,24 +290,14 @@ async function pickPatient(page, query, name) {
       await work.getByText('Saved and confirmed.', { exact: true }).waitFor();
       await work.close();
       await page.getByRole('button', { name: 'Save draft' }).click();
-      await page.getByText('Consultation draft saved').waitFor();
+      await page.getByText('Notes saved and confirmed.').waitFor();
       await page.reload();
-      await page.getByRole('region', { name: 'Patient allergies' }).getByText(ALLERGEN).waitFor();
+      await page.getByRole('region', { name: 'Governed allergy review' }).getByText(new RegExp(ALLERGEN)).first().waitFor();
       assert(await page.getByLabel('Chief complaint').inputValue() === 'Fever and sore throat for 3 days', 'chief complaint not reloaded');
       await page.getByRole('tab', { name: 'Examination' }).click();
       assert(await page.getByLabel('General examination').inputValue() === 'Febrile, throat congested', 'examination not reloaded');
       await page.getByRole('tab', { name: 'Diagnosis' }).click();
       await page.locator('table').getByText('R50.9').waitFor();
-      await page.getByRole('tab', { name: 'Prescription' }).click();
-      const rxTable = page.locator('table', { hasText: 'Frequency' });
-      await rxTable.getByText(SAFE_MEDICINE).waitFor();
-      await rxTable.getByText(ALLERGEN).first().waitFor();
-      await page.getByRole('tab', { name: 'Investigations' }).click();
-      await page.locator('table', { hasText: 'Status' }).getByText(LAB_TEST).waitFor();
-      const items = await sql(`SELECT pi.medicine_name FROM hms_prescription_items pi JOIN hms_prescriptions p ON p.id = pi.prescription_id
-                               WHERE p.encounter_id = $1 ORDER BY pi.id`, [state.encounterId]);
-      assert(items.length === 2 && items.some((i) => i.medicine_name.startsWith(SAFE_MEDICINE)) && items.some((i) => i.medicine_name.startsWith(ALLERGEN)),
-        `prescription items ${JSON.stringify(items)}`);
       const labs = await sql(`SELECT i.item_name, i.test_category, o.status, o.urgency FROM hms_investigation_order_items i
                               JOIN hms_investigation_orders o ON o.id = i.order_id WHERE o.encounter_id = $1`, [state.encounterId]);
       assert(labs.length === 1 && labs[0].item_name === LAB_TEST && labs[0].test_category === 'Haematology', `lab orders ${JSON.stringify(labs)}`);
@@ -336,7 +307,7 @@ async function pickPatient(page, query, name) {
       noPageErrors(errors, 'draft reload');
     });
 
-    await step('Doctor finalizes; token, appointment and prescription follow; no second finalize', async () => {
+    await step('Doctor finalizes; token and appointment follow; the signed note cannot be signed or edited again', async () => {
       const { page, errors } = fresh(doc);
       await page.getByRole('button', { name: 'Finalize encounter' }).click();
       const dialog = page.getByRole('dialog');
@@ -348,16 +319,12 @@ async function pickPatient(page, query, name) {
       assert(t.status === 'Done', `token ${t.status}`);
       const [a] = await sql('SELECT status FROM hms_appointments WHERE id = $1', [state.appointment.id]);
       assert(a.status === 'Completed', `appointment ${a.status}`);
-      const [rx] = await sql('SELECT id, status, qr_data FROM hms_prescriptions WHERE encounter_id = $1', [state.encounterId]);
-      assert(rx && rx.status === 'Finalized' && rx.qr_data, `prescription ${JSON.stringify(rx)}`);
-      state.prescriptionId = rx.id;
+      const [{ record_revision: rev }] = await sql('SELECT record_revision FROM hms_encounters WHERE id = $1', [state.encounterId]);
       const token = await apiLogin('doctor');
-      const again = await api('PATCH', `/hms/encounters/${state.encounterId}/finalize`, { token, body: {} });
-      assert(again.status === 400, `second finalize returned ${again.status}`);
-      const edit = await api('PUT', `/hms/encounters/${state.encounterId}`, { token, body: { hopi: 'changed' } });
-      assert(edit.status === 400, `edit after finalize returned ${edit.status}`);
-      const rxEdit = await api('PUT', `/hms/prescriptions/${rx.id}/items`, { token, body: { items: [{ medicine_name: 'Ibuprofen' }] } });
-      assert(rxEdit.status === 400, `prescription edit after finalize returned ${rxEdit.status}`);
+      const again = await api('PATCH', `/hms/encounters/${state.encounterId}/finalize`, { token, body: {}, headers: { 'If-Match': String(rev) } });
+      assert(again.status >= 400 && again.status < 500, `second finalize returned ${again.status}`);
+      const edit = await api('PUT', `/hms/encounters/${state.encounterId}`, { token, body: { hopi: 'changed' }, headers: { 'If-Match': String(rev) } });
+      assert(edit.status >= 400 && edit.status < 500, `edit after finalize returned ${edit.status}`);
       const dx = await api('POST', '/hms/diagnoses', { token, body: { encounter_id: state.encounterId, icd10_code: 'J02.9', icd10_description: 'Pharyngitis' } });
       assert(dx.status === 400, `diagnosis added after finalize: ${dx.status}`);
       noPageErrors(errors, 'finalize');
@@ -367,36 +334,19 @@ async function pickPatient(page, query, name) {
     await step('Finalized consultation is read-only; failed allergy load shows "Allergies not checked"', async () => {
       const { page, errors } = fresh(doc);
       await page.goto(`${BASE}/hms/consultation/${state.encounterId}`);
-      await page.getByRole('region', { name: 'Patient allergies' }).getByText(ALLERGEN).waitFor();
+      await page.getByRole('region', { name: 'Governed allergy review' }).getByText(new RegExp(ALLERGEN)).first().waitFor();
       assert(await page.getByRole('button', { name: 'Finalize encounter' }).count() === 0, 'finalize offered on a finalized encounter');
       await page.route('**/api/medication/allergies/*', (route) => route.abort());
       await page.reload();
-      const box = page.getByRole('region', { name: 'Patient allergies' });
-      await box.getByText('Allergies not checked').waitFor();
+      const box = page.getByRole('region', { name: 'Governed allergy review' });
+      await box.getByRole('alert').filter({ hasText: 'Allergies not checked' }).waitFor();
       const text = await box.textContent();
-      assert(!text.includes('No known allergies'), 'claims no known allergies when the check failed');
+      assert(!text.includes('Reviewed: no known allergies.'), 'claims no known allergies when the check failed');
       await page.unroute('**/api/medication/allergies/*');
       noPageErrors(errors.filter((e) => !/ERR_FAILED|Failed to load allerg/i.test(e)), 'read-only consultation');
     });
 
-    await step('Prescription slip shows the allergy and warns before adding the allergen', async () => {
-      const { page, errors } = fresh(doc);
-      await page.goto(`${BASE}/hms/prescription-slip?patientId=${state.patient.id}`);
-      const box = page.getByRole('region', { name: 'Patient allergies' });
-      await box.getByText(ALLERGEN).waitFor();
-      await page.getByPlaceholder('Search medicine by generic or brand name').fill(ALLERGEN.slice(0, 6));
-      await page.locator('.search-dropdown').getByRole('button', { name: new RegExp(ALLERGEN) }).first().click();
-      const dialog = page.getByRole('dialog');
-      await dialog.waitFor();
-      assert((await dialog.textContent()).includes(ALLERGEN), 'slip warning does not name the allergy');
-      await dialog.getByRole('button', { name: 'Cancel' }).click();
-      await dialog.waitFor({ state: 'detached' });
-      const names = await page.locator('.medicine-name-input').evaluateAll((els) => els.map((e) => e.value));
-      assert(!names.some((n) => n.toLowerCase().includes(ALLERGEN.toLowerCase())), `slip kept the cancelled medicine: ${names}`);
-      noPageErrors(errors, 'prescription slip');
-    });
-
-    await step('Quick consult shows allergies truthfully and warns on an allergen', async () => {
+    await step('Quick consult shows allergies truthfully and prescribes by coded order only', async () => {
       const { page, errors } = fresh(doc);
       const recToken = await apiLogin('receptionist');
       const qc = await api('POST', '/patients/hms', { token: recToken, body: { patientType: 'other', name: QC_NAME, age: 52, gender: 'Male', opdIndoor: 'OPD', testDate: new Date().toISOString().slice(0, 10), phoneNumber: `8${S.padStart(9, '0')}` } });
@@ -411,21 +361,18 @@ async function pickPatient(page, query, name) {
       await page.goto(`${BASE}/doctor/quick-consult`);
       await page.getByPlaceholder('Search patient name, ID or UHID').fill(state.qcPatient.uhid);
       await page.getByRole('button', { name: new RegExp(QC_NAME) }).click();
-      await page.getByRole('region', { name: 'Patient allergies' }).getByText('paracetamol').waitFor();
+      await page.getByRole('region', { name: 'Governed allergy review' }).getByText(/paracetamol/).first().waitFor();
       await page.getByRole('tab', { name: 'Prescription' }).click();
-      await page.getByLabel('Search medicine to prescribe').fill('Paracet');
-      await page.getByRole('button', { name: /^Paracetamol/ }).first().click();
-      const dialog = page.getByRole('dialog');
-      await dialog.waitFor();
-      assert(/paracetamol/i.test(await dialog.textContent()), 'quick consult warning does not name the allergy');
-      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await page.getByLabel('Approved product', { exact: true }).waitFor();
+      assert(await page.getByLabel('Search medicine to prescribe').count() === 0, 'quick consult still offers a free-text medicine writer');
 
       // Patient with none on record (the doctor must be in the patient's care to read allergies)
       await inCare(state.corp.id);
       await page.getByRole('button', { name: 'Back to search' }).click();
       await page.getByPlaceholder('Search patient name, ID or UHID').fill(state.corp.uhid);
       await page.getByRole('button', { name: new RegExp(CORP_NAME) }).click();
-      await page.getByRole('region', { name: 'Patient allergies' }).getByText('No known allergies').waitFor();
+      // Nothing recorded is not "no known allergies": the review state says unknown.
+      await page.getByRole('region', { name: 'Governed allergy review' }).locator('strong').filter({ hasText: /^(Allergy status unknown|Allergies not reviewed yet)$/ }).waitFor();
       noPageErrors(errors, 'quick consult');
     });
 
@@ -509,7 +456,11 @@ async function pickPatient(page, query, name) {
       const rx = (await api('POST', '/hms/prescriptions', { token: doc, body: { encounter_id: enc.id, patient_id: pt.data.data.id } })).data;
       const lines = await api('PUT', `/hms/prescriptions/${rx.id}/items`, { token: doc, body: { items: [{ medicine_name: `E2E OPD Med ${S}`, generic_name: `E2E OPD Med ${S}`, dose: '1', dose_unit: 'Tablet', frequency: 'BD', duration_days: 1 }] } });
       assert(lines.status === 200, `items ${lines.status}`);
-      assert((await api('PATCH', `/hms/encounters/${enc.id}/finalize`, { token: doc, body: {} })).status === 200, 'finalize failed');
+      const [{ record_revision: r0 }] = await sql('SELECT record_revision FROM hms_encounters WHERE id = $1', [enc.id]);
+      const noted = await api('PUT', `/hms/encounters/${enc.id}`, { token: doc, body: { chief_complaint: 'Synthetic legacy visit' }, headers: { 'If-Match': String(r0) } });
+      assert(noted.status === 200, `note ${noted.status} ${JSON.stringify(noted.data).slice(0, 160)}`);
+      const signed = await api('PATCH', `/hms/encounters/${enc.id}/finalize`, { token: doc, body: {}, headers: { 'If-Match': String(noted.data.data?.revision ?? Number(r0) + 1) } });
+      assert(signed.status === 200, `finalize ${signed.status} ${JSON.stringify(signed.data).slice(0, 160)}`);
       const disp = await api('POST', '/pharmacy/dispense', { token: ph, body: { prescriptionId: rx.id, items: [{ prescriptionItemId: lines.data[0].id, medicineId: m.id, batchId: batch.id, quantity: 2 }] } });
       assert(disp.status === 409 && disp.data.code === 'CODED_ORDER_REQUIRED', `unsafe legacy dispense ${disp.status}`);
       // Historical invoice compatibility fixture. This is not a new medication
@@ -538,14 +489,12 @@ async function pickPatient(page, query, name) {
     });
 
     // ── 8. Profile and journey ──────────────────────────────────────
-    await step('Patient profile shows the visit, prescription and bill', async () => {
+    await step('Patient profile shows the visit and the paid bill', async () => {
       const { page, errors } = fresh(rec);
       await page.goto(`${BASE}/hms/patients/${state.patient.id}`);
       await page.getByText(ALLERGEN).first().waitFor();
       await page.getByRole('tab', { name: 'Visits' }).click();
       await page.locator('tbody tr', { hasText: 'Finalized' }).first().waitFor();
-      await page.getByRole('tab', { name: 'Prescriptions' }).click();
-      await page.locator('tbody tr', { hasText: '2 medicines' }).first().waitFor();
       await page.getByRole('tab', { name: 'Billing' }).click();
       const billRow = page.locator('tbody tr', { hasText: state.bill.bill_number }).first();
       await billRow.waitFor();
@@ -553,12 +502,11 @@ async function pickPatient(page, query, name) {
       noPageErrors(errors, 'profile');
     });
 
-    await step('Patient journey shows the visit, prescription and bill', async () => {
+    await step('Patient journey shows the visit and the paid bill', async () => {
       const { page, errors } = fresh(rec);
       await page.goto(`${BASE}/patient/${state.patient.id}/journey`);
       const list = page.locator('ol.timeline');
       await list.getByText(/OPD visit with Dr\./).first().waitFor();
-      await list.getByText(/Prescription, 2 medicines/).first().waitFor();
       await list.getByText(new RegExp(`Bill ${state.bill.bill_number}.*Paid`)).first().waitFor();
       noPageErrors(errors, 'journey');
     });

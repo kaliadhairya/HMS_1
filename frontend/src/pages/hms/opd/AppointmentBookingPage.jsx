@@ -77,7 +77,9 @@ export default function AppointmentBookingPage() {
     try {
       const res = await api.get(`/hms/appointments?doctor_id=${doctorId}&date=${date}`);
       booked = (res.data.data || [])
-        .filter((appointment) => !['Cancelled', 'Completed', 'No Show'].includes(appointment.status))
+        // Same rule as the database (ex_appointments_doctor_no_overlap): only a
+        // cancelled or no-show appointment frees its slot; a completed one used it.
+        .filter((appointment) => !['Cancelled', 'No Show'].includes(appointment.status))
         .map((appointment) => appointment.slot_start)
         .filter(Boolean);
     } catch (err) {

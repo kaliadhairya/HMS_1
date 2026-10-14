@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { ListChecks } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
 import { useAuth } from '../../../context/AuthContext';
+import { useLiveQuery } from '../../../data/liveQuery';
+import Freshness from '../../../components/ui/Freshness';
 
 const when = (v) => (v ? new Date(v).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '');
 const ROLE_NAMES = { super_admin: 'Security lead (super admin)', admin: 'Administration', doctor: 'Doctors', nurse: 'Nursing', lab_technician: 'Laboratory', pharmacist: 'Pharmacy', receptionist: 'Front desk' };
@@ -16,15 +18,13 @@ const ROLE_NAMES = { super_admin: 'Security lead (super admin)', admin: 'Adminis
 export default function WorklistPage() {
   const { user } = useAuth();
   const isAdmin = ['super_admin', 'admin'].includes(user?.role);
-  const [items, setItems] = useState([]);
   const [status, setStatus] = useState('Open');
   const [busy, setBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    try { setItems((await api.get(`/worklist?status=${status}`)).data.data); }
-    catch (err) { toast.error(err.response?.data?.message || 'Could not load the worklist.'); }
-  }, [status]);
-  useEffect(() => { load(); }, [load]);
+  // Shared live read (C2): refreshes every 30 s and on return to the tab; a
+  // failed refresh keeps the last list on screen and says so.
+  const query = useLiveQuery('/worklist', { params: { status }, select: (b) => b?.data || [], refreshMs: 30000 });
+  const items = query.data || [];
+  const load = query.refresh;
 
   const act = async (request, success) => {
     if (busy) return;
@@ -46,11 +46,12 @@ export default function WorklistPage() {
               <option value="Open">Open</option><option value="Resolved">Resolved</option><option value="all">All</option>
             </select>
           </div>
+          <div style={{ padding: '0 16px 8px' }}><Freshness query={query} label="worklist" /></div>
           <div className="dt-scroll">
             <table className="dt-table">
               <thead><tr><th>Problem</th><th>Owner</th><th>Seen</th><th>Status</th><th /></tr></thead>
               <tbody>
-                {!items.length && <tr><td colSpan={5} className="cell-secondary">Nothing here.</td></tr>}
+                {!items.length && <tr><td colSpan={5} className="cell-secondary">{query.error && !query.updatedAt ? 'The worklist could not be loaded; this does not mean it is empty.' : query.loading ? 'Loading…' : 'Nothing here.'}</td></tr>}
                 {items.map((w) => (
                   <tr key={w.id}>
                     <td><strong>{w.title}</strong><div className="cell-secondary mono">{w.kind}</div></td>

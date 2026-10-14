@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import {
   CalendarPlus, RefreshCw, Search, Stethoscope, Pill, Share2, BedSingle, FileBadge, FlaskConical, BedDouble,
-  UserRound, Play, ListOrdered, History, Users,
+  UserRound, Play, ListOrdered, History, Users, TriangleAlert,
 } from 'lucide-react';
 import ReferralTypeModal from '../ReferralTypeModal';
 import PageHeader from '../ui/PageHeader';
@@ -13,6 +13,8 @@ import RowMenu from '../ui/RowMenu';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import api from '../../api/axios';
+import { useLiveQuery } from '../../data/liveQuery';
+import Freshness from '../ui/Freshness';
 
 const COMPLETED_PRESCRIPTION_STATUSES = new Set(['Consulted', 'Finalized', 'Dispensed']);
 const EXPIRES_AFTER_DAYS = 4;
@@ -65,13 +67,19 @@ export default function DoctorDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const socket = useSocket();
-  const [todayPatients, setTodayPatients] = useState([]);
-  const [pendingPatients, setPendingPatients] = useState([]);
-  const [doctorPrescriptions, setDoctorPrescriptions] = useState([]);
-  const [doctorLabs, setDoctorLabs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Shared live reads (C2): a failed refresh keeps the last list and says so,
+  // instead of showing an empty queue.
+  const listOf = (body) => body?.data || [];
+  const todayQ = useLiveQuery('/patients/hms/today-patients', { select: listOf, refreshMs: 30000 });
+  const pendingQ = useLiveQuery('/patients/hms/pending-consultation', { select: listOf, refreshMs: 60000 });
+  const rxQ = useLiveQuery('/doctor/prescriptions', { select: listOf, refreshMs: 60000 });
+  const labsQ = useLiveQuery('/doctor/labs', { select: listOf, refreshMs: 60000, events: ['lab_result_ready', 'lab_report_amended'] });
+  const todayPatients = todayQ.data || [];
+  const pendingPatients = pendingQ.data || [];
+  const doctorPrescriptions = rxQ.data || [];
+  const doctorLabs = labsQ.data || [];
+  const loading = todayQ.loading || pendingQ.loading;
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [lastRefreshedAt, setLastRefreshedAt] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [todaySearch, setTodaySearch] = useState('');
   const [pendingSearch, setPendingSearch] = useState('');
@@ -81,23 +89,11 @@ export default function DoctorDashboard() {
   const [referralPatient, setReferralPatient] = useState(null);
   const pendingActionId = useRef(null);
 
-  const fetchDoctorData = useCallback(async () => {
-    const [todayRes, pendingRes, prescriptionsRes, labsRes] = await Promise.allSettled([
-      api.get('/patients/hms/today-patients'),
-      api.get('/patients/hms/pending-consultation'),
-      api.get('/doctor/prescriptions'),
-      api.get('/doctor/labs'),
-    ]);
-    const dataOf = (r) => (r.status === 'fulfilled' ? r.value.data?.data || [] : []);
-    setTodayPatients(dataOf(todayRes));
-    setPendingPatients(dataOf(pendingRes));
-    setDoctorPrescriptions(dataOf(prescriptionsRes));
-    setDoctorLabs(dataOf(labsRes));
-    setLastRefreshedAt(new Date());
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { fetchDoctorData(); }, [fetchDoctorData]);
+  const fetchDoctorData = useCallback(
+    () => Promise.all([todayQ.refresh(), pendingQ.refresh(), rxQ.refresh(), labsQ.refresh()]),
+    [todayQ.refresh, pendingQ.refresh, rxQ.refresh, labsQ.refresh], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const failing = [todayQ, pendingQ, rxQ, labsQ].find((q) => q.error);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -305,7 +301,7 @@ export default function DoctorDashboard() {
       <PageHeader
         title={`${greeting}, Dr. ${doctorName}`}
         description={`${dateStr}. Your OPD queue, patients still waiting from earlier days, and lab reviews.`}
-        meta={lastRefreshedAt && <span className="muted">Updated {fmtTime(lastRefreshedAt)}</span>}
+        meta={<Freshness query={failing || todayQ} label={failing === labsQ ? 'lab results' : failing === rxQ ? 'prescriptions' : 'patient queue'} />}
         actions={(
           <>
             <button type="button" className="btn btn-ghost btn-md" onClick={() => { fetchDoctorData(); toast.success('Dashboard refreshed', { id: 'doc-refresh' }); }}>
@@ -362,7 +358,9 @@ export default function DoctorDashboard() {
           getRowId={(p) => String(p.id)}
           initialSorting={[{ id: 'registered', desc: false }]}
           pageSize={50}
-          empty={todayPatients.length === 0 ? (
+          empty={todayQ.error && !todayQ.updatedAt ? (
+            <EmptyState icon={TriangleAlert} title="Your patient queue could not be loaded" description="This is not an empty queue. Use Refresh, and check with the front desk if it keeps failing." />
+          ) : todayPatients.length === 0 ? (
             <EmptyState icon={Users} title="No patients registered for you today" description="Patients appear here as soon as the front desk registers them for consultation." />
           ) : (
             <EmptyState icon={Search} title="No patients match" description="Clear the search or choose another status." />
@@ -401,7 +399,9 @@ export default function DoctorDashboard() {
           loading={loading}
           getRowId={(p) => String(p.id)}
           pageSize={10}
-          empty={(pendingView === 'open' ? openPending : expiredPending).length === 0 ? (
+          empty={pendingQ.error && !pendingQ.updatedAt ? (
+            <EmptyState icon={TriangleAlert} title="Earlier visits could not be loaded" description="This is not an empty list. Use Refresh to try again." />
+          ) : (pendingView === 'open' ? openPending : expiredPending).length === 0 ? (
             pendingView === 'open'
               ? <EmptyState icon={Stethoscope} title="Nobody is waiting from earlier days" description="Every patient registered for you in the last few days has been seen." />
               : <EmptyState icon={History} title="No expired visits" description="Visits that were never seen appear here once they expire." />

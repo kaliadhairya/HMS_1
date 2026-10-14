@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api/axios';
 import { setFacilityTimezone } from '../utils/localDate';
+import { clearAllDrafts } from '../hooks/useRecoverableDraft';
+import { clearLiveCache } from '../data/liveQuery';
 
 const AuthContext = createContext(null);
 
@@ -49,6 +51,11 @@ export function AuthProvider({ children }) {
     setLoading(true);
     try {
       const { data } = await api.post('/auth/login', { username, password });
+      // Another person's unsaved drafts and cached lists never carry over (C2).
+      let previous = null;
+      try { previous = JSON.parse(localStorage.getItem('lab_user') || 'null'); } catch { /* none */ }
+      if (String(previous?.id ?? '') !== String(data.user?.id ?? '')) clearAllDrafts();
+      clearLiveCache();
       const userData = {
         ...data.user,
         first_login: data.first_login || 'N',
@@ -78,6 +85,8 @@ export function AuthProvider({ children }) {
       // Already signed out or offline: the local sign-out below still happens.
     }
     localStorage.removeItem('lab_user');
+    clearAllDrafts();
+    clearLiveCache();
     setUser(null);
   };
 

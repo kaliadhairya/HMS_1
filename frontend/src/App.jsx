@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
+import CriticalResultAlerts from './components/CriticalResultAlerts';
 import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
@@ -178,6 +179,7 @@ export default function App() {
               error: { iconTheme: { primary: 'var(--red)', secondary: '#fff' } },
             }}
           />
+          <CriticalResultAlerts />
           <ErrorBoundary>
             <Suspense fallback={<PageLoader />}>
             <Routes>

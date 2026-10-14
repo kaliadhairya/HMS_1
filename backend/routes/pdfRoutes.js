@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const PDFDocument = require('pdfkit');
+// Indian-script names and text print in their own fonts (completion C2).
+const { enableUnicode } = require('../services/printFonts.cts');
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
@@ -11,7 +13,9 @@ const { loadOrders } = require('./lab');
 // ── Helpers ─────────────────────────────────────────────────────
 const safe = (val, fallback = '') => {
   if (val === null || val === undefined) return fallback;
-  return String(val).replace(/[^\x20-\x7E\xA0-\xFF]/g, '').trim() || fallback;
+  // Latin text plus the Indian scripts the bundled fonts print (C2); anything
+  // else (control characters, scripts without a font) is dropped.
+  return String(val).replace(/[^\x20-\x7E\xA0-\xFF\u0900-\u0D7F\uA8E0-\uA8FF\u200C\u200D]/g, '').trim() || fallback;
 };
 
 const uppercaseKeys = (row) => Object.fromEntries(
@@ -106,7 +110,7 @@ async function generatePrescriptionPDF(prescriptionId, res) {
   diagnoses = diagnoses.map(uppercaseKeys);
 
   // ── PDF setup ──────────────────────────────────────────────────
-  const doc = new PDFDocument({ margin: 40, size: 'A4' });
+  const doc = enableUnicode(new PDFDocument({ margin: 40, size: 'A4' }));
   const MARGIN = 40;
   const PW = doc.page.width;
   const CONTENT = PW - MARGIN * 2;
@@ -244,7 +248,7 @@ async function generateOPDBillPDF(billId, res) {
   payments = payments.map(uppercaseKeys);
 
   // ── PDF setup ──────────────────────────────────────────────────
-  const doc = new PDFDocument({ margin: 40, size: 'A4' });
+  const doc = enableUnicode(new PDFDocument({ margin: 40, size: 'A4' }));
   const MARGIN = 40;
   const PW = doc.page.width;
   const CONTENT = PW - MARGIN * 2;
@@ -380,7 +384,7 @@ async function generateLabOrderPDF(orderId, res, { download = false } = {}) {
   }
   const hosp = await getHospitalProfile();
 
-  const doc = new PDFDocument({ margin: 40, size: 'A4' });
+  const doc = enableUnicode(new PDFDocument({ margin: 40, size: 'A4' }));
   const MARGIN = 40;
   const PW = doc.page.width;
   const PH = doc.page.height;
