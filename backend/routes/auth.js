@@ -106,7 +106,7 @@ router.post('/login', [
     );
 
     const session = await createSession(user.id, req);
-    const token = signSessionToken(user, session.id);
+    const token = signSessionToken(user, session.id,session.facilityId);
     // Browsers get the token only as an HttpOnly cookie, out of reach of page
     // scripts. Scripts and services ask for it with X-Auth-Transport: bearer.
     setSessionCookie(req, res, token);
@@ -124,12 +124,14 @@ router.post('/login', [
         first_name: user.first_name,
         last_name: user.last_name,
         role: user.role,
+        facilityId:session.facilityId,
+        facilityTimezone:session.facilityTimezone,
       },
       first_login: user.first_login || 'N',
     });
   } catch (err) {
     if (!err.status) console.error('Authentication operation failed:', err.code || err.name);
-    res.status(500).json({ success: false, message: 'Server error.' });
+    res.status(err.status || 500).json({ success: false, ...(err.code ? {code:err.code}:{}), message: err.status ? err.message : 'Server error.' });
   }
 });
 

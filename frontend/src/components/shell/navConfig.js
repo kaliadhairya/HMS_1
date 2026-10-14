@@ -21,6 +21,7 @@ const LAB = [
 
 export const NAV_BY_ROLE = {
   super_admin: [
+    { to: '/hms/admin/clinical-privileges', label: 'Clinical privileges', icon: ShieldCheck, group: 'Administration' },
     { to: '/lab/governed', label: 'Laboratory workspace', icon: TestTube, group: 'Laboratory' },
     { to: '/super_admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
     { to: '/hms/patients/search', label: 'Patients', icon: Search, group: 'Patients' },
@@ -44,6 +45,7 @@ export const NAV_BY_ROLE = {
     { to: '/admin/devices', label: 'Device interfaces', icon: Cable, group: 'Administration' },
   ],
   admin: [
+    { to: '/hms/admin/clinical-privileges', label: 'Clinical privileges', icon: ShieldCheck, group: 'Administration' },
     { to: '/lab/governed', label: 'Laboratory workspace', icon: TestTube, group: 'Laboratory' },
     { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
     { to: '/hms/admin/patients', label: 'Patients', icon: Hospital, group: 'Patients' },

@@ -2,7 +2,7 @@
 // facility time zone, initially Asia/Kolkata), not the server's UTC day.
 // Between midnight and 05:30 IST the UTC date is still yesterday; using it
 // put appointments and tokens booked then on the wrong day.
-const facilityTz = () => process.env.FACILITY_TZ || 'Asia/Kolkata';
+const facilityTz = () => require('./auditContext').storage.getStore()?.facilityTimezone || process.env.FACILITY_TZ || 'Asia/Kolkata';
 
 // 'YYYY-MM-DD' of the given instant in the facility's time zone.
 const serviceDate = (at = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: facilityTz(), year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);

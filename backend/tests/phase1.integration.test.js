@@ -9,7 +9,7 @@ test('Phase 1 transaction and failure acceptance', { skip: !enabled }, async (t)
   const { Client } = require('pg');
   const { sequelize } = require('../models/db');
   const { dbConfig } = require('../migrate');
-  const { requestContext, bindAuditActor, storage } = require('../utils/auditContext');
+  const { requestContext, bindAuditActor, storage, setActor } = require('../utils/auditContext');
   const { idempotencyGuard } = require('../utils/idempotency');
   const settings = require('../utils/settings');
   const { publish, allocateSequences, eventsPage, latestSequence } = require('../utils/outbox');
@@ -21,6 +21,7 @@ test('Phase 1 transaction and failure acceptance', { skip: !enabled }, async (t)
   const { rows: users } = await db.query("SELECT id FROM hms_users WHERE role = 'receptionist' ORDER BY id LIMIT 1");
   assert.ok(users.length, 'Seed test users first');
   const userId = users[0].id;
+  const {rows:[facility]}=await db.query('SELECT id,timezone FROM hms_facilities WHERE id=hms_initial_facility()');
   await db.query("SELECT setval('hms_patient_advances_seq', (SELECT COALESCE(max(id),0)+100 FROM hms_patient_advances), false)");
   const tag = crypto.randomUUID();
   const { rows: patients } = await db.query("INSERT INTO hms_patients (name, uhid, patienttype, age, gender, opdindoor, testdate) VALUES ('Phase 1 synthetic patient', $1, 'other', 30, 'Male', 'OPD', CURRENT_DATE) RETURNING id", [`P1-${tag.slice(0,12)}`]);
@@ -28,7 +29,7 @@ test('Phase 1 transaction and failure acceptance', { skip: !enabled }, async (t)
   const app = express();
   app.use(express.json());
   app.use(requestContext);
-  app.use((req, res, next) => { req.user = { id: userId, role: 'receptionist' }; storage.getStore().userId = userId; next(); });
+  app.use((req, res, next) => { req.user = { id: userId, role: 'receptionist',facilityId:facility.id,facilityTimezone:facility.timezone }; setActor(req.user); next(); });
   app.use(require('../middleware/accessAudit'));
   let stalled;
   let resume;

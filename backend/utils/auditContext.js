@@ -21,6 +21,8 @@ function setActor(user) {
   if (!store) return;
   store.userId = user?.id ?? null;
   store.sessionId = user?.sessionId ?? null;
+  store.facilityId=user?.facilityId??null;
+  store.facilityTimezone=user?.facilityTimezone??process.env.FACILITY_TZ??'Asia/Kolkata';
 }
 
 // Before a pooled connection runs a query, make its hms.* settings match the
@@ -32,11 +34,11 @@ function bindAuditActor(sequelize) {
   manager.getConnection = async function getConnectionWithActor(options) {
     const connection = await getConnection(options);
     const store = storage.getStore() || {};
-    const values = [store.userId == null ? '' : String(store.userId), store.sessionId || '', store.requestId || ''];
+    const values = [store.userId == null ? '' : String(store.userId), store.sessionId || '', store.requestId || '',store.facilityId||'',store.facilityTimezone||process.env.FACILITY_TZ||'Asia/Kolkata'];
     const key = values.join('|');
     if (connection.hmsAuditKey !== key) {
       try { await connection.query(
-        "SELECT set_config('hms.actor_user_id', $1, false), set_config('hms.session_id', $2, false), set_config('hms.request_id', $3, false)",
+        "SELECT set_config('hms.actor_user_id', $1, false), set_config('hms.session_id', $2, false), set_config('hms.request_id', $3, false),set_config('hms.facility_id',$4,false),set_config('hms.facility_tz',$5,false)",
         values
       ); } catch (error) {
         await manager.releaseConnection(connection).catch(() => {});

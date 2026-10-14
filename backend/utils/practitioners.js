@@ -2,9 +2,9 @@ const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models/db');
 
 // Practitioner credentials (migration 0012). A doctor whose recorded
-// registrations have all expired may not start or finish clinical work.
-// Doctors with no credentials recorded yet are not blocked.
-const EXPIRED_MESSAGE = 'Your recorded medical registration has expired, so you cannot start or finish clinical work. Ask an administrator to record your renewed registration.';
+// registration is missing, unverified, ended or expired may not start or
+// finish clinical work. No migration invents verification evidence.
+const EXPIRED_MESSAGE = 'A current independently verified medical registration is required to start or sign clinical work. Ask your hospital administrator to review your registration and verification evidence.';
 
 async function credentialsExpired(userId) {
   const [row] = await sequelize.query('SELECT practitioner_credentials_expired(:userId) AS expired', {

@@ -19,6 +19,18 @@ test('another facility time zone can be configured', () => {
   try { assert.equal(serviceDate(new Date('2026-10-13T23:59:00Z')), '2026-10-13'); } finally { delete process.env.FACILITY_TZ; }
 });
 
+test('concurrent verified facility contexts keep their own calendar day', async () => {
+  const { storage } = require('../utils/auditContext');
+  const at = new Date('2026-10-13T20:00:00Z');
+  const results = await Promise.all(['UTC', 'Asia/Kolkata'].map(facilityTimezone =>
+    storage.run({ facilityTimezone }, async () => {
+      await new Promise(resolve => setImmediate(resolve));
+      return serviceDate(at);
+    })));
+  assert.deepEqual(results, ['2026-10-13', '2026-10-14']);
+  assert.equal(serviceDate(at), '2026-10-14');
+});
+
 test('browser service dates use the hospital calendar and calendar-day increments', async () => {
   const { localYmd, nextLocalDate, setFacilityTimezone } = await import('../../frontend/src/utils/localDate.js');
   try {

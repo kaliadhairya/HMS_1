@@ -33,11 +33,18 @@ const identityServiceEnabled = () => Boolean(process.env.INTERNAL_SERVICE_SECRET
 // Signed auth-context headers are only honoured behind an explicitly enabled gateway.
 const trustedGatewayEnabled = () => process.env.TRUST_GATEWAY_AUTH_CONTEXT === 'true';
 
+async function attachFacility(req,asserted){
+  const f=await require('../services/facilities.cts').sessionFacility(req.user,asserted);
+  if(req.headers['x-facility-id']&&req.headers['x-facility-id']!==f.facilityId)throw Object.assign(new Error('The supplied facility header differs from the verified session.'),{status:403,code:'FACILITY_BINDING_MISMATCH'});
+  Object.assign(req.user,f);
+}
+
 const protect = async (req, res, next) => {
   try {
     const trusted = trustedGatewayEnabled() ? readTrustedContext(req) : null;
     if (trusted) {
       req.user = trusted;
+      await attachFacility(req,trusted.facilityId);
       setActor(req.user);
       return next();
     }
@@ -59,6 +66,7 @@ const protect = async (req, res, next) => {
       }
       if (!context) return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
       req.user = context;
+      await attachFacility(req,context.facilityId);
       setActor(req.user);
       return next();
     }
@@ -106,10 +114,12 @@ const protect = async (req, res, next) => {
         sessionId: decoded.sid,
         permissions,
       };
+      await attachFacility(req,decoded.facility_id);
       setActor(req.user);
       return next();
     }
   } catch (error) {
+    if(error.status)return res.status(error.status).json({success:false,code:error.code,message:error.message});
     console.error('Identity validation error:', error.message);
     return res.status(503).json({ success: false, message: 'Authentication service is temporarily unavailable.' });
   }

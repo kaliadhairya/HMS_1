@@ -618,6 +618,7 @@ async function insertVersion(orderId, version, b, u, reason, tx) {
   );
 }
 async function createOrder(b, u, tx) {
+  await require('./facilities.cts').requirePrivilege(u, 'PRESCRIBE', tx);
   const pid = integer(b.patient_id, "Patient"),
     eid = integer(b.encounter_id, "Encounter");
   check(
@@ -920,6 +921,7 @@ async function assess(o, v, b, u, tx) {
   return assessment;
 }
 async function transition(oid, action, b, u, header, tx) {
+  await require('./facilities.cts').requirePrivilege(u, 'PRESCRIBE', tx);
   const { o, v } = await order(oid, tx);
   expected(header, o.revision);
   check(

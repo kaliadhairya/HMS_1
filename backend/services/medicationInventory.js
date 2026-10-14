@@ -346,7 +346,7 @@ async function receive(b, u, tx) {
   );
   const sorted = resolved.map((x) => x.line);
   const mainLocation = await one(
-    "SELECT * FROM hms_med_locations WHERE code='MAIN'",
+    "SELECT * FROM hms_med_locations WHERE code='MAIN' AND facility_id=hms_current_facility()",
     {},
     tx,
   );
@@ -443,7 +443,7 @@ async function receive(b, u, tx) {
         tx,
       );
     const main = await one(
-      "SELECT * FROM hms_med_locations WHERE code='MAIN'",
+      "SELECT * FROM hms_med_locations WHERE code='MAIN' AND facility_id=hms_current_facility()",
       {},
       tx,
     );
@@ -750,7 +750,7 @@ async function setLotStatus(batchId, b, u, tx) {
     409,
   );
   const businessDate = await one(
-    "SELECT (now() AT TIME ZONE timezone)::date::text AS day FROM hms_med_locations WHERE code='MAIN'",
+    "SELECT (now() AT TIME ZONE timezone)::date::text AS day FROM hms_med_locations WHERE code='MAIN' AND facility_id=hms_current_facility()",
     {},
     tx,
   );
@@ -862,7 +862,7 @@ async function requisitionAction(rid, action, b, u, header, tx) {
       409,
     );
     const main = await one(
-      "SELECT * FROM hms_med_locations WHERE code='MAIN'",
+      "SELECT * FROM hms_med_locations WHERE code='MAIN' AND facility_id=hms_current_facility()",
       {},
       tx,
     );

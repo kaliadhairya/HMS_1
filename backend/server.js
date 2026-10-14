@@ -154,6 +154,7 @@ app.use('/api/hms/prescriptions/patient/:id', require('./middleware/auth').prote
 app.use('/api/patients', require('./routes/patientIdentity').router);
 app.use('/api/patients', require('./routes/patientMerge').router);
 app.use('/api/practitioners', require('./routes/practitioners'));
+app.use('/api/facilities', require('./routes/facilities'));
 app.use('/api/triage', require('./routes/triage'));
 app.use('/api/clinical-documents', require('./routes/clinicalDocuments'));
 app.use('/api/adt', require('./routes/adt'));
@@ -318,6 +319,10 @@ async function start() {
     process.exit(1);
   }
   console.log('✅ PostgreSQL DB connected; schema is current');
+  if (process.env.NODE_ENV === 'production') {
+    try { await require('./services/databaseRuntime.cts').verifyRuntime(sequelize); }
+    catch (error) { console.error('Refusing unsafe production database identity:', error.message); process.exit(1); }
+  }
   // Settings live in hms_app_settings; load them before serving and keep them fresh.
   await securitySettings.loadSettings();
   securitySettings.startSettingsRefresh();

@@ -5,6 +5,8 @@ const { storage } = require('./auditContext');
 const { beforeSend } = require('./responseGate');
 
 const REQUIRED = [
+  /^\/api\/facilities(?:\/.*)?$/,
+  /^\/api\/practitioners(?:\/.*)?$/,
   /^\/api\/laboratory(?:\/.*)?$/,
   /^\/api\/lab(?:\/.*)?$/,
   /^\/api\/reports(?:\/.*)?$/,
@@ -49,8 +51,10 @@ function commandPath(req) {
   url.searchParams.sort();
   return url.pathname + (url.searchParams.size ? `?${url.searchParams}` : '');
 }
-function requestHash(req) {
-  return crypto.createHash('sha256').update(JSON.stringify({ method: req.method, path: commandPath(req), body: canonical(req.body ?? null), file: req.file ? { checksum: crypto.createHash('sha256').update(require('fs').readFileSync(req.file.path)).digest('hex'), type: req.file.mimetype } : null })).digest('hex');
+function requestHash(req, version = 2) {
+  const content = { method: req.method, path: commandPath(req), body: canonical(req.body ?? null), file: req.file ? { checksum: crypto.createHash('sha256').update(require('fs').readFileSync(req.file.path)).digest('hex'), type: req.file.mimetype } : null };
+  if (version === 2) { content.facility_id = req.user?.facilityId || null; content.if_match = req.headers?.['if-match'] ?? null; }
+  return crypto.createHash('sha256').update(JSON.stringify(content)).digest('hex');
 }
 
 // Claim, all domain queries, audit, outbox and exact response commit together.
@@ -70,17 +74,18 @@ async function idempotencyGuard(req, res, next) {
   const transaction = await sequelize.transaction();
   const store = storage.getStore();
   if (!store) { await transaction.rollback(); throw new Error('Command requires request context'); }
-  const replacements = { userId: req.user.id, key, method: req.method, path: commandPath(req), hash: requestHash(req), requestId: req.id };
+  const replacements = { userId: req.user.id, facilityId: req.user.facilityId, key, method: req.method, path: commandPath(req), hash: requestHash(req), requestId: req.id };
   const query = (sql, extra = {}) => sequelize.query(sql, { replacements, transaction, retry: NO_RETRY, ...extra });
   try {
     await query("SET LOCAL lock_timeout = '150ms'");
-    const claimed = await query(`INSERT INTO hms_idempotency_keys (user_id, idempotency_key, method, path, request_hash, request_id, state)
-      VALUES (:userId, :key, :method, :path, :hash, :requestId, 'in_progress')
+    const claimed = await query(`INSERT INTO hms_idempotency_keys (user_id, facility_id, hash_version, idempotency_key, method, path, request_hash, request_id, state)
+      VALUES (:userId, :facilityId, 2, :key, :method, :path, :hash, :requestId, 'in_progress')
       ON CONFLICT (user_id, idempotency_key) DO NOTHING RETURNING 1 AS claimed`, { type: QueryTypes.SELECT });
     if (!claimed.length) {
-      const [prior] = await query('SELECT request_hash, state, response_status, response_body FROM hms_idempotency_keys WHERE user_id = :userId AND idempotency_key = :key', { type: QueryTypes.SELECT });
+      const [prior] = await query('SELECT facility_id,hash_version,request_hash, state, response_status, response_body FROM hms_idempotency_keys WHERE user_id = :userId AND idempotency_key = :key', { type: QueryTypes.SELECT });
       await transaction.rollback();
-      if (prior.request_hash !== replacements.hash) return res.status(409).json({ success: false, code: 'IDEMPOTENCY_KEY_CONFLICT', message: 'This key was used for a different request.' });
+      if (!prior || prior.facility_id !== req.user.facilityId || prior.request_hash !== requestHash(req,prior.hash_version)) return res.status(409).json({ success: false, code: 'IDEMPOTENCY_KEY_CONFLICT', message: 'This key was used for a different request or scope.' });
+      if (prior.hash_version === 1 && req.headers['if-match'] !== undefined) return res.status(409).json({success:false,code:'IDEMPOTENCY_LEGACY_RECONCILIATION_REQUIRED',message:'The legacy receipt did not record the reviewed revision. Reconcile its result before submitting another command.'});
       if (prior.state !== 'completed') return res.status(409).json({ success: false, code: 'IDEMPOTENCY_OUTCOME_UNKNOWN', message: 'This legacy request needs reconciliation. It will not be executed again automatically.' });
       res.setHeader('Idempotent-Replay', 'true');
       return res.status(prior.response_status).json(prior.response_body);

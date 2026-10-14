@@ -15,14 +15,18 @@ function sessionLengthMs() {
   return Number(match[1]) * unit;
 }
 
-async function createSession(userId, req) {
+async function createSession(userId, req, facilityId) {
+  const F=require('../services/facilities.cts');
+  const facility=facilityId?(await F.membership(userId,facilityId))[0]:await F.initialForUser(userId);
+  if(!facility)throw Object.assign(new Error('Active membership in the requested facility is required.'),{status:403,code:'FACILITY_MEMBERSHIP_REQUIRED'});
   const [row] = await sequelize.query(
-    `INSERT INTO hms_sessions (user_id, expires_at, ip, user_agent)
-     VALUES (:userId, now() + (:ms || ' milliseconds')::interval, :ip, :userAgent)
+    `INSERT INTO hms_sessions (user_id, facility_id, expires_at, ip, user_agent)
+     VALUES (:userId, :facilityId, now() + (:ms || ' milliseconds')::interval, :ip, :userAgent)
      RETURNING id, expires_at`,
     {
       replacements: {
         userId,
+        facilityId:facility.id,
         ms: String(sessionLengthMs()),
         ip: req.ip || null,
         userAgent: String(req.headers['user-agent'] || '').slice(0, 300) || null,
@@ -30,7 +34,7 @@ async function createSession(userId, req) {
       type: QueryTypes.SELECT,
     }
   );
-  return { id: row.id || row.ID, expiresAt: row.expires_at || row.EXPIRES_AT };
+  return { id: row.id || row.ID, expiresAt: row.expires_at || row.EXPIRES_AT,facilityId:facility.id,facilityTimezone:facility.timezone };
 }
 
 function idleLimitMinutes(role) {

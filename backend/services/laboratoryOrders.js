@@ -1,6 +1,7 @@
 const C = require("./laboratoryCommon"),
   Cat = require("./laboratoryCatalogue");
 async function create(body, user, tx) {
+  await require('./facilities.cts').requirePrivilege(user, 'PRESCRIBE', tx);
   const patient = C.integer(body.patient_id),
     encounter = C.integer(body.encounter_id);
   await C.scope(user, patient, tx);
@@ -119,6 +120,7 @@ async function create(body, user, tx) {
   return { ...order, items };
 }
 async function cancel(orderId, user, header, tx) {
+  await require('./facilities.cts').requirePrivilege(user, 'PRESCRIBE', tx);
   const o = await C.lockOrder(orderId, user, tx);
   C.expected(header, o.lab_revision);
   const evidence = await C.one(

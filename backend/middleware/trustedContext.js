@@ -31,6 +31,7 @@ function readTrustedContext(req) {
       username: parsed.username,
       name: parsed.name,
       role: parsed.role,
+      sessionId:parsed.sessionId||parsed.sid,facilityId:parsed.facilityId||parsed.facility_id,
       department_id: parsed.departmentId,
       first_login: parsed.firstLogin,
       permissions: Array.isArray(parsed.permissions) ? parsed.permissions : [],

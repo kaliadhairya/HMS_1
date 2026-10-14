@@ -38,10 +38,10 @@ function assertSecurityConfig() {
 }
 
 // sessionId names the hms_sessions row that must stay live for the token to work.
-function signSessionToken(user, sessionId) {
+function signSessionToken(user, sessionId, facilityId) {
   if (!sessionId) throw new Error('A session token needs a session ID');
   return jwt.sign(
-    { id: user.id, username: user.username, role: user.role, purpose: 'session', sid: sessionId },
+    { id: user.id, username: user.username, role: user.role, purpose: 'session', sid: sessionId,...(facilityId?{facility_id:facilityId}:{}) },
     getJwtSecret(),
     {
       algorithm: 'HS256',

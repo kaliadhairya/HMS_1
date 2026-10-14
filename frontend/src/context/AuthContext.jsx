@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import api from '../api/axios';
+import { setFacilityTimezone } from '../utils/localDate';
 
 const AuthContext = createContext(null);
 
@@ -24,6 +25,7 @@ export function AuthProvider({ children }) {
               first_login: data.first_login || 'N',
             };
             setUser(userData);
+            setFacilityTimezone(userData.facilityTimezone || 'Asia/Kolkata');
             localStorage.setItem('lab_user', JSON.stringify(userData));
           } else {
             throw new Error('Invalid session');
@@ -53,6 +55,7 @@ export function AuthProvider({ children }) {
       };
       localStorage.setItem('lab_user', JSON.stringify(userData));
       setUser(userData);
+      setFacilityTimezone(userData.facilityTimezone || 'Asia/Kolkata');
       return { success: true, user: userData, first_login: data.first_login };
     } catch (err) {
       const resp = err.response;

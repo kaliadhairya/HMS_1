@@ -20,6 +20,8 @@ async function advance(token, key, body) {
   const desk = await apiLogin('receptionist');
   const [patient] = await sql('SELECT id FROM hms_patients ORDER BY id LIMIT 1');
   const [deskUser] = await sql("SELECT id FROM hms_users WHERE username = 'receptionist'");
+  const [{id:facilityId}] = await sql('SELECT hms_initial_facility() id');
+  const receiptHash = body => requestHash({method:'POST',originalUrl:'/api/billing/advance',body,user:{facilityId},headers:{}});
   const tag = `E2E idem ${stamp()}`;
   // Phase 5: an advance is a deposit payment with a receipt (hms_payment_intents carries the note).
   const deposits = async (note) => (await sql(`SELECT count(*)::int AS n FROM hms_receipts r JOIN hms_payment_intents i ON i.id = r.intent_id
@@ -85,7 +87,7 @@ async function advance(token, key, body) {
       await c.query('BEGIN');
       await c.query(`INSERT INTO hms_idempotency_keys (user_id,idempotency_key,method,path,request_hash,request_id,state,created_at)
         VALUES ($1,$2,'POST','/api/billing/advance',$3,$4,'in_progress',now()-interval '10 minutes')`,
-        [deskUser.id,key,requestHash({ method:'POST',originalUrl:'/api/billing/advance',body:body(note) }),crypto.randomUUID()]);
+        [deskUser.id,key,receiptHash(body(note)),crypto.randomUUID()]);
       const blocked = await advance(desk,key,body(note));
       assert(blocked.status === 409 && blocked.data.code === 'IDEMPOTENCY_IN_PROGRESS','old active request was not held');
       assert(await deposits(note) === 0,'retry created a deposit while original was active');
@@ -102,7 +104,7 @@ async function advance(token, key, body) {
     const key = crypto.randomUUID();
     await sql(`INSERT INTO hms_idempotency_keys (user_id, idempotency_key, method, path, request_hash, request_id, state)
                VALUES ($1, $2, 'POST', '/api/billing/advance', $3, $4, 'in_progress')`,
-    [deskUser.id, key, requestHash({ method: 'POST', originalUrl: '/api/billing/advance', body: body(note) }), `live-${crypto.randomUUID()}`]);
+    [deskUser.id, key, receiptHash(body(note)), `live-${crypto.randomUUID()}`]);
     const r = await advance(desk, key, body(note));
     assert(r.status === 409, `status ${r.status}`);
     assert(await deposits(note) === 0, 'command ran while the original was in progress');

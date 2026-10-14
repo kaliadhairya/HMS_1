@@ -72,6 +72,7 @@ async function scope(user, patientId, tx) {
     );
 }
 async function privilege(user, name, tx) {
+  await require('./facilities.cts').requirePrivilege(user, name === 'RELEASE' ? 'LAB_RELEASE' : 'LAB_PROCESS', tx);
   const u = await one(
     "SELECT id,role,is_active FROM hms_users WHERE id= :id FOR SHARE",
     { id: user.id },
