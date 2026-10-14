@@ -180,13 +180,18 @@ async function runChecks(t) {
       COALESCE((SELECT sum(f.amount - COALESCE((SELECT sum(a.amount) FROM hms_allocations a WHERE a.fund_id = f.id), 0)
         - COALESCE((SELECT sum(r.amount) FROM hms_refunds r WHERE r.fund_id = f.id AND r.state = 'Confirmed'), 0))
         FROM hms_patient_funds f WHERE f.kind = 'credit'), 0) AS credits,
-      COALESCE((SELECT sum(GREATEST(0, billing_invoice_patient_due(i.id))) FROM hms_invoices i WHERE i.status NOT IN ('Draft', 'Void')), 0) AS patient_receivable,
+      COALESCE((SELECT sum(GREATEST(0, billing_invoice_patient_due(i.id))) FROM hms_invoices i WHERE i.status NOT IN ('Draft', 'Void')), 0)
+        -- Still owed on bills raised before Phase 5 (migration 0098).
+        + COALESCE((SELECT sum(billing_legacy_due(b.id)) FROM hms_bills b WHERE billing_is_legacy_bill(b.id) AND COALESCE(b.status, '') <> 'Cancelled'), 0) AS patient_receivable,
       COALESCE((SELECT sum(i.payer_amount) FROM hms_invoices i WHERE i.status NOT IN ('Draft', 'Void')), 0)
         - COALESCE((SELECT sum(n.payer_amount) FROM hms_invoice_notes n WHERE n.kind = 'credit'), 0)
         + COALESCE((SELECT sum(n.payer_amount) FROM hms_invoice_notes n WHERE n.kind = 'debit'), 0)
         - COALESCE((SELECT sum(amount) FROM hms_remittances), 0)
         - COALESCE((SELECT sum(d.amount) FROM hms_denials d WHERE d.status = 'WrittenOff'), 0) AS payer_receivable,
-      COALESCE((SELECT sum(amount) FROM hms_receipts), 0) AS receipts`, {}, t);
+      COALESCE((SELECT sum(amount) FROM hms_receipts), 0) AS receipts,
+      COALESCE((SELECT sum(amount) FROM hms_otc_items), 0) AS counter_sales`, {}, t);
+  const counterPostings = await one(`SELECT COALESCE(sum(l.debit), 0) AS v FROM hms_journal_lines l JOIN hms_journal_entries e ON e.id = l.entry_id
+    WHERE e.source_type = 'counter_sale' AND l.gl_code IN ('1000', '1010', '1020')`, {}, t);
   const receiptPostings = await one(`SELECT COALESCE(sum(l.debit), 0) AS v FROM hms_journal_lines l JOIN hms_journal_entries e ON e.id = l.entry_id
     WHERE e.source_type = 'receipt' AND l.gl_code IN ('1000', '1010', '1020')`, {}, t);
   const comparisons = [
@@ -195,6 +200,7 @@ async function runChecks(t) {
     { name: 'Patient receivables', gl: '1100', ledger: money(sub.patient_receivable), journal: money(gl['1100'] || 0) },
     { name: 'Payer receivables', gl: '1110', ledger: money(sub.payer_receivable), journal: money(gl['1110'] || 0) },
     { name: 'Receipts posted', gl: 'receipts', ledger: money(sub.receipts), journal: money(receiptPostings.v) },
+    { name: 'Counter sales posted', gl: 'counter_sales', ledger: money(sub.counter_sales), journal: money(counterPostings.v) },
     { name: 'Trial balance', gl: 'all', ledger: 0, journal: money(Object.values(gl).reduce((s, v) => s + v, 0)) },
   ];
   for (const c of comparisons) {

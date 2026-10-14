@@ -147,23 +147,32 @@ against real PostgreSQL with concurrent requests:
 
 ## Open items (owner decisions)
 
+Updated 2026-10-14 (Phase 6 branch): items 2, 3 and 6 are resolved and
+item 1 is narrowed; see "Resolved since" below.
+
 1. **Prices.** Version 1 copies today's tariff table and the code's
    fallbacks. Review the price list before go-live; the fallbacks (200/100,
-   400/800) were never approved prices.
-2. **Bills raised before Phase 5** keep the old payment path and are not in
-   the journal (no opening receivables were migrated). Unused advances were
-   carried over as deposits with an opening-balance entry.
-3. **OTC counter sales** still use their own sale record and are not posted to
-   the journal.
-4. **Quick Consult** still writes free-text prescriptions the pharmacy cannot
+   400/800) were never approved prices. Coded lab tests are now priced by
+   catalogue identity (migration 0097), not by name.
+2. **Card/UPI gateways** are not integrated: staff record the terminal's
+   answer and reference; settlement lines are entered by hand.
+3. **Quick Consult** still writes free-text prescriptions the pharmacy cannot
    dispense (from the Phase 2/3 integration); medicines prescribed there are
    not charged until they go through a coded order.
-5. **Card/UPI gateways** are not integrated: staff record the terminal's
-   answer and reference; settlement lines are entered by hand.
-6. **Pre-existing time-zone bug (not Phase 5):** between midnight and 05:30
-   IST the app's "today" (database UTC) differs from the browser's day, so a
-   just-booked appointment is not linked to the doctor's queue. The OPD suite
-   is run with the browser on UTC to stay deterministic; the app bug remains.
-7. Deploying needs a backup first (`scripts/backup-db.sh`) and the owner's
-   approval. Merge order: Phase 4 (Codex, lab) is in progress on the same
-   base; whichever merges second re-runs every suite.
+4. Deploying needs a backup first (`scripts/backup-db.sh`) and the owner's
+   approval.
+
+### Resolved since
+
+- **Bills raised before Phase 5** (was item 2): what was still owed is an
+  opening patient receivable; payments and discounts on them through the old
+  path post to the journal; the receivables check counts them (0098).
+- **OTC counter sales** (was item 3): each sale posts one balanced entry at
+  commit (cash/card-UPI/bank against pharmacy revenue and GST), earlier
+  sales were posted at migration, and a "Counter sales posted" check compares
+  them with the sale lines (0098).
+- **Time-zone bug** (was item 6): service dates use the hospital's time zone
+  (0096); the OPD suite no longer needs the browser on UTC.
+- **Lab pricing by name**: coded tests use a price tied to the catalogue
+  test, else the tariff the catalogue names (`tariff_id`), else the default
+  (0097). Tests `accounts.e2e.js`, `labPricing.e2e.js`, `serviceDate.e2e.js`.
