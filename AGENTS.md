@@ -175,8 +175,8 @@ go through `docs/requests/clinical-final-coordination.md`.
 
 All eight Claude packages are engineering-complete on `completion/claude-final`
 (rebased onto Codex `0d904fb`), handed to Codex for C8 review/integration;
-nothing deployed or pushed. A7 `130b4fe`, A8 `bc5363e`, C6 `870a078`,
-C3 `14335fa`, C2 `2a0604d`, A4 `aed506c`, B2 `840bf23`, then B7 + A8
+nothing deployed or pushed. A7 `981bf9c`, A8 `fab333a`, C6 `9f27b04`,
+C3 `794b33a`, C2 `aad6508`, A4 `ab978b8`, B2 `a954678`, then B7 + A8
 facility scope + A4 restore verifier + C6 per facility `d10b0e9`.
 Migrations 0150–0156. Handoff, shared-file list and remaining Codex-area
 failures: `docs/requests/claude-final-handoff.md`. External gates (sandbox,

@@ -7,17 +7,17 @@ Codex reviews and integrates in C8. Nothing is deployed or pushed.
 
 | Package | Commit | Migration | Acceptance |
 |---|---|---|---|
-| A7 billing controls | `130b4fe` | 0150 | `billingControls` 3/3, `finance` 15/15, `labPricing` 2/2, `accounts` 3/3 |
-| A8 live-event scope | `bc5363e` | 0151 | `eventScope` 6/6, unit `eventScope.test.js` 5/5 |
-| fixes | `e886d27` | — | pharmacist low-stock key; hospital date in `admin.e2e.js`; A7 fixture clean-up |
-| C6 downtime distribution | `870a078` | 0152 | `downtimeDrill` 7/7, `downtime` 4/4 |
-| C3 workload | `14335fa` | — | `docs/clinical-final/PERFORMANCE.md`, evidence/c3 |
-| C2 clinical screens | `2a0604d` | — | `clinicalUx` 8/8, updated `opd` |
-| A4 documents + data keys | `aed506c` | 0153 | `documents` 9/9, unit `dataKeys.test.js` 5/5, `abdm` 10/10 |
+| A7 billing controls | `981bf9c` | 0150 | `billingControls` 3/3, `finance` 15/15, `labPricing` 2/2, `accounts` 3/3 |
+| A8 live-event scope | `fab333a` | 0151 | `eventScope` 6/6, unit `eventScope.test.js` 5/5 |
+| fixes | `7937f00` | — | pharmacist low-stock key; hospital date in `admin.e2e.js`; A7 fixture clean-up |
+| C6 downtime distribution | `9f27b04` | 0152 | `downtimeDrill` 7/7, `downtime` 4/4 |
+| C3 workload | `794b33a` | — | `docs/clinical-final/PERFORMANCE.md`, evidence/c3 |
+| C2 clinical screens | `aad6508` | — | `clinicalUx` 8/8, updated `opd` |
+| A4 documents + data keys | `ab978b8` | 0153 | `documents` 9/9, unit `dataKeys.test.js` 5/5, `abdm` 10/10 |
 
-Fresh regression on A7+A8 (`bc5363e` working tree): 40/47 suites passed;
+Fresh regression on A7+A8 (`fab333a` working tree): 40/47 suites passed;
 the 7 failures are listed under "Base suites" below. Each one is either
-Codex-owned or fixed in `e886d27`.
+Codex-owned or fixed in `7937f00`.
 
 ## Shared files I changed (please review)
 
@@ -47,7 +47,7 @@ Codex-owned or fixed in `e886d27`.
 | `frontend/src/components/dashboards/DoctorDashboard.jsx`, `WorklistPage.jsx` | Shared live reads (`data/liveQuery.js`). A failed load is never shown as an empty queue. | C2 |
 | `e2e/helpers.js` | `E2E_VERBOSE=1` prints the full failure message. | test tooling |
 
-| B2 ABDM/terminology | `840bf23` | — | `abdmUse` 6/6, `abdm` 10/10, unit `abdmContracts.test.js` 4/4 |
+| B2 ABDM/terminology | `a954678` | — | `abdmUse` 6/6, `abdm` 10/10, unit `abdmContracts.test.js` 4/4 |
 
 B2 touches `routes/abdmBridge.js` (contract check before processing),
 `services/abdm.js` (`imports`/`decideItem`), `routes/abdm.js` (transaction
@@ -128,7 +128,7 @@ Open dependencies on Codex:
 
 - `pharmacy`, `phase45`: finalize without If-Match (see
   `claude-final-base-suites.md`). `pharmacy` also had the React key error
-  fixed in `e886d27`.
+  fixed in `7937f00`.
 - `consultationIntegration` needs the device fixtures: run it after
   `devices` (5/5 then).
 - `opd` (mine): rewritten for the coded consultation in the C2 commit.
