@@ -117,7 +117,7 @@ async function pickPatient(page, query, name) {
       await page.getByLabel('Doctor').selectOption(String(state.doctorUserId));
       await page.getByRole('button', { name: 'Generate token' }).click();
       await page.getByRole('status').filter({ hasText: 'Token generated' }).waitFor();
-      const [t] = await sql("SELECT id, token_number, status, doctor_id, department_id FROM hms_tokens WHERE patient_id = $1 AND token_date = CURRENT_DATE", [state.patient.id]);
+      const [t] = await sql("SELECT id, token_number, status, doctor_id, department_id FROM hms_tokens WHERE patient_id = $1 AND token_date = hms_service_today()", [state.patient.id]);
       assert(t, 'token row not created');
       assert(t.status === 'Waiting', `token status ${t.status}`);
       if (state.doctorDept) assert(Number(t.department_id) === Number(state.doctorDept), `token department ${t.department_id}, doctor's department is ${state.doctorDept}`);

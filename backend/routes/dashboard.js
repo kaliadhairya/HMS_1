@@ -26,7 +26,7 @@ const LOW_STOCK_SQL = `
 async function abnormalLabResultsToday() {
   const { abnormalFlag } = require('./lab');
   const rows = await sequelize.query(
-    `SELECT RESULT_VALUE, REFERENCE_RANGE FROM HMS_INVESTIGATION_ORDER_ITEMS WHERE STATUS = 'Completed' AND UPDATED_AT >= CURRENT_DATE`,
+    `SELECT RESULT_VALUE, REFERENCE_RANGE FROM HMS_INVESTIGATION_ORDER_ITEMS WHERE STATUS = 'Completed' AND UPDATED_AT >= hms_service_day_start()`,
     { type: sequelize.QueryTypes.SELECT }
   );
   return rows.filter((r) => ['High', 'Low'].includes(abnormalFlag(r.result_value ?? r.RESULT_VALUE, r.reference_range ?? r.REFERENCE_RANGE))).length;
@@ -403,8 +403,8 @@ router.get('/pharmacist', restrictTo('pharmacist', 'super_admin', 'admin'), asyn
     // priced old stock movements at today's MRP.
     const [salesRows] = await sequelize.query(`
       SELECT
-        (SELECT COALESCE(SUM(TOTAL_AMOUNT), 0) FROM HMS_DISPENSING_RECORDS WHERE DISPENSED_AT >= CURRENT_DATE) as DISPENSED,
-        (SELECT COALESCE(SUM(TOTAL_AMOUNT), 0) FROM HMS_OTC_SALES WHERE SOLD_AT >= CURRENT_DATE) as COUNTER
+        (SELECT COALESCE(SUM(TOTAL_AMOUNT), 0) FROM HMS_DISPENSING_RECORDS WHERE DISPENSED_AT >= hms_service_day_start()) as DISPENSED,
+        (SELECT COALESCE(SUM(TOTAL_AMOUNT), 0) FROM HMS_OTC_SALES WHERE SOLD_AT >= hms_service_day_start()) as COUNTER
     `);
     const todaysSales = Math.round((Number(salesRows[0]?.DISPENSED || 0) + Number(salesRows[0]?.COUNTER || 0)) * 100) / 100;
 
@@ -433,7 +433,7 @@ router.get('/admin-ops', restrictTo('admin', 'super_admin'), async (req, res) =>
     // It used to read a table that does not exist (HMS_BILLING) and the error was swallowed, so it was always 0.
     const [revRows] = await sequelize.query(`
       SELECT COALESCE(SUM(AMOUNT), 0) as REVENUE FROM HMS_PAYMENTS
-      WHERE PAYMENT_DATE >= CURRENT_DATE
+      WHERE PAYMENT_DATE >= hms_service_day_start()
     `);
     const revenueToday = Number(revRows[0]?.REVENUE || 0);
 

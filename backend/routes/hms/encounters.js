@@ -21,7 +21,7 @@ async function findOpenVisit(patientId, userId, transaction) {
   const [tokenRows] = await sequelize.query(`
     SELECT ID, DEPARTMENT_ID FROM HMS_TOKENS
      WHERE PATIENT_ID = :patientId AND DOCTOR_ID IN (:doctorIds)
-       AND TRUNC(TOKEN_DATE) = TRUNC(CURRENT_TIMESTAMP)
+       AND TRUNC(TOKEN_DATE) = hms_service_today()
        AND STATUS = 'Waiting'
      ORDER BY TOKEN_NUMBER ASC LIMIT 1
   `, { replacements: { patientId, doctorIds }, transaction });
@@ -29,7 +29,7 @@ async function findOpenVisit(patientId, userId, transaction) {
   const [appointmentRows] = await sequelize.query(`
     SELECT ID, DEPARTMENT_ID FROM HMS_APPOINTMENTS
      WHERE PATIENT_ID = :patientId AND DOCTOR_ID IN (:doctorIds)
-       AND TRUNC(APPOINTMENT_DATE) = TRUNC(CURRENT_TIMESTAMP)
+       AND TRUNC(APPOINTMENT_DATE) = hms_service_today()
        AND STATUS IN ('Scheduled', 'Checked-in')
      ORDER BY CASE WHEN STATUS = 'Checked-in' THEN 0 ELSE 1 END, SLOT_START ASC LIMIT 1
   `, { replacements: { patientId, doctorIds }, transaction });

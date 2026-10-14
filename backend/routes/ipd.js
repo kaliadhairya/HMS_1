@@ -933,7 +933,7 @@ router.get('/mar/:admissionId', protect, checkPermission('ipd', 'read'), async (
       FROM HMS_MAR_RECORDS m
       LEFT JOIN HMS_USERS u ON u.ID = m.ADMINISTERED_BY
       WHERE m.ADMISSION_ID = :admissionId
-        AND (TRUNC(m.SCHEDULED_TIME) = TRUNC(CURRENT_TIMESTAMP)
+        AND (hms_service_date(m.SCHEDULED_TIME) = hms_service_today()
              OR (m.STATUS = 'Pending' AND m.SCHEDULED_TIME < CURRENT_TIMESTAMP))
       ORDER BY m.SCHEDULED_TIME ASC, m.ID ASC
     `, { replacements: { admissionId: req.params.admissionId } });

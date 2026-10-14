@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { Download } from 'lucide-react';
 import Modal from './ui/Modal';
+import { localYmd } from '../utils/localDate';
 
 // Chart colours come from CSS tokens (styles/components.css), so they switch with the theme.
 const SERIES = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)'];
@@ -58,7 +59,7 @@ function exportToCSV(scopeLabel, scoped, isUserMode, userAnalytics) {
   const link = document.createElement('a');
   link.href = url;
   const safeName = (isUserMode ? 'user_analytics' : `patient_analytics_${scopeLabel}`).replace(/\s+/g, '_').toLowerCase();
-  link.download = `${safeName}_${new Date().toISOString().split('T')[0]}.csv`;
+  link.download = `${safeName}_${localYmd()}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

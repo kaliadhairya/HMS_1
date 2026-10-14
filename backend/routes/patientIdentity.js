@@ -35,7 +35,7 @@ async function createPatient(fields, userId, transaction) {
     `INSERT INTO hms_patients (id, uhid, patienttype, name, first_name, last_name, age, gender, dob, birth_date_estimated,
                                opdindoor, testdate, phonenumber, identity_status, registeredby, is_active, created_at, updated_at)
      VALUES (:id, :uhid, 'other', :name, :firstName, :lastName, :age, :gender, :dob, :estimated,
-             'OPD', CURRENT_DATE, :phone, :status, :userId, 1, now(), now())`,
+             'OPD', hms_service_today(), :phone, :status, :userId, 1, now(), now())`,
     {
       replacements: {
         id, uhid, name: fields.name, firstName: fields.firstName ?? null, lastName: fields.lastName ?? null,

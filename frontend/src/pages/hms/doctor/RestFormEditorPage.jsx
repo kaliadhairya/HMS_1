@@ -5,6 +5,7 @@ import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
 import api from '../../../api/axios';
 import toast from 'react-hot-toast';
+import { localYmd } from '../../../utils/localDate';
 
 const Field = ({ label, htmlFor, children }) => (
   <div className="form-group">
@@ -25,7 +26,7 @@ export default function RestFormEditorPage() {
   const [form, setForm] = useState({
     patient_id: patientIdParams || '',
     attended_date: new Date().toISOString().slice(0, 16),
-    advised_days: '', from_date: new Date().toISOString().slice(0, 10),
+    advised_days: '', from_date: localYmd(),
     to_date: '', disease: '', fit_date: '', working_as: '', department: '',
     extended_date: '',
   });

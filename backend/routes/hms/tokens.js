@@ -7,6 +7,7 @@ const { resolveDoctorUser } = require('../../utils/doctorIdentity');
 const { Token, Patient, Doctor, Department, User } = require('../../models');
 const { protect, restrictTo } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
+const { serviceDate } = require('../../utils/serviceDate');
 
 // A doctor given as a user ID or profile ID, as the user ID tokens store.
 async function doctorIdsFor(doctorId) {
@@ -26,7 +27,7 @@ router.get('/', protect, restrictTo('super_admin', 'admin', 'doctor'), async (re
   try {
     const doctorIds = [req.user.id];
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = serviceDate();
     const tokens = await Token.findAll({
       where: {
         doctor_id: { [Op.in]: doctorIds },
@@ -49,7 +50,7 @@ router.get('/', protect, restrictTo('super_admin', 'admin', 'doctor'), async (re
 // GET /api/hms/tokens/today-all — ALL today's tokens for all doctors (global OPD queue)
 router.get('/today-all', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = serviceDate();
     const { QueryTypes } = require('sequelize');
 
     const rows = await sequelize.query(`
@@ -109,7 +110,7 @@ router.post('/', protect, restrictTo('super_admin', 'admin', 'receptionist'), as
       return res.status(400).json({ success: false, message: 'Missing required fields.' });
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = serviceDate();
 
     // Transaction to safely generate next incremental token number for the doctor/date
     const result = await sequelize.transaction(async (t) => {
@@ -162,7 +163,7 @@ router.post('/', protect, restrictTo('super_admin', 'admin', 'receptionist'), as
 router.get('/queue', protect, restrictTo('super_admin', 'admin', 'doctor', 'receptionist'), async (req, res) => {
   try {
     const { doctor_id, date } = req.query;
-    const queryDate = date || new Date().toISOString().split('T')[0];
+    const queryDate = date || serviceDate();
 
     const where = {
       [Op.and]: [tokenDateWhere(queryDate)]

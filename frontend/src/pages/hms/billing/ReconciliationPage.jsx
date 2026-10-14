@@ -7,6 +7,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import EmptyState from '../../../components/ui/EmptyState';
 import { inr } from '../../../components/billing/InvoicePaper';
 import { useAuth } from '../../../context/AuthContext';
+import { localYmd } from '../../../utils/localDate';
 
 const fmt = (v) => (v ? new Date(v).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 const KIND_LABEL = {
@@ -30,7 +31,7 @@ export default function ReconciliationPage() {
   const [status, setStatus] = useState('Open');
   const [busy, setBusy] = useState(false);
   const [count, setCount] = useState({ counted: '', note: '' });
-  const [line, setLine] = useState({ source: 'card', statementReference: '', providerReference: '', amount: '', settledOn: new Date().toISOString().slice(0, 10) });
+  const [line, setLine] = useState({ source: 'card', statementReference: '', providerReference: '', amount: '', settledOn: localYmd() });
 
   const load = useCallback(async () => {
     try {

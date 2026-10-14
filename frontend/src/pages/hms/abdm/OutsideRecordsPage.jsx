@@ -6,10 +6,11 @@ import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
 import { useAuth } from '../../../context/AuthContext';
 import PatientPicker from './PatientPicker';
+import { localYmd } from '../../../utils/localDate';
 
 const PURPOSES = [['CAREMGT', 'Care management'], ['BTG', 'Emergency (break the glass)'], ['PATRQT', 'Requested by the patient'], ['PUBHLTH', 'Public health'], ['HPAYMT', 'Payment'], ['DSRCH', 'Research']];
 const TYPES = ['OPConsultation', 'Prescription', 'DiagnosticReport', 'DischargeSummary', 'ImmunizationRecord', 'HealthDocumentRecord', 'WellnessRecord'];
-const day = (offset) => new Date(Date.now() + offset * 864e5).toISOString().slice(0, 10);
+const day = (offset) => localYmd(new Date(Date.now() + offset * 864e5));
 const when = (v) => (v ? new Date(v).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '');
 const err = (e, fallback) => toast.error(e.response?.data?.message || fallback, { duration: 8000 });
 

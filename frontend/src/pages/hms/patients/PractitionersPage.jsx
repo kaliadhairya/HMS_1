@@ -6,10 +6,11 @@ import { useAuth } from '../../../context/AuthContext';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
 import EmptyState from '../../../components/ui/EmptyState';
+import { localYmd } from '../../../utils/localDate';
 
 const ADMINS = ['super_admin', 'admin'];
 const fmt = (v) => (v ? new Date(v).toLocaleDateString('en-IN') : '—');
-const EMPTY = { kind: 'medical_registration', identifier: '', issuingBody: '', validFrom: new Date().toISOString().slice(0, 10), validTo: '' };
+const EMPTY = { kind: 'medical_registration', identifier: '', issuingBody: '', validFrom: localYmd(), validTo: '' };
 
 // Doctors and their recorded medical registrations. Administrators record,
 // verify and end registrations; an expired registration blocks clinical work.

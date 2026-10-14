@@ -11,6 +11,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import EmptyState from '../../../components/ui/EmptyState';
 import { useAuth } from '../../../context/AuthContext';
+import { localYmd } from '../../../utils/localDate';
 
 const TYPE_META = {
   corporate_employee: { label: 'Corporate', full: 'Corporate employee', tone: 'info' },
@@ -87,7 +88,7 @@ export default function PatientSearchPage() {
     ].map(esc).join(','));
     const blob = new Blob(['﻿' + [header.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = Object.assign(document.createElement('a'), { href: url, download: `patients_${new Date().toISOString().slice(0, 10)}.csv` });
+    const a = Object.assign(document.createElement('a'), { href: url, download: `patients_${localYmd()}.csv` });
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     toast.success(`Exported ${results.length} patients.`);
   };

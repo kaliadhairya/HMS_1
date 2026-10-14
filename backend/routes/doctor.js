@@ -15,6 +15,7 @@ const InvestigationOrderItem = require('../models/InvestigationOrderItem');
 const Admission = require('../models/Admission');
 const { Op, QueryTypes } = require('sequelize');
 const { clobToString } = require('../utils/clobToString');
+const { serviceDate, facilityMidnight } = require('../utils/serviceDate');
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -648,9 +649,8 @@ router.get('/clinical-notes', protect, restrictTo('doctor', 'super_admin'), asyn
 
 router.get('/reports', protect, restrictTo('doctor', 'super_admin'), async (req, res) => {
   try {
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
+    // This month in the hospital's calendar, not the server's UTC one.
+    const monthStart = facilityMidnight(`${serviceDate().slice(0, 7)}-01`);
 
     const doctorRecords = await Doctor.findAll({ where: { user_id: req.user.id }, attributes: ['id', 'slot_duration_mins'] });
     const doctorRecord = doctorRecords[0] || null;

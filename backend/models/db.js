@@ -29,6 +29,12 @@ const sequelize = new Sequelize(
   }
 );
 
+// Every connection knows the hospital's time zone, so SQL "today"
+// (hms_service_today(), migration 0096) agrees with utils/serviceDate.js.
+sequelize.addHook('afterConnect', async (connection) => {
+  await connection.query("SELECT set_config('hms.facility_tz', $1, false)", [process.env.FACILITY_TZ || 'Asia/Kolkata']);
+});
+
 // PostgreSQL folds unquoted column names to lower case, but most of this code (ported from
 // Oracle) reads raw query rows in upper case (row.GENERIC_NAME, row.TOTAL). Give raw query
 // rows both spellings. Model queries (options.model) are left untouched.

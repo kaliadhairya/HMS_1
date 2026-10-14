@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Check, ClipboardList, Search, Stethoscope, UserR
 import Navbar from '../components/Navbar';
 import PageHeader from '../components/ui/PageHeader';
 import api from '../api/axios';
+import { localYmd } from '../utils/localDate';
 
 const WARDS = ['Medical', 'Surgical', 'Gynaecology', 'Private', 'N/A'];
 const RELATIONSHIPS = ['Self', 'Spouse', 'Son', 'Daughter', 'Father', 'Mother', 'Other'];
@@ -32,7 +33,7 @@ export default function RegisterPatientPage() {
     gender: '',
     opdIndoor: 'OPD',
     ward: 'N/A',
-    testDate: new Date().toISOString().split('T')[0],
+    testDate: localYmd(),
     provDiagnosis: '',
     provDiagnosisOther: '',
     doctorId: '',

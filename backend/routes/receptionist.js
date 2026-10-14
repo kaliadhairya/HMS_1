@@ -3,6 +3,7 @@ const router = express.Router();
 const { sequelize, AuditLog } = require('../models');
 const { logAction } = require('../utils/auditLogger');
 const { restrictTo } = require('../middleware/auth');
+const { serviceDate } = require('../utils/serviceDate');
 
 const VISITOR_MODULE = 'receptionist_visitor';
 const NOTIFICATION_MODULE = 'receptionist_notification';
@@ -172,7 +173,7 @@ router.post('/visitor-log', async (req, res) => {
     const recordId = await nextVisitorRecordId();
     const now = new Date();
     const payload = {
-      date: now.toISOString().split('T')[0],
+      date: serviceDate(now),
       patient,
       ward: ward || '-',
       bed: bed || '-',

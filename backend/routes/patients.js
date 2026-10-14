@@ -13,6 +13,7 @@ const { encrypt, decrypt, maskAadhaar } = require('../utils/encryption');
 const { Allergy, ChronicCondition, PatientDocument } = require('../models');
 const { body, validationResult } = require('express-validator');
 const { proposeForPatient } = require('./patientMerge');
+const { serviceDate } = require('../utils/serviceDate');
 
 const VALID_PATIENT_TYPES = new Set(['corporate_employee', 'other']);
 const PHONE_REQUIRED_PATIENT_TYPES = new Set(['other']);
@@ -510,7 +511,7 @@ router.get('/hms/search', protect, restrictTo('super_admin', 'admin', 'doctor', 
 // GET /api/patients/hms/today-patients — All patients registered today, with consulting doctor info
 router.get('/hms/today-patients', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = serviceDate();
     const rows = await sequelize.query(`
       SELECT 
         p.ID, p.UHID, p.NAME, p.FIRST_NAME, p.LAST_NAME, p.AGE, p.GENDER, 
@@ -523,10 +524,10 @@ router.get('/hms/today-patients', protect, restrictTo('super_admin', 'admin', 'd
         SELECT ID, PATIENT_ID, DOCTOR_ID, STATUS,
                ROW_NUMBER() OVER (PARTITION BY PATIENT_ID ORDER BY ID DESC) as rn
         FROM HMS_ENCOUNTERS
-        WHERE TRUNC(ENCOUNTER_DATE) = TO_DATE(:today, 'YYYY-MM-DD')
+        WHERE hms_service_date(ENCOUNTER_DATE) = TO_DATE(:today, 'YYYY-MM-DD')
       ) e ON e.PATIENT_ID = p.ID AND e.rn = 1
       LEFT JOIN HMS_USERS u ON u.ID = e.DOCTOR_ID
-      WHERE TRUNC(p.CREATED_AT) = TO_DATE(:today, 'YYYY-MM-DD')
+      WHERE hms_service_date(p.CREATED_AT) = TO_DATE(:today, 'YYYY-MM-DD')
          OR e.ID IS NOT NULL
          -- Returning patients the front desk queued today (token or booked appointment)
          OR EXISTS (SELECT 1 FROM HMS_TOKENS t
@@ -574,17 +575,17 @@ router.get('/hms/pending-consultation', protect, restrictTo('super_admin', 'admi
         p.ID, p.UHID, p.NAME, p.FIRST_NAME, p.LAST_NAME, p.AGE, p.GENDER, 
         p.PATIENTTYPE, p.EMPNUMBER, p.RELATIONSHIP, p.PHONENUMBER,
         p.CREATED_AT,
-        TRUNC(CURRENT_TIMESTAMP) - TRUNC(p.CREATED_AT) AS DAYS_AGO
+        hms_service_today() - hms_service_date(p.CREATED_AT) AS DAYS_AGO
       FROM HMS_PATIENTS p
-      WHERE TRUNC(p.CREATED_AT) < TRUNC(CURRENT_TIMESTAMP)
+      WHERE hms_service_date(p.CREATED_AT) < hms_service_today()
         AND NOT EXISTS (
           SELECT 1 FROM HMS_ENCOUNTERS e WHERE e.PATIENT_ID = p.ID
         )
         -- Queued for today (token or appointment): they are in today's queue instead
         AND NOT EXISTS (SELECT 1 FROM HMS_TOKENS t
-                         WHERE t.PATIENT_ID = p.ID AND TRUNC(t.TOKEN_DATE) = TRUNC(CURRENT_TIMESTAMP))
+                         WHERE t.PATIENT_ID = p.ID AND TRUNC(t.TOKEN_DATE) = hms_service_today())
         AND NOT EXISTS (SELECT 1 FROM HMS_APPOINTMENTS a
-                         WHERE a.PATIENT_ID = p.ID AND TRUNC(a.APPOINTMENT_DATE) = TRUNC(CURRENT_TIMESTAMP)
+                         WHERE a.PATIENT_ID = p.ID AND TRUNC(a.APPOINTMENT_DATE) = hms_service_today()
                            AND a.STATUS IN ('Scheduled', 'Checked-in'))
       ORDER BY p.CREATED_AT DESC
     `, {

@@ -6,6 +6,7 @@ import api from '../../../api/axios';
 import { ArrowLeft, ArrowRight, Baby, BadgeIndianRupee, CircleCheck, IdCard, Phone, Printer, ShieldAlert, Siren, UserPlus, UserRound, Users } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
+import { localYmd } from '../../../utils/localDate';
 
 const INITIAL_FORM_STATE = {
   patientType: 'other',
@@ -22,7 +23,7 @@ const INITIAL_FORM_STATE = {
   emergency_contact_relation: '',
   emergency_contact_phone: '',
   opdIndoor: 'OPD',
-  testDate: new Date().toISOString().split('T')[0],
+  testDate: localYmd(),
   registration_fee_paid: false,
   payment_mode: 'Cash',
 };
@@ -460,7 +461,7 @@ function NewbornRegistration({ onBack }) {
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState([]);
   const [mother, setMother] = useState(null);
-  const [form, setForm] = useState({ gender: 'Unknown', birthDate: new Date().toISOString().slice(0, 10), name: '' });
+  const [form, setForm] = useState({ gender: 'Unknown', birthDate: localYmd(), name: '' });
   const [saving, setSaving] = useState(false);
   const search = async (e) => {
     e.preventDefault();
@@ -517,7 +518,7 @@ function NewbornRegistration({ onBack }) {
               </div>
               <div className="form-group">
                 <label className="form-label" htmlFor="nb-date">Date of birth</label>
-                <input id="nb-date" className="form-input" type="date" max={new Date().toISOString().slice(0, 10)} value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
+                <input id="nb-date" className="form-input" type="date" max={localYmd()} value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
               </div>
               <div className="form-group">
                 <label className="form-label" htmlFor="nb-name">Name (optional)</label>

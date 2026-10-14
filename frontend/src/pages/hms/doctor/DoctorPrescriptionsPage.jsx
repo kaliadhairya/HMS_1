@@ -10,6 +10,7 @@ import DataTable from '../../../components/ui/DataTable';
 import EmptyState from '../../../components/ui/EmptyState';
 import Modal from '../../../components/ui/Modal';
 import RowMenu from '../../../components/ui/RowMenu';
+import { localYmd } from '../../../utils/localDate';
 
 const CONSULTED_STATUSES = new Set(['Consulted', 'Finalized']);
 
@@ -206,7 +207,7 @@ export default function DoctorPrescriptionsPage() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const timestamp = new Date().toISOString().split('T')[0];
+    const timestamp = localYmd();
     link.href = url;
     link.download = `Prescription_Hub_${timestamp}.csv`;
     document.body.appendChild(link);
