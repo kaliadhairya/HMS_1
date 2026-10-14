@@ -4,7 +4,7 @@
 // the bill are either on it or wait for the next one, never dropped or billed
 // twice. The old draft endpoints are retired.
 const crypto = require('crypto');
-const { API, apiLogin, sql, runner, assert } = require('./helpers');
+const { API, apiLogin, sql, runner, assert, requireThrowawayDb } = require('./helpers');
 
 async function call(method, url, token, body) {
   const res = await fetch(API + url, {
@@ -18,10 +18,25 @@ async function call(method, url, token, body) {
 (async () => {
   const { step, done } = runner('IPD charges');
   const sa = await apiLogin('super_admin');
-  const unbilled = await sql(`SELECT a.id FROM hms_admissions a WHERE a.status = 'Active'
-    AND NOT EXISTS (SELECT 1 FROM hms_bills b WHERE b.admission_id = a.id AND COALESCE(b.status, '') <> 'Cancelled')
-    AND NOT EXISTS (SELECT 1 FROM hms_billing_accounts acc JOIN hms_invoices i ON i.account_id = acc.id WHERE acc.admission_id = a.id)
-    ORDER BY a.id`);
+  requireThrowawayDb();
+  const tag = crypto.randomUUID().slice(0, 8);
+  const [doc] = await sql("SELECT id FROM hms_users WHERE username = 'doctor'");
+  const unbilled = [];
+  // Own episodes: prior suites and repeated runs may have already charged the
+  // restored admissions. They must not change this suite's exact count checks.
+  for (let i = 0; i < 2; i++) {
+    const [patient] = await sql(`INSERT INTO hms_patients(name,uhid,patienttype,age,gender,opdindoor,testdate)
+      VALUES ($1,$2,'other',30,'Female','Indoor',CURRENT_DATE) RETURNING id`,
+      [`Synthetic IPD charges ${tag}-${i}`, `IPD-CHARGES-${tag}-${i}`]);
+    const [bed] = await sql(`INSERT INTO hms_beds(ward_id,room_number,bed_number,status)
+      SELECT id,'E2E',$1,'Occupied' FROM hms_wards WHERE type='Private' AND is_active=1 ORDER BY id LIMIT 1 RETURNING id`, [`IPD-CHARGES-${tag}-${i}`]);
+    assert(bed, 'need an active Private ward');
+    const [adm] = await sql(`INSERT INTO hms_admissions(patient_id,admitting_doctor_id,bed_id,admission_type,admission_date,status,created_by)
+      VALUES ($1,$2,$3,'Planned',now(),'Active',$2) RETURNING id,admission_date`, [patient.id,doc.id,bed.id]);
+    await sql(`INSERT INTO hms_bed_occupancies(bed_id,admission_id,starts_at,reason,created_by)
+      VALUES ($1,$2,$3,'synthetic billing fixture',$4)`, [bed.id,adm.id,adm.admission_date,doc.id]);
+    unbilled.push(adm);
+  }
   const meds = await sql('SELECT id, generic_name FROM hms_medicines WHERE is_active = 1 ORDER BY id LIMIT 2');
   assert(unbilled.length >= 2 && meds.length === 2, `need 2 unbilled admissions and 2 medicines (have ${unbilled.length}, ${meds.length})`);
   const account = async (admissionId) => (await call('GET', `/finance/accounts/by-episode?admissionId=${admissionId}`, sa)).data.data;
