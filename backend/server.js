@@ -208,6 +208,7 @@ app.use('/api/worklist', require('./routes/worklist'));
 app.use('/api/abdm', require('./routes/abdm'));
 app.use('/api/devices', require('./routes/devices').contracts);
 app.use('/api/device-messages', require('./routes/devices').inbound);
+app.use('/api/downtime', require('./routes/downtime'));
 // Calls from the ABDM gateway (and data pushes from other facilities).
 app.use('/abdm', require('./routes/abdmBridge'));
 
@@ -328,6 +329,7 @@ async function start() {
   require('./services/interfaces').startInterfaceWorker();
   require('./services/abdm').startAbdmWorker();
   require('./services/devices').startMllp().catch((err) => console.error('Device listeners failed:', err.message));
+  require('./services/downtime').startDowntimeKit();
   startOutboxDispatcher(io);
   startFinanceWorker();
   startSocketSessionGuard(io);

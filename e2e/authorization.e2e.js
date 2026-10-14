@@ -83,6 +83,10 @@ const RULES = [
   // Phase 6F device contracts.
   ['GET', '/devices', [SA, A, L]],
   ['POST', '/devices', [SA, A, L]],
+  // Phase 6I downtime: everyone sees status and logs paper records; administrators run it.
+  ['GET', '/downtime/status', ALL],
+  ['GET', '/downtime/episodes', ALL],
+  ['POST', '/downtime/snapshots', [SA, A]],
 ];
 
 (async () => {

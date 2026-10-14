@@ -125,3 +125,8 @@ unchanged; Codex (Phase 7) asks through `docs/requests/`.
   passes; new suites terminology, fhir, auditWorm. Codex's 4+5 integration
   independently re-verified: 32/32 suites, evidence in
   ~/hms-verification/claude-review-phase45-20261014-2a07ca8. Not deployed.
+- 2026-10-14: 6C-6E ABDM (0092 interface log, 0093 ABDM), 6F device
+  contracts (0094), 6I downtime kit (0095) committed. All nine Phase 6
+  packages done; final regression 39/39 on hms_p4_p5_p6_e2e, FHIR/ABDM
+  documents 0 validator errors. Results and owner items: docs/phase6/README.md.
+  Not merged, not deployed. STOP notice remains until the owner decides the merge.

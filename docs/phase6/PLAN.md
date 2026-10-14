@@ -3,7 +3,8 @@
 Blueprint sections 3.11, 3.12 (audit storage), 3.13 (resilience) and the
 Phase 6 row of 5.1. Brief: `docs/NEXT_PHASES_PROMPT.md`, "Phase 6".
 
-**Status (2026-10-14): plan only. No code yet.** Building starts from the
+**Status (2026-10-14): all nine work packages built and verified; see
+README.md for results and what still needs the owner.** Building started from the
 combined Phase 4 + Phase 5 branch (`integration/phase4-phase5`); Phase 6
 is rebased onto it. Branch `phase6/interop-ops`, worktree `../HMS_1-phase6`.
 
