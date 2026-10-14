@@ -9,10 +9,10 @@ const { API, apiLogin, sql, runner, assert, stamp, requireThrowawayDb } = requir
 
 requireThrowawayDb();
 
-async function call(method, url, token, body, key) {
+async function call(method, url, token, body, key, extraHeaders = {}) {
   const res = await fetch(API + url, {
     method,
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, ...(method !== 'GET' ? { 'idempotency-key': key || crypto.randomUUID() } : {}) },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}`, ...(method !== 'GET' ? { 'idempotency-key': key || crypto.randomUUID() } : {}), ...extraHeaders },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return { status: res.status, data: await res.json().catch(() => null), replay: res.headers.get('idempotent-replay') === 'true' };
@@ -47,12 +47,25 @@ async function journalBalanced() {
     assert([201, 409].includes((await call('POST', `/patients/hms/${id}/care-team`, desk, { practitionerUserId: doc.id, role: 'consulting' })).status), 'care team');
     return id;
   }
+  const labVersions = new Map();
+  async function codedLabVersion(name) {
+    if (labVersions.has(name)) return labVersions.get(name);
+    const labToken = await apiLogin('lab_technician');
+    const [labUser] = await sql("SELECT id FROM hms_users WHERE username='labtech'");
+    const [grant] = await sql("SELECT id FROM hms_lab_privileges WHERE user_id=$1 AND privilege='CONTENT' AND revoked_at IS NULL AND valid_from<=now() AND valid_until>now()", [labUser.id]);
+    if (!grant) {
+      const r = await call('POST', '/laboratory/privileges', superAdmin, {user_id:labUser.id,privilege:'CONTENT',reason:'Synthetic combined finance/laboratory test content',valid_from:new Date(Date.now()-1000).toISOString(),valid_until:new Date(Date.now()+86400000).toISOString()});
+      assert(r.status===201, `test content privilege ${short(r)}`);
+    }
+    const r = await call('POST','/laboratory/catalogue',labToken,{code_system:'TEST-FINANCE',code:`${tag}-${labVersions.size}`,kind:'TEST',name,section:'Bio-Chemistry',unit:'TEST-U',method:'TEST-METHOD',provenance:'Synthetic integration fixture only',effective_at:new Date(Date.now()-1000).toISOString(),requirements:[{specimen_type:'TEST-BLOOD',container:'TEST-TUBE'}]});
+    assert(r.status===201, `coded test fixture ${short(r)}`);labVersions.set(name,r.data.data.id);return r.data.data.id;
+  }
   async function visit(patientId, tests = []) {
     const enc = await call('POST', '/hms/encounters', doctor, { patient_id: patientId });
     assert(enc.status === 201 || enc.status === 200, `encounter ${short(enc)}`);
     const encounterId = enc.data.id ?? enc.data.data?.id;
     for (const test of tests) {
-      const o = await call('POST', '/hms/investigation-orders', doctor, { encounter_id: encounterId, patient_id: patientId, priority: 'Routine', items: [{ test_name: test, department: 'Bio-Chemistry' }] });
+      const o = await call('POST', '/hms/investigation-orders', doctor, { encounter_id: encounterId, patient_id: patientId, priority: 'Routine', items: [{ test_version_id: await codedLabVersion(test) }] });
       assert(o.status === 201 || o.status === 200, `lab order ${short(o)}`);
     }
     return encounterId;
@@ -74,10 +87,10 @@ async function journalBalanced() {
     assert(acc.charges.filter((c) => c.source_type === 'lab_order_item').length === 2, `lab charges ${JSON.stringify(acc.charges.map((c) => c.source_type))}`);
     assert(!acc.charges.some((c) => c.source_type === 'consultation'), 'consultation charged before the visit was finalized');
     // Cancel one test through the lab queue: its charge is reversed, not deleted.
-    const [order] = await sql(`SELECT o.id FROM hms_investigation_orders o JOIN hms_investigation_order_items i ON i.order_id = o.id
+    const [order] = await sql(`SELECT o.id,o.lab_revision FROM hms_investigation_orders o JOIN hms_investigation_order_items i ON i.order_id = o.id
       WHERE o.encounter_id = $1 AND i.item_name = 'Lipid profile'`, [ctx.encounter]);
     const lab = await apiLogin('lab_technician');
-    const cancel = await call('PATCH', `/lab/queue/ORD-${order.id}`, lab, { status: 'Cancelled' });
+    const cancel = await call('PATCH', `/lab/queue/ORD-${order.id}`, lab, { status: 'Cancelled' }, undefined, { 'if-match': String(order.lab_revision) });
     assert(cancel.status === 200, `cancel ${short(cancel)}`);
     await finalize(ctx.encounter);
     acc = await account(`encounterId=${ctx.encounter}`);

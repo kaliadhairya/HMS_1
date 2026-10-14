@@ -305,7 +305,7 @@ let pid, eid, lab, doc, order, test, specimen, session;
           "Lab page overflows viewport",
         );
         await p.screenshot({
-          path: "/tmp/hms-phase4-work/laboratory-screen.png",
+          path: process.env.LAB_SCREENSHOT_PATH || "/tmp/hms-phase4-work/laboratory-screen.png",
           fullPage: true,
         });
       },
