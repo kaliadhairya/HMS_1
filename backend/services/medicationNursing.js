@@ -588,6 +588,7 @@ async function requestLate(sid, b, u, tx) {
     "medication_late_documentation_requested",
     {
       schedule_id: s.id,
+      patient_id: o.patient_id,
       review_request_id: request.id,
       doctor_user_id: o.prescriber_user_id,
     },

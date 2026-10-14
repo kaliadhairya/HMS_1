@@ -2,19 +2,28 @@ const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models/db');
 const { storage } = require('./auditContext');
 const { validateSocketSessions } = require('./socketSessions');
+const { patientInCare } = require('./careTeam');
+const scope = require('../domain/eventScope.cts');
 const DISPATCH_EVERY_MS = Number(process.env.OUTBOX_DISPATCH_INTERVAL_MS || 500);
 const NO_RETRY = { max: 0 };
 const BATCH_SIZE = 200;
-async function publish(eventType, audience, payload, { transaction } = {}) {
+// An event names what changed by identifier (completion A8): the payload is
+// checked for patient details, and the patient it concerns (explicit, or
+// patient_id/patientId in the payload) scopes who receives it.
+async function publish(eventType, audience, payload, { transaction, patientId, aggregate, schemaVersion = 1 } = {}) {
   if (!transaction && !storage.getStore()?.command?.active) throw new Error('Outbox publication requires a domain transaction');
-  await sequelize.query('INSERT INTO hms_outbox (event_type, audience, payload, request_id) VALUES (:eventType, :audience, CAST(:payload AS jsonb), :requestId)', {
-    replacements: { eventType, audience, payload: JSON.stringify(payload ?? {}), requestId: storage.getStore()?.requestId ?? null }, transaction,
+  const body = scope.assertMinimal(eventType, payload);
+  await sequelize.query(`INSERT INTO hms_outbox (event_type, audience, payload, request_id, patient_id, schema_version, aggregate_type, aggregate_id)
+    VALUES (:eventType, :audience, CAST(:payload AS jsonb), :requestId, :patientId, :schemaVersion, :aggregateType, :aggregateId)`, {
+    replacements: { eventType, audience, payload: JSON.stringify(body), requestId: storage.getStore()?.requestId ?? null,
+      patientId: scope.patientOf(body, patientId), schemaVersion, aggregateType: aggregate?.type ?? null, aggregateId: aggregate ? String(aggregate.id) : null }, transaction,
   });
 }
-function toClientEvent(row) {
-  const payload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
-  return { ...payload, event_id: Number(row.id), delivery_sequence: Number(row.delivery_sequence), occurred_at: row.created_at };
-}
+const toClientEvent = scope.toClientEvent;
+const COLUMNS = 'id, event_type, payload, created_at, delivery_sequence, patient_id, schema_version, aggregate_type, aggregate_id, request_id';
+// Replay applies the live delivery rule: a doctor sees a patient's events only
+// while the patient is in their care.
+const IN_SCOPE = "(patient_id IS NULL OR :role <> 'doctor' OR patient_in_care(:userId, patient_id))";
 async function latestSequence() {
   const [row] = await sequelize.query('SELECT COALESCE(max(delivery_sequence), 0) AS sequence FROM hms_outbox', { type: QueryTypes.SELECT });
   return Number(row.sequence);
@@ -39,16 +48,34 @@ async function allocateSequences() {
 async function dispatchOnce(io, state) {
   if (state.cursor === undefined) state.cursor = await latestSequence();
   await allocateSequences();
-  const rows = await sequelize.query('SELECT id, event_type, audience, payload, created_at, delivery_sequence FROM hms_outbox WHERE delivery_sequence > :cursor ORDER BY delivery_sequence LIMIT :limit', {
+  const rows = await sequelize.query(`SELECT audience, ${COLUMNS} FROM hms_outbox WHERE delivery_sequence > :cursor ORDER BY delivery_sequence LIMIT :limit`, {
     replacements: { cursor: state.cursor, limit: BATCH_SIZE }, type: QueryTypes.SELECT, retry: NO_RETRY,
   });
   await validateSocketSessions(io);
+  const care = new Map();
   for (const row of rows) {
-    (row.audience === 'all' ? io : io.to(row.audience)).emit(row.event_type, toClientEvent(row));
+    if (row.patient_id == null) (row.audience === 'all' ? io : io.to(row.audience)).emit(row.event_type, toClientEvent(row));
+    else await emitScoped(io, row, care);
     state.cursor = Number(row.delivery_sequence);
   }
   if (rows.length) await sequelize.query('UPDATE hms_outbox SET delivered_at = now() WHERE id IN (:ids) AND delivered_at IS NULL', { replacements: { ids: rows.map((row) => row.id) }, retry: NO_RETRY });
   return rows.length;
+}
+// A patient's event goes to each recipient socket that may see the patient now
+// (care is checked at delivery, so ended care stops delivery at once).
+async function emitScoped(io, row, care) {
+  const ids = row.audience === 'all' ? [...io.sockets.sockets.keys()] : [...(io.sockets.adapter.rooms.get(row.audience) || [])];
+  const event = toClientEvent(row);
+  for (const id of ids) {
+    const socket = io.sockets.sockets.get(id);
+    if (!socket?.user) continue;
+    if (scope.needsCare(socket.user.role)) {
+      const key = `${socket.user.id}:${row.patient_id}`;
+      if (!care.has(key)) care.set(key, await patientInCare(socket.user.id, Number(row.patient_id)));
+      if (!care.get(key)) continue;
+    }
+    socket.emit(row.event_type, event);
+  }
 }
 function startOutboxDispatcher(io) {
   if (process.env.OUTBOX_DISPATCH === 'off') return () => {};
@@ -64,10 +91,10 @@ function startOutboxDispatcher(io) {
 }
 async function eventsPage(user, afterSequence, limit = BATCH_SIZE) {
   const latest = await latestSequence();
-  const rows = await sequelize.query(`SELECT id, event_type, payload, created_at, delivery_sequence FROM hms_outbox
+  const rows = await sequelize.query(`SELECT ${COLUMNS} FROM hms_outbox
     WHERE delivery_sequence > :after AND delivery_sequence <= :latest
-      AND audience IN (:role, :userRoom, 'all') ORDER BY delivery_sequence LIMIT :limit`, {
-    replacements: { after: afterSequence, latest, role: user.role, userRoom: `user:${user.id}`, limit: limit + 1 }, type: QueryTypes.SELECT,
+      AND audience IN (:role, :userRoom, 'all') AND ${IN_SCOPE} ORDER BY delivery_sequence LIMIT :limit`, {
+    replacements: { after: afterSequence, latest, role: user.role, userId: user.id, userRoom: `user:${user.id}`, limit: limit + 1 }, type: QueryTypes.SELECT,
   });
   const more = rows.length > limit;
   const page = rows.slice(0, limit);
@@ -76,8 +103,8 @@ async function eventsPage(user, afterSequence, limit = BATCH_SIZE) {
 }
 // Compatibility for earlier API clients; new clients use delivery sequences.
 async function eventsSince(user, afterId, limit = BATCH_SIZE) {
-  const rows = await sequelize.query(`SELECT id, event_type, payload, created_at, delivery_sequence FROM hms_outbox WHERE id > :afterId AND delivery_sequence IS NOT NULL AND audience IN (:role, :userRoom, 'all') ORDER BY id LIMIT :limit`, {
-    replacements: { afterId, role: user.role, userRoom: `user:${user.id}`, limit }, type: QueryTypes.SELECT,
+  const rows = await sequelize.query(`SELECT ${COLUMNS} FROM hms_outbox WHERE id > :afterId AND delivery_sequence IS NOT NULL AND audience IN (:role, :userRoom, 'all') AND ${IN_SCOPE} ORDER BY id LIMIT :limit`, {
+    replacements: { afterId, role: user.role, userId: user.id, userRoom: `user:${user.id}`, limit }, type: QueryTypes.SELECT,
   });
   return rows.map((row) => ({ type: row.event_type, data: toClientEvent(row) }));
 }

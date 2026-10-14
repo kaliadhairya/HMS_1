@@ -623,7 +623,7 @@ async function dispense(oid, b, u, header, tx) {
   );
   await event(
     "medication_dispensed",
-    { order_id: o.id, dispense_id: d.id, remaining: balance.remaining },
+    { order_id: o.id, patient_id: o.patient_id, dispense_id: d.id, remaining: balance.remaining },
     tx,
   );
   return { dispense: d, lines, remaining: balance.remaining };

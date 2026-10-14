@@ -258,6 +258,8 @@ function startFinanceWorker() {
   const tick = async () => {
     try {
       await sequelize.transaction(async (t) => {
+        // One run at a time across processes (API and worker roles, completion A8).
+        if (!(await one('SELECT pg_try_advisory_xact_lock(727290) AS locked', {}, t)).locked) return;
         await run("SELECT billing_accrue_ward_days(id) FROM hms_admissions WHERE status = 'Active' AND admission_date IS NOT NULL", {}, t);
         await runChecks(t);
       });

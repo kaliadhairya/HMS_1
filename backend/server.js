@@ -14,10 +14,8 @@ const path = require('path');
 const { sequelize } = require('./models');
 const { schemaProblems } = require('./migrate');
 const { requestContext, bindAuditActor } = require('./utils/auditContext');
-const { startAuditSealer } = require('./utils/auditSealer');
-const { startAuditShipper } = require('./utils/auditShipper');
 const { startOutboxDispatcher } = require('./utils/outbox');
-const { startFinanceWorker } = require('./services/reconciliation');
+const { processRole, startBackgroundWorkers } = require('./workers');
 const { startSocketSessionGuard } = require('./utils/socketSessions');
 const securitySettings = require('./utils/settings');
 const { validateToken } = require('./utils/identityClient');
@@ -307,6 +305,9 @@ io.on('connection', (socket) => {
 // Start only against a reachable database whose schema matches migrations/.
 // The schema itself is changed by "node migrate.js up", never by the server.
 async function start() {
+  let role;
+  try { role = processRole(); } catch (err) { console.error(`❌ Refusing to start: ${err.message}`); process.exit(1); }
+  if (role === 'worker') { console.error('❌ Refusing to start: run the worker role with "node worker.js".'); process.exit(1); }
   try {
     await sequelize.authenticate();
   } catch (err) {
@@ -329,15 +330,11 @@ async function start() {
   server.listen(PORT, process.env.BACKEND_HOST || '0.0.0.0', () => {
     console.log(`🚀 Server running on http://${process.env.BACKEND_HOST || '0.0.0.0'}:${PORT}`);
   });
-  startAuditSealer(sequelize);
-  startAuditShipper(sequelize);
-  require('./services/interfaces').startInterfaceWorker();
-  require('./services/abdm').startAbdmWorker();
-  require('./services/devices').startMllp().catch((err) => console.error('Device listeners failed:', err.message));
-  require('./services/downtime').startDowntimeKit();
+  // Sockets live in this process, so their delivery and session checks run here.
   startOutboxDispatcher(io);
-  startFinanceWorker();
   startSocketSessionGuard(io);
+  if (role === 'all') startBackgroundWorkers(sequelize);
+  else console.log('⚙️  Background workers run in a separate "node worker.js" process (HMS_PROCESS_ROLE=api)');
 }
 
 start();

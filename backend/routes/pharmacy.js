@@ -463,7 +463,7 @@ router.post('/grn', [
       transaction: t,
     });
 
-    await publish('stock_updated', 'pharmacist', { reason: 'grn' }, { transaction: t });
+    await publish('stock_updated', 'pharmacist', { change: 'grn' }, { transaction: t });
     await t.commit();
 
     const ip = req.ip || req.connection?.remoteAddress || null;
@@ -652,7 +652,7 @@ router.post('/otc', restrictTo('pharmacist'), checkPermission('pharmacy', 'write
       transaction: t,
     });
     await sequelize.query('UPDATE hms_otc_sales SET clinical_review=CAST(:review AS jsonb) WHERE id=:id', { replacements:{review:JSON.stringify(clinicalReview),id:saleId},transaction:t });
-    await publish('stock_updated', 'pharmacist', { reason: 'otc' }, { transaction: t });
+    await publish('stock_updated', 'pharmacist', { change: 'otc' }, { transaction: t });
     await t.commit();
 
     const ip = req.ip || req.connection?.remoteAddress || null;
@@ -768,7 +768,7 @@ async function stockMoveHandler(req, res) {
     }
     await auditInTransaction(t, { userId: req.user.id, action: move.action, module: 'pharmacy_stock', recordId: ledgerId, value: details, ip: req.ip });
 
-    await publish('stock_updated', 'pharmacist', { reason: type }, { transaction: t });
+    await publish('stock_updated', 'pharmacist', { change: type }, { transaction: t });
     if (type === 'patient_return' || type === 'vendor_return') {
       await publish('return_processed', 'pharmacist', { ledgerId }, { transaction: t });
     }
