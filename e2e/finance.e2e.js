@@ -70,8 +70,14 @@ async function journalBalanced() {
     }
     return encounterId;
   }
+  // Signing needs the record revision the doctor reviewed (completion A5/A6).
+  // A note is signed only with saved clinical content.
   const finalize = async (encounterId) => {
-    const f = await call('PATCH', `/hms/encounters/${encounterId}/finalize`, doctor, {});
+    const [{ record_revision: before }] = await sql('SELECT record_revision FROM hms_encounters WHERE id = $1', [encounterId]);
+    const saved = await call('PUT', `/hms/encounters/${encounterId}`, doctor, { chief_complaint: 'Synthetic billing visit' }, undefined, { 'if-match': String(before) });
+    assert(saved.status === 200, `note ${short(saved)}`);
+    const revision = saved.data.data?.revision ?? Number(before) + 1;
+    const f = await call('PATCH', `/hms/encounters/${encounterId}/finalize`, doctor, {}, undefined, { 'if-match': String(revision) });
     assert(f.status === 200, `finalize ${short(f)}`);
   };
   const account = async (q) => {
@@ -99,8 +105,13 @@ async function journalBalanced() {
     const reversal = acc.charges.filter((c) => c.source_type === 'reversal');
     assert(consult.length === 1 && reversal.length === 1 && Number(reversal[0].amount) < 0, `charges ${JSON.stringify(acc.charges.map((c) => [c.source_type, c.amount]))}`);
     // Finalizing twice does not charge twice; charges cannot be edited or deleted.
-    await sql("UPDATE hms_encounters SET status = 'Draft' WHERE id = $1", [ctx.encounter]);
-    await sql("UPDATE hms_encounters SET status = 'Finalized' WHERE id = $1", [ctx.encounter]);
+    // (A signed visit cannot be reopened at all: the database refuses it.)
+    let reopened = true;
+    try { await sql("UPDATE hms_encounters SET status = 'Draft' WHERE id = $1", [ctx.encounter]); } catch { reopened = false; }
+    assert(!reopened, 'a finalized visit was reopened');
+    const [{ record_revision: rev }] = await sql('SELECT record_revision FROM hms_encounters WHERE id = $1', [ctx.encounter]);
+    const twice = await call('PATCH', `/hms/encounters/${ctx.encounter}/finalize`, doctor, {}, undefined, { 'if-match': String(rev) });
+    assert(twice.status >= 400, `finalized twice: ${short(twice)}`);
     const [{ n }] = await sql("SELECT count(*)::int AS n FROM hms_charge_events WHERE source_type = 'consultation' AND source_key = $1", [String(ctx.encounter)]);
     assert(n === 1, `${n} consultation charges`);
     let blocked = false;
@@ -346,7 +357,9 @@ async function journalBalanced() {
         { rule: 'include', category: 'Procedure' }, { rule: 'exclude', category: 'Procedure' }],
     });
     assert(created.status === 201, `package ${short(created)}`);
-    assert((await call('POST', `/finance/packages/versions/${created.data.data.version.id}/activate`, admin, {})).status === 200, 'activate');
+    // Two-person rule (0150): the author cannot activate; another administrator does.
+    assert((await call('POST', `/finance/packages/versions/${created.data.data.version.id}/activate`, admin, {})).status === 403, 'author activated own package');
+    assert((await call('POST', `/finance/packages/versions/${created.data.data.version.id}/activate`, superAdmin, {})).status === 200, 'activate');
     const pid = await newPatient('Finance Package');
     const enc = await visit(pid, ['Haemoglobin', 'Blood sugar']);
     await finalize(enc);

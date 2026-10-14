@@ -205,11 +205,13 @@ router.put('/charge-master/versions/:id/items/:code', restrictTo(...ADMIN), hand
     labTest = await one('SELECT id FROM hms_lab_tests WHERE code_system = :system AND code = :code', { system: system || '', code: code || '' }, t);
     if (!labTest) B.fail(422, `${b.labTestCode} is not in the laboratory catalogue.`);
   }
-  return one(`INSERT INTO hms_charge_master_items (version_id, code, name, category, unit_price, gst_rate, doctor_id, ward_type, match_name, lab_test_id)
-    VALUES (:v, :code, :name, :category, :price, :gst, :doctor, :ward, :match, :labTest)
+  // edited_by: whoever changes a price cannot also activate the list (0150).
+  return one(`INSERT INTO hms_charge_master_items (version_id, code, name, category, unit_price, gst_rate, doctor_id, ward_type, match_name, lab_test_id, edited_by)
+    VALUES (:v, :code, :name, :category, :price, :gst, :doctor, :ward, :match, :labTest, :editor)
     ON CONFLICT (version_id, code) DO UPDATE SET name = EXCLUDED.name, category = EXCLUDED.category, unit_price = EXCLUDED.unit_price,
-      gst_rate = EXCLUDED.gst_rate, doctor_id = EXCLUDED.doctor_id, ward_type = EXCLUDED.ward_type, match_name = EXCLUDED.match_name, lab_test_id = EXCLUDED.lab_test_id
-    RETURNING *`, {
+      gst_rate = EXCLUDED.gst_rate, doctor_id = EXCLUDED.doctor_id, ward_type = EXCLUDED.ward_type, match_name = EXCLUDED.match_name,
+      lab_test_id = EXCLUDED.lab_test_id, edited_by = EXCLUDED.edited_by
+    RETURNING *`, { editor: req.user.id,
     v: v.id, code: req.params.code, name: String(b.name).slice(0, 200), category: b.category, price: money(price),
     gst: Number(b.gstRate || 0), doctor: Number(b.doctorId) || null, ward: b.wardType || null, match: b.matchName || null, labTest: labTest?.id || null,
   }, t);
@@ -218,6 +220,10 @@ router.put('/charge-master/versions/:id/items/:code', restrictTo(...ADMIN), hand
 router.post('/charge-master/versions/:id/activate', restrictTo(...ADMIN), handle('Could not activate the price list', async (req, t) => {
   const v = await one("SELECT * FROM hms_charge_master_versions WHERE id::text = :id AND status = 'Draft' FOR UPDATE", { id: String(req.params.id) }, t);
   if (!v) B.fail(409, 'Only a draft price list can be activated.');
+  // Two-person rule (0150): not the author, not anyone who changed a price.
+  const authored = v.created_by === req.user.id
+    || await one('SELECT 1 FROM hms_charge_master_items WHERE version_id = :id AND edited_by = :u LIMIT 1', { id: v.id, u: req.user.id }, t);
+  if (authored) B.fail(403, 'Another administrator must activate a price list you drafted or changed.', 'SAME_PERSON');
   await sequelize.query("UPDATE hms_charge_master_versions SET status = 'Retired', retired_at = now() WHERE status = 'Active'", { transaction: t });
   return one(`UPDATE hms_charge_master_versions SET status = 'Active', activated_by = :user, activated_at = now() WHERE id = :id RETURNING *`, { id: v.id, user: req.user.id }, t);
 }, { audit: 'charge_master_activate' }));
@@ -255,6 +261,7 @@ router.post('/packages', restrictTo(...ADMIN), handle('Could not create the pack
 router.post('/packages/versions/:id/activate', restrictTo(...ADMIN), handle('Could not activate the package', async (req, t) => {
   const v = await one("SELECT * FROM hms_package_versions WHERE id::text = :id AND status = 'Draft' FOR UPDATE", { id: String(req.params.id) }, t);
   if (!v) B.fail(409, 'Only a draft package version can be activated.');
+  if (v.created_by === req.user.id || v.edited_by === req.user.id) B.fail(403, 'Another administrator must activate a package you drafted.', 'SAME_PERSON');
   await sequelize.query("UPDATE hms_package_versions SET status = 'Retired' WHERE package_id = :p AND status = 'Active'", { replacements: { p: v.package_id }, transaction: t });
   return one(`UPDATE hms_package_versions SET status = 'Active', activated_by = :user, activated_at = now() WHERE id = :id RETURNING *`, { id: v.id, user: req.user.id }, t);
 }, { audit: 'package_activate' }));

@@ -475,7 +475,7 @@ async function createNote(invoiceId, { kind, reason, lines, payerAmount, sourceT
 // authorised adjustment: a negative charge while the dispense is unbilled,
 // otherwise a credit note on the invoice line that billed it.
 async function pendingReturnCredits(t, accountId = null) {
-  return rows(`SELECT r.id, r.quantity, r.reason, r.recorded_at, dl.rate, round(r.quantity * dl.rate, 2) AS amount,
+  return rows(`SELECT r.id, r.quantity, r.reason, r.recorded_at, r.received_by_user_id, dl.rate, round(r.quantity * dl.rate, 2) AS amount,
       c.id AS charge_id, c.account_id, c.description, a.account_number, a.patient_id, p.name AS patient_name, p.uhid,
       (SELECT l.id FROM hms_invoice_lines l JOIN hms_invoices i ON i.id = l.invoice_id
         WHERE l.charge_event_id = c.id AND NOT l.released AND i.status <> 'Draft' LIMIT 1) AS invoice_line_id
@@ -496,6 +496,8 @@ async function creditReturn(returnId, user, t) {
   await lockAccount(first.account_id, t);
   const r = (await pendingReturnCredits(t, first.account_id)).find((x) => x.id === first.id);
   if (!r) fail(409, 'This return is already credited.');
+  // Two-person rule: whoever took the medicine back does not also authorise its credit.
+  if (Number(r.received_by_user_id) === Number(user.id)) fail(403, 'Another administrator must authorise credit for a return you received.', 'SAME_PERSON');
   if (r.invoice_line_id) {
     const line = await one('SELECT invoice_id, amount FROM hms_invoice_lines WHERE id = :id', { id: r.invoice_line_id }, t);
     const amount = Math.min(money(r.amount), money(line.amount));
