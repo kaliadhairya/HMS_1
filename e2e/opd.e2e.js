@@ -284,12 +284,29 @@ async function pickPatient(page, query, name) {
     await step('Doctor orders a lab test, saves the draft, and everything reloads', async () => {
       const { page, errors } = fresh(doc);
       await page.getByRole('tab', { name: 'Investigations' }).click();
-      await page.getByLabel('Category').selectOption('Haematology');
-      await page.getByLabel('Test name').fill(LAB_TEST);
-      await page.getByRole('button', { name: 'Add test' }).click();
-      await page.getByLabel('Priority').selectOption('Urgent');
-      await page.getByRole('button', { name: /Send 1 test to lab/ }).click();
-      await page.getByText('Already ordered').waitFor();
+      // Phase 4: use the governed laboratory workspace while preserving the
+      // unsaved consultation tab. Clinical content below is synthetic only.
+      requireThrowawayDb();
+      const [labUser] = await sql("SELECT id FROM hms_users WHERE username = 'labtech'");
+      const [tariff] = await sql("SELECT id FROM hms_tariffs WHERE category = 'Lab' AND name = $1 ORDER BY id LIMIT 1", [LAB_TEST]);
+      const labToken = await apiLogin('lab_technician');
+      const [grant] = await sql("SELECT id FROM hms_lab_privileges WHERE user_id=$1 AND privilege='CONTENT' AND revoked_at IS NULL AND valid_until>now()", [labUser.id]);
+      if (!grant) {
+        const adminToken = await apiLogin('super_admin');
+        const granted = await api('POST', '/laboratory/privileges', { token: adminToken, body: { user_id: labUser.id, privilege: 'CONTENT', reason: 'Synthetic OPD acceptance content', valid_from: new Date(Date.now()-1000).toISOString(), valid_until: new Date(Date.now()+86400000).toISOString() } });
+        assert(granted.status === 201, 'Could not grant synthetic content approval');
+      }
+      const definition = await api('POST', '/laboratory/catalogue', { token: labToken, body: { code_system: 'TEST-OPD', code: `CBC-${S}`, kind: 'TEST', name: LAB_TEST, section: 'Haematology', unit: 'TEST-U', method: 'TEST-METHOD', tariff_id: tariff?.id, provenance: 'Synthetic OPD fixture only', effective_at: new Date(Date.now()-1000).toISOString(), requirements: [{ specimen_type: 'TEST-BLOOD', container: 'TEST-TUBE' }] } });
+      assert(definition.status === 201, `Catalogue fixture ${definition.status}`);
+      const work = await doc.ctx.newPage();
+      await work.goto(`${BASE}/lab/governed`, { waitUntil: 'networkidle' });
+      await work.getByLabel('Patient identifier', { exact: true }).fill(String(state.patient.id));
+      await work.getByLabel('Encounter identifier', { exact: true }).fill(String(state.encounterId));
+      await work.getByLabel('Approved tests and panels').selectOption([definition.data.data.id]).catch(async e => { throw new Error('Coded test selection failed: requested '+definition.data.data.id+'; observed options '+JSON.stringify(await work.getByLabel('Approved tests and panels').locator('option').evaluateAll(rows=>rows.map(x=>({value:x.value,label:x.textContent}))))) });
+      await work.getByLabel('Priority', { exact: true }).selectOption('Urgent');
+      await work.getByRole('button', { name: 'Place order', exact: true }).click();
+      await work.getByText('Saved and confirmed.', { exact: true }).waitFor();
+      await work.close();
       await page.getByRole('button', { name: 'Save draft' }).click();
       await page.getByText('Consultation draft saved').waitFor();
       await page.reload();

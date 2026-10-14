@@ -75,3 +75,17 @@ leave this worktree unchanged.
   Lab and medicine charges are captured by database triggers, so Phase 3 and
   Phase 4 files are not edited. Test databases `hms_p5_*`, API 5032, Vite 5204.
   No shared deployment.
+
+## Phase 4 (Codex)
+
+Phase 4 implementation and review completed in `HMS_1-phase4` on
+`phase4/laboratory`; integration/deployment remain owner-controlled.
+- 2026-10-13: started from integrated Phase 2/3 `01c19aa`; read Phase 4 prompt,
+  parallel rules, foundation/medication evidence and laboratory blueprint.
+  Implementing laboratory-owned routes/UI, migrations 0050–0069 and tests;
+  shared changes limited to additive registrations. Private test databases
+  `hms_p4_*`, API 5022 and Vite 5194. No shared deployment.
+
+- 2026-10-14: resumed actual implementation; building coded catalogue and specimen migrations/services, followed by versioned result/release and critical follow-up workflows.
+
+- 2026-10-14: completed coded laboratory/backend/frontend/worker implementation and review; 38 new lab scenarios and all 30 suites have passing latest results, PG16/18 migration checks through 0059 pass (3191 facts), build/static checks pass. Evidence: docs/phase4/verification.json. No shared deployment; clinical-navigation ownership request copied to main docs/requests.

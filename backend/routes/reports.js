@@ -34,71 +34,8 @@ const REPORT_SECTIONS = ['haematology', 'biochemistry', 'serology', 'urine', 'ot
 // ─── POST /api/reports — Start a report for a patient ───────────────────────
 // Patients registered through the HMS front desk have no report row (only the legacy lab
 // registration created one), so the editor at /report/new?patient_id= creates it on first save.
-router.post('/', protect, checkPermission('lab', 'write'), async (req, res) => {
-  try {
-    const patientId = Number(req.body?.patientId ?? req.body?.patient_id);
-    if (!Number.isInteger(patientId) || patientId <= 0) {
-      return res.status(400).json({ success: false, message: 'patientId is required.' });
-    }
-    const patient = await Patient.findByPk(patientId, { attributes: ['id'] });
-    if (!patient) return res.status(404).json({ success: false, message: 'Patient not found.' });
-
-    const [[{ NEXTVAL: reportId }]] = await sequelize.query("SELECT nextval('hms_test_reports_seq') AS \"NEXTVAL\"");
-    const fields = {
-      id: reportId,
-      patientId,
-      remarks: req.body?.remarks ?? null,
-      suggestions: req.body?.suggestions ?? null,
-      status: req.body?.status || 'Draft',
-      reportedBy: req.user.id,
-      reportDate: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    for (const section of REPORT_SECTIONS) {
-      if (req.body?.[section] && typeof req.body[section] === 'object') fields[section] = req.body[section];
-    }
-    const report = await TestReport.create(fields);
-    res.status(201).json({ success: true, message: 'Report created.', report });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-});
-
-// ─── PUT /api/reports/:id — Save test results ────────────────────────────────
-router.put('/:id(\\d+)', protect, checkPermission('lab', 'write'), async (req, res) => {
-  try {
-    const report = await TestReport.findByPk(req.params.id);
-    if (!report) return res.status(404).json({ success: false, message: 'Report not found.' });
-
-    const { haematology, biochemistry, serology, urine, other, remarks, suggestions, status } = req.body;
-
-    if (haematology) report.haematology = { ...report.haematology, ...haematology };
-    if (biochemistry) report.biochemistry = { ...report.biochemistry, ...biochemistry };
-    if (serology) report.serology = { ...report.serology, ...serology };
-    if (urine) report.urine = { ...report.urine, ...urine };
-    if (other) report.other = { ...report.other, ...other };
-    if (remarks !== undefined) report.remarks = remarks;
-    if (suggestions !== undefined) report.suggestions = suggestions;
-    if (status) report.status = status;
-
-    report.reportedBy = req.user.id;
-    report.reportDate = new Date();
-
-    report.changed('haematology', true);
-    report.changed('biochemistry', true);
-    report.changed('serology', true);
-    report.changed('urine', true);
-    report.changed('other', true);
-
-    await report.save();
-    res.json({ success: true, message: 'Report saved.', report });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-});
+router.post('/', protect, checkPermission('lab', 'write'), (req, res) => res.status(410).json({ success: false, code: 'LEGACY_REPORT_EDITOR_RETIRED', message: 'Use the versioned laboratory release workflow.' }));
+router.put('/:id(\\d+)', protect, checkPermission('lab', 'write'), (req, res) => res.status(410).json({ success: false, code: 'LEGACY_REPORT_EDITOR_RETIRED', message: 'Historical reports are read-only; use the laboratory amendment workflow.' }));
 
 // ─── GET /api/reports/:id — Fetch a single report ───────────────────────────
 router.get('/:id(\\d+)', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician'), async (req, res) => {
@@ -110,6 +47,7 @@ router.get('/:id(\\d+)', protect, restrictTo('super_admin', 'admin', 'doctor', '
       ],
     });
     if (!report) return res.status(404).json({ success: false, message: 'Report not found.' });
+    if (req.user.role === 'doctor' && !await require('../utils/careTeam').patientInCare(req.user.id, Number(report.patientId))) return res.status(403).json({ code: 'PATIENT_NOT_IN_CARE', message: require('../utils/careTeam').NOT_IN_CARE });
 
     const result = report.toJSON();
     result.patient = result.patient || null;
@@ -157,6 +95,7 @@ router.get('/:id(\\d+)/pdf', protect, restrictTo('super_admin', 'admin', 'doctor
       ],
     });
     if (!report) return res.status(404).json({ success: false, message: 'Report not found.' });
+    if (req.user.role === 'doctor' && !await require('../utils/careTeam').patientInCare(req.user.id, Number(report.patientId))) return res.status(403).json({ code: 'PATIENT_NOT_IN_CARE', message: require('../utils/careTeam').NOT_IN_CARE });
 
     const patient = report.patient;
     if (!patient) return res.status(400).json({ success: false, message: 'No patient linked to this report.' });
@@ -165,12 +104,14 @@ router.get('/:id(\\d+)/pdf', protect, restrictTo('super_admin', 'admin', 'doctor
 
     // ── PDF setup ──────────────────────────────────────────────────────────
     const doc = new PDFDocument({ margin: 40, size: 'A4', bufferPages: true });
+    doc.info.Title = 'Historical laboratory evidence (not a governed release)';
 
     res.setHeader('Content-Type', 'application/pdf');
     const filename = `lab-report-${safe(patient.name, 'report').replace(/\s+/g, '-')}.pdf`;
     const disposition = req.query.preview === 'true' ? 'inline' : 'attachment';
     res.setHeader('Content-Disposition', `${disposition}; filename="${filename}"`);
     doc.pipe(res);
+    doc.fontSize(9).text('Historical laboratory evidence; no authorization through the versioned release workflow.');
 
     // ── Page dimensions ────────────────────────────────────────────────────
     const PW = doc.page.width;   // 595

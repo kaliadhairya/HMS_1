@@ -120,6 +120,7 @@ const LabTestQueuePage = lazy(() => import('./pages/hms/lab/LabTestQueuePage.jsx
 const LabSampleCollectionPage = lazy(() => import('./pages/hms/lab/LabSampleCollectionPage.jsx'));
 const LabResultsEntryPage = lazy(() => import('./pages/hms/lab/LabResultsEntryPage.jsx'));
 const LabReportsPage = lazy(() => import('./pages/hms/lab/LabReportsPage.jsx'));
+const LaboratoryWorkspace = lazy(() => import('./pages/hms/lab/LaboratoryWorkspace.jsx'));
 const LabWorkloadPage = lazy(() => import('./pages/hms/lab/LabWorkloadPage.jsx'));
 
 function PageLoader() {
@@ -180,6 +181,7 @@ export default function App() {
             <Route path="/report/:reportId" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician']}><ReportPage /></HMSProtectedRoute>} />
 
             {/* Lab Technician LIMS Routes */}
+            <Route path="/lab/governed" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'lab_technician']}><LaboratoryWorkspace /></HMSProtectedRoute>} />
             <Route path="/lab/queue" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'lab_technician']}><LabTestQueuePage /></HMSProtectedRoute>} />
             <Route path="/lab/samples" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'lab_technician']}><LabSampleCollectionPage /></HMSProtectedRoute>} />
             <Route path="/lab/results" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'lab_technician']}><LabResultsEntryPage /></HMSProtectedRoute>} />
