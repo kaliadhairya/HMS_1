@@ -3,9 +3,9 @@
 Blueprint sections 3.11, 3.12 (audit storage), 3.13 (resilience) and the
 Phase 6 row of 5.1. Brief: `docs/NEXT_PHASES_PROMPT.md`, "Phase 6".
 
-**Status (2026-10-14): plan only. No code yet.** Building starts once the
-combined Phase 4 + Phase 5 branch exists (Codex is combining them); Phase 6
-is cut from that branch. Branch `phase6/interop-ops`, worktree `../HMS_1-phase6`.
+**Status (2026-10-14): plan only. No code yet.** Building starts from the
+combined Phase 4 + Phase 5 branch (`integration/phase4-phase5`); Phase 6
+is rebased onto it. Branch `phase6/interop-ops`, worktree `../HMS_1-phase6`.
 
 ## Exit criteria (blueprint 5.1)
 
@@ -50,8 +50,8 @@ local stand-ins, but **an exchange with ABDM or a real device is not
 
 ## Work packages
 
-Phase 6 migrations use `0090`–`0119`. Test databases `hms_p6_*`, API 5042,
-Vite 5214 (next free slots after Phase 5's 5032/5204).
+Phase 6 migrations use `0090`–`0119`. Test databases `hms_p6_*`, API 5052,
+Vite 5224 (5042/5214 are taken by the Phase 4+5 integration).
 
 ### 6A. Terminology releases (first, others depend on it)
 
