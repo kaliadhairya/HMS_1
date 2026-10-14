@@ -41,6 +41,7 @@ export default function DoctorLabsPage() {
     .map((t) => ({
       id: `LR-${t.itemId}`,
       orderId: o.orderId,
+      patientId: o.patientId,
       date: o.orderedAt,
       patient: o.patient,
       uhid: o.uhid,
@@ -117,12 +118,23 @@ export default function DoctorLabsPage() {
       cell: ({ getValue }) => <span className={`status ${getValue() === 'Completed' ? 'status-success' : 'status-warning'}`}>{getValue()}</span>,
     },
     {
-      id: 'actions', header: () => <span className="sr-only">Report</span>, enableSorting: false, meta: { width: 140, align: 'right' },
-      cell: ({ row }) => (row.original.status === 'Completed' ? (
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setReviewOrderId(row.original.orderId)} aria-label={`Review report for ${row.original.test}, ${row.original.patient}`}>
-          Review report
-        </button>
-      ) : <span className="cell-secondary">Awaiting result</span>),
+      id: 'actions', header: () => <span className="sr-only">Report</span>, enableSorting: false, meta: { width: 240, align: 'right' },
+      // Released reports, result review and critical-result follow-up live in
+      // the laboratory workspace; this page only shows what was ordered.
+      cell: ({ row }) => (
+        <span className="inline-actions" style={{ justifyContent: 'flex-end' }}>
+          {row.original.status === 'Completed' && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReviewOrderId(row.original.orderId)} aria-label={`Earlier report view for ${row.original.test}, ${row.original.patient}`}>
+              Earlier view
+            </button>
+          )}
+          {row.original.patientId && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate(`/lab/governed?patient_id=${row.original.patientId}`)} aria-label={`Open ${row.original.patient} in the laboratory workspace`}>
+              Open in laboratory
+            </button>
+          )}
+        </span>
+      ),
     },
   ], []);
 
@@ -142,9 +154,16 @@ export default function DoctorLabsPage() {
             </span>
           )}
           actions={(
-            <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/hms/appointments')}>
-              <ListOrdered size={16} aria-hidden="true" /> Open consultation queue
-            </button>
+            <span className="inline-actions">
+              {patientId && (
+                <button type="button" className="btn btn-secondary btn-md" onClick={() => navigate(`/lab/governed?patient_id=${patientId}`)}>
+                  <FlaskConical size={16} aria-hidden="true" /> Order coded tests and review results
+                </button>
+              )}
+              <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/hms/appointments')}>
+                <ListOrdered size={16} aria-hidden="true" /> Open consultation queue
+              </button>
+            </span>
           )}
         />
 
@@ -211,8 +230,13 @@ export default function DoctorLabsPage() {
         )}
       >
         {reviewOrder && (
+          <p className="cell-secondary">Earlier view of this order. Released reports, result review and critical results are in the{' '}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(`/lab/governed?patient_id=${reviewOrder.patientId}`)}>laboratory workspace</button>.
+            Opening this view does not acknowledge anything.</p>
+        )}
+        {reviewOrder && (
           <table className="mini-table">
-            <thead><tr><th>Investigation</th><th>Result</th><th>Reference range</th><th>Flag</th></tr></thead>
+            <thead><tr><th>Investigation</th><th>Result</th><th>Range (historical, not validated)</th><th>Flag</th></tr></thead>
             <tbody>
               {reviewOrder.tests.filter((t) => t.status !== 'Cancelled').map((t) => (
                 <tr key={t.itemId}>

@@ -27,3 +27,15 @@ and `unresolvedCritical` separately. Update the dashboards to read the former
 for "Abnormal results". The legacy `criticalFlagged` alias retains only its
 historical abnormal-count semantics for compatibility; it is not evidence
 that a critical policy matched or a communication task exists.
+
+## Status (Phase 2 part, 2026-10-14, Phase 6 branch)
+
+Done for `DoctorLabsPage.jsx`: every row opens the patient in
+`/lab/governed?patient_id=<id>`; with a patient selected the header offers
+"Order coded tests and review results"; the old report dialog is labelled an
+earlier view, says it acknowledges nothing, and marks ranges as historical
+and not validated (`e2e/doctorNavigation.e2e.js`). Dashboards already read
+`abnormalFlagged`; nothing reads `criticalFlagged`.
+
+Still open for the Phase 3 owner: coded investigation ordering on the
+consultation screen (`pages/hms/consultation/*`).
