@@ -129,7 +129,9 @@ async function status(t) {
 
 function startDowntimeKit() {
   if (!process.env.DOWNTIME_KIT_DIR || !/^[0-9a-f]{64}$/i.test(process.env.DOWNTIME_KIT_KEY || '')) return () => {};
-  const tick = () => snapshot().catch(async (err) => {
+  // After each kit, ward machines that hold no current kit go on the worklist (C6).
+  const tick = () => snapshot().then(() => require('./downtimeStations.cts').checkBehind()
+    .catch((err) => console.error('Ward machine check failed:', err.message)), async (err) => {
     console.error('Downtime kit failed:', err.message);
     await W.report({ kind: 'downtime.kit_failed', key: new Date().toISOString().slice(0, 13), title: `The downtime kit could not be refreshed: ${err.message}`, ownerRole: 'super_admin' }).catch(() => {});
   });

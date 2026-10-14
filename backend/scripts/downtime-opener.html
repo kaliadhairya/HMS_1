@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Downtime kit opener</title>
+<!--
+  Opens an HMS downtime kit (*.hmskit.json) in any modern browser, with no
+  application, server or network (completion C6). Keep this file next to the
+  kits that scripts/downtime-sync.js copies to the ward machine. The kit is
+  decrypted in this page with the browser's own cryptography; nothing is sent
+  anywhere. Close the tab after printing: the summary is not saved.
+-->
+<style>
+  :root { --fg: #111; --bg: #fff; --muted: #555; --line: #999; --warn: #8a0000; }
+  @media (prefers-color-scheme: dark) { :root:not([data-print]) { --fg: #eee; --bg: #161616; --muted: #aaa; --line: #666; --warn: #ff8a8a; } }
+  body { font: 15px/1.45 system-ui, sans-serif; color: var(--fg); background: var(--bg); margin: 0; padding: 16px; }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p { margin: 6px 0; }
+  .muted { color: var(--muted); }
+  form { display: grid; gap: 12px; margin: 16px 0; padding: 16px; border: 1px solid var(--line); border-radius: 8px; }
+  label { display: grid; gap: 4px; font-weight: 600; }
+  input[type=password], input[type=file] { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; max-width: 100%; }
+  button { font: inherit; font-weight: 600; padding: 10px 16px; border-radius: 6px; border: 2px solid var(--fg); background: var(--fg); color: var(--bg); cursor: pointer; justify-self: start; }
+  button.secondary { background: transparent; color: var(--fg); }
+  #message[role=alert] { border: 2px solid var(--warn); color: var(--warn); padding: 8px 12px; border-radius: 6px; font-weight: 600; }
+  #message:empty { display: none; }
+  .stale { font: bold 26px/1.2 system-ui, sans-serif; border: 6px solid #000; padding: 12px; margin: 12px 0; color: #000; background: #fff; }
+  .current { font-weight: 700; border: 3px solid #000; padding: 8px; margin: 12px 0; color: #000; background: #fff; }
+  #summary { display: none; background: #fff; color: #000; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  iframe { width: 100%; height: 75vh; border: 1px solid var(--line); background: #fff; }
+  @media print { body { padding: 0; } #opener, .toolbar { display: none !important; } iframe { border: 0; height: auto; } }
+</style>
+</head>
+<body>
+<main>
+  <section id="opener">
+    <h1>Downtime kit opener</h1>
+    <p class="muted">For use when the hospital system is unavailable. Choose the newest kit file on this machine and enter the kit key kept with the downtime box.</p>
+    <form id="form">
+      <label>Kit file (.hmskit.json)
+        <input id="file" type="file" accept=".json,application/json" required>
+      </label>
+      <label>Kit key (64 characters)
+        <input id="key" type="password" autocomplete="off" spellcheck="false" required pattern="[0-9a-fA-F]{64}">
+      </label>
+      <button type="submit">Open summary</button>
+    </form>
+    <div id="message" aria-live="assertive"></div>
+  </section>
+  <section id="summary" aria-label="Downtime summary">
+    <div id="banner"></div>
+    <div class="toolbar">
+      <button type="button" id="print">Print</button>
+      <button type="button" class="secondary" id="close">Close summary</button>
+    </div>
+    <iframe id="view" title="Downtime summary" sandbox="allow-same-origin allow-modals"></iframe>
+  </section>
+</main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const say = (text) => { $('message').setAttribute('role', 'alert'); $('message').textContent = text; };
+  const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const when = (iso) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+  // Same format as services/downtime.js: AES-256-GCM, the kit's metadata
+  // (everything but iv, tag and ciphertext, in file order) as associated data.
+  async function open(file, keyHex) {
+    if (!window.crypto || !crypto.subtle) throw new Error('This browser cannot decrypt the kit. Use a current Chrome, Edge or Firefox.');
+    const { iv, tag, ciphertext, ...meta } = file;
+    if (meta.format !== 'hms-downtime-1' || !iv || !tag || !ciphertext) throw new Error('This is not a downtime kit file.');
+    const raw = Uint8Array.from(keyHex.match(/../g).map((h) => parseInt(h, 16)));
+    const keyId = hex(await crypto.subtle.digest('SHA-256', raw)).slice(0, 12);
+    if (meta.key_id && meta.key_id !== keyId) throw new Error(`This key does not match the kit (the kit needs key ${meta.key_id}; this key is ${keyId}). Use the key kept with the downtime box.`);
+    const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
+    const body = new Uint8Array([...bytes(ciphertext), ...bytes(tag)]);
+    try {
+      const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes(iv), additionalData: new TextEncoder().encode(JSON.stringify(meta)), tagLength: 128 }, key, body);
+      return { meta, html: new TextDecoder().decode(plain) };
+    } catch {
+      throw new Error('The kit could not be opened: the file is damaged or was changed. Use an earlier kit file.');
+    }
+  }
+
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('message').textContent = '';
+    const keyHex = $('key').value.trim();
+    const chosen = $('file').files[0];
+    if (!chosen) return say('Choose a kit file.');
+    if (!/^[0-9a-f]{64}$/i.test(keyHex)) return say('The kit key is 64 characters, 0–9 and a–f.');
+    let parsed;
+    try { parsed = JSON.parse(await chosen.text()); } catch { return say('This file is not a downtime kit.'); }
+    try {
+      const { meta, html } = await open(parsed, keyHex);
+      const stale = new Date() > new Date(meta.stale_after);
+      $('banner').className = stale ? 'stale' : 'current';
+      $('banner').setAttribute('role', stale ? 'alert' : 'status');
+      $('banner').textContent = stale
+        ? `STALE — made ${when(meta.generated_at)}, more than its refresh window ago. Confirm everything with the ward record.`
+        : `Current — made ${when(meta.generated_at)}. Treat it as stale after ${when(meta.stale_after)}.`;
+      // The printed copy carries the same warning as the screen.
+      const stamp = document.createElement('div');
+      stamp.setAttribute('style', stale ? 'font:bold 28px sans-serif;border:6px solid #000;padding:12px;margin-bottom:12px' : 'font-weight:bold;border:3px solid #000;padding:8px;margin-bottom:12px');
+      stamp.textContent = $('banner').textContent;
+      $('view').srcdoc = html.replace('<body>', `<body>${stamp.outerHTML}`);
+      $('key').value = '';
+      $('opener').style.display = 'none';
+      $('summary').style.display = 'block';
+      $('print').focus();
+    } catch (err) { say(err.message); }
+  });
+  $('print').addEventListener('click', () => $('view').contentWindow.print());
+  $('close').addEventListener('click', () => {
+    $('view').srcdoc = '';
+    $('summary').style.display = 'none';
+    $('opener').style.display = '';
+    $('form').reset();
+    $('file').focus();
+  });
+})();
+</script>
+</body>
+</html>

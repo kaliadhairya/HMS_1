@@ -5,6 +5,7 @@ import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
 import { useAuth } from '../../../context/AuthContext';
+import WardMachinesPanel from './WardMachinesPanel';
 
 const when = (v) => (v ? new Date(v).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '');
 const KINDS = [['order', 'Order'], ['administration', 'Dose given'], ['specimen', 'Specimen'], ['receipt', 'Payment receipt'], ['temporary_identity', 'Temporary identity'], ['other', 'Other']];
@@ -20,6 +21,7 @@ export default function DowntimePage() {
   const [episodes, setEpisodes] = useState([]);
   const [entry, setEntry] = useState({ kind: 'administration', patientId: '', paperReference: '', occurredAt: nowLocal(), summary: '' });
   const [busy, setBusy] = useState(false);
+  const [kitVersion, setKitVersion] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -43,13 +45,15 @@ export default function DowntimePage() {
             <p>
               {status.last ? <>Last made <strong>{when(status.last.generated_at)}</strong> for {status.last.patient_count} admitted patient(s). </> : 'No kit made yet. '}
               {status.stale ? <span className="status status-danger">Out of date</span> : <span className="status status-success">Current</span>}
-              <span className="cell-secondary"> · refreshed every {status.refresh_minutes} minutes; wards open it with scripts/downtime-open.js and the kit key.</span>
+              <span className="cell-secondary"> · refreshed every {status.refresh_minutes} minutes; ward machines keep copies and open them with downtime-opener.html and the kit key.</span>
             </p>
           )}
           {isAdmin && status?.configured && <span className="inline-actions">
-            <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(() => api.post('/downtime/snapshots', {}), 'Kit refreshed')}>Refresh now</button>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(() => api.post('/downtime/snapshots', {}), 'Kit refreshed').then(() => setKitVersion((v) => v + 1))}>Refresh now</button>
           </span>}
         </section>
+
+        {isAdmin && status?.configured && <WardMachinesPanel refreshKey={kitVersion} />}
 
         <section className="panel panel-pad stack-sm" aria-label="Current downtime" style={{ marginTop: 16 }}>
           <h2 className="panel-title"><CloudOff size={16} aria-hidden="true" /> {open ? (open.ended_at ? 'Downtime ended — paper records to enter' : 'DOWNTIME IN PROGRESS') : 'No downtime'}</h2>
