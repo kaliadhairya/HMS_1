@@ -8,8 +8,25 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
       - "${DB_HOST_PORT:-5434}:5432"
+    # Continuous WAL archiving for point-in-time restore (Phase 6G): a segment
+    # is archived (gzipped, never overwritten) at least every 60 s, so a
+    # restore loses at most about a minute. Base backups:
+    # scripts/pitr-basebackup.sh; drill: scripts/pitr-restore-drill.sh.
+    # Copy hms-wal-archive and hms-basebackups off this host as well.
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=60
+      - -c
+      - archive_command=test ! -f /wal-archive/%f.gz && gzip -c %p > /wal-archive/%f.gz.tmp && mv /wal-archive/%f.gz.tmp /wal-archive/%f.gz
     volumes:
       - hms-db-data:/var/lib/postgresql/data
+      - hms-wal-archive:/wal-archive
+      - hms-basebackups:/basebackups
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-hms}"]
       interval: 5s
@@ -148,5 +165,7 @@ services:
 
 volumes:
   hms-db-data:
+  hms-wal-archive:
+  hms-basebackups:
   hms-prom-data:
   hms-grafana-data:
