@@ -1,0 +1,869 @@
+{
+  "run": "a5e77f",
+  "started_minutes": 5,
+  "scale": 10,
+  "users": 200,
+  "visits_started": 195,
+  "visits_signed": 195,
+  "requests": 126873,
+  "requests_per_second": 422.9,
+  "targets": {
+    "read_p95_ms": 250,
+    "command_p95_ms": 500,
+    "event_p95_ms": 2000
+  },
+  "ops": [
+    {
+      "op": "doctor: open consultation",
+      "kind": "command",
+      "ok": 195,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 229.2,
+      "p90": 331.8,
+      "p95": 362.2,
+      "p99": 442.8,
+      "max": 456.2
+    },
+    {
+      "op": "doctor: request admission",
+      "kind": "command",
+      "ok": 25,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 196.7,
+      "p90": 431.2,
+      "p95": 531.5,
+      "p99": 579.9,
+      "max": 579.9
+    },
+    {
+      "op": "doctor: save note",
+      "kind": "command",
+      "ok": 195,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 208.5,
+      "p90": 349,
+      "p95": 380.4,
+      "p99": 455.5,
+      "max": 663.9
+    },
+    {
+      "op": "doctor: sign consultation",
+      "kind": "command",
+      "ok": 195,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 223.6,
+      "p90": 358.4,
+      "p95": 392.8,
+      "p99": 442.7,
+      "max": 531.2
+    },
+    {
+      "op": "front desk: issue token",
+      "kind": "command",
+      "ok": 195,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 287.1,
+      "p90": 391.2,
+      "p95": 419,
+      "p99": 526.8,
+      "max": 658.7
+    },
+    {
+      "op": "front desk: register patient",
+      "kind": "command",
+      "ok": 195,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 675.5,
+      "p90": 935.3,
+      "p95": 1039.8,
+      "p99": 1270.6,
+      "max": 1334.6
+    },
+    {
+      "op": "nurse: inpatient vitals",
+      "kind": "command",
+      "ok": 44,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 166.2,
+      "p90": 298.6,
+      "p95": 352.9,
+      "p99": 614.5,
+      "max": 614.5
+    },
+    {
+      "op": "nurse: record vitals",
+      "kind": "command",
+      "ok": 195,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 198.1,
+      "p90": 309.2,
+      "p95": 352.5,
+      "p99": 510.4,
+      "max": 520
+    },
+    {
+      "op": "admin: worklist",
+      "kind": "read",
+      "ok": 953,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 141.1,
+      "p90": 248.8,
+      "p95": 293.4,
+      "p99": 367,
+      "max": 495.6
+    },
+    {
+      "op": "doctor: latest vitals",
+      "kind": "read",
+      "ok": 195,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 237.9,
+      "p90": 479.7,
+      "p95": 552,
+      "p99": 761.4,
+      "max": 929.7
+    },
+    {
+      "op": "doctor: OPD queue",
+      "kind": "read",
+      "ok": 9208,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 120.7,
+      "p90": 234.2,
+      "p95": 275.4,
+      "p99": 363.5,
+      "max": 607.9
+    },
+    {
+      "op": "doctor: patient chart",
+      "kind": "read",
+      "ok": 195,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 448.3,
+      "p90": 792.4,
+      "p95": 902.6,
+      "p99": 1218.2,
+      "max": 1249.5
+    },
+    {
+      "op": "every page: event catch-up",
+      "kind": "read",
+      "ok": 92529,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 135.9,
+      "p90": 275.2,
+      "p95": 327.2,
+      "p99": 433.2,
+      "max": 686.2
+    },
+    {
+      "op": "front desk: patient search",
+      "kind": "read",
+      "ok": 3842,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 313.6,
+      "p90": 606.5,
+      "p95": 697.1,
+      "p99": 915.1,
+      "max": 1164
+    },
+    {
+      "op": "lab: work queue",
+      "kind": "read",
+      "ok": 2730,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 149.8,
+      "p90": 286.5,
+      "p95": 331,
+      "p99": 447.1,
+      "max": 572
+    },
+    {
+      "op": "nurse: inpatients",
+      "kind": "read",
+      "ok": 7274,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 147.7,
+      "p90": 289.8,
+      "p95": 340.5,
+      "p99": 447.9,
+      "max": 652.2
+    },
+    {
+      "op": "nurse: worklist",
+      "kind": "read",
+      "ok": 7319,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 130.1,
+      "p90": 242.3,
+      "p95": 283.4,
+      "p99": 371,
+      "max": 594.3
+    },
+    {
+      "op": "pharmacy: dashboard",
+      "kind": "read",
+      "ok": 1389,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 227.8,
+      "p90": 450.8,
+      "p95": 536.2,
+      "p99": 729,
+      "max": 892.4
+    }
+  ],
+  "event_freshness_ms": {
+    "n": 220,
+    "p50": 465,
+    "p95": 784,
+    "p99": 885,
+    "max": 1237
+  },
+  "backlog": {
+    "max_undelivered": 2,
+    "max_oldest_undelivered_s": 0.6,
+    "max_db_active": 8,
+    "max_db_connections": 26,
+    "api_cpu_pct_p95": 105.4,
+    "api_rss_mb_max": 448.7
+  },
+  "environment": {
+    "host_cpus": 12,
+    "host_cpu_model": "12th Gen Intel(R) Core(TM) i5-1235U",
+    "host_mem_gb": 15.3,
+    "node": "v24.13.0",
+    "postgres": "16.15",
+    "database": "hms_p4_final_claude_e2e",
+    "api_processes": 1
+  },
+  "observations": [
+    {
+      "at": "2026-10-14T20:17:06.564Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 26,
+      "api_cpu_pct": 106.2,
+      "api_rss_mb": 405.2
+    },
+    {
+      "at": "2026-10-14T20:17:11.562Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 4,
+      "db_connections": 26,
+      "api_cpu_pct": 104,
+      "api_rss_mb": 415.5
+    },
+    {
+      "at": "2026-10-14T20:17:16.563Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 100.8,
+      "api_rss_mb": 417
+    },
+    {
+      "at": "2026-10-14T20:17:21.562Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 104,
+      "api_rss_mb": 417.7
+    },
+    {
+      "at": "2026-10-14T20:17:26.564Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 103,
+      "api_rss_mb": 417.1
+    },
+    {
+      "at": "2026-10-14T20:17:31.563Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 104.8,
+      "api_rss_mb": 418.3
+    },
+    {
+      "at": "2026-10-14T20:17:36.561Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 7,
+      "db_connections": 26,
+      "api_cpu_pct": 102,
+      "api_rss_mb": 417.3
+    },
+    {
+      "at": "2026-10-14T20:17:41.563Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 103.4,
+      "api_rss_mb": 418.7
+    },
+    {
+      "at": "2026-10-14T20:17:46.564Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 100.8,
+      "api_rss_mb": 418.4
+    },
+    {
+      "at": "2026-10-14T20:17:51.559Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 103.7,
+      "api_rss_mb": 418.6
+    },
+    {
+      "at": "2026-10-14T20:17:56.563Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 104.5,
+      "api_rss_mb": 418.7
+    },
+    {
+      "at": "2026-10-14T20:18:01.562Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 4,
+      "db_connections": 26,
+      "api_cpu_pct": 101.2,
+      "api_rss_mb": 419.4
+    },
+    {
+      "at": "2026-10-14T20:18:06.566Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 26,
+      "api_cpu_pct": 103.7,
+      "api_rss_mb": 419.2
+    },
+    {
+      "at": "2026-10-14T20:18:11.565Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 102.8,
+      "api_rss_mb": 418.9
+    },
+    {
+      "at": "2026-10-14T20:18:16.564Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 105,
+      "api_rss_mb": 420.6
+    },
+    {
+      "at": "2026-10-14T20:18:21.564Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 101.8,
+      "api_rss_mb": 424
+    },
+    {
+      "at": "2026-10-14T20:18:26.562Z",
+      "unsequenced": 1,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.164557,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 104.4,
+      "api_rss_mb": 422.4
+    },
+    {
+      "at": "2026-10-14T20:18:31.566Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 102.1,
+      "api_rss_mb": 423.6
+    },
+    {
+      "at": "2026-10-14T20:18:36.566Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 104.6,
+      "api_rss_mb": 424.4
+    },
+    {
+      "at": "2026-10-14T20:18:41.565Z",
+      "unsequenced": 1,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.218878,
+      "db_active": 1,
+      "db_connections": 26,
+      "api_cpu_pct": 104.6,
+      "api_rss_mb": 425.9
+    },
+    {
+      "at": "2026-10-14T20:18:46.565Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 26,
+      "api_cpu_pct": 102.4,
+      "api_rss_mb": 426
+    },
+    {
+      "at": "2026-10-14T20:18:51.565Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 104.6,
+      "api_rss_mb": 426.3
+    },
+    {
+      "at": "2026-10-14T20:18:56.567Z",
+      "unsequenced": 2,
+      "undelivered": 2,
+      "oldest_undelivered_s": 0.087317,
+      "db_active": 4,
+      "db_connections": 26,
+      "api_cpu_pct": 101.6,
+      "api_rss_mb": 427
+    },
+    {
+      "at": "2026-10-14T20:19:01.567Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 4,
+      "db_connections": 26,
+      "api_cpu_pct": 104.2,
+      "api_rss_mb": 428.9
+    },
+    {
+      "at": "2026-10-14T20:19:06.568Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 104,
+      "api_rss_mb": 429.1
+    },
+    {
+      "at": "2026-10-14T20:19:11.564Z",
+      "unsequenced": 0,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.314472,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 102.9,
+      "api_rss_mb": 429.6
+    },
+    {
+      "at": "2026-10-14T20:19:16.566Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 104.6,
+      "api_rss_mb": 429.1
+    },
+    {
+      "at": "2026-10-14T20:19:21.567Z",
+      "unsequenced": 0,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.536433,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 104,
+      "api_rss_mb": 434.8
+    },
+    {
+      "at": "2026-10-14T20:19:26.568Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 103.4,
+      "api_rss_mb": 435.2
+    },
+    {
+      "at": "2026-10-14T20:19:31.567Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 105,
+      "api_rss_mb": 436
+    },
+    {
+      "at": "2026-10-14T20:19:36.565Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 4,
+      "db_connections": 26,
+      "api_cpu_pct": 102.6,
+      "api_rss_mb": 437.3
+    },
+    {
+      "at": "2026-10-14T20:19:41.562Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 103.3,
+      "api_rss_mb": 437.5
+    },
+    {
+      "at": "2026-10-14T20:19:46.568Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 6,
+      "db_connections": 26,
+      "api_cpu_pct": 104.7,
+      "api_rss_mb": 436.6
+    },
+    {
+      "at": "2026-10-14T20:19:51.568Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 6,
+      "db_connections": 26,
+      "api_cpu_pct": 103.2,
+      "api_rss_mb": 436.4
+    },
+    {
+      "at": "2026-10-14T20:19:56.568Z",
+      "unsequenced": 1,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.103059,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 105,
+      "api_rss_mb": 437.8
+    },
+    {
+      "at": "2026-10-14T20:20:01.571Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 103.1,
+      "api_rss_mb": 436.9
+    },
+    {
+      "at": "2026-10-14T20:20:06.566Z",
+      "unsequenced": 1,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.335941,
+      "db_active": 4,
+      "db_connections": 26,
+      "api_cpu_pct": 105.1,
+      "api_rss_mb": 437.2
+    },
+    {
+      "at": "2026-10-14T20:20:11.565Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 103.6,
+      "api_rss_mb": 436.6
+    },
+    {
+      "at": "2026-10-14T20:20:16.569Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 4,
+      "db_connections": 26,
+      "api_cpu_pct": 105.1,
+      "api_rss_mb": 436.8
+    },
+    {
+      "at": "2026-10-14T20:20:21.568Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 104.6,
+      "api_rss_mb": 438.4
+    },
+    {
+      "at": "2026-10-14T20:20:26.565Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 103.7,
+      "api_rss_mb": 438
+    },
+    {
+      "at": "2026-10-14T20:20:31.566Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 105,
+      "api_rss_mb": 437.6
+    },
+    {
+      "at": "2026-10-14T20:20:36.567Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 104,
+      "api_rss_mb": 437.4
+    },
+    {
+      "at": "2026-10-14T20:20:41.571Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 26,
+      "api_cpu_pct": 103.1,
+      "api_rss_mb": 437.8
+    },
+    {
+      "at": "2026-10-14T20:20:46.568Z",
+      "unsequenced": 0,
+      "undelivered": 2,
+      "oldest_undelivered_s": 0.641671,
+      "db_active": 4,
+      "db_connections": 26,
+      "api_cpu_pct": 105.3,
+      "api_rss_mb": 438.7
+    },
+    {
+      "at": "2026-10-14T20:20:51.566Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 103,
+      "api_rss_mb": 439.7
+    },
+    {
+      "at": "2026-10-14T20:20:56.568Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 105.4,
+      "api_rss_mb": 438.7
+    },
+    {
+      "at": "2026-10-14T20:21:01.570Z",
+      "unsequenced": 0,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.20418,
+      "db_active": 1,
+      "db_connections": 26,
+      "api_cpu_pct": 105.2,
+      "api_rss_mb": 440.6
+    },
+    {
+      "at": "2026-10-14T20:21:06.567Z",
+      "unsequenced": 1,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.528287,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 103.1,
+      "api_rss_mb": 441.2
+    },
+    {
+      "at": "2026-10-14T20:21:11.570Z",
+      "unsequenced": 1,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.424447,
+      "db_active": 6,
+      "db_connections": 26,
+      "api_cpu_pct": 105.1,
+      "api_rss_mb": 440
+    },
+    {
+      "at": "2026-10-14T20:21:16.566Z",
+      "unsequenced": 1,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.169821,
+      "db_active": 2,
+      "db_connections": 26,
+      "api_cpu_pct": 105.1,
+      "api_rss_mb": 440.9
+    },
+    {
+      "at": "2026-10-14T20:21:21.574Z",
+      "unsequenced": 1,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.348077,
+      "db_active": 8,
+      "db_connections": 26,
+      "api_cpu_pct": 103,
+      "api_rss_mb": 441.5
+    },
+    {
+      "at": "2026-10-14T20:21:26.566Z",
+      "unsequenced": 2,
+      "undelivered": 2,
+      "oldest_undelivered_s": 0.390627,
+      "db_active": 1,
+      "db_connections": 26,
+      "api_cpu_pct": 105.4,
+      "api_rss_mb": 441.3
+    },
+    {
+      "at": "2026-10-14T20:21:31.568Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 104.8,
+      "api_rss_mb": 447.7
+    },
+    {
+      "at": "2026-10-14T20:21:36.568Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 26,
+      "api_cpu_pct": 103.6,
+      "api_rss_mb": 447.8
+    },
+    {
+      "at": "2026-10-14T20:21:41.570Z",
+      "unsequenced": 1,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.117143,
+      "db_active": 4,
+      "db_connections": 26,
+      "api_cpu_pct": 105.2,
+      "api_rss_mb": 447.5
+    },
+    {
+      "at": "2026-10-14T20:21:46.571Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 106,
+      "api_rss_mb": 448.6
+    },
+    {
+      "at": "2026-10-14T20:21:51.577Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 104.9,
+      "api_rss_mb": 447.6
+    },
+    {
+      "at": "2026-10-14T20:21:56.573Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 3,
+      "db_connections": 26,
+      "api_cpu_pct": 103.9,
+      "api_rss_mb": 448.2
+    },
+    {
+      "at": "2026-10-14T20:22:01.582Z",
+      "unsequenced": 0,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.573084,
+      "db_active": 7,
+      "db_connections": 26,
+      "api_cpu_pct": 105.8,
+      "api_rss_mb": 448.5
+    },
+    {
+      "at": "2026-10-14T20:22:06.563Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 26,
+      "api_cpu_pct": 6.4,
+      "api_rss_mb": 448.7
+    }
+  ]
+}

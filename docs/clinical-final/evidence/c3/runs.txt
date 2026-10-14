@@ -1,0 +1,7 @@
+commit 870a078
+scale 1 done: scale 1, 10 min, 200 users, 52.5 req/s, visits 43 (43 signed)
+scale 3 done: scale 3, 10 min, 200 users, 157.2 req/s, visits 119 (119 signed)
+scale 10 done: scale 10, 5 min, 200 users, 422.9 req/s, visits 195 (195 signed)
+restart: killed 1133150 at 2026-10-14T20:25:28Z, ready again at 2026-10-14T20:25:39Z
+restart run done: scale 1, 6 min, 200 users, 52.6 req/s, visits 29 (28 signed)
+C3-RUNS-DONE

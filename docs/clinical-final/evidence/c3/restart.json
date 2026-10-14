@@ -1,0 +1,1055 @@
+{
+  "run": "e12f13",
+  "started_minutes": 6,
+  "scale": 1,
+  "users": 200,
+  "visits_started": 29,
+  "visits_signed": 28,
+  "requests": 18948,
+  "requests_per_second": 52.6,
+  "targets": {
+    "read_p95_ms": 250,
+    "command_p95_ms": 500,
+    "event_p95_ms": 2000
+  },
+  "ops": [
+    {
+      "op": "doctor: open consultation",
+      "kind": "command",
+      "ok": 28,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 18.6,
+      "p90": 27.2,
+      "p95": 32.9,
+      "p99": 34.7,
+      "max": 34.7
+    },
+    {
+      "op": "doctor: save note",
+      "kind": "command",
+      "ok": 28,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 29.5,
+      "p90": 46.9,
+      "p95": 47,
+      "p99": 48.7,
+      "max": 48.7
+    },
+    {
+      "op": "doctor: sign consultation",
+      "kind": "command",
+      "ok": 28,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 24.1,
+      "p90": 35.2,
+      "p95": 36.7,
+      "p99": 45.4,
+      "max": 45.4
+    },
+    {
+      "op": "front desk: issue token",
+      "kind": "command",
+      "ok": 28,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 13.3,
+      "p90": 16,
+      "p95": 17,
+      "p99": 17.2,
+      "max": 17.2
+    },
+    {
+      "op": "front desk: register patient",
+      "kind": "command",
+      "ok": 28,
+      "errors": 1,
+      "error_detail": {
+        "599": 1
+      },
+      "p50": 319.4,
+      "p90": 335.4,
+      "p95": 335.5,
+      "p99": 339.1,
+      "max": 339.1
+    },
+    {
+      "op": "nurse: inpatient vitals",
+      "kind": "command",
+      "ok": 4,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 23.2,
+      "p90": 40.1,
+      "p95": 40.1,
+      "p99": 40.1,
+      "max": 40.1
+    },
+    {
+      "op": "nurse: record vitals",
+      "kind": "command",
+      "ok": 28,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 21.3,
+      "p90": 31,
+      "p95": 32,
+      "p99": 32.1,
+      "max": 32.1
+    },
+    {
+      "op": "admin: worklist",
+      "kind": "read",
+      "ok": 112,
+      "errors": 4,
+      "error_detail": {
+        "599": 4
+      },
+      "p50": 24.6,
+      "p90": 30.5,
+      "p95": 32.6,
+      "p99": 35.5,
+      "max": 37.1
+    },
+    {
+      "op": "doctor: latest vitals",
+      "kind": "read",
+      "ok": 28,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 7.3,
+      "p90": 14.1,
+      "p95": 14.6,
+      "p99": 14.9,
+      "max": 14.9
+    },
+    {
+      "op": "doctor: OPD queue",
+      "kind": "read",
+      "ok": 1186,
+      "errors": 34,
+      "error_detail": {
+        "599": 34
+      },
+      "p50": 11.6,
+      "p90": 15.7,
+      "p95": 16.8,
+      "p99": 23.2,
+      "max": 29
+    },
+    {
+      "op": "doctor: patient chart",
+      "kind": "read",
+      "ok": 28,
+      "errors": 0,
+      "error_detail": {},
+      "p50": 15.4,
+      "p90": 23.6,
+      "p95": 25,
+      "p99": 31.5,
+      "max": 31.5
+    },
+    {
+      "op": "every page: event catch-up",
+      "kind": "read",
+      "ok": 13989,
+      "errors": 420,
+      "error_detail": {
+        "599": 420
+      },
+      "p50": 9.2,
+      "p90": 13,
+      "p95": 14.1,
+      "p99": 19.4,
+      "max": 33.1
+    },
+    {
+      "op": "front desk: patient search",
+      "kind": "read",
+      "ok": 527,
+      "errors": 13,
+      "error_detail": {
+        "599": 13
+      },
+      "p50": 32.9,
+      "p90": 43,
+      "p95": 45.6,
+      "p99": 51.4,
+      "max": 62.5
+    },
+    {
+      "op": "lab: work queue",
+      "kind": "read",
+      "ok": 348,
+      "errors": 10,
+      "error_detail": {
+        "599": 10
+      },
+      "p50": 17.4,
+      "p90": 25.5,
+      "p95": 29.7,
+      "p99": 33.5,
+      "max": 42.2
+    },
+    {
+      "op": "nurse: inpatients",
+      "kind": "read",
+      "ok": 928,
+      "errors": 21,
+      "error_detail": {
+        "599": 21
+      },
+      "p50": 14.4,
+      "p90": 23.2,
+      "p95": 26,
+      "p99": 29.2,
+      "max": 36.4
+    },
+    {
+      "op": "nurse: worklist",
+      "kind": "read",
+      "ok": 922,
+      "errors": 30,
+      "error_detail": {
+        "599": 30
+      },
+      "p50": 10.5,
+      "p90": 14.5,
+      "p95": 15.6,
+      "p99": 18.8,
+      "max": 27.2
+    },
+    {
+      "op": "pharmacy: dashboard",
+      "kind": "read",
+      "ok": 170,
+      "errors": 5,
+      "error_detail": {
+        "599": 5
+      },
+      "p50": 12.4,
+      "p90": 21,
+      "p95": 23.8,
+      "p99": 25.4,
+      "max": 25.5
+    }
+  ],
+  "event_freshness_ms": {
+    "n": 28,
+    "p50": 262,
+    "p95": 470,
+    "p99": 499,
+    "max": 499
+  },
+  "backlog": {
+    "max_undelivered": 1,
+    "max_oldest_undelivered_s": 0.2,
+    "max_db_active": 2,
+    "max_db_connections": 26,
+    "api_cpu_pct_p95": 29.2,
+    "api_rss_mb_max": 449.7
+  },
+  "environment": {
+    "host_cpus": 12,
+    "host_cpu_model": "12th Gen Intel(R) Core(TM) i5-1235U",
+    "host_mem_gb": 15.3,
+    "node": "v24.13.0",
+    "postgres": "16.15",
+    "database": "hms_p4_final_claude_e2e",
+    "api_processes": 1
+  },
+  "observations": [
+    {
+      "at": "2026-10-14T20:23:29.491Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 26,
+      "api_cpu_pct": 26.1,
+      "api_rss_mb": 448.8
+    },
+    {
+      "at": "2026-10-14T20:23:34.504Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 26,
+      "api_cpu_pct": 26.1,
+      "api_rss_mb": 448.5
+    },
+    {
+      "at": "2026-10-14T20:23:39.502Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": 28.4,
+      "api_rss_mb": 449
+    },
+    {
+      "at": "2026-10-14T20:23:44.496Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": 26.6,
+      "api_rss_mb": 448
+    },
+    {
+      "at": "2026-10-14T20:23:49.501Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": 27.4,
+      "api_rss_mb": 447.7
+    },
+    {
+      "at": "2026-10-14T20:23:54.507Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": 26.2,
+      "api_rss_mb": 448.2
+    },
+    {
+      "at": "2026-10-14T20:23:59.494Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": 25.7,
+      "api_rss_mb": 448
+    },
+    {
+      "at": "2026-10-14T20:24:04.503Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": 27.6,
+      "api_rss_mb": 447.7
+    },
+    {
+      "at": "2026-10-14T20:24:09.493Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 9,
+      "api_cpu_pct": 27.3,
+      "api_rss_mb": 448.2
+    },
+    {
+      "at": "2026-10-14T20:24:14.497Z",
+      "unsequenced": 1,
+      "undelivered": 1,
+      "oldest_undelivered_s": 0.151314,
+      "db_active": 1,
+      "db_connections": 9,
+      "api_cpu_pct": 27.4,
+      "api_rss_mb": 447.7
+    },
+    {
+      "at": "2026-10-14T20:24:19.506Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 6,
+      "api_cpu_pct": 27.2,
+      "api_rss_mb": 447.7
+    },
+    {
+      "at": "2026-10-14T20:24:24.491Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 9,
+      "api_cpu_pct": 28.3,
+      "api_rss_mb": 449.1
+    },
+    {
+      "at": "2026-10-14T20:24:29.502Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 9,
+      "api_cpu_pct": 27.5,
+      "api_rss_mb": 447.7
+    },
+    {
+      "at": "2026-10-14T20:24:34.498Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": 25,
+      "api_rss_mb": 447.7
+    },
+    {
+      "at": "2026-10-14T20:24:39.498Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 10,
+      "api_cpu_pct": 25.4,
+      "api_rss_mb": 448.3
+    },
+    {
+      "at": "2026-10-14T20:24:44.502Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 10,
+      "api_cpu_pct": 25.6,
+      "api_rss_mb": 448.3
+    },
+    {
+      "at": "2026-10-14T20:24:49.496Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": 25.8,
+      "api_rss_mb": 449.7
+    },
+    {
+      "at": "2026-10-14T20:24:54.513Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 6,
+      "api_cpu_pct": 25.5,
+      "api_rss_mb": 448
+    },
+    {
+      "at": "2026-10-14T20:24:59.504Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 7,
+      "api_cpu_pct": 27.6,
+      "api_rss_mb": 448.8
+    },
+    {
+      "at": "2026-10-14T20:25:04.500Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": 30,
+      "api_rss_mb": 448.9
+    },
+    {
+      "at": "2026-10-14T20:25:09.501Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": 27.4,
+      "api_rss_mb": 447.7
+    },
+    {
+      "at": "2026-10-14T20:25:14.499Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": 26,
+      "api_rss_mb": 448.3
+    },
+    {
+      "at": "2026-10-14T20:25:19.506Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 5,
+      "api_cpu_pct": 26.2,
+      "api_rss_mb": 448
+    },
+    {
+      "at": "2026-10-14T20:25:24.507Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 17,
+      "api_cpu_pct": 29.2,
+      "api_rss_mb": 448.3
+    },
+    {
+      "at": "2026-10-14T20:25:29.512Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 1,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:25:34.509Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 1,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:25:39.497Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 12,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:25:44.507Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 12,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:25:49.498Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 12,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:25:54.505Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 9,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:25:59.514Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 9,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:04.503Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:09.507Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:14.513Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 11,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:19.513Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 11,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:24.511Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:29.512Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:34.505Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 22,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:39.504Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 22,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:44.498Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:49.504Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:54.512Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:26:59.505Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 15,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:04.509Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 15,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:09.498Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 13,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:14.509Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 13,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:19.514Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:24.506Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:29.515Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:34.515Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 10,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:39.504Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 10,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:44.515Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 9,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:49.520Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:54.511Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:27:59.511Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:04.509Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:09.515Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:14.517Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:19.504Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 2,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:24.506Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:29.517Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 11,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:34.514Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 11,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:39.512Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:44.519Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:49.512Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:54.519Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:28:59.508Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:04.511Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:09.508Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 7,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:14.515Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 6,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:19.513Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 10,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:24.520Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 10,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:29.507Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:34.517Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:39.521Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:44.504Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:49.511Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:54.523Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    },
+    {
+      "at": "2026-10-14T20:29:59.513Z",
+      "unsequenced": 0,
+      "undelivered": 0,
+      "oldest_undelivered_s": 0,
+      "db_active": 1,
+      "db_connections": 5,
+      "api_cpu_pct": null,
+      "api_rss_mb": null
+    }
+  ]
+}
