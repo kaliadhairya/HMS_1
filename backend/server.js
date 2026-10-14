@@ -206,6 +206,8 @@ app.use('/api/terminology', require('./routes/terminology'));
 app.use('/api/fhir', require('./routes/fhir'));
 app.use('/api/worklist', require('./routes/worklist'));
 app.use('/api/abdm', require('./routes/abdm'));
+app.use('/api/devices', require('./routes/devices').contracts);
+app.use('/api/device-messages', require('./routes/devices').inbound);
 // Calls from the ABDM gateway (and data pushes from other facilities).
 app.use('/abdm', require('./routes/abdmBridge'));
 
@@ -325,6 +327,7 @@ async function start() {
   startAuditShipper(sequelize);
   require('./services/interfaces').startInterfaceWorker();
   require('./services/abdm').startAbdmWorker();
+  require('./services/devices').startMllp().catch((err) => console.error('Device listeners failed:', err.message));
   startOutboxDispatcher(io);
   startFinanceWorker();
   startSocketSessionGuard(io);

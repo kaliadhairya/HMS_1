@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Search, UserPlus, Pill, Users, BedDouble, Inbox, ChartColumn, CalendarDays, Hospital,
   Settings, Droplet, TestTube, ShoppingCart, Bell, ShieldCheck, Repeat, Package, ClipboardList, ChartLine,
-  FileText, CreditCard, Wallet, Factory, Ticket, HeartPulse, Clock, Undo2, ListOrdered, BookOpen, ListChecks, BadgeCheck, FileInput, FilePlus2, Truck, Megaphone, Stethoscope,
+  FileText, CreditCard, Wallet, Factory, Ticket, HeartPulse, Clock, Undo2, ListOrdered, BookOpen, ListChecks, BadgeCheck, FileInput, Cable, FilePlus2, Truck, Megaphone, Stethoscope,
 } from 'lucide-react';
 
 // Navigation per role. `group` drives the sidebar sections.
@@ -12,6 +12,8 @@ const LAB = [
   { to: '/lab/results', label: 'Results entry', icon: ClipboardList, group: 'Laboratory' },
   { to: '/lab/reports', label: 'Reports', icon: FileText, group: 'Laboratory' },
   { to: '/lab/workload', label: 'Workload', icon: ChartLine, group: 'Laboratory' },
+  { to: '/worklist', label: 'Worklist', icon: ListChecks, group: 'Laboratory' },
+  { to: '/admin/devices', label: 'Device interfaces', icon: Cable, group: 'Laboratory' },
   { to: '/search', label: 'Search', icon: Search, group: 'Patients' },
 ];
 
@@ -35,6 +37,7 @@ export const NAV_BY_ROLE = {
     { to: '/admin/settings', label: 'Settings', icon: Settings, group: 'Administration' },
     { to: '/admin/terminology', label: 'Terminology', icon: BookOpen, group: 'Administration' },
     { to: '/worklist', label: 'Worklist', icon: ListChecks, group: 'Administration' },
+    { to: '/admin/devices', label: 'Device interfaces', icon: Cable, group: 'Administration' },
   ],
   admin: [
     { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
@@ -57,6 +60,7 @@ export const NAV_BY_ROLE = {
     { to: '/ipd/billing', label: 'IPD billing', icon: BedDouble, group: 'Finance' },
     { to: '/admin/terminology', label: 'Terminology', icon: BookOpen, group: 'Administration' },
     { to: '/worklist', label: 'Worklist', icon: ListChecks, group: 'Administration' },
+    { to: '/admin/devices', label: 'Device interfaces', icon: Cable, group: 'Administration' },
     { to: '/reports', label: 'Reports', icon: ChartColumn, group: 'Insights' },
     { to: '/hms/admin/staff', label: 'Staff', icon: Users, group: 'Administration' },
     { to: '/hms/admin/attendance', label: 'Attendance & leave', icon: Clock, group: 'Administration' },
@@ -77,6 +81,7 @@ export const NAV_BY_ROLE = {
     { to: '/abdm/outside-records', label: 'Outside records', icon: FileInput, group: 'Patients' },
     { to: '/ipd/patients', label: 'Inpatients', icon: Hospital, group: 'Inpatient' },
     { to: '/ipd/requests', label: 'Admission requests', icon: Inbox, group: 'Inpatient' },
+    { to: '/worklist', label: 'Worklist', icon: ListChecks, group: 'Inpatient' },
   ],
   nurse: [
     { to: '/nurse/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
@@ -88,6 +93,7 @@ export const NAV_BY_ROLE = {
     { to: '/ipd/requests', label: 'Admission requests', icon: Inbox, group: 'Inpatient' },
     { to: '/ipd/billing', label: 'IPD billing', icon: Wallet, group: 'Finance' },
     { to: '/ipd/saved-bills', label: 'Unbilled charges', icon: FileText, group: 'Finance' },
+    { to: '/worklist', label: 'Worklist', icon: ListChecks, group: 'Finance' },
   ],
   receptionist: [
     { to: '/receptionist/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
@@ -103,6 +109,7 @@ export const NAV_BY_ROLE = {
     { to: '/receptionist/visitors', label: 'Visitors', icon: Users, group: 'Front desk' },
     { to: '/receptionist/notifications', label: 'Alerts', icon: Bell, group: 'Front desk' },
     { to: '/abdm', label: 'ABDM', icon: BadgeCheck, group: 'Patients' },
+    { to: '/worklist', label: 'Worklist', icon: ListChecks, group: 'Patients' },
   ],
   pharmacist: [
     { to: '/pharmacist/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
@@ -116,6 +123,7 @@ export const NAV_BY_ROLE = {
     { to: '/pharmacy/pos', label: 'Purchase orders', icon: Truck, group: 'Procurement', disabled: true },
     { to: '/pharmacy/grn', label: 'Goods receipt', icon: Inbox, group: 'Procurement', disabled: true },
     { to: '/pharmacy/reports', label: 'Reports', icon: ChartColumn, group: 'Insights' },
+    { to: '/worklist', label: 'Worklist', icon: ListChecks, group: 'Insights' },
   ],
   lab_technician: LAB,
 };

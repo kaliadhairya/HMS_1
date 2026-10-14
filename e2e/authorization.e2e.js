@@ -80,6 +80,9 @@ const RULES = [
   ['POST', '/abdm/patients/{patient}/care-contexts/link', [SA, A, R]],
   ['GET', '/abdm/consents', [SA, A]],
   ['GET', '/abdm/transfers', [SA, A]],
+  // Phase 6F device contracts.
+  ['GET', '/devices', [SA, A, L]],
+  ['POST', '/devices', [SA, A, L]],
 ];
 
 (async () => {

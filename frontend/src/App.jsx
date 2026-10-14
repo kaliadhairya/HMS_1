@@ -89,6 +89,7 @@ const TerminologyPage = lazy(() => import('./pages/hms/admin/TerminologyPage'));
 const WorklistPage = lazy(() => import('./pages/hms/admin/WorklistPage'));
 const AbdmDeskPage = lazy(() => import('./pages/hms/abdm/AbdmDeskPage'));
 const OutsideRecordsPage = lazy(() => import('./pages/hms/abdm/OutsideRecordsPage'));
+const DeviceContractsPage = lazy(() => import('./pages/hms/admin/DeviceContractsPage'));
 
 // Part C - Reports & Admin Settings Pages
 const AdminSettingsPage = lazy(() => import('./pages/AdminSettingsPage'));
@@ -486,6 +487,7 @@ export default function App() {
             <Route path="/worklist" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'lab_technician', 'pharmacist', 'receptionist']}><WorklistPage /></HMSProtectedRoute>} />
             <Route path="/abdm" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}><AbdmDeskPage /></HMSProtectedRoute>} />
             <Route path="/abdm/outside-records" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}><OutsideRecordsPage /></HMSProtectedRoute>} />
+            <Route path="/admin/devices" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'lab_technician']}><DeviceContractsPage /></HMSProtectedRoute>} />
 
             {/* Part C — Admin Settings & Reports Routes */}
             <Route path="/admin/settings" element={
