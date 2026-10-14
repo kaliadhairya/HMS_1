@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models/db');
 const F = require('./fhir');
+const C = require('./fhirClinical.cts');
 const T = require('./terminology');
 
 const rows = (sql, replacements, t) => sequelize.query(sql, { replacements, type: QueryTypes.SELECT, transaction: t });
@@ -26,14 +27,16 @@ const entryRef = (r) => ({ reference: `${r.resourceType}/${r.id}`, type: r.resou
 async function closure(resources, t) {
   const have = new Map(resources.map((r) => [`${r.resourceType}/${r.id}`, r]));
   for (let pass = 0; pass < 3; pass++) {
-    const refs = new Set((JSON.stringify([...have.values()]).match(/"reference":"(Practitioner|Encounter|Specimen|Organization)\/[^"]+"/g) || []).map((m) => m.slice(13, -1)));
+    const refs = new Set((JSON.stringify([...have.values()]).match(/"reference":"(Practitioner|Encounter|Specimen|Organization|MedicationRequest|Location)\/[^"]+"/g) || []).map((m) => m.slice(13, -1)));
     let added = false;
     for (const ref of refs) {
       if (have.has(ref)) continue;
       const [type, id] = ref.split('/');
       const r = type === 'Practitioner' ? await F.practitioner(id, t)
         : type === 'Encounter' ? (await F.encounter(id, t)).resource
-          : type === 'Specimen' ? (await F.specimen(id, t)).resource : await F.organization(t);
+          : type === 'Specimen' ? (await F.specimen(id, t)).resource
+            : type === 'MedicationRequest' ? (await C.medicationById(type,id,t)).resource
+              : type === 'Location' ? await C.location(id,t) : await F.organization(t);
       have.set(ref, r); added = true;
     }
     if (!added) break;
@@ -65,6 +68,15 @@ const withClosure = async (args, t) => bundle({ ...args, resources: await closur
 async function opConsultation(encounterId, t) {
   const { resource: encounter, patientId } = await F.encounter(`opd-${encounterId}`, t);
   const [e] = await rows('SELECT * FROM hms_encounters WHERE id = :id', { id: encounterId }, t);
+  let signature=null;
+  if(e.notes_document_id){
+    [signature]=await rows('SELECT * FROM hms_document_signatures WHERE document_id=:id ORDER BY version DESC LIMIT 1',{id:e.notes_document_id},t);
+    if(!signature)throw Object.assign(new Error('The consultation note has no verified signature.'),{status:409,code:'SIGNATURE_REQUIRED'});
+    const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+    if(crypto.createHash('sha256').update(JSON.stringify(canonical(signature.content))).digest('hex')!==signature.digest)
+      throw Object.assign(new Error('The consultation signature digest does not match.'),{status:409,code:'SIGNATURE_INTEGRITY_FAILED'});
+    Object.assign(e,signature.content);
+  }
   const patient = await F.patient(patientId, t);
   const author = await F.practitioner(e.doctor_id, t);
   const org = await F.organization(t);
@@ -80,12 +92,12 @@ async function opConsultation(encounterId, t) {
     category: [{ coding: [{ system: 'http://terminology.hl7.org/CodeSystem/condition-category', code: 'problem-list-item', display: 'Problem List Item' }] }],
     code: { text: e.past_medical_history }, subject: { reference: `Patient/${patientId}` }, encounter: { reference: `Encounter/opd-${encounterId}` },
   }] : [];
-  const id = docId('OPConsultation', encounterId, e.updated_at || e.created_at);
+  const id = docId('OPConsultation', encounterId, signature?.digest || e.updated_at || e.created_at);
   return {
     id, hiType: 'OPConsultation',
     bundle: await withClosure({
       id, profile: 'OPConsultRecord', title: 'Consultation Report', type: { ...sct('371530004', 'Clinical consultation report'), text: 'Clinical consultation report' },
-      patient, encounter, author, date: F.instant(e.updated_at || e.created_at),
+      patient, encounter, author, date: F.instant(signature?.signed_at || e.updated_at || e.created_at),
       sections: [
         { title: 'Chief complaints', code: sct('422843007', 'Chief complaint section'), entry: complaint.map(entryRef) },
         { title: 'Allergies', code: sct('722446000', 'Allergy record'), entry: allergies.map(entryRef) },
@@ -118,4 +130,46 @@ async function diagnosticReport(reportVersionId, t) {
   };
 }
 
-module.exports = { opConsultation, diagnosticReport, docId };
+// Only independently signed order versions enter a prescription export.
+async function prescription(encounterId,t) {
+  const {resource:encounter,patientId}=await F.encounter(`opd-${encounterId}`,t);
+  const versions=(await C.medications('MedicationRequest',patientId,t)).filter(r=>r.encounter.reference===`Encounter/opd-${encounterId}`);
+  if(!versions.length)throw Object.assign(new Error('No signed medication orders for this encounter.'),{status:409,code:'SIGNED_PRESCRIPTION_REQUIRED'});
+  const patient=await F.patient(patientId,t);
+  const author=await F.practitioner(versions[0].requester.reference.split('/')[1],t);
+  const org=await F.organization(t);
+  const date=versions.map(v=>v.authoredOn).sort().at(-1);
+  const id=docId('Prescription',encounterId,...versions.map(v=>v.id).sort());
+  return {id,hiType:'Prescription',patientId,bundle:await withClosure({
+    id,profile:'PrescriptionRecord',title:'Prescription',type:sct('440545006','Prescription record'),patient,encounter,author,date,
+    sections:[{title:'Medications',code:sct('440545006','Prescription record'),entry:versions.map(entryRef)}],
+    resources:[patient,author,org,encounter,...versions],
+  },t)};
+}
+// An immutable signature supplies discharge content and its identity. A draft
+// or an unsigned historical summary is never promoted to a signed export.
+async function dischargeSummary(signatureId,t) {
+  const [s]=await rows(`SELECT s.*,d.patient_id,d.admission_id,d.doc_type FROM hms_document_signatures s
+    JOIN hms_clinical_documents d ON d.id=s.document_id WHERE s.id=:id AND d.doc_type='discharge_summary'`,{id:Number(signatureId)||0},t);
+  if(!s)throw Object.assign(new Error('Signed discharge summary not found.'),{status:404,code:'not-found'});
+  const canonical=v=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
+  if(crypto.createHash('sha256').update(JSON.stringify(canonical(s.content))).digest('hex')!==s.digest)
+    throw Object.assign(new Error('The discharge signature digest could not be verified.'),{status:409,code:'SIGNATURE_INTEGRITY_FAILED'});
+  const patient=await F.patient(s.patient_id,t);
+  const {resource:encounter}=await F.encounter(`ipd-${s.admission_id}`,t);
+  if(encounter.status!=='finished')throw Object.assign(new Error('The admission has not completed discharge.'),{status:409,code:'DISCHARGE_NOT_COMPLETED'});
+  const author=await F.practitioner(s.signed_by,t);
+  const org=await F.organization(t);
+  const id=docId('DischargeSummary',s.document_id,s.version,s.digest);
+  const sections=Object.entries(s.content).filter(([,v])=>typeof v==='string'&&v.trim()).map(([key,value])=>({
+    title:key,text:{status:'generated',div:`<div xmlns="http://www.w3.org/1999/xhtml"><p>${String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</p></div>`},
+  }));
+  const b=await withClosure({id,profile:'DischargeSummaryRecord',title:'Discharge summary',type:sct('373942005','Discharge summary'),
+    patient,encounter,author,date:F.instant(s.signed_at),sections:[],resources:[patient,author,org,encounter]},t);
+  b.entry[0].resource.section=sections;
+  b.entry[0].resource.status=s.amends_version?'amended':'final';
+  b.entry[0].resource.meta.versionId=String(s.version);
+  return {id,hiType:'DischargeSummary',patientId:s.patient_id,bundle:b};
+}
+
+module.exports = { opConsultation, diagnosticReport, prescription, dischargeSummary, docId };

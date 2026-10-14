@@ -10,7 +10,8 @@
     "test": "node --test tests/*.test.js",
     "migrate": "node migrate.js up",
     "migrate:status": "node migrate.js status",
-    "seed:demo": "node seed_demo_data.js"
+    "seed:demo": "node seed_demo_data.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1143.0",
@@ -33,6 +34,11 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2"
+    "@types/node": "24.10.1",
+    "nodemon": "^3.0.2",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24.12.0 <25"
   }
 }

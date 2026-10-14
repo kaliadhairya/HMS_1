@@ -49,6 +49,10 @@ export default function ConsultationPage() {
   const [patient, setPatient] = useState(null);
   const [vitals, setVitals] = useState(null);
   const [loading, setLoading] = useState(true);
+  const noteRevision=useRef(1),notePending=useRef(null),noteRunning=useRef(false);
+  const [notesBusy,setNotesBusy]=useState(false),[notesMessage,setNotesMessage]=useState(''),[notesUncertain,setNotesUncertain]=useState(false),[notesConflict,setNotesConflict]=useState(null);
+  const [notesDirty,setNotesDirty]=useState(false);
+  const latestForm=useRef(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -84,6 +88,8 @@ export default function ConsultationPage() {
     try {
       const res = await api.get(`/hms/encounters/${id}`);
       const enc = res.data;
+      noteRevision.current=Number(enc.record_revision||1);
+      notePending.current=null;setNotesUncertain(false);setNotesConflict(null);setNotesDirty(false);
       setEncounter(enc);
       setPatient(enc.patient);
       setDiagnoses(enc.diagnoses || []);
@@ -126,23 +132,45 @@ export default function ConsultationPage() {
 
   // ─── Autosave logic (Every 60s when typing) ───
   useEffect(() => {
-    if (!encounter || encounter.status === 'Finalized') return undefined;
+    if (!encounter || encounter.status === 'Finalized'||!notesDirty||notesConflict||notesUncertain) return undefined;
     const timeout = setTimeout(() => {
-      api.put(`/hms/encounters/${id}`, formData).catch((err) => console.error(err));
+      persistNotes();
     }, 60000); // 60s
     return () => clearTimeout(timeout);
-  }, [formData]);
+  }, [formData,notesDirty,notesConflict,notesUncertain]);
+  latestForm.current=formData;
 
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    setNotesDirty(true);
   };
 
   // Notes and prescription are saved together; errors propagate so callers can stop.
-  const persistNotes = () => api.put(`/hms/encounters/${id}`, formData);
+  const noteCommand=async(method,body,reconcile=false)=>{
+    if(noteRunning.current||notesConflict||(!reconcile&&notePending.current))return false;
+    if(!reconcile&&method==='put'&&!notesDirty)return true;
+    const request=reconcile?notePending.current:{method,path:`/hms/encounters/${id}${method==='patch'?'/finalize':''}`,body:JSON.parse(JSON.stringify(body)),revision:noteRevision.current,key:crypto.randomUUID()};
+    if(!request)return false;
+    notePending.current=request;noteRunning.current=true;setNotesBusy(true);
+    try{
+      const r=await api[request.method](request.path,request.body,{headers:{'If-Match':String(request.revision),'Idempotency-Key':request.key}});
+      noteRevision.current=r.data.revision;notePending.current=null;setNotesUncertain(false);setNotesMessage('Notes saved and confirmed.');
+      if(request.method==='patch'){setEncounter(e=>({...e,status:'Finalized',notes_document_id:r.data.notes_document_id}));setConfirmFinalize(false);}
+      else if(JSON.stringify(latestForm.current)===JSON.stringify(request.body))setNotesDirty(false);
+      return true;
+    }catch(err){
+      const unknown=!err.response||err.response.status>=500;setNotesUncertain(unknown);
+      if(!unknown)notePending.current=null;
+      if(err.response?.status===412)setNotesConflict({revision:err.response.data.current,remote:null});
+      setNotesMessage(unknown?'Save outcome uncertain. Keep this chart open and reconcile the original note request.':err.response?.data?.message||'Notes could not be saved. Your draft is preserved.');
+      return false;
+    }finally{noteRunning.current=false;setNotesBusy(false);}
+  };
+  const persistNotes=()=>noteCommand('put',formData);
 
   const saveDraft = async () => {
     try {
-      await persistNotes();
+      if(!(await persistNotes()))return;
       toast.success('Consultation notes saved. Medication orders have their own save and sign actions.');
       if (hasPendingLabs) toast('Selected laboratory tests have not been confirmed yet.');
     } catch (err) { toast.error(err.response?.data?.message || err.response?.data?.error || 'Notes could not be saved. Your draft is preserved.'); }
@@ -193,10 +221,10 @@ export default function ConsultationPage() {
     if (hasPendingMedication) return toast.error('Save, assess and sign medication orders, or reconcile any uncertain save, before finalizing.');
     setFinalizing(true);
     try {
-      await persistNotes();
+      if(!(await persistNotes()))throw new Error('Confirm the note save before finalizing.');
       if (hasPendingLabs && !(await labPanel.current?.submitPending())) throw new Error('Confirm the coded laboratory order before finalizing.');
 
-      await api.patch(`/hms/encounters/${id}/finalize`, {});
+      if(!(await noteCommand('patch',{})))throw new Error('The signature was not confirmed. Your chart is preserved.');
       setConfirmFinalize(false);
       setEncounter((enc) => ({ ...enc, status: 'Finalized' }));
 
@@ -256,10 +284,22 @@ export default function ConsultationPage() {
       <div className="panel panel-pad" style={{ marginBottom: 16 }}>
         <MedicationAllergyPanel key={`${patient?.id}:${id}`} patientId={patient?.id} />
       </div>
+      {notesMessage&&<div className="alert-strip alert-info" role="status">{notesMessage}</div>}
+      {notesUncertain&&<button className="btn btn-secondary btn-md" disabled={notesBusy} onClick={()=>noteCommand(null,null,true)}>Reconcile original note request</button>}
+      {notesConflict&&<section className="panel panel-pad stack" aria-label="Consultation note conflict">
+        <p role="alert">Another writer changed this chart. Your draft is preserved. Review the current server record before choosing a version.</p>
+        {!notesConflict.remote&&<button className="btn btn-secondary btn-md" onClick={async()=>{try{const r=await api.get(`/hms/encounters/${id}`);setNotesConflict({revision:r.data.record_revision,remote:r.data});}catch{setNotesMessage('Could not load the server copy. Your draft is preserved.');}}}>Compare server copy</button>}
+        {notesConflict.remote&&<>
+          <dl>{Object.keys(formData).filter(k=>String(formData[k]||'')!==String(notesConflict.remote[k]||'')).map(k=><div key={k}><dt>{k.replaceAll('_',' ')}</dt><dd>Server: {notesConflict.remote[k]||'Empty'}<br/>Your draft: {formData[k]||'Empty'}</dd></div>)}</dl>
+          <button className="btn btn-secondary btn-md" onClick={()=>{setFormData(Object.fromEntries(Object.keys(formData).map(k=>[k,notesConflict.remote[k]||''])));noteRevision.current=notesConflict.revision;setEncounter(notesConflict.remote);setNotesConflict(null);setNotesDirty(false);}}>Use server version</button>
+          {notesConflict.remote.status!=='Finalized'&&<button className="btn btn-primary btn-md" onClick={()=>{noteRevision.current=notesConflict.revision;setNotesConflict(null);setNotesDirty(true);setNotesMessage('Comparison reviewed. Save your preserved draft to submit it against this revision.');}}>Keep my reviewed draft</button>}
+        </>}
+      </section>}
 
       {readOnly && (
         <div className="alert-strip alert-info" role="status">
           <Lock size={16} aria-hidden="true" /> This encounter is finalized. The notes, diagnoses and prescription can no longer be changed.
+          {encounter.notes_document_id&&<button className="btn btn-secondary btn-sm" onClick={()=>navigate(`/hms/notes/${encounter.notes_document_id}`)}>Review signed note or amend</button>}
         </div>
       )}
 
@@ -437,10 +477,10 @@ export default function ConsultationPage() {
               </button>
               {!readOnly && (
                 <>
-                  <button type="button" className="btn btn-ghost btn-md" onClick={saveDraft}>
+                  <button type="button" className="btn btn-ghost btn-md" disabled={notesBusy||notesUncertain||Boolean(notesConflict)} onClick={saveDraft}>
                     <Save size={16} aria-hidden="true" /> Save draft
                   </button>
-                  <button type="button" className="btn btn-primary btn-md" onClick={() => setConfirmFinalize(true)}>
+                  <button type="button" className="btn btn-primary btn-md" disabled={notesBusy||notesUncertain||Boolean(notesConflict)} onClick={() => setConfirmFinalize(true)}>
                     <CircleCheck size={16} aria-hidden="true" /> Finalize encounter
                   </button>
                 </>

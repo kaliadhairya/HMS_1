@@ -335,8 +335,8 @@ async function specimen(id, t) {
 }
 
 // ── Capability statement and bundles ────────────────────────
-const SEARCHABLE = ['Encounter', 'Condition', 'AllergyIntolerance', 'Observation', 'DiagnosticReport'];
-const READABLE = ['Patient', 'Practitioner', 'Organization', 'Encounter', 'Condition', 'Observation', 'DiagnosticReport', 'Specimen'];
+const SEARCHABLE = ['Encounter', 'Condition', 'AllergyIntolerance', 'Observation', 'DiagnosticReport', 'MedicationRequest', 'MedicationDispense', 'MedicationAdministration', 'ServiceRequest'];
+const READABLE = ['Patient', 'Practitioner', 'PractitionerRole', 'Organization', 'Location', 'Encounter', 'Condition', 'Observation', 'DiagnosticReport', 'Specimen', 'MedicationRequest', 'MedicationDispense', 'MedicationAdministration', 'ServiceRequest'];
 function capabilityStatement(baseUrl) {
   const resource = (type) => clean({
     type, profile: { Patient: P('Patient'), Practitioner: P('Practitioner'), Organization: P('Organization'), Encounter: P('Encounter'), Condition: P('Condition'), AllergyIntolerance: P('AllergyIntolerance'), DiagnosticReport: P('DiagnosticReportLab'), Specimen: P('Specimen'), Observation: P('Observation') }[type],

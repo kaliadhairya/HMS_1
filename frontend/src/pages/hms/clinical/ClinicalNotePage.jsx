@@ -13,6 +13,13 @@ const SECTIONS = [
   ['assessment', 'Assessment'],
   ['plan', 'Plan'],
 ];
+const DOCUMENT_SECTIONS={
+  clinical_note:SECTIONS,
+  discharge_summary:[['diagnosis','Diagnosis'],['course','Hospital course'],['condition','Condition at discharge'],['instructions','Discharge instructions'],['medicationPlan','Medication continuity plan'],['warningSigns','Warning signs and escalation'],['followUp','Follow-up'],['pendingResults','Pending results']],
+  nursing_assessment:[['assessment','Assessment'],['observations','Observations'],['risks','Risks'],['actions','Actions'],['escalation','Escalation']],
+  care_plan:[['assessment','Assessment'],['goals','Goals'],['actions','Actions'],['review','Review'],['handover','Handover']],
+  encounter_note:['chief_complaint','hopi','past_medical_history','surgical_history','family_history','social_history','current_medications','general_examination','cvs_findings','rs_findings','abdomen_findings','cns_findings'].map(k=>[k,k.replaceAll('_',' ')]),
+};
 
 // A clinical note. Every save and signature states the version it is based on;
 // if someone else changed the note meanwhile, the save is refused and the latest
@@ -27,11 +34,13 @@ export default function ClinicalNotePage() {
   const [content, setContent] = useState({});
   const [versions, setVersions] = useState([]);
   const [busy, setBusy] = useState(false);
+  const documentType=note?.doc_type||params.get('docType')||'clinical_note';
 
   const applyResponse = (data, etag) => {
     setNote(data);
     setContent(data.content || {});
     setVersion(etag ? Number(etag.replace(/"/g, '')) : data.version);
+    setAmendReason(data.state==='draft'&&data.signed_version?data.amendment_reason:null);
   };
 
   const load = async (nid) => {
@@ -59,7 +68,7 @@ export default function ClinicalNotePage() {
   const create = async () => {
     setBusy(true);
     try {
-      const res = await api.post('/clinical-documents', { patientId: Number(params.get('patient')), content });
+      const res = await api.post('/clinical-documents', { patientId: Number(params.get('patient')), encounterId:params.get('encounter')?Number(params.get('encounter')):undefined, admissionId:params.get('admission')?Number(params.get('admission')):undefined,docType:documentType, content });
       setNoteId(String(res.data.data.id));
       applyResponse(res.data.data, res.headers.etag);
       navigate(`/hms/notes/${res.data.data.id}`, { replace: true });
@@ -139,9 +148,9 @@ export default function ClinicalNotePage() {
     <>
       <Navbar />
       <main className="app-page">
-        <PageHeader title={noteId ? 'Clinical note' : 'New clinical note'} description={note ? `Version ${version} · ${note.state === 'signed' ? 'signed' : 'draft'}` : 'Notes are saved as drafts until you sign them.'} />
+        <PageHeader title={`${noteId?'':'New '}${documentType.replaceAll('_',' ')}`} description={note ? `Version ${version} · ${note.state === 'signed' ? 'signed' : 'draft'}` : 'Notes are saved as drafts until you sign them.'} />
         <section className="panel panel-pad stack" style={{ maxWidth: 820, margin: '0 auto' }}>
-          {SECTIONS.map(([key, label]) => (
+          {(DOCUMENT_SECTIONS[documentType]||SECTIONS).map(([key, label]) => (
             <div key={key} className="form-group">
               <label className="form-label" htmlFor={`note-${key}`}>{label}</label>
               <textarea id={`note-${key}`} className="form-input" rows={key === 'chiefComplaint' ? 2 : 4} maxLength={5000}
@@ -151,7 +160,7 @@ export default function ClinicalNotePage() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {!noteId && <button type="button" className="btn btn-primary btn-md" disabled={busy} onClick={create}><FilePen size={16} aria-hidden="true" /> Start note</button>}
             {noteId && editable && <button type="button" className="btn btn-secondary btn-md" disabled={busy} onClick={save}><Save size={16} aria-hidden="true" /> Save draft</button>}
-            {noteId && editable && <button type="button" className="btn btn-primary btn-md" disabled={busy} onClick={sign}><Lock size={16} aria-hidden="true" /> Sign note</button>}
+            {noteId && editable && !note?.signed_version && documentType!=='encounter_note' && <button type="button" className="btn btn-primary btn-md" disabled={busy} onClick={sign}><Lock size={16} aria-hidden="true" /> Sign note</button>}
             {noteId && signedOnce && <button type="button" className="btn btn-ghost btn-md" disabled={busy} onClick={amend}>Amend</button>}
             {noteId && amendReason && <button type="button" className="btn btn-primary btn-md" disabled={busy} onClick={signAmendment}>Sign amendment</button>}
           </div>

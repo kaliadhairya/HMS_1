@@ -1,6 +1,6 @@
 services:
   db-storage-init:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     user: root
     entrypoint: ["sh", "-ec"]
     command: ["mkdir -p /wal-archive /basebackups; chown postgres:postgres /wal-archive /basebackups; chmod 0700 /wal-archive /basebackups"]
@@ -9,7 +9,7 @@ services:
       - hms-basebackups:/basebackups
     restart: "no"
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: hms-db
     depends_on:
       db-storage-init:
@@ -36,7 +36,7 @@ services:
       - -c
       - archive_command=sh /usr/local/bin/hms-archive-wal "%p" "%f"
     volumes:
-      - hms-db-data:/var/lib/postgresql/data
+      - hms-db-data18:/var/lib/postgresql
       - ./scripts/archive-wal.sh:/usr/local/bin/hms-archive-wal:ro
       - hms-wal-archive:/wal-archive
       - hms-basebackups:/basebackups
@@ -177,6 +177,7 @@ services:
           memory: 256M
 
 volumes:
+  hms-db-data18:
   hms-db-data:
   hms-wal-archive:
   hms-basebackups:

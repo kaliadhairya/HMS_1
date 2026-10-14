@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import { toast } from 'react-hot-toast';
@@ -85,6 +85,7 @@ export default function DoctorQuickConsultPage() {
       };
       const res = await api.post('/hms/encounters', payload);
       setActiveEncounterId(res.data.id);
+      encounterRevision.current=Number(res.data.record_revision||1);
       
       // Load patient context (Vitals, Lab Reports). The vitals API answers { success, data }.
       const vp = await api.get(`/hms/vitals/latest/${patient.id || patient.ID}`);
@@ -112,6 +113,7 @@ export default function DoctorQuickConsultPage() {
   };
 
   const handleInputChange = (e) => {
+    if(finalizing||uncertainFinalize)return;
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
@@ -153,18 +155,28 @@ export default function DoctorQuickConsultPage() {
 
   // ─── Prescription Handlers ───
   // ─── Finalize ───
-  const finalizeEncounter = async () => {
+  const [finalizing,setFinalizing]=useState(false),[uncertainFinalize,setUncertainFinalize]=useState(false);
+  const finalizeRequest=useRef(null),finalizeRunning=useRef(false),encounterRevision=useRef(1);
+  const finalizeEncounter = async (reconcile=false) => {
+    if(finalizeRunning.current||(!reconcile&&finalizeRequest.current))return;
     if (!activeEncounterId || hasPendingMedication) return toast.error('Confirm and sign medication orders before finalizing.');
+    const r=reconcile?finalizeRequest.current:{id:activeEncounterId,content:JSON.parse(JSON.stringify(formData)),revision:encounterRevision.current,stage:'SAVE',saveKey:crypto.randomUUID(),signKey:crypto.randomUUID()};
+    if(!r)return;
+    finalizeRequest.current=r;finalizeRunning.current=true;setFinalizing(true);
     try {
-      // Save forms
-      await api.put(`/hms/encounters/${activeEncounterId}`, formData);
-      
-      await api.patch(`/hms/encounters/${activeEncounterId}/finalize`, {});
+      if(r.stage==='SAVE'){
+        const saved=await api.put(`/hms/encounters/${r.id}`,r.content,{headers:{'If-Match':String(r.revision),'Idempotency-Key':r.saveKey}});
+        r.revision=saved.data.revision;encounterRevision.current=r.revision;r.stage='SIGN';
+      }
+      await api.patch(`/hms/encounters/${r.id}/finalize`, {},{headers:{'If-Match':String(r.revision),'Idempotency-Key':r.signKey}});
+      finalizeRequest.current=null;setUncertainFinalize(false);
       toast.success('Consultation finalized');
       clearPatient();
     } catch (err) { 
-      toast.error(err.response?.data?.error || 'Failed to finalize encounter'); 
-    }
+      const unknown=!err.response||err.response.status>=500;setUncertainFinalize(unknown);
+      if(!unknown)finalizeRequest.current=null;
+      toast.error(unknown?'Outcome uncertain. Keep this patient open and reconcile the original request.':err.response?.data?.message||err.response?.data?.error||'Failed to finalize encounter. Your draft is preserved.');
+    }finally{finalizeRunning.current=false;setFinalizing(false);}
   };
 
   const TABS = [['history', 'History'], ['diagnosis', 'Diagnosis'], ['prescription', 'Prescription']];
@@ -184,11 +196,12 @@ export default function DoctorQuickConsultPage() {
           ? `Consulting ${activePatient.name}. Record history, diagnoses and medicines, then finalize.`
           : "Find a patient to pull up their profile and lab reports and start a consultation."}
         actions={activePatient && (
-          <button type="button" className="btn btn-ghost btn-md" onClick={clearPatient}>
+          <button type="button" className="btn btn-ghost btn-md" disabled={finalizing||uncertainFinalize} onClick={clearPatient}>
             <ArrowLeft size={16} aria-hidden="true" /> Back to search
           </button>
         )}
       />
+      {uncertainFinalize&&<div className="alert-strip alert-info" role="alert">The save/sign outcome is uncertain. Keep this chart open. <button className="btn btn-secondary btn-sm" disabled={finalizing} onClick={()=>finalizeEncounter(true)}>Reconcile original consultation</button></div>}
 
       {!activePatient ? (
         <section className="panel panel-pad" style={{ maxWidth: 720 }}>
@@ -304,15 +317,15 @@ export default function DoctorQuickConsultPage() {
                 <div className="stack">
                   <div className="form-group">
                     <label className="form-label" htmlFor="qc-chief-complaint">Chief complaint</label>
-                    <textarea id="qc-chief-complaint" name="chief_complaint" className="form-textarea" value={formData.chief_complaint} onChange={handleInputChange} />
+                    <textarea disabled={finalizing||uncertainFinalize} id="qc-chief-complaint" name="chief_complaint" className="form-textarea" value={formData.chief_complaint} onChange={handleInputChange} />
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="qc-hopi">History of present illness</label>
-                    <textarea id="qc-hopi" name="hopi" className="form-textarea" value={formData.hopi} onChange={handleInputChange} style={{ minHeight: 120 }} />
+                    <textarea disabled={finalizing||uncertainFinalize} id="qc-hopi" name="hopi" className="form-textarea" value={formData.hopi} onChange={handleInputChange} style={{ minHeight: 120 }} />
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="qc-general-exam">General examination findings</label>
-                    <textarea id="qc-general-exam" name="general_examination" className="form-textarea" value={formData.general_examination} onChange={handleInputChange} style={{ minHeight: 80 }} />
+                    <textarea disabled={finalizing||uncertainFinalize} id="qc-general-exam" name="general_examination" className="form-textarea" value={formData.general_examination} onChange={handleInputChange} style={{ minHeight: 80 }} />
                   </div>
                 </div>
               )}
@@ -369,7 +382,7 @@ export default function DoctorQuickConsultPage() {
 
             <div className="panel-pad" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <span className="muted">Consulting <strong>{activePatient?.name}</strong></span>
-              <button type="button" className="btn btn-primary btn-md" onClick={finalizeEncounter}>
+              <button type="button" className="btn btn-primary btn-md" disabled={finalizing||uncertainFinalize} onClick={()=>finalizeEncounter()}>
                 <CircleCheck size={16} aria-hidden="true" /> Finalize and close
               </button>
             </div>

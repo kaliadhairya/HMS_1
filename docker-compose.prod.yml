@@ -1,14 +1,30 @@
 services:
+  db-storage-init:
+    image: postgres:18-alpine
+    user: root
+    entrypoint: ["sh", "-ec"]
+    command: ["mkdir -p /wal-archive /basebackups; chown postgres:postgres /wal-archive /basebackups; chmod 0700 /wal-archive /basebackups"]
+    volumes:
+      - hms_wal_archive:/wal-archive
+      - hms_basebackups:/basebackups
+    restart: "no"
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: hms-db
+    depends_on:
+      db-storage-init:
+        condition: service_completed_successfully
+    command: ["postgres", "-c", "wal_level=replica", "-c", "archive_mode=on", "-c", "archive_timeout=60", "-c", 'archive_command=sh /usr/local/bin/hms-archive-wal "%p" "%f"']
     restart: unless-stopped
     environment:
       POSTGRES_DB: hms
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     volumes:
-      - hms_pgdata:/var/lib/postgresql/data
+      - hms_pgdata18:/var/lib/postgresql
+      - ./scripts/archive-wal.sh:/usr/local/bin/hms-archive-wal:ro
+      - hms_wal_archive:/wal-archive
+      - hms_basebackups:/basebackups
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d hms"]
       interval: 10s
@@ -160,6 +176,9 @@ services:
           memory: 256M
 
 volumes:
+  hms_wal_archive:
+  hms_basebackups:
+  hms_pgdata18:
   hms_audit_checkpoints:
   hms_pgdata:
   hms_uploads:

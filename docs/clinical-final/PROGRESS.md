@@ -53,3 +53,35 @@ as passing. Subsequent edits require their appropriate checks before release.
 This increment is not completion of all three phases. Foundation, exchange,
 privacy/recovery, full regression/performance, readiness tools and actual
 hospital/target-environment gates remain tracked in the plan.
+
+## Second increment — signed records and exchange
+
+- Added checked TypeScript medication/exchange and consultation command domains.
+- Added all six missing primary FHIR resource mappings and prescription/signed
+  discharge document exports; unsigned drafts and active-admission discharge
+  exports are refused. Linked corrections and immutable signatures are retained.
+- Added nursing/care/discharge document types with patient/context FKs and
+  expected revisions. Consultation saves now use a row lock and revision;
+  finalization creates a digest-bound signature, updates queue/appointment and
+  publishes one event in the same transaction. A database guard preserves
+  finalized clinical content. Linked amendments remain separate signatures.
+- Consultation UI preserves drafts on conflict or lost committed responses,
+  offers explicit comparison and reuses the original request during reconcile.
+- Prepared Node 24/PostgreSQL 18 artifacts with distinct new volumes and WAL
+  archive initialization. CI publishes verification metadata without deploying.
+- Owner authorized the Claude/Codex split, recorded at ef97130.
+
+Latest observed checks: consultation notes 7/7 (including real save/sign race
+and browser response loss, plus Quick Consult save/sign), clinical exchange 8/8 (three official validator
+fixtures, zero errors with offline terminology/narrative warnings), existing
+clinical documents 8/8, coded consultation UI 5/5, medication 20/20, laboratory
+21/21, existing FHIR 8/8 and frontend build/typecheck. PG16/PG18 fresh/legacy
+schemas match through 0112 (4727 facts), including the final-record guards. The initial FHIR run failed because its required released report had
+not been prepared; laboratory prerequisites were run and FHIR then passed.
+The new exchange fixture initially omitted referenced resources; complete
+fixture closure was added and validator checks rerun successfully.
+
+The full original regression has not yet been rerun against this increment.
+Older OPD fixtures assume the retired free-text writer/unversioned notes and
+need to exercise the governed workflow. A5/B1 are partial packages; shared
+observations, full continuity integration and consent/ABDM delivery remain.

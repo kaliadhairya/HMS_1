@@ -13,7 +13,7 @@ The owner's newer split supersedes the earlier solo-work rule.
 - Shared mounts/routes/navigation/idempotency registrations are additive;
   request other overlaps here before editing.
 - Codex is currently changing encounter routes/model, clinical-document
-  routes, typed encounter/FHIR services and ConsultationPage.jsx for A5/A6.
+  routes, typed encounter/FHIR services, ClinicalNotePage.jsx, DoctorQuickConsultPage.jsx and ConsultationPage.jsx for A5/A6.
   C2 must preserve their revision/signature/unknown-outcome controls and
   rebase onto the reviewed commit before overlapping consultation UI work.
 - A2 facility and A3 v2 conventions are not committed yet. Do not invent a

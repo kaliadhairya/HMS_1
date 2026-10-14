@@ -18,6 +18,8 @@ const Encounter = sequelize.define('Encounter', {
     field: 'TOKEN_ID'},
   appointment_id: { type: DataTypes.INTEGER,
     field: 'APPOINTMENT_ID'},
+  record_revision: {type:DataTypes.INTEGER,field:'record_revision'},
+  notes_document_id: {type:DataTypes.BIGINT,field:'notes_document_id'},
   
   chief_complaint: { type: DataTypes.TEXT,
     field: 'CHIEF_COMPLAINT'},

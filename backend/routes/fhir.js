@@ -3,6 +3,8 @@ const { sequelize } = require('../models/db');
 const { protect, restrictTo } = require('../middleware/auth');
 const { patientInCare, NOT_IN_CARE } = require('../utils/careTeam');
 const F = require('../services/fhir');
+const C = require('../services/fhirClinical.cts');
+const Documents = require('../services/fhirDocuments');
 
 // FHIR R4 read boundary (Phase 6B). Mounted at /api/fhir. Same sign-in,
 // roles and care-team scope as the application; every read is audited with
@@ -78,6 +80,14 @@ router.get('/Patient', read(async (req, t) => {
 }));
 
 router.get('/Practitioner/:id', read(async (req, t) => ({ body: await F.practitioner(req.params.id, t) })));
+router.get('/PractitionerRole/:id', read(async (req,t)=>({body:await C.practitionerRole(req.params.id,t)})));
+router.get('/Location/:id', read(async (req,t)=>({body:await C.location(req.params.id,t)})));
+for (const type of ['MedicationRequest','MedicationDispense','MedicationAdministration']) {
+  router.get(`/${type}`, search(type,(p,req,t)=>C.medications(type,p,t)));
+  router.get(`/${type}/:id`,read(async(req,t)=>{const r=await C.medicationById(type,req.params.id,t);return {patientId:r.patientId,body:r.resource};}));
+}
+router.get('/ServiceRequest',search('ServiceRequest',(p,req,t)=>C.serviceRequests(p,t)));
+router.get('/ServiceRequest/:id',read(async(req,t)=>{const r=await C.serviceRequestById(req.params.id,t);return {patientId:r.patientId,body:r.resource};}));
 router.get('/Organization/:id', read(async (req, t) => {
   if (req.params.id !== 'hospital') throw Object.assign(new Error(`Organization/${req.params.id} not found.`), { status: 404, code: 'not-found' });
   return { body: await F.organization(t) };
@@ -113,6 +123,16 @@ router.get('/DiagnosticReport/:id', read(async (req, t) => { const r = await F.d
 router.get('/DiagnosticReport', search('DiagnosticReport', (p, req, t) => F.diagnosticReports(p, t)));
 router.get('/Specimen/:id', read(async (req, t) => { const r = await F.specimen(req.params.id, t); return { patientId: r.patientId, body: r.resource }; }));
 
+router.get('/documents/prescription/:id',read(async(req,t)=>{const r=await Documents.prescription(req.params.id,t);return {patientId:r.patientId,body:r.bundle};}));
+router.get('/documents/discharge/:signatureId',read(async(req,t)=>{const r=await Documents.dischargeSummary(req.params.signatureId,t);return {patientId:r.patientId,body:r.bundle};}));
+router.get('/documents/consultation/:id',read(async(req,t)=>{
+  const e=await F.encounter(`opd-${req.params.id}`,t);
+  if(e.resource.status!=='finished')throw Object.assign(new Error('Only finalized consultations can be exported.'),{status:409,code:'NOT_FINALIZED'});
+  const r=await Documents.opConsultation(req.params.id,t);return {patientId:e.patientId,body:r.bundle};
+}));
+router.get('/documents/laboratory/:id',read(async(req,t)=>{
+  const r=await F.diagnosticReport(req.params.id,t);return {patientId:r.patientId,body:(await Documents.diagnosticReport(req.params.id,t)).bundle};
+}));
 router.use((req, res) => issue(res, 404, 'not-supported', `${req.path} is not supported. See ${base(req)}/metadata.`));
 
 module.exports = router;

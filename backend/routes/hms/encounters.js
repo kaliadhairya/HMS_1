@@ -114,118 +114,21 @@ router.post('/', protect, checkPermission('consultation', 'write'), requireCurre
   }
 });
 
-// Update Encounter (Autosave endpoint)
-// Partial update: only the note fields present in the body are written. Callers that save a
-// subset (the prescription slip sends chief_complaint and current_medications only) used to
-// overwrite every other field with NULL, wiping the consultation history and examination.
-const NOTE_FIELDS = {
-  chief_complaint: 'CHIEF_COMPLAINT',
-  hopi: 'HOPI',
-  past_medical_history: 'PAST_MEDICAL_HISTORY',
-  surgical_history: 'SURGICAL_HISTORY',
-  family_history: 'FAMILY_HISTORY',
-  social_history: 'SOCIAL_HISTORY',
-  current_medications: 'CURRENT_MEDICATIONS',
-  general_examination: 'GENERAL_EXAMINATION',
-  cvs_findings: 'CVS_FINDINGS',
-  rs_findings: 'RS_FINDINGS',
-  abdomen_findings: 'ABDOMEN_FINDINGS',
-  cns_findings: 'CNS_FINDINGS',
+// Notes and signatures share the command receipt, row lock, audit and outbox.
+const Notes = require('../../services/encounterNotes.cts');
+const noteCommand = (action) => async (req,res) => {
+  try {
+    const result=await sequelize.transaction(t=>Notes[action](Number(req.params.id),req.user,
+      ...(action==='save'?[req.body,req.get('if-match'),t]:[req.get('if-match'),t])));
+    res.set('ETag',`"${result.revision}"`).json({success:true,...result});
+  } catch(error) {
+    if(error.status)return res.status(error.status).json({success:false,code:error.code,message:error.message,...(error.current?{current:error.current}:{})});
+    console.error('Encounter note command failed:',error.original?.message||error.message);
+    res.status(500).json({success:false,message:'Could not save the clinical record. Your draft should be preserved.'});
+  }
 };
-
-router.put('/:id', protect, checkPermission('consultation', 'write'), async (req, res) => {
-  try {
-    const encounterId = Number(req.params.id);
-
-    // Get current status safely
-    const [rows] = await sequelize.query(
-      'SELECT STATUS FROM HMS_ENCOUNTERS WHERE ID = :id', 
-      { replacements: { id: encounterId } }
-    );
-    
-    if (!rows || rows.length === 0) {
-      return res.status(404).json({ error: 'Encounter not found' });
-    }
-    
-    if (rows[0].STATUS === 'Finalized') {
-      return res.status(400).json({ error: 'Cannot edit finalized encounter' });
-    }
-
-    const sets = [];
-    const replacements = { id: encounterId };
-    for (const [key, column] of Object.entries(NOTE_FIELDS)) {
-      if (!Object.prototype.hasOwnProperty.call(req.body, key)) continue;
-      sets.push(`${column} = :${key}`);
-      replacements[key] = req.body[key] || null;
-    }
-
-    if (sets.length > 0) {
-      await sequelize.query(`UPDATE HMS_ENCOUNTERS SET ${sets.join(', ')} WHERE ID = :id`, { replacements });
-    }
-
-    res.json({ success: true, id: encounterId });
-  } catch (error) {
-    console.error('Error updating encounter:', error);
-    res.status(500).json({ error: 'Failed to update encounter' });
-  }
-});
-
-// Finalize Encounter
-router.patch('/:id/finalize', protect, checkPermission('consultation', 'write'), requireCurrentPractitioner, async (req, res) => {
-  try {
-    const encounter = await Encounter.findByPk(req.params.id);
-    if (!encounter) return res.status(404).json({ error: 'Encounter not found' });
-    if (encounter.status === 'Finalized') {
-      return res.status(400).json({ error: 'Encounter is already finalized' });
-    }
-
-    // Wrap all status transitions in a single atomic transaction
-    await sequelize.transaction(async (t) => {
-      await encounter.update({ status: 'Finalized' }, { transaction: t });
-
-      // Mark token as Done
-      if (encounter.token_id) {
-        const token = await Token.findByPk(encounter.token_id, { transaction: t });
-        if (token) {
-          await token.update({ status: 'Done' }, { transaction: t });
-        }
-      }
-
-      // The booked appointment for this visit is now complete
-      if (encounter.appointment_id) {
-        await sequelize.query(
-          "UPDATE HMS_APPOINTMENTS SET STATUS = 'Completed' WHERE ID = :id AND STATUS IN ('Scheduled', 'Checked-in')",
-          { replacements: { id: encounter.appointment_id }, transaction: t }
-        );
-      }
-
-      // Mark Prescription as Finalized and Generate QR Code data
-      const prescriptionRows = await Prescription.findAll({ where: { encounter_id: encounter.id }, transaction: t });
-      const prescription = prescriptionRows.length > 0 ? prescriptionRows[0] : null;
-      if (prescription) {
-        // Create a secure hash payload for the QR
-        const qrPayload = Buffer.from(JSON.stringify({
-          p: prescription.id,
-          e: encounter.id,
-          d: encounter.doctor_id,
-          t: new Date().getTime()
-        })).toString('base64');
-        
-        await prescription.update({ 
-          status: 'Finalized',
-          qr_data: qrPayload 
-        }, { transaction: t });
-      }
-    });
-
-    await logAction(req.user.id, 'FINALIZED', 'encounter', encounter.id, { status: 'Draft' }, { status: 'Finalized' }, req.ip);
-
-    res.json({ message: 'Encounter finalized successfully', encounter });
-  } catch (error) {
-    console.error('Error finalizing encounter:', error);
-    res.status(500).json({ error: 'Failed to finalize encounter' });
-  }
-});
+router.put('/:id',protect,checkPermission('consultation','write'),requireCurrentPractitioner,noteCommand('save'));
+router.patch('/:id/finalize',protect,checkPermission('consultation','write'),requireCurrentPractitioner,noteCommand('sign'));
 
 // Get Encounter with full details (Diagnoses, Prescriptions, Orders)
 router.get('/:id', protect, checkPermission('consultation', 'read'), async (req, res) => {
@@ -249,8 +152,13 @@ router.get('/:id', protect, checkPermission('consultation', 'read'), async (req,
     });
     
     if (!encounter) return res.status(404).json({ error: 'Encounter not found' });
-    
+    if(req.user.role==='doctor'&&!(await patientInCare(req.user.id,encounter.patient_id)))return res.status(403).json({success:false,code:'PATIENT_NOT_IN_CARE',message:NOT_IN_CARE});
+    res.set('ETag',`"${encounter.record_revision}"`);
     const data = encounter.toJSON();
+    if(data.notes_document_id){
+      const [signed]=await sequelize.query('SELECT s.content,s.version FROM hms_document_signatures s WHERE s.document_id=:id ORDER BY s.version DESC LIMIT 1',{replacements:{id:data.notes_document_id},type:'SELECT'});
+      if(signed){Object.assign(data,signed.content);data.signed_note_version=Number(signed.version);}
+    }
     const clobFields = ['chief_complaint', 'hopi', 'past_medical_history', 'surgical_history', 'family_history', 'social_history', 'current_medications', 'general_examination', 'cvs_findings', 'rs_findings', 'abdomen_findings', 'cns_findings'];
     for (const f of clobFields) {
       if (data[f]) data[f] = await clobToString(data[f]);
