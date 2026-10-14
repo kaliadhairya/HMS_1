@@ -28,10 +28,13 @@ them. No deployment occurred. Do not mount an old PG16 volume into PG18.
 
 ## B6 / B7 boundary
 
-**B6-ready: not issued.** `9efb0de` fixes WAL retries but full logical/PITR
-verification is still open. Claude's B7 starts only after a later explicit
-B6-ready record names its reviewed commit and evidence. Do not infer that
-runtime preparation or the consultation handoff closes B6.
+**B6 database core ready for B7 engineering: `a59850b`.** Encrypted logical
+export/restore acceptance passes 7/7 on PG16 and PG18. Full-invariant physical
+PITR/standby drills pass on both engines. See `docs/clinical-final/RECOVERY.md`
+for evidence and actual measurements. Claude may now rebase and build B7 on
+these committed scripts. B6 package sign-off remains open for A4 document
+verification and final-candidate integration; database-only evidence does
+not approve protected regional recovery or clinical go-live.
 
 ## A2 / A3 boundary
 
