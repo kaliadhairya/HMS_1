@@ -118,3 +118,10 @@ STOP: Phase 6 (interoperability and operations) is owned by Claude in
 unchanged; Codex (Phase 7) asks through `docs/requests/`.
 - 2026-10-14: started 6A (terminology releases). Migrations 0090–0109, test
   databases `hms_p6_*`, API 5052, Vite 5224. No shared deployment.
+- 2026-10-14: 6A terminology (0090), 6B FHIR read boundary, 6H write-once
+  audit checkpoints + accountable worklist (0091), 6G PITR/standby drills
+  committed (5d28c9e, 58d8b61, e1eee19, 215b907). Full regression on
+  hms_p4_p5_p6_e2e (name chosen so the Phase 4/5 suites' guards accept it)
+  passes; new suites terminology, fhir, auditWorm. Codex's 4+5 integration
+  independently re-verified: 32/32 suites, evidence in
+  ~/hms-verification/claude-review-phase45-20261014-2a07ca8. Not deployed.
