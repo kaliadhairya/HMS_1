@@ -13,7 +13,7 @@ Codex reviews and integrates in C8. Nothing is deployed or pushed.
 | C6 downtime distribution | `870a078` | 0152 | `downtimeDrill` 7/7, `downtime` 4/4 |
 | C3 workload | `14335fa` | — | `docs/clinical-final/PERFORMANCE.md`, evidence/c3 |
 | C2 clinical screens | `2a0604d` | — | `clinicalUx` 8/8, updated `opd` |
-| A4 documents + data keys | (this commit) | 0153 | `documents` 9/9, unit `dataKeys.test.js` 5/5, `abdm` 10/10 |
+| A4 documents + data keys | `aed506c` | 0153 | `documents` 9/9, unit `dataKeys.test.js` 5/5, `abdm` 10/10 |
 
 Fresh regression on A7+A8 (`bc5363e` working tree): 40/47 suites passed;
 the 7 failures are listed under "Base suites" below. Each one is either
@@ -46,6 +46,14 @@ Codex-owned or fixed in `e886d27`.
 | `frontend/src/pages/hms/pharmacy/PrescriptionPreviewPage.jsx` | Optional second print language (Hindi; marked as not yet language-reviewed), plus an Indian-script font stack. | C2 |
 | `frontend/src/components/dashboards/DoctorDashboard.jsx`, `WorklistPage.jsx` | Shared live reads (`data/liveQuery.js`). A failed load is never shown as an empty queue. | C2 |
 | `e2e/helpers.js` | `E2E_VERBOSE=1` prints the full failure message. | test tooling |
+
+| B2 ABDM/terminology | (this commit) | — | `abdmUse` 6/6, `abdm` 10/10, unit `abdmContracts.test.js` 4/4 |
+
+B2 touches `routes/abdmBridge.js` (contract check before processing),
+`services/abdm.js` (`imports`/`decideItem`), `routes/abdm.js` (transaction
+and audit on the outside-records view), and adds `/api/integrations` in
+`server.js`. The ABDM screens gain a readiness panel and chart
+reconciliation.
 
 ## A4 notes for Codex (shared and deployment files)
 

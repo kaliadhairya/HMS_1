@@ -41,6 +41,13 @@ export default function OutsideRecordsPage() {
     if (decision !== 'Seen' && (!note || note.trim().length < 3)) return;
     run(() => api.post(`/abdm/import-items/${item.id}/decision`, { decision, note }), `Marked ${decision.toLowerCase()}`);
   };
+  // An outside allergy that is not in the chart can be added to it, unconfirmed (B2).
+  const acceptAllergy = (item) => {
+    const note = window.prompt('Add this outside allergy to the patient\'s allergy record (unconfirmed): why is it relevant? (kept with the record)');
+    if (!note || note.trim().length < 3) return;
+    const reaction = window.prompt('Reaction, if the other facility or the patient says (leave empty if not known):') || '';
+    run(() => api.post(`/abdm/import-items/${item.id}/decision`, { decision: 'Accepted', note, addToChart: true, reaction }), 'Added to the allergy record (unconfirmed)');
+  };
 
   return (
     <>
@@ -87,11 +94,13 @@ export default function OutsideRecordsPage() {
                     <table className="dt-table">
                       <tbody>{imp.items.map((it) => (
                         <tr key={it.id}>
-                          <td>{it.needs_review && <span className="status status-warning">Review</span>} {it.summary}</td>
+                          <td>{it.needs_review && <span className="status status-warning">Review</span>} {it.summary}
+                            {it.chart && <div className={`cell-secondary`}>{it.chart === 'Not in chart' ? <strong>Not in this hospital's chart</strong> : it.chart === 'Already in chart' ? 'Already in this hospital\'s chart' : it.chart}</div>}</td>
                           <td>{it.decision ? <span className="cell-secondary">{it.decision}{it.decision_note ? `: ${it.decision_note}` : ''}</span>
                             : user?.role === 'doctor' && (
                               <span className="inline-actions">
                                 <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => decide(it, 'Accepted')}>Relevant</button>
+                                {it.resource_type === 'AllergyIntolerance' && it.chart === 'Not in chart' && <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => acceptAllergy(it)}>Add to allergy record</button>}
                                 <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => decide(it, 'Rejected')}>Not relevant</button>
                                 <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => decide(it, 'Seen')}>Seen</button>
                               </span>)}</td>

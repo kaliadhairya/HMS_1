@@ -211,6 +211,7 @@ app.use('/api/abdm', require('./routes/abdm'));
 app.use('/api/devices', require('./routes/devices').contracts);
 app.use('/api/device-messages', require('./routes/devices').inbound);
 app.use('/api/downtime', require('./routes/downtime'));
+app.use('/api/integrations', require('./routes/integrations'));
 // Calls from the ABDM gateway (and data pushes from other facilities).
 app.use('/abdm', require('./routes/abdmBridge'));
 
