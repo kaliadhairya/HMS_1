@@ -7,7 +7,7 @@ import PageHeader from '../../../components/ui/PageHeader';
 import { inr } from '../../../components/billing/InvoicePaper';
 
 const CATEGORIES = ['Consultation', 'Lab', 'Medicine', 'Ward', 'Procedure', 'Service'];
-const EMPTY_ITEM = { code: '', name: '', category: 'Procedure', unitPrice: '', gstRate: 0, wardType: '', matchName: '' };
+const EMPTY_ITEM = { code: '', name: '', category: 'Procedure', unitPrice: '', gstRate: 0, wardType: '', matchName: '', labTestCode: '' };
 
 // Price list (charge master), packages and payers (Phase 5). A price list is
 // edited as a draft version and activated by an administrator; active and
@@ -76,7 +76,7 @@ export default function PriceListPage() {
                 {(shown?.items || []).map((i) => (
                   <tr key={i.id}><td className="mono">{i.code}</td><td>{i.name}</td><td>{i.category}</td><td className="tabular" style={{ textAlign: 'right' }}>{inr(i.unit_price)}</td>
                     <td className="tabular" style={{ textAlign: 'right' }}>{Number(i.gst_rate)}</td>
-                    <td className="cell-secondary">{[i.ward_type && `ward ${i.ward_type}`, i.doctor_id && `doctor ${i.doctor_id}`, i.match_name && `tests named like "${i.match_name}"`].filter(Boolean).join(' · ') || '—'}</td></tr>
+                    <td className="cell-secondary">{[i.ward_type && `ward ${i.ward_type}`, i.doctor_id && `doctor ${i.doctor_id}`, i.lab_code && `catalogue test ${i.lab_code_system}|${i.lab_code}`, i.match_name && `old orders named like "${i.match_name}"`].filter(Boolean).join(' · ') || '—'}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -85,7 +85,7 @@ export default function PriceListPage() {
             <form className="panel-pad" onSubmit={async (e) => {
               e.preventDefault();
               if (await act(() => api.put(`/finance/charge-master/versions/${draft.id}/items/${encodeURIComponent(item.code)}`, {
-                ...item, unitPrice: Number(item.unitPrice), gstRate: Number(item.gstRate), wardType: item.wardType || undefined, matchName: item.matchName || undefined,
+                ...item, unitPrice: Number(item.unitPrice), gstRate: Number(item.gstRate), wardType: item.wardType || undefined, matchName: item.matchName || undefined, labTestCode: item.labTestCode || undefined,
               }), `Saved ${item.code}`)) setItem(EMPTY_ITEM);
             }} style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', alignItems: 'end' }}>
               <div className="form-group"><label className="form-label" htmlFor="it-code">Code</label><input id="it-code" className="form-input" required pattern="[A-Za-z0-9:_.\-]{1,60}" value={item.code} onChange={(e) => setItem({ ...item, code: e.target.value })} /></div>
@@ -95,7 +95,8 @@ export default function PriceListPage() {
               <div className="form-group"><label className="form-label" htmlFor="it-price">Price (₹)</label><input id="it-price" className="form-input" type="number" min="0" step="0.01" required value={item.unitPrice} onChange={(e) => setItem({ ...item, unitPrice: e.target.value })} /></div>
               <div className="form-group"><label className="form-label" htmlFor="it-gst">GST %</label><input id="it-gst" className="form-input" type="number" min="0" max="100" step="0.01" value={item.gstRate} onChange={(e) => setItem({ ...item, gstRate: e.target.value })} /></div>
               {item.category === 'Ward' && <div className="form-group"><label className="form-label" htmlFor="it-ward">Ward type</label><input id="it-ward" className="form-input" value={item.wardType} onChange={(e) => setItem({ ...item, wardType: e.target.value })} /></div>}
-              {item.category === 'Lab' && <div className="form-group"><label className="form-label" htmlFor="it-match">Test name to match</label><input id="it-match" className="form-input" value={item.matchName} onChange={(e) => setItem({ ...item, matchName: e.target.value })} /></div>}
+              {item.category === 'Lab' && <div className="form-group"><label className="form-label" htmlFor="it-test">Catalogue test (code system|code)</label><input id="it-test" className="form-input mono" placeholder="LOCAL-LAB|GLU-F" value={item.labTestCode} onChange={(e) => setItem({ ...item, labTestCode: e.target.value })} /></div>}
+              {item.category === 'Lab' && <div className="form-group"><label className="form-label" htmlFor="it-match">Old orders: test name to match</label><input id="it-match" className="form-input" value={item.matchName} onChange={(e) => setItem({ ...item, matchName: e.target.value })} /></div>}
               <button type="submit" className="btn btn-secondary btn-md" disabled={busy}>Save item</button>
             </form>
           )}

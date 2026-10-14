@@ -167,7 +167,10 @@ router.post('/medicine-returns/:id/credit', restrictTo(...ADMIN), handle('Could 
 // ── Price list and packages ─────────────────────────────────
 router.get('/charge-master', restrictTo(...WARD), handle('Could not load the price list', async (req, t) => {
   const versions = await rows('SELECT * FROM hms_charge_master_versions ORDER BY version DESC', {}, t);
-  for (const v of versions) v.items = await rows('SELECT * FROM hms_charge_master_items WHERE version_id = :id ORDER BY category, code', { id: v.id }, t);
+  for (const v of versions) {
+    v.items = await rows(`SELECT i.*, lt.code_system AS lab_code_system, lt.code AS lab_code FROM hms_charge_master_items i
+      LEFT JOIN hms_lab_tests lt ON lt.id = i.lab_test_id WHERE i.version_id = :id ORDER BY i.category, i.code`, { id: v.id }, t);
+  }
   return versions;
 }));
 
@@ -178,8 +181,8 @@ router.post('/charge-master/versions', restrictTo(...ADMIN), handle('Could not s
   if (await one("SELECT id FROM hms_charge_master_versions WHERE status = 'Draft'", {}, t)) B.fail(409, 'A draft price list already exists.');
   const v = await one(`INSERT INTO hms_charge_master_versions (version, provenance, created_by)
     SELECT COALESCE(max(version), 0) + 1, :provenance, :user FROM hms_charge_master_versions RETURNING *`, { provenance, user: req.user.id }, t);
-  await sequelize.query(`INSERT INTO hms_charge_master_items (version_id, code, name, category, unit_price, gst_rate, doctor_id, ward_type, match_name)
-    SELECT :v, i.code, i.name, i.category, i.unit_price, i.gst_rate, i.doctor_id, i.ward_type, i.match_name
+  await sequelize.query(`INSERT INTO hms_charge_master_items (version_id, code, name, category, unit_price, gst_rate, doctor_id, ward_type, match_name, lab_test_id)
+    SELECT :v, i.code, i.name, i.category, i.unit_price, i.gst_rate, i.doctor_id, i.ward_type, i.match_name, i.lab_test_id
     FROM hms_charge_master_items i JOIN hms_charge_master_versions a ON a.id = i.version_id WHERE a.status = 'Active'`,
   { replacements: { v: v.id }, transaction: t });
   return v;
@@ -193,13 +196,22 @@ router.put('/charge-master/versions/:id/items/:code', restrictTo(...ADMIN), hand
   if (!(price >= 0) || !b.name || !['Consultation', 'Lab', 'Medicine', 'Ward', 'Procedure', 'Service'].includes(b.category)) {
     B.fail(400, 'Give a name, a category and a price of zero or more.');
   }
-  return one(`INSERT INTO hms_charge_master_items (version_id, code, name, category, unit_price, gst_rate, doctor_id, ward_type, match_name)
-    VALUES (:v, :code, :name, :category, :price, :gst, :doctor, :ward, :match)
+  // A lab price can be tied to a coded catalogue test ('code system|code'),
+  // which is how coded orders are priced (migration 0097).
+  let labTest = null;
+  if (b.labTestCode) {
+    if (b.category !== 'Lab') B.fail(400, 'Only a Lab price can be tied to a catalogue test.');
+    const [system, code] = String(b.labTestCode).split('|');
+    labTest = await one('SELECT id FROM hms_lab_tests WHERE code_system = :system AND code = :code', { system: system || '', code: code || '' }, t);
+    if (!labTest) B.fail(422, `${b.labTestCode} is not in the laboratory catalogue.`);
+  }
+  return one(`INSERT INTO hms_charge_master_items (version_id, code, name, category, unit_price, gst_rate, doctor_id, ward_type, match_name, lab_test_id)
+    VALUES (:v, :code, :name, :category, :price, :gst, :doctor, :ward, :match, :labTest)
     ON CONFLICT (version_id, code) DO UPDATE SET name = EXCLUDED.name, category = EXCLUDED.category, unit_price = EXCLUDED.unit_price,
-      gst_rate = EXCLUDED.gst_rate, doctor_id = EXCLUDED.doctor_id, ward_type = EXCLUDED.ward_type, match_name = EXCLUDED.match_name
+      gst_rate = EXCLUDED.gst_rate, doctor_id = EXCLUDED.doctor_id, ward_type = EXCLUDED.ward_type, match_name = EXCLUDED.match_name, lab_test_id = EXCLUDED.lab_test_id
     RETURNING *`, {
     v: v.id, code: req.params.code, name: String(b.name).slice(0, 200), category: b.category, price: money(price),
-    gst: Number(b.gstRate || 0), doctor: Number(b.doctorId) || null, ward: b.wardType || null, match: b.matchName || null,
+    gst: Number(b.gstRate || 0), doctor: Number(b.doctorId) || null, ward: b.wardType || null, match: b.matchName || null, labTest: labTest?.id || null,
   }, t);
 }, { audit: 'charge_master_item' }));
 
