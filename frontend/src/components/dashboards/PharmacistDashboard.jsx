@@ -146,7 +146,7 @@ export default function PharmacistDashboard() {
                   {lowItems.map((item, idx) => {
                     const qty = Number(item.TOTAL_QTY ?? 0);
                     return (
-                      <tr key={item.GENERIC_NAME || item.name || idx}>
+                      <tr key={item.ID ?? item.id}>
                         <td>{item.GENERIC_NAME || item.name || '—'}</td>
                         <td className="text-right">
                           {qty <= 0

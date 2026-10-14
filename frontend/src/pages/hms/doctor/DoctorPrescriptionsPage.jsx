@@ -3,13 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import { useAuth } from '../../../context/AuthContext';
-import toast from 'react-hot-toast';
 import { Download, FileText, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 import PageHeader from '../../../components/ui/PageHeader';
 import DataTable from '../../../components/ui/DataTable';
 import EmptyState from '../../../components/ui/EmptyState';
-import Modal from '../../../components/ui/Modal';
-import RowMenu from '../../../components/ui/RowMenu';
 import { localYmd } from '../../../utils/localDate';
 
 const CONSULTED_STATUSES = new Set(['Consulted', 'Finalized']);
@@ -96,31 +93,6 @@ export default function DoctorPrescriptionsPage() {
   useEffect(() => {
     fetchPrescriptions();
   }, []);
-
-  const [pendingDelete, setPendingDelete] = useState(null);
-  const [deleting, setDeleting] = useState(false);
-
-  // Opens the confirmation dialog; the delete itself runs in confirmDelete.
-  const handleDelete = (e, rx) => {
-    if (e) e.stopPropagation();
-    setPendingDelete(rx);
-  };
-
-  const confirmDelete = async () => {
-    const rx = pendingDelete;
-    if (!rx) return;
-    setDeleting(true);
-    try {
-      await api.delete(`/doctor/prescriptions/${rx.id}`);
-      toast.success('Prescription deleted.');
-      setPendingDelete(null);
-      fetchPrescriptions();
-    } catch (err) {
-      toast.error('Error deleting prescription.');
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   const updateFilter = (name, value) => {
     setFilters(prev => ({ ...prev, [name]: value }));
@@ -277,16 +249,10 @@ export default function DoctorPrescriptionsPage() {
             <button
               type="button"
               className="btn btn-secondary btn-sm"
-              onClick={() => navigate(`/hms/prescription-slip?encounterId=${rx.encounter_id}&patientId=${rx.patient_id}`)}
+              onClick={() => navigate(`/medication/orders?encounter_id=${encodeURIComponent(rx.encounter_id)}&patient_id=${encodeURIComponent(rx.patient_id)}`)}
             >
-              <Pencil size={14} aria-hidden="true" /> Edit
+              <Pencil size={14} aria-hidden="true" /> Open coded orders
             </button>
-            <RowMenu
-              label={`More actions for Rx-${rx.id}`}
-              items={[
-                { label: 'Delete prescription', icon: Trash2, danger: true, hidden: !isOwnPrescription, onSelect: () => handleDelete(null, rx) },
-              ]}
-            />
           </span>
         );
       },
@@ -302,13 +268,13 @@ export default function DoctorPrescriptionsPage() {
       <main className="app-page">
         <PageHeader
           title="Prescriptions"
-          description="View, edit and manage all saved prescriptions."
+          description="Historical prescription documentation is preserved. Use coded medication orders for current prescribing."
           actions={(
             <>
               <button type="button" className="btn btn-ghost btn-md" onClick={exportToCSV}>
                 <Download size={16} aria-hidden="true" /> Export CSV
               </button>
-              <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/hms/prescription-slip')}>
+              <button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/medication/orders')}>
                 <Plus size={16} aria-hidden="true" /> Write prescription
               </button>
             </>
@@ -412,30 +378,13 @@ export default function DoctorPrescriptionsPage() {
                 icon={FileText}
                 title="No prescriptions yet"
                 description="Saved prescriptions appear here."
-                action={<button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/hms/prescription-slip')}><Plus size={16} aria-hidden="true" /> Write prescription</button>}
+                action={<button type="button" className="btn btn-primary btn-md" onClick={() => navigate('/medication/orders')}><Plus size={16} aria-hidden="true" /> Write prescription</button>}
               />
             )}
           />
         </section>
       </main>
 
-      <Modal
-        open={Boolean(pendingDelete)}
-        onOpenChange={(open) => { if (!open && !deleting) setPendingDelete(null); }}
-        title="Delete prescription"
-        description={pendingDelete ? `Rx-${pendingDelete.id} for ${pendingDelete.patient_name || 'this patient'}. This permanently deletes the prescription and its medicines and cannot be undone.` : ''}
-        size="sm"
-        footer={(
-          <>
-            <button type="button" className="btn btn-ghost btn-md" onClick={() => setPendingDelete(null)} disabled={deleting}>Cancel</button>
-            <button type="button" className="btn btn-danger btn-md" onClick={confirmDelete} disabled={deleting}>
-              {deleting ? 'Deleting…' : 'Delete prescription'}
-            </button>
-          </>
-        )}
-      >
-        <p className="muted">Only prescriptions you wrote can be deleted.</p>
-      </Modal>
     </>
   );
 }

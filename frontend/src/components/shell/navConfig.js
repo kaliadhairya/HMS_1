@@ -7,6 +7,7 @@ import {
 // Navigation per role. `group` drives the sidebar sections.
 const LAB = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
+  { to: '/lab/governed', label: 'Laboratory workspace', icon: TestTube, group: 'Laboratory' },
   { to: '/lab/queue', label: 'Test queue', icon: TestTube, group: 'Laboratory' },
   { to: '/lab/samples', label: 'Samples', icon: Droplet, group: 'Laboratory' },
   { to: '/lab/results', label: 'Results entry', icon: ClipboardList, group: 'Laboratory' },
@@ -20,6 +21,7 @@ const LAB = [
 
 export const NAV_BY_ROLE = {
   super_admin: [
+    { to: '/lab/governed', label: 'Laboratory workspace', icon: TestTube, group: 'Laboratory' },
     { to: '/super_admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
     { to: '/hms/patients/search', label: 'Patients', icon: Search, group: 'Patients' },
     { to: '/hms/patients/duplicates', label: 'Possible duplicates', icon: Users, group: 'Patients' },
@@ -42,6 +44,7 @@ export const NAV_BY_ROLE = {
     { to: '/admin/devices', label: 'Device interfaces', icon: Cable, group: 'Administration' },
   ],
   admin: [
+    { to: '/lab/governed', label: 'Laboratory workspace', icon: TestTube, group: 'Laboratory' },
     { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
     { to: '/hms/admin/patients', label: 'Patients', icon: Hospital, group: 'Patients' },
     { to: '/hms/patients/duplicates', label: 'Possible duplicates', icon: Users, group: 'Patients' },
@@ -71,6 +74,9 @@ export const NAV_BY_ROLE = {
     { to: '/admin/settings', label: 'Settings', icon: Settings, group: 'Administration' },
   ],
   doctor: [
+    { to: '/medication/orders', label: 'Coded medication orders', icon: Pill, group: 'Clinical' },
+    { to: '/medication/witness', label: 'Witness inbox', icon: BadgeCheck, group: 'Clinical' },
+    { to: '/lab/governed', label: 'Laboratory workspace', icon: TestTube, group: 'Clinical' },
     { to: '/doctor/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
     { to: '/hms/referrals', label: 'Referrals', icon: Repeat, group: 'Patients' },
     { to: '/hms/triage', label: 'Emergency triage', icon: HeartPulse, group: 'Patients' },
@@ -88,6 +94,11 @@ export const NAV_BY_ROLE = {
     { to: '/downtime', label: 'Downtime', icon: CloudOff, group: 'Inpatient' },
   ],
   nurse: [
+    { to: '/medication/nursing', label: 'Medication administration and handover', icon: ClipboardList, group: 'Nursing' },
+    { to: '/medication/stock', label: 'Ward stock and requisitions', icon: Package, group: 'Nursing' },
+    { to: '/medication/controlled', label: 'Controlled drugs', icon: ShieldCheck, group: 'Nursing' },
+    { to: '/medication/witness', label: 'Witness inbox', icon: BadgeCheck, group: 'Nursing' },
+    { to: '/lab/governed', label: 'Laboratory workspace', icon: TestTube, group: 'Nursing' },
     { to: '/nurse/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
     { to: '/hms/triage', label: 'Emergency triage', icon: HeartPulse, group: 'Patients' },
     { to: '/hms/adt', label: 'Beds and discharge', icon: BedDouble, group: 'Inpatient' },
@@ -118,6 +129,11 @@ export const NAV_BY_ROLE = {
     { to: '/downtime', label: 'Downtime', icon: CloudOff, group: 'Patients' },
   ],
   pharmacist: [
+    { to: '/medication/pharmacy', label: 'Verification and coded dispensing', icon: Pill, group: 'Pharmacy' },
+    { to: '/medication/catalogue', label: 'Medication catalogue', icon: BookOpen, group: 'Pharmacy' },
+    { to: '/medication/stock', label: 'Locations and ward supply', icon: Package, group: 'Pharmacy' },
+    { to: '/medication/controlled', label: 'Controlled drugs', icon: ShieldCheck, group: 'Pharmacy' },
+    { to: '/medication/witness', label: 'Witness inbox', icon: BadgeCheck, group: 'Pharmacy' },
     { to: '/pharmacist/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
     { to: '/pharmacy/dispense', label: 'Dispense', icon: ClipboardList, group: 'Dispensing' },
     { to: '/pharmacy/otc', label: 'OTC sale', icon: ShoppingCart, group: 'Dispensing' },

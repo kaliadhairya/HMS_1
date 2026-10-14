@@ -41,7 +41,7 @@ const VitalsEntryPage = lazy(() => import('./pages/hms/opd/VitalsEntryPage'));
 
 // Sprint 3 Pages
 const ConsultationPage = lazy(() => import('./pages/hms/consultation/ConsultationPage'));
-const PrescriptionSlipPage = lazy(() => import('./pages/hms/consultation/PrescriptionSlipPage'));
+const PrescriptionSlipPage = lazy(() => import('./pages/hms/consultation/LegacyPrescriptionEntry'));
 
 const PrescriptionPreviewPage = lazy(() => import('./pages/hms/pharmacy/PrescriptionPreviewPage'));
 const InvestigationQueuePage = lazy(() => import('./pages/hms/lab/InvestigationQueuePage'));

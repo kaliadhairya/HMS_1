@@ -885,17 +885,7 @@ router.delete('/prescriptions/:id', restrictTo('doctor'), async (req, res) => {
       return res.status(404).json({ success: false, message: 'Prescription not found or not yours.' });
     }
 
-    // Items, then the prescription, in one transaction: if the prescription is refused the items stay.
-    await sequelize.transaction(async (transaction) => {
-      await sequelize.query('DELETE FROM HMS_PRESCRIPTION_ITEMS WHERE PRESCRIPTION_ID = :id', {
-        replacements: { id: prescriptionId }, transaction,
-      });
-      await sequelize.query('DELETE FROM HMS_PRESCRIPTIONS WHERE ID = :id', {
-        replacements: { id: prescriptionId }, transaction,
-      });
-    });
-
-    res.json({ success: true, message: 'Prescription deleted.' });
+    return res.status(409).json({ success: false, code: 'CLINICAL_HISTORY_IMMUTABLE', message: 'Prescription history cannot be deleted. Use coded medication order amendments or discontinuation for current prescribing.' });
   } catch (err) {
     if (err.name === 'SequelizeForeignKeyConstraintError') {
       return res.status(409).json({ success: false, message: 'This prescription has already been dispensed or administered, so it cannot be deleted.' });

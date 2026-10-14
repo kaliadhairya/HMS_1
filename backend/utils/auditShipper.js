@@ -4,6 +4,7 @@ const path = require('path');
 const { QueryTypes } = require('sequelize');
 const { S3Client, PutObjectCommand, HeadObjectCommand, ListObjectsV2Command, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { CHAINS } = require('./auditSealer');
+const { validateCheckpoint, lockProblems } = require('./auditCheckpoint');
 const W = require('../services/worklist');
 
 // Ships signed audit checkpoints to write-once object storage (Phase 6H,
@@ -62,13 +63,15 @@ async function shipPending(sequelize, dir, { limit = 50 } = {}) {
       if (sha256(body) !== p.sha256) throw new Error('local checkpoint file changed since it was written');
       const Key = prefix() + p.file_name;
       const checksum = crypto.createHash('sha256').update(body).digest('base64');
-      await s3().send(new PutObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key, Body: body, ContentType: 'application/json', ChecksumSHA256: checksum, Metadata: { sha256: p.sha256 } }));
-      const head = await s3().send(new HeadObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key }));
-      if (!head.ObjectLockMode || !head.ObjectLockRetainUntilDate) throw new Error('the stored object has no Object Lock retention; the bucket is not write-once');
+      const stored = await s3().send(new PutObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key, Body: body, ContentType: 'application/json', ChecksumSHA256: checksum, Metadata: { sha256: p.sha256 } }));
+      if (!stored.VersionId) throw new Error('the stored checkpoint has no immutable version identifier');
+      const head = await s3().send(new HeadObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key, VersionId: stored.VersionId }));
+      const retention = lockProblems(head);
+      if (retention.length) throw new Error(retention.join('; '));
       if ((head.Metadata || {}).sha256 !== p.sha256) throw new Error('the stored object does not match the checkpoint');
       await sequelize.query(`UPDATE hms_audit_checkpoint_shipments SET shipped_at = now(), remote_key = :key, remote_version = :version,
         lock_mode = :mode, retain_until = :until, attempts = attempts + 1, last_error = NULL WHERE id = :id`,
-      { replacements: { id: p.id, key: Key, version: head.VersionId || null, mode: head.ObjectLockMode, until: head.ObjectLockRetainUntilDate } });
+      { replacements: { id: p.id, key: Key, version: stored.VersionId, mode: head.ObjectLockMode, until: head.ObjectLockRetainUntilDate } });
       shipped++;
     } catch (err) {
       await sequelize.query('UPDATE hms_audit_checkpoint_shipments SET attempts = attempts + 1, last_error = :e WHERE id = :id', { replacements: { id: p.id, e: String(err.message).slice(0, 500) } });
@@ -101,21 +104,30 @@ async function checkRemote(sequelize, { key = process.env.AUDIT_CHECKPOINT_KEY, 
     return { problems, checked: 0 };
   }
   const times = [];
+  if (!keys.length) add('audit.checkpoint_missing', 'initial', 'No checkpoint exists in the protected audit store.');
+  const queued = await sequelize.query(`SELECT file_name, shipped_at, remote_key, remote_version, sha256, queued_at, last_error FROM hms_audit_checkpoint_shipments
+    WHERE shipped_at IS NOT NULL OR queued_at < :cutoff`, { replacements: { cutoff: new Date(now - GRACE_MS) }, type: QueryTypes.SELECT });
+  const tracked = new Map(queued.filter((q) => q.shipped_at).map((q) => [q.remote_key, q]));
   for (const k of keys) {
     const name = k.slice(prefix().length);
     try {
-      const obj = await s3().send(new GetObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key: k }));
-      if (!obj.ObjectLockMode || !obj.ObjectLockRetainUntilDate) add('audit.checkpoint_unlocked', name, `Checkpoint ${name} is stored without a lock.`);
-      const parsed = JSON.parse(await obj.Body.transformToString());
-      const { signature, ...body } = parsed;
-      const expected = crypto.createHmac('sha256', key).update(JSON.stringify(body)).digest('hex');
-      if (typeof signature !== 'string' || signature.length !== 64 || !crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) {
-        add('audit.checkpoint_invalid', name, `Checkpoint ${name} has a signature that does not match.`);
+      const known = tracked.get(k);
+      if (known && !known.remote_version) { add('audit.checkpoint_unversioned', name, `Checkpoint ${name} has no recorded immutable version.`); continue; }
+      const obj = await s3().send(new GetObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key: k, ...(known ? { VersionId: known.remote_version } : {}) }));
+      const retention = lockProblems(obj, now);
+      if (retention.length) { add('audit.checkpoint_unlocked', name, `Checkpoint ${name}: ${retention.join('; ')}.`); continue; }
+      const text = await obj.Body.transformToString();
+      if (known && sha256(Buffer.from(text)) !== known.sha256) { add('audit.checkpoint_invalid', name, `Checkpoint ${name} differs from its recorded checksum.`); continue; }
+      const parsed = JSON.parse(text);
+      const invalid = validateCheckpoint(parsed, key, CHAINS, now);
+      if (invalid.length) {
+        add('audit.checkpoint_invalid', name, `Checkpoint ${name}: ${invalid.join('; ')}.`);
         continue;
       }
+      const body = parsed;
       times.push(new Date(body.created_at));
       for (const head of body.heads) {
-        if (!CHAINS.includes(head.chain) || !head.seq) continue;
+        if (!head.seq) continue;
         const [row] = await sequelize.query(`SELECT encode(row_hash, 'hex') AS hash FROM ${head.chain} WHERE chain_seq = :seq`, { replacements: { seq: head.seq }, type: QueryTypes.SELECT });
         if (row?.hash !== head.hash) add('audit.chain_mismatch', `${head.chain}#${head.seq}`, `Audit ${head.chain} entry ${head.seq} ${row ? 'differs from' : 'is missing since'} remote checkpoint ${name}.`, { checkpoint: name });
       }
@@ -132,8 +144,6 @@ async function checkRemote(sequelize, { key = process.env.AUDIT_CHECKPOINT_KEY, 
   if (times.length && now - times[times.length - 1] > GRACE_MS) add('audit.checkpoint_gap', `${times[times.length - 1].toISOString()}+`, `No audit checkpoint has reached write-once storage since ${times[times.length - 1].toISOString()}.`);
   // Queue rows: shipped but missing remotely, or not shipped in time.
   const remote = new Set(keys);
-  const queued = await sequelize.query(`SELECT file_name, shipped_at, remote_key, queued_at, last_error FROM hms_audit_checkpoint_shipments
-    WHERE shipped_at IS NOT NULL OR queued_at < :cutoff`, { replacements: { cutoff: new Date(now - GRACE_MS) }, type: QueryTypes.SELECT });
   for (const q of queued) {
     if (q.shipped_at && !remote.has(q.remote_key)) add('audit.checkpoint_missing', q.file_name, `Checkpoint ${q.file_name} was shipped but is no longer in write-once storage.`);
     if (!q.shipped_at) add('audit.checkpoint_unshipped', q.file_name, `Checkpoint ${q.file_name} has not reached write-once storage.`, { last_error: q.last_error });

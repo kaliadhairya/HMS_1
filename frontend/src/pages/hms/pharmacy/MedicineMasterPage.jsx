@@ -1,3 +1,4 @@
+import { localYmd, nextLocalDate } from '../../../utils/localDate';
 import {MedicationLinks} from './MedicationUI';
 import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
@@ -504,7 +505,7 @@ export default function MedicineMasterPage() {
               </div>
               <div className="form-group">
                 <label className="form-label" htmlFor="med-expiry">Expiry date</label>
-                <input id="med-expiry" className="form-input" type="date" required min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)} value={formData.expiryDate} onChange={e => setField('expiryDate', e.target.value)} />
+                <input id="med-expiry" className="form-input" type="date" required min={nextLocalDate()} value={formData.expiryDate} onChange={e => setField('expiryDate', e.target.value)} />
               </div>
             </div>
           )}

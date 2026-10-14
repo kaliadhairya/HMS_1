@@ -181,7 +181,7 @@ async function itemsCompletedToday() {
       JOIN HMS_INVESTIGATION_ORDERS o ON o.ID = i.ORDER_ID
       LEFT JOIN LATERAL (SELECT v.abnormal_flag FROM hms_lab_result_versions v JOIN hms_lab_report_results l ON l.result_version_id=v.id
         JOIN hms_lab_report_versions p ON p.id=l.report_version_id WHERE v.item_id=i.id ORDER BY p.released_at DESC,p.version DESC LIMIT 1) r ON true
-     WHERE i.STATUS = 'Completed' AND i.UPDATED_AT >= CURRENT_DATE`, { type: QueryTypes.SELECT });
+     WHERE i.STATUS = 'Completed' AND i.UPDATED_AT >= hms_service_day_start()`, { type: QueryTypes.SELECT });
   return rows.map((r) => ({
     id: r.id,
     flag: r.lab_test_version_id ? ({ LOW: 'Low', HIGH: 'High', IN_RANGE: 'Normal' }[r.governed_flag] || null) : abnormalFlag(r.result_value, r.reference_range),
@@ -199,7 +199,7 @@ router.get('/dashboard', canRead, async (req, res) => {
         SELECT
           (SELECT COUNT(*) FROM HMS_INVESTIGATION_ORDERS WHERE STATUS IN (:open)) AS PENDING_QUEUE,
           (SELECT COUNT(*) FROM HMS_INVESTIGATION_ORDERS WHERE STATUS IN (:open) AND URGENCY = 'STAT') AS STAT_PENDING,
-          (SELECT COUNT(*) FROM HMS_INVESTIGATION_ORDERS WHERE STATUS = 'Completed' AND UPDATED_AT >= CURRENT_DATE) AS COMPLETED_TODAY`,
+          (SELECT COUNT(*) FROM HMS_INVESTIGATION_ORDERS WHERE STATUS = 'Completed' AND UPDATED_AT >= hms_service_day_start()) AS COMPLETED_TODAY`,
       { replacements: { open: OPEN_ORDER_STATUSES }, type: QueryTypes.SELECT }),
       sequelize.query(`
         SELECT o.URGENCY, o.CREATED_AT
@@ -210,7 +210,7 @@ router.get('/dashboard', canRead, async (req, res) => {
       sequelize.query(`
         SELECT LOWER(COALESCE(TEST_CATEGORY, 'General')) AS DEPT, COUNT(*) AS N
           FROM HMS_INVESTIGATION_ORDER_ITEMS
-         WHERE CREATED_AT >= CURRENT_DATE AND STATUS <> 'Cancelled'
+         WHERE CREATED_AT >= hms_service_day_start() AND STATUS <> 'Cancelled'
          GROUP BY LOWER(COALESCE(TEST_CATEGORY, 'General'))`, { type: QueryTypes.SELECT }),
       itemsCompletedToday(),
     ]);

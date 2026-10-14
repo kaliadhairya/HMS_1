@@ -88,10 +88,10 @@ async function write(itemId, body, user, header, tx, source = "MANUAL") {
   }
   const patient = await C.one(
     `SELECT age,gender,dob,birth_date_estimated,
- CASE WHEN dob IS NOT NULL AND NOT birth_date_estimated AND dob<=CURRENT_DATE THEN
- extract(year FROM age(CURRENT_DATE,dob))::numeric +
- (CURRENT_DATE-(dob+make_interval(years=>extract(year FROM age(CURRENT_DATE,dob))::int))::date)::numeric /
- ((dob+make_interval(years=>extract(year FROM age(CURRENT_DATE,dob))::int+1))::date-(dob+make_interval(years=>extract(year FROM age(CURRENT_DATE,dob))::int))::date)::numeric
+ CASE WHEN dob IS NOT NULL AND NOT birth_date_estimated AND dob<=hms_service_today() THEN
+ extract(year FROM age(hms_service_today(),dob))::numeric +
+ (hms_service_today()-(dob+make_interval(years=>extract(year FROM age(hms_service_today(),dob))::int))::date)::numeric /
+ ((dob+make_interval(years=>extract(year FROM age(hms_service_today(),dob))::int+1))::date-(dob+make_interval(years=>extract(year FROM age(hms_service_today(),dob))::int))::date)::numeric
  ELSE age::numeric END AS age_years FROM hms_patients WHERE id=:id`,
     { id: order.patient_id },
     tx,

@@ -1,6 +1,7 @@
 import MedicationAllergyPanel from './MedicationAllergyPanel';
 import MedicationOrderPanel from './MedicationOrderPanel';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import CodedLabOrderPanel from './CodedLabOrderPanel';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../../api/axios';
 import { toast } from 'react-hot-toast';
@@ -10,7 +11,6 @@ import PageHeader from '../../../components/ui/PageHeader';
 import EmptyState from '../../../components/ui/EmptyState';
 import Modal from '../../../components/ui/Modal';
 import { useAuth } from '../../../context/AuthContext';
-import { AllergyStatusPanel, findAllergyMatches, medicineNames, useAllergyGate, usePatientAllergies } from './allergySafety';
 
 const TABS = [
   ['history', 'History'],
@@ -19,15 +19,6 @@ const TABS = [
   ['prescription', 'Prescription'],
   ['investigations', 'Investigations'],
 ];
-const rxInputStyle = { height: 32, padding: '4px 8px', minWidth: 64 };
-// /hms/medicines/search returns camelCase fields (genericName, brandNames[]); older rows used snake case.
-const medGeneric = (m) => m.genericName || m.generic_name || '';
-const medBrands = (m) => {
-  const raw = m.brandNames ?? m.brand_names;
-  if (Array.isArray(raw)) return raw;
-  if (!raw) return [];
-  try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : [String(parsed)]; } catch { return String(raw).split(',').map((b) => b.trim()).filter(Boolean); }
-};
 const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }) : '');
 const isToday = (v) => v && new Date(v).toDateString() === new Date().toDateString();
 // NUMERIC columns arrive as strings ("38.20"); show them as numbers (38.2).
@@ -72,18 +63,10 @@ export default function ConsultationPage() {
   const [icdResults, setIcdResults] = useState([]);
 
   // Prescription State
-  const [prescriptionId, setPrescriptionId] = useState(null);
-  const [prescriptionItems, setPrescriptionItems] = useState([]);
-  const [medSearch, setMedSearch] = useState('');
-  const [medResults, setMedResults] = useState([]);
-
-  // Lab Orders State
-  const [labOrders, setLabOrders] = useState([]); // new tests, not yet sent
-  const [sentLabOrders, setSentLabOrders] = useState([]); // tests already ordered for this encounter
-  const [submittingLab, setSubmittingLab] = useState(false);
-  const [newLabTest, setNewLabTest] = useState('');
-  const [labCategory, setLabCategory] = useState('Haematology');
-  const [labPriority, setLabPriority] = useState('Routine');
+  const [prescriptionItems, setPrescriptionItems] = useState([]); // Historical, read-only.
+  const [hasPendingMedication, setHasPendingMedication] = useState(true);
+  const [hasPendingLabs, setHasPendingLabs] = useState(false);
+  const labPanel = useRef(null);
 
   // Finalize dialogs
   const [confirmFinalize, setConfirmFinalize] = useState(false);
@@ -91,8 +74,6 @@ export default function ConsultationPage() {
   const [billPrompt, setBillPrompt] = useState(false);
 
   // Patient safety: the allergy record, and a confirmation before prescribing against it.
-  const allergyState = usePatientAllergies(patient?.id);
-  const allergyGate = useAllergyGate(allergyState);
   const readOnly = encounter?.status === 'Finalized';
 
   useEffect(() => {
@@ -110,15 +91,8 @@ export default function ConsultationPage() {
       // The API returns the association as `prescriptions`; `Prescriptions` kept as a fallback.
       const encPrescriptions = enc.prescriptions || enc.Prescriptions;
       if (encPrescriptions && encPrescriptions.length > 0) {
-        setPrescriptionId(encPrescriptions[0].id);
         setPrescriptionItems(encPrescriptions[0].items || []);
       }
-      // Orders already placed are shown read-only so they are never re-sent.
-      const encOrders = enc.investigationOrders || enc.InvestigationOrders || [];
-      setSentLabOrders(encOrders.flatMap((o) => (o.items || []).map((it) => ({
-        id: it.id, name: it.test_name, category: it.department, status: it.status || o.status, priority: o.priority || 'Routine',
-      }))));
-
       setFormData({
         chief_complaint: enc.chief_complaint || '',
         hopi: enc.hopi || '',
@@ -166,27 +140,12 @@ export default function ConsultationPage() {
   // Notes and prescription are saved together; errors propagate so callers can stop.
   const persistNotes = () => api.put(`/hms/encounters/${id}`, formData);
 
-  const persistPrescription = async () => {
-    if (prescriptionItems.length === 0 && !prescriptionId) return; // nothing prescribed yet
-    const pRes = await api.post('/hms/prescriptions', { encounter_id: id, patient_id: patient.id });
-    setPrescriptionId(pRes.data.id);
-    await api.put(`/hms/prescriptions/${pRes.data.id}/items`, { items: prescriptionItems });
-  };
-
-  // "Save draft" keeps everything entered so far, medicines included (it used to save only the
-  // notes, so medicines added without "Save prescription" were lost on reload).
   const saveDraft = async () => {
     try {
       await persistNotes();
-      await persistPrescription();
-      toast.success('Consultation draft saved');
-      if (labOrders.length > 0) {
-        toast(`${labOrders.length} ${labOrders.length === 1 ? 'lab test is' : 'lab tests are'} not sent to the lab yet`, { id: 'unsent-labs' });
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error(err.response?.data?.error || 'Failed to save consultation');
-    }
+      toast.success('Consultation notes saved. Medication orders have their own save and sign actions.');
+      if (hasPendingLabs) toast('Selected laboratory tests have not been confirmed yet.');
+    } catch (err) { toast.error(err.response?.data?.message || err.response?.data?.error || 'Notes could not be saved. Your draft is preserved.'); }
   };
 
   // ─── Diagnosis Handlers ───
@@ -225,96 +184,17 @@ export default function ConsultationPage() {
     } catch (err) { toast.error('Failed to remove diagnosis'); }
   };
 
-  // ─── Prescription Handlers ───
-  const searchMed = async (q) => {
-    setMedSearch(q);
-    if (q.length < 2) return setMedResults([]);
-    try {
-      const res = await api.get(`/hms/medicines/search?q=${q}`);
-      setMedResults(res.data);
-    } catch (err) { console.error(err); }
-  };
-
-  // Every medicine goes through the allergy check; a match needs "Prescribe anyway".
-  const addPrescriptionItem = (med) => {
-    const generic = medGeneric(med);
-    setMedSearch('');
-    setMedResults([]);
-    if (!generic) return;
-    allergyGate.check([generic, ...medBrands(med)], generic, () => {
-      setPrescriptionItems((items) => [...items, {
-        medicine_name: generic, generic_name: generic,
-        dose: '1', dose_unit: 'Tablet', route: 'Oral', frequency: 'BD', duration_days: 5, instructions: 'After meal'
-      }]);
-    });
-  };
-
-  const allergyMatchesFor = (item) => (allergyState.status === 'ok' ? findAllergyMatches(allergyState.allergies, medicineNames(item)) : []);
-
-  const updateItem = (index, field, val) => {
-    const updated = [...prescriptionItems];
-    updated[index][field] = val;
-    setPrescriptionItems(updated);
-  };
-
-  const removeRxItem = (index) => {
-    setPrescriptionItems(prescriptionItems.filter((_, i) => i !== index));
-  };
-
-  const savePrescription = async () => {
-    try {
-      await persistPrescription();
-      toast.success('Prescription saved');
-    } catch (err) { toast.error(err.response?.data?.error || 'Failed to save prescription'); }
-  };
-
-  // ─── Investigations Handlers ───
-  const addLabOrder = (e) => {
-    e.preventDefault();
-    if (!newLabTest) return;
-    setLabOrders([...labOrders, { id: Date.now(), name: newLabTest, category: labCategory }]);
-    setNewLabTest('');
-  };
-
-  const sendLabOrders = async () => {
-    const payload = {
-      encounter_id: id,
-      patient_id: patient.id,
-      order_type: 'Lab',
-      priority: labPriority,
-      items: labOrders.map(lo => ({ name: lo.name, category: lo.category }))
-    };
-    await api.post('/hms/investigation-orders', payload);
-    setSentLabOrders((prev) => [...prev, ...labOrders.map((lo) => ({ ...lo, status: 'Pending', priority: labPriority }))]);
-    setLabOrders([]);
-    setLabPriority('Routine');
-  };
-
-  const submitLabOrder = async () => {
-    if (submittingLab) return;
-    try {
-      if (labOrders.length === 0) return toast.error('Add tests to submit');
-      setSubmittingLab(true);
-      await sendLabOrders();
-      toast.success('Lab order sent to the lab queue');
-    } catch (err) {
-      toast.error('Failed to submit lab order');
-    } finally {
-      setSubmittingLab(false);
-    }
-  };
-
   // ─── Finalize ───
   // Confirmation happens in a dialog (confirmFinalize) before this runs. Notes, medicines and any
   // tests still waiting to be sent are saved first; if any of that fails, nothing is finalized
   // (it used to finalize anyway, without the prescription).
   const canBill = ['super_admin', 'admin', 'receptionist'].includes(user?.role);
   const finalizeEncounter = async () => {
+    if (hasPendingMedication) return toast.error('Save, assess and sign medication orders, or reconcile any uncertain save, before finalizing.');
     setFinalizing(true);
     try {
       await persistNotes();
-      await persistPrescription();
-      if (labOrders.length > 0) await sendLabOrders();
+      if (hasPendingLabs && !(await labPanel.current?.submitPending())) throw new Error('Confirm the coded laboratory order before finalizing.');
 
       await api.patch(`/hms/encounters/${id}/finalize`, {});
       setConfirmFinalize(false);
@@ -329,7 +209,7 @@ export default function ConsultationPage() {
         navigate('/dashboard');
       }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to finalize encounter');
+      toast.error(err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to finalize encounter');
     } finally { setFinalizing(false); }
   };
 
@@ -341,15 +221,6 @@ export default function ConsultationPage() {
       navigate('/dashboard');
     }
   };
-
-  const flaggedItems = useMemo(
-    () => (allergyState.status === 'ok'
-      ? prescriptionItems
-        .map((item) => ({ item, matches: findAllergyMatches(allergyState.allergies, medicineNames(item)) }))
-        .filter((x) => x.matches.length > 0)
-      : []),
-    [prescriptionItems, allergyState.status, allergyState.allergies],
-  );
 
   if (loading) return <><Navbar /><main className="app-page"><p className="muted">Loading…</p></main></>;
   if (!encounter) return (
@@ -383,7 +254,7 @@ export default function ConsultationPage() {
       />
 
       <div className="panel panel-pad" style={{ marginBottom: 16 }}>
-        <AllergyStatusPanel status={allergyState.status} allergies={allergyState.allergies} onRetry={allergyState.retry} />
+        <MedicationAllergyPanel key={`${patient?.id}:${id}`} patientId={patient?.id} />
       </div>
 
       {readOnly && (
@@ -543,157 +414,26 @@ export default function ConsultationPage() {
               </div>
             )}
 
-            {activeTab === 'prescription' && (
-              <div className="stack">
-                {patient?.id&&<MedicationAllergyPanel patientId={patient.id}/>}
-                <MedicationOrderPanel patientId={patient?.id} encounterId={id} />
-                <p role="status">The free-text entries below are legacy documentation. Coded signed orders above authorize pharmacist verification and supply.</p>
-                <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <label className="form-label" htmlFor="cn-med-search">Search medicine</label>
-                    <span className="inline-actions">
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={savePrescription}>
-                        <Save size={14} aria-hidden="true" /> Save prescription
-                      </button>
-                    </span>
-                  </div>
-                  <div style={{ position: 'relative' }}>
-                    <input id="cn-med-search" type="text" className="form-input" value={medSearch} onChange={(e) => searchMed(e.target.value)} placeholder="Type a generic or brand name" autoComplete="off" />
-                    {medResults.length > 0 && (
-                      <ul className="list-rows" style={dropdownStyle}>
-                        {medResults.map(m => (
-                          <li key={m.id}>
-                            <button type="button" className="list-row" onClick={() => addPrescriptionItem(m)}>
-                              <span className="cell-stack">
-                                <span className="cell-primary">{medGeneric(m)}{medBrands(m).length ? ` (${medBrands(m).join(', ')})` : ''}</span>
-                                <span className="cell-secondary">{[m.formulation, m.strength, m.strengthUnit || m.strength_unit].filter(Boolean).join(' ')}</span>
-                              </span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="mini-table">
-                    <thead><tr><th>Medicine</th><th>Dose</th><th>Unit</th><th>Route</th><th>Frequency</th><th>Days</th><th><span className="sr-only">Actions</span></th></tr></thead>
-                    <tbody>
-                      {prescriptionItems.length === 0 && <tr><td colSpan="7" className="muted" style={{ textAlign: 'center' }}>No medicines prescribed yet.</td></tr>}
-                      {prescriptionItems.map((item, idx) => {
-                        const matches = allergyMatchesFor(item);
-                        return (
-                        <tr key={idx}>
-                          <td>
-                            <span className="cell-stack">
-                              <span className="cell-primary">{item.medicine_name}</span>
-                              {matches.length > 0 && (
-                                <span className="status status-danger" style={{ alignSelf: 'flex-start' }}>
-                                  <TriangleAlert size={12} aria-hidden="true" /> Allergy: {matches.map((a) => a.allergen).join(', ')}
-                                </span>
-                              )}
-                            </span>
-                          </td>
-                          <td><input type="text" className="form-input" style={rxInputStyle} aria-label={`Dose for ${item.medicine_name}`} value={item.dose} onChange={e => updateItem(idx, 'dose', e.target.value)} /></td>
-                          <td><input type="text" className="form-input" style={rxInputStyle} aria-label={`Dose unit for ${item.medicine_name}`} value={item.dose_unit} onChange={e => updateItem(idx, 'dose_unit', e.target.value)} /></td>
-                          <td><input type="text" className="form-input" style={rxInputStyle} aria-label={`Route for ${item.medicine_name}`} value={item.route} onChange={e => updateItem(idx, 'route', e.target.value)} /></td>
-                          <td><input type="text" className="form-input" style={rxInputStyle} aria-label={`Frequency for ${item.medicine_name}`} value={item.frequency} onChange={e => updateItem(idx, 'frequency', e.target.value)} /></td>
-                          <td><input type="number" className="form-input" style={{ ...rxInputStyle, width: 70 }} aria-label={`Days for ${item.medicine_name}`} value={item.duration_days} onChange={e => updateItem(idx, 'duration_days', e.target.value)} /></td>
-                          <td className="text-right">
-                            <button type="button" className="icon-btn" onClick={() => removeRxItem(idx)} aria-label={`Remove ${item.medicine_name}`}>
-                              <X size={16} aria-hidden="true" />
-                            </button>
-                          </td>
-                        </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'investigations' && (
-              <div className="stack">
-                <h3 className="panel-subtitle" style={{ marginTop: 0 }}>Order lab tests</h3>
-                <form onSubmit={addLabOrder} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                  <div className="form-group" style={{ width: 180 }}>
-                    <label className="form-label" htmlFor="cn-lab-category">Category</label>
-                    <select id="cn-lab-category" className="form-select" value={labCategory} onChange={e => setLabCategory(e.target.value)}>
-                      <option>Haematology</option>
-                      <option>Bio-Chemistry</option>
-                      <option>Serology</option>
-                      <option>Urine / Others</option>
-                    </select>
-                  </div>
-                  <div className="form-group" style={{ flex: '1 1 220px' }}>
-                    <label className="form-label" htmlFor="cn-lab-test">Test name</label>
-                    <input id="cn-lab-test" type="text" className="form-input" placeholder="e.g. CBC" value={newLabTest} onChange={e => setNewLabTest(e.target.value)} />
-                  </div>
-                  <button type="submit" className="btn btn-secondary btn-md"><Plus size={16} aria-hidden="true" /> Add test</button>
-                </form>
-
-                {sentLabOrders.length > 0 && (
-                  <>
-                    <h3 className="panel-subtitle" style={{ margin: 0 }}>Already ordered</h3>
-                    <table className="mini-table">
-                      <thead><tr><th>Category</th><th>Test name</th><th>Priority</th><th>Status</th></tr></thead>
-                      <tbody>
-                        {sentLabOrders.map((lo, i) => (
-                          <tr key={lo.id || i}>
-                            <td>{lo.category || '—'}</td>
-                            <td>{lo.name}</td>
-                            <td><span className={`status status-${lo.priority && lo.priority !== 'Routine' ? 'danger' : 'neutral'}`}>{lo.priority || 'Routine'}</span></td>
-                            <td><span className={`status status-${lo.status === 'Completed' ? 'success' : lo.status === 'Cancelled' ? 'neutral' : 'warning'}`}>{lo.status || 'Pending'}</span></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-
-                {labOrders.length > 0 && (
-                  <>
-                    <h3 className="panel-subtitle" style={{ margin: 0 }}>New tests, not yet sent</h3>
-                    <table className="mini-table">
-                      <thead><tr><th>Category</th><th>Test name</th><th><span className="sr-only">Remove</span></th></tr></thead>
-                      <tbody>
-                        {labOrders.map((lo, i) => (
-                          <tr key={lo.id || i}>
-                            <td>{lo.category}</td>
-                            <td>{lo.name}</td>
-                            <td className="text-right">
-                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setLabOrders(labOrders.filter((x) => x !== lo))} aria-label={`Remove ${lo.name}`}>Remove</button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                      <div className="form-group" style={{ width: 160, marginBottom: 0 }}>
-                        <label className="form-label" htmlFor="cn-lab-priority">Priority</label>
-                        <select id="cn-lab-priority" className="form-select" value={labPriority} onChange={(e) => setLabPriority(e.target.value)}>
-                          <option value="Routine">Routine</option>
-                          <option value="Urgent">Urgent</option>
-                          <option value="STAT">STAT</option>
-                        </select>
-                      </div>
-                      <button type="button" className="btn btn-primary btn-md" onClick={submitLabOrder} disabled={submittingLab}>
-                        <Send size={16} aria-hidden="true" /> {submittingLab ? 'Sending…' : `Send ${labOrders.length} ${labOrders.length === 1 ? 'test' : 'tests'} to lab`}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+            <div hidden={activeTab !== 'prescription'} className="stack" style={{ display: activeTab === 'prescription' ? undefined : 'none' }}>
+              <MedicationOrderPanel key={`${patient?.id}:${id}`} patientId={patient?.id} encounterId={id} onPendingChange={setHasPendingMedication} />
+              {prescriptionItems.length > 0 && <section aria-label="Historical prescription documentation">
+                <h3>Historical prescription documentation</h3>
+                <p>These retained entries are historical documentation. They do not authorize dispensing or administration.</p>
+                <table className="mini-table"><thead><tr><th>Medicine</th><th>Recorded dose</th><th>Recorded instructions</th></tr></thead><tbody>
+                  {prescriptionItems.map((item, index) => <tr key={item.id ?? index}><td>{item.medicine_name}</td><td>{item.dose} {item.dose_unit}</td><td>{item.instructions || '—'}</td></tr>)}
+                </tbody></table>
+              </section>}
+            </div>
+            <div hidden={activeTab !== 'investigations'} style={{ display: activeTab === 'investigations' ? undefined : 'none' }}>
+              <CodedLabOrderPanel ref={labPanel} key={`${patient?.id}:${id}`} patientId={patient?.id} encounterId={id} onPendingChange={setHasPendingLabs} />
+            </div>
           </fieldset>
 
           <div className="panel-pad" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <span className="muted">Status: <strong>{encounter.status}</strong></span>
             <span className="inline-actions">
-              <button type="button" className="btn btn-secondary btn-md" onClick={() => window.open(`/prescription/${id}/print`, '_blank')}>
-                <Printer size={16} aria-hidden="true" /> Preview Rx
+              <button type="button" className="btn btn-secondary btn-md" onClick={() => navigate(`/medication/orders?encounter_id=${encodeURIComponent(id)}`)}>
+                <Printer size={16} aria-hidden="true" /> Review coded orders
               </button>
               {!readOnly && (
                 <>
@@ -715,7 +455,7 @@ export default function ConsultationPage() {
       open={confirmFinalize}
       onOpenChange={(open) => { if (!finalizing) setConfirmFinalize(open); }}
       title="Finalize this encounter?"
-      description="The consultation notes and prescription are saved first. No changes can be made after finalization."
+      description="Notes and selected coded investigations are saved first. Medication orders must already be signed. Signed records are corrected through amendments."
       size="sm"
       footer={(
         <>
@@ -728,27 +468,10 @@ export default function ConsultationPage() {
     >
       <div className="stack-sm">
         <p className="muted" style={{ margin: 0 }}>Patient: {patient?.name} ({patient?.uhid})</p>
-        {flaggedItems.length > 0 && (
-          <div className="alert-strip alert-danger" style={{ marginBottom: 0 }}>
-            <TriangleAlert size={16} aria-hidden="true" />
-            <span>
-              Prescribed despite a recorded allergy: {flaggedItems.map(({ item, matches }) => `${item.medicine_name} (allergy: ${matches.map((a) => a.allergen).join(', ')})`).join('; ')}
-            </span>
-          </div>
-        )}
-        {allergyState.status !== 'ok' && prescriptionItems.length > 0 && (
-          <div className="alert-strip alert-warning" style={{ marginBottom: 0 }}>
-            <TriangleAlert size={16} aria-hidden="true" /> Allergies were not checked for this patient.
-          </div>
-        )}
-        {labOrders.length > 0 && (
-          <div className="alert-strip alert-info" style={{ marginBottom: 0 }}>
-            <Send size={16} aria-hidden="true" /> Also sent to the lab ({labPriority}): {labOrders.map((lo) => lo.name).join(', ')}
-          </div>
-        )}
+        {hasPendingMedication && <p role="alert">Some medication orders are unconfirmed, unsigned or unavailable. Resolve them before finalization.</p>}
+        {hasPendingLabs && <p role="status">Selected coded investigations will be submitted before finalization.</p>}
       </div>
     </Modal>
-    {allergyGate.modal}
 
     <Modal
       open={billPrompt}

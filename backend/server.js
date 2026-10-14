@@ -322,7 +322,7 @@ async function start() {
   await securitySettings.loadSettings();
   securitySettings.startSettingsRefresh();
   server.listen(PORT, process.env.BACKEND_HOST || '0.0.0.0', () => {
-    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+    console.log(`🚀 Server running on http://${process.env.BACKEND_HOST || '0.0.0.0'}:${PORT}`);
   });
   startAuditSealer(sequelize);
   startAuditShipper(sequelize);

@@ -9,11 +9,12 @@ function requestKey() {
 }
 export function useLaboratoryCommand(refresh) {
   const pending = useRef(null);
+  const running = useRef(false);
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [uncertain, setUncertain] = useState(false);
   async function send(path, body, revision, reconcile = false) {
-    if (busy || (!reconcile && pending.current)) return;
+    if (running.current || (!reconcile && pending.current)) return;
     const request = reconcile
       ? pending.current
       : {
@@ -23,6 +24,7 @@ export function useLaboratoryCommand(refresh) {
           revision,
         };
     if (!request) return;
+    running.current = true;
     pending.current = request;
     setBusy(true);
     setMessage("");
@@ -42,7 +44,9 @@ export function useLaboratoryCommand(refresh) {
       pending.current = null;
       setUncertain(false);
       setMessage("Saved and confirmed.");
-      await refresh();
+      try { await refresh(); } catch {
+        setMessage('Saved and confirmed. The view could not refresh; reload it to see the committed change.');
+      }
       return response.data.data;
     } catch (e) {
       const unknown = !e.response || e.response.status >= 500;
@@ -55,6 +59,7 @@ export function useLaboratoryCommand(refresh) {
               "The change was refused. Your draft is preserved.",
       );
     } finally {
+      running.current = false;
       setBusy(false);
     }
   }

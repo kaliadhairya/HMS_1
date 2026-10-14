@@ -1,3 +1,4 @@
+import { localYmd } from '../../../utils/localDate';
 import {MedicationLinks} from './MedicationUI';
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
@@ -20,7 +21,7 @@ export default function GRNPage() {
   const [form, setForm] = useState({
     supplierId: '',
     invoiceNumber: '',
-    invoiceDate: new Date().toISOString().split('T')[0],
+    invoiceDate: localYmd(),
     isPartialDelivery: false
   });
 
@@ -112,7 +113,7 @@ export default function GRNPage() {
   const clearPR = () => {
     setPrData(null);
     setPrInput('');
-    setForm({ supplierId: '', invoiceNumber: '', invoiceDate: new Date().toISOString().split('T')[0], isPartialDelivery: false });
+    setForm({ supplierId: '', invoiceNumber: '', invoiceDate: localYmd(), isPartialDelivery: false });
     setItems([{ id: 1, medicineId: '', medicineSearch: '', batchNumber: '', expiryDate: '', quantity: '', purchaseRate: '', mrp: '', gstRate: 0, returnToVendor: false, suggestions: [] }]);
   };
 
@@ -375,7 +376,7 @@ export default function GRNPage() {
                             <label className="sr-only" htmlFor={`grn-batch-${item.id}`}>Batch number for row {n}</label>
                             <input id={`grn-batch-${item.id}`} required type="text" placeholder="Batch" value={item.batchNumber} onChange={e => handleItemChange(index, 'batchNumber', e.target.value)} className="form-input" />
                             <label className="sr-only" htmlFor={`grn-exp-${item.id}`}>Expiry date for row {n}</label>
-                            <input id={`grn-exp-${item.id}`} required type="date" min={new Date().toISOString().slice(0, 10)} value={item.expiryDate} onChange={e => handleItemChange(index, 'expiryDate', e.target.value)} className="form-input" />
+                            <input id={`grn-exp-${item.id}`} required type="date" min={localYmd()} value={item.expiryDate} onChange={e => handleItemChange(index, 'expiryDate', e.target.value)} className="form-input" />
                           </div>
                         </td>
                         <td>

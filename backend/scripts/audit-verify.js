@@ -12,6 +12,7 @@ const path = require('path');
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models/db');
 const { CHAINS, sealOnce } = require('../utils/auditSealer');
+const { validateCheckpoint } = require('../utils/auditCheckpoint');
 
 async function main() {
   const problems = [];
@@ -50,6 +51,8 @@ async function main() {
       const { signature, ...body } = parsed;
       const expected = crypto.createHmac('sha256', key).update(JSON.stringify(body)).digest('hex');
       if (typeof signature !== 'string' || !/^[a-f0-9]{64}$/.test(signature) || !crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) { problems.push(`${file}: signature does not match`); continue; }
+      const invalid = validateCheckpoint(parsed, key, CHAINS);
+      if (invalid.length) { problems.push(`${file}: ${invalid.join('; ')}`); continue; }
       for (const head of body.heads) {
         if (!CHAINS.includes(head.chain) || !Number.isSafeInteger(head.seq) || head.seq < 0) { problems.push(`${file}: invalid chain reference`); continue; }
         if (!head.seq) continue;

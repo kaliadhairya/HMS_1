@@ -180,7 +180,7 @@ router.get('/medicines/:id/batches', async (req, res) => {
       where: {
         medicineId: id,
         quantity: { [Op.gt]: 0 },
-        expiryDate: { [Op.gte]: sequelize.literal('CURRENT_DATE') },
+        expiryDate: { [Op.gte]: sequelize.literal('hms_service_today()') },
         [Op.and]: sequelize.literal("LOT_STATUS = 'AVAILABLE'"),
       },
       order: [['EXPIRY_DATE', 'ASC'], ['ID', 'ASC']]
@@ -220,17 +220,17 @@ async function buildPharmacyReport(days) {
     run(`SELECT COUNT(*) AS RECORDS, COALESCE(SUM(dr.TOTAL_AMOUNT), 0) AS AMOUNT,
                 COALESCE((SELECT SUM(di.QUANTITY) FROM HMS_DISPENSING_ITEMS di
                           JOIN HMS_DISPENSING_RECORDS d2 ON d2.ID = di.DISPENSING_RECORD_ID
-                          WHERE d2.DISPENSED_AT >= CURRENT_DATE - (:days - 1)), 0) AS UNITS
-         FROM HMS_DISPENSING_RECORDS dr WHERE dr.DISPENSED_AT >= CURRENT_DATE - (:days - 1)`, since),
+                          WHERE d2.DISPENSED_AT >= hms_service_day_start() - make_interval(days => (:days - 1)::integer)), 0) AS UNITS
+         FROM HMS_DISPENSING_RECORDS dr WHERE dr.DISPENSED_AT >= hms_service_day_start() - make_interval(days => (:days - 1)::integer)`, since),
     run(`SELECT COUNT(*) AS RECORDS, COALESCE(SUM(TOTAL_AMOUNT), 0) AS AMOUNT
-         FROM HMS_DISPENSING_RECORDS WHERE DISPENSED_AT >= CURRENT_DATE`),
+         FROM HMS_DISPENSING_RECORDS WHERE DISPENSED_AT >= hms_service_day_start()`),
     run(`SELECT COUNT(*) AS RECORDS, COALESCE(SUM(os.TOTAL_AMOUNT), 0) AS AMOUNT,
                 COALESCE((SELECT SUM(oi.QUANTITY) FROM HMS_OTC_ITEMS oi
                           JOIN HMS_OTC_SALES o2 ON o2.ID = oi.OTC_SALE_ID
-                          WHERE o2.SOLD_AT >= CURRENT_DATE - (:days - 1)), 0) AS UNITS
-         FROM HMS_OTC_SALES os WHERE os.SOLD_AT >= CURRENT_DATE - (:days - 1)`, since),
+                          WHERE o2.SOLD_AT >= hms_service_day_start() - make_interval(days => (:days - 1)::integer)), 0) AS UNITS
+         FROM HMS_OTC_SALES os WHERE os.SOLD_AT >= hms_service_day_start() - make_interval(days => (:days - 1)::integer)`, since),
     run(`SELECT COUNT(*) AS RECORDS, COALESCE(SUM(TOTAL_AMOUNT), 0) AS AMOUNT
-         FROM HMS_OTC_SALES WHERE SOLD_AT >= CURRENT_DATE`),
+         FROM HMS_OTC_SALES WHERE SOLD_AT >= hms_service_day_start()`),
   ]);
 
   const topMedicines = await run(`
@@ -240,12 +240,12 @@ async function buildPharmacyReport(days) {
       SELECT di.MEDICINE_ID, di.QUANTITY AS QTY, di.AMOUNT
       FROM HMS_DISPENSING_ITEMS di
       JOIN HMS_DISPENSING_RECORDS dr ON dr.ID = di.DISPENSING_RECORD_ID
-      WHERE dr.DISPENSED_AT >= CURRENT_DATE - (:days - 1)
+      WHERE dr.DISPENSED_AT >= hms_service_day_start() - make_interval(days => (:days - 1)::integer)
       UNION ALL
       SELECT oi.MEDICINE_ID, oi.QUANTITY AS QTY, oi.AMOUNT
       FROM HMS_OTC_ITEMS oi
       JOIN HMS_OTC_SALES os ON os.ID = oi.OTC_SALE_ID
-      WHERE os.SOLD_AT >= CURRENT_DATE - (:days - 1)
+      WHERE os.SOLD_AT >= hms_service_day_start() - make_interval(days => (:days - 1)::integer)
     ) x
     JOIN HMS_MEDICINES m ON m.ID = x.MEDICINE_ID
     GROUP BY m.ID, m.GENERIC_NAME, m.STRENGTH, m.STRENGTH_UNIT
@@ -267,10 +267,10 @@ async function buildPharmacyReport(days) {
   // Batches with stock that have expired or expire within 30 days.
   const expiring = await run(`
     SELECT b.ID AS BATCH_ID, b.BATCH_NUMBER, b.EXPIRY_DATE, b.QUANTITY, m.ID AS MEDICINE_ID, m.GENERIC_NAME,
-           (b.EXPIRY_DATE < CURRENT_DATE) AS IS_EXPIRED
+           (b.EXPIRY_DATE < hms_service_today()) AS IS_EXPIRED
     FROM HMS_MEDICINE_BATCHES b
     JOIN HMS_MEDICINES m ON m.ID = b.MEDICINE_ID
-    WHERE b.QUANTITY > 0 AND b.EXPIRY_DATE <= CURRENT_DATE + :window
+    WHERE b.QUANTITY > 0 AND b.EXPIRY_DATE <= hms_service_today() + :window
     ORDER BY b.EXPIRY_DATE ASC, b.ID ASC
   `, { window: EXPIRY_WINDOW_DAYS });
 
@@ -278,7 +278,7 @@ async function buildPharmacyReport(days) {
     run(`SELECT COALESCE(SUM(QUANTITY * COALESCE(PURCHASE_RATE, 0)), 0) AS AT_COST,
                 COALESCE(SUM(QUANTITY * COALESCE(MRP, 0)), 0) AS AT_MRP,
                 COALESCE(SUM(QUANTITY), 0) AS UNITS
-         FROM HMS_MEDICINE_BATCHES WHERE QUANTITY > 0 AND EXPIRY_DATE >= CURRENT_DATE`),
+         FROM HMS_MEDICINE_BATCHES WHERE QUANTITY > 0 AND EXPIRY_DATE >= hms_service_today()`),
   ]);
 
   // In-stock medicines that nothing has been dispensed or sold from in the last 30 days.
@@ -294,7 +294,7 @@ async function buildPharmacyReport(days) {
     HAVING NOT EXISTS (
       SELECT 1 FROM HMS_STOCK_LEDGER sl
       WHERE sl.MEDICINE_ID = m.ID AND sl.TRANSACTION_TYPE = 'OUT'
-        AND sl.TRANSACTION_DATE >= CURRENT_DATE - :slowDays
+        AND sl.TRANSACTION_DATE >= hms_service_day_start() - make_interval(days => :slowDays::integer)
     )
     ORDER BY STOCK DESC, m.GENERIC_NAME ASC
     LIMIT 50
@@ -360,7 +360,7 @@ router.get('/dashboard', checkPermission('pharmacy', 'read'), async (req, res) =
     const [[queue]] = await sequelize.query("SELECT COUNT(*) AS CNT FROM HMS_PRESCRIPTIONS WHERE STATUS = 'Finalized'");
     const [[returns]] = await sequelize.query(`
       SELECT COUNT(*) AS CNT FROM HMS_STOCK_LEDGER
-      WHERE TRANSACTION_DATE >= CURRENT_DATE
+      WHERE TRANSACTION_DATE >= hms_service_day_start()
         AND ((TRANSACTION_TYPE = 'RETURN' AND REFERENCE_TYPE = 'Patient Return')
           OR (TRANSACTION_TYPE = 'DISCARD' AND REFERENCE_TYPE = 'Vendor Return'))
     `);

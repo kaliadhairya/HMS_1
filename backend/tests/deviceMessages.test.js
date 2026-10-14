@@ -47,3 +47,11 @@ test('Anything that is not HL7 or ASTM is refused, not guessed', () => {
   assert.throws(() => M.parseHl7('hello'), /HL7/);
   assert.throws(() => M.parseAstm('hello'), /ASTM/);
 });
+
+test('reused result set IDs retain their distinct HL7 order groups', () => {
+  const text = ORU + '\rOBR|2||ACC-0002|GLU^Glucose\rOBX|1|NM|GLU^Glucose||6|mmol/L';
+  const results = M.hl7Results(M.parseHl7(text));
+  assert.equal(results[0].setId, results[2].setId);
+  assert.notEqual(results[0].groupIndex, results[2].groupIndex);
+  assert.equal(results[2].specimen, 'ACC-0002');
+});

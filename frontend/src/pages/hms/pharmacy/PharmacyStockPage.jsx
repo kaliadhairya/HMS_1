@@ -1,3 +1,4 @@
+import { localYmd } from '../../../utils/localDate';
 import {MedicationLinks} from './MedicationUI';
 import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
@@ -233,7 +234,7 @@ export default function PharmacyStockPage() {
       await api.post('/pharmacy/grn', {
         supplierId: finalSupplierId || null,
         invoiceNumber: addForm.invoiceNumber || null,
-        invoiceDate: new Date().toISOString().slice(0, 10),
+        invoiceDate: localYmd(),
         items: [{
           medicineId: parseInt(finalMedicineId),
           batchNumber: addForm.batchNumber, expiryDate: addForm.expiryDate,

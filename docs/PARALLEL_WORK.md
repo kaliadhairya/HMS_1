@@ -138,3 +138,11 @@ Each agent keeps one line per working session in `AGENTS.md` under its own
 heading: date, what it is doing, which files it touched.
 
 Remove your STOP or ownership claim when you finish.
+
+## Clinical completion (owner-authorized solo work, 2026-10-14)
+
+`completion/clinical-final` in `../HMS_1-clinical-final` owns the remaining
+clinical integration, verification and readiness work in its own checkout.
+Original phase worktrees remain unchanged. See `docs/CLINICAL_COMPLETION.md`.
+Migrations 0110–0149; test databases `hms_p4_final_*` / `hms_verify_final_*`;
+API 5064, Vite 5236, second API 15544, PG18 55464. No shared deployment.

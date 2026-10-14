@@ -30,8 +30,8 @@ async function call(method, url, token, body) {
     `SELECT count(*)::int AS n FROM hms_appointments WHERE doctor_id = $1 AND appointment_date = $2 AND slot_start = $3
        AND (status IS NULL OR status NOT IN ('Cancelled', 'No Show'))`, [doctor.id, day, slot]))[0].n;
 
-  await step('Twenty simultaneous bookings of one slot: exactly one succeeds', async () => {
-    const results = await Promise.all(Array.from({ length: 20 }, () => book(desk, '10:00')));
+  await step('Fifty simultaneous bookings of one slot: exactly one succeeds', async () => {
+    const results = await Promise.all(Array.from({ length: 50 }, () => book(desk, '10:00')));
     const ok = results.filter((r) => r.status === 201).length;
     assert(ok === 1, `${ok} bookings succeeded: ${results.map((r) => r.status).join(',')}`);
     assert(results.every((r) => r.status === 201 || r.status === 400 || r.status === 409), `unexpected status ${results.map((r) => r.status)}`);

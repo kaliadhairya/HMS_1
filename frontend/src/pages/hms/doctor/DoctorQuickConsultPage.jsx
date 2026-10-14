@@ -5,17 +5,9 @@ import { toast } from 'react-hot-toast';
 import { ArrowLeft, ArrowRight, CircleCheck, FlaskConical, HeartPulse, Search, TriangleAlert, UserRound, X } from 'lucide-react';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
-import { AllergyStatusPanel, findAllergyMatches, medicineNames, useAllergyGate, usePatientAllergies } from '../consultation/allergySafety';
+import MedicationOrderPanel from '../consultation/MedicationOrderPanel';
+import MedicationAllergyPanel from '../consultation/MedicationAllergyPanel';
 
-const rxInputStyle = { height: 32, padding: '4px 8px', minWidth: 64 };
-// /hms/medicines/search returns camelCase fields (genericName, brandNames[]); older rows used snake case.
-const medGeneric = (m) => m.genericName || m.generic_name || '';
-const medBrands = (m) => {
-  const raw = m.brandNames ?? m.brand_names;
-  if (Array.isArray(raw)) return raw;
-  if (!raw) return [];
-  try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : [String(parsed)]; } catch { return String(raw).split(',').map((b) => b.trim()).filter(Boolean); }
-};
 // NUMERIC columns arrive as strings ("38.20"); show them as numbers (38.2).
 const shown = (v, unit = '') => {
   if (v === null || v === undefined || v === '') return '—';
@@ -47,15 +39,9 @@ export default function DoctorQuickConsultPage() {
   const [icdSearch, setIcdSearch] = useState('');
   const [icdResults, setIcdResults] = useState([]);
 
-  // Prescription State
-  const [prescriptionItems, setPrescriptionItems] = useState([]);
-  const [medSearch, setMedSearch] = useState('');
-  const [medResults, setMedResults] = useState([]);
+  const [hasPendingMedication, setHasPendingMedication] = useState(true);
 
   // Patient safety: allergy record and the confirmation before prescribing against it
-  const allergyState = usePatientAllergies(activePatient ? (activePatient.id || activePatient.ID) : null);
-  const allergyGate = useAllergyGate(allergyState);
-  const allergyMatchesFor = (item) => (allergyState.status === 'ok' ? findAllergyMatches(allergyState.allergies, medicineNames(item)) : []);
 
   // Patient Search Logic
   useEffect(() => {
@@ -82,6 +68,8 @@ export default function DoctorQuickConsultPage() {
   };
 
   const selectPatient = async (patient) => {
+    setActiveEncounterId(null);
+    setHasPendingMedication(true);
     setActivePatient(patient);
     setSearchQuery('');
     setSearchResults([]);
@@ -114,12 +102,12 @@ export default function DoctorQuickConsultPage() {
   };
 
   const clearPatient = () => {
+    if (activeEncounterId && hasPendingMedication) { toast.error('Save/sign medication orders or reconcile the pending outcome before switching patient.'); return; }
     setActivePatient(null);
     setActiveEncounterId(null);
     setVitals(null);
     setLabReports([]);
     setDiagnoses([]);
-    setPrescriptionItems([]);
     setFormData({ chief_complaint: '', hopi: '', past_medical_history: '', general_examination: '', cvs_findings: '', rs_findings: '' });
   };
 
@@ -164,52 +152,13 @@ export default function DoctorQuickConsultPage() {
   };
 
   // ─── Prescription Handlers ───
-  const searchMed = async (q) => {
-    setMedSearch(q);
-    if (q.length < 2) return setMedResults([]);
-    try {
-      const res = await api.get(`/hms/medicines/search?q=${q}`);
-      setMedResults(res.data);
-    } catch (err) { console.error(err); }
-  };
-
-  // Every medicine goes through the allergy check; a match needs "Prescribe anyway".
-  const addPrescriptionItem = (med) => {
-    const generic = medGeneric(med);
-    setMedSearch('');
-    setMedResults([]);
-    if (!generic) return;
-    allergyGate.check([generic, ...medBrands(med)], generic, () => {
-      setPrescriptionItems((items) => [...items, {
-        medicine_name: generic, generic_name: generic,
-        dose: '1', dose_unit: 'Tablet', route: 'Oral', frequency: 'BD', duration_days: 5, instructions: 'After meal'
-      }]);
-    });
-  };
-
-  const updateItem = (index, field, val) => {
-    const updated = [...prescriptionItems];
-    updated[index][field] = val;
-    setPrescriptionItems(updated);
-  };
-
-  const removeRxItem = (index) => {
-    setPrescriptionItems(prescriptionItems.filter((_, i) => i !== index));
-  };
-
   // ─── Finalize ───
   const finalizeEncounter = async () => {
+    if (!activeEncounterId || hasPendingMedication) return toast.error('Confirm and sign medication orders before finalizing.');
     try {
       // Save forms
       await api.put(`/hms/encounters/${activeEncounterId}`, formData);
       
-      // Save prescription
-      if (prescriptionItems.length > 0) {
-        const pRes = await api.post('/hms/prescriptions', { encounter_id: activeEncounterId, patient_id: activePatient.id || activePatient.ID });
-        const presId = pRes.data.id;
-        await api.put(`/hms/prescriptions/${presId}/items`, { items: prescriptionItems });
-      }
-
       await api.patch(`/hms/encounters/${activeEncounterId}/finalize`, {});
       toast.success('Consultation finalized');
       clearPatient();
@@ -279,7 +228,7 @@ export default function DoctorQuickConsultPage() {
       ) : (
         <>
         <div className="panel panel-pad" style={{ marginBottom: 16 }}>
-          <AllergyStatusPanel status={allergyState.status} allergies={allergyState.allergies} onRetry={allergyState.retry} />
+          {activeEncounterId && <MedicationAllergyPanel key={`${activePatient.id || activePatient.ID}:${activeEncounterId}`} patientId={activePatient.id || activePatient.ID} />}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
           {/* Patient context */}
@@ -411,66 +360,11 @@ export default function DoctorQuickConsultPage() {
                 </div>
               )}
 
-              {activeTab === 'prescription' && (
-                <div className="stack">
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="qc-med-search">Search medicine to prescribe</label>
-                    <div style={{ position: 'relative' }}>
-                      <input id="qc-med-search" type="text" className="form-input" value={medSearch} onChange={(e) => searchMed(e.target.value)} placeholder="Type a generic or brand name" autoComplete="off" />
-                      {medResults.length > 0 && (
-                        <ul className="list-rows" style={dropdownStyle}>
-                          {medResults.map(m => (
-                            <li key={m.id}>
-                              <button type="button" className="list-row" onClick={() => addPrescriptionItem(m)}>
-                                <span className="cell-stack">
-                                  <span className="cell-primary">{medGeneric(m)}{medBrands(m).length ? ` (${medBrands(m).join(', ')})` : ''}</span>
-                                  <span className="cell-secondary">{[m.formulation, m.strength, m.strengthUnit || m.strength_unit].filter(Boolean).join(' ')}</span>
-                                </span>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
-
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="mini-table">
-                      <thead><tr><th>Medicine</th><th>Dose</th><th>Unit</th><th>Route</th><th>Frequency</th><th>Days</th><th><span className="sr-only">Actions</span></th></tr></thead>
-                      <tbody>
-                        {prescriptionItems.length === 0 && <tr><td colSpan="7" className="muted" style={{ textAlign: 'center' }}>No medicines prescribed yet.</td></tr>}
-                        {prescriptionItems.map((item, idx) => {
-                          const matches = allergyMatchesFor(item);
-                          return (
-                          <tr key={idx}>
-                            <td>
-                              <span className="cell-stack">
-                                <span className="cell-primary">{item.medicine_name}</span>
-                                {matches.length > 0 && (
-                                  <span className="status status-danger" style={{ alignSelf: 'flex-start' }}>
-                                    <TriangleAlert size={12} aria-hidden="true" /> Allergy: {matches.map((a) => a.allergen).join(', ')}
-                                  </span>
-                                )}
-                              </span>
-                            </td>
-                            <td><input type="text" className="form-input" style={rxInputStyle} aria-label={`Dose for ${item.medicine_name}`} value={item.dose} onChange={e => updateItem(idx, 'dose', e.target.value)} /></td>
-                            <td><input type="text" className="form-input" style={rxInputStyle} aria-label={`Dose unit for ${item.medicine_name}`} value={item.dose_unit} onChange={e => updateItem(idx, 'dose_unit', e.target.value)} /></td>
-                            <td><input type="text" className="form-input" style={rxInputStyle} aria-label={`Route for ${item.medicine_name}`} value={item.route} onChange={e => updateItem(idx, 'route', e.target.value)} /></td>
-                            <td><input type="text" className="form-input" style={rxInputStyle} aria-label={`Frequency for ${item.medicine_name}`} value={item.frequency} onChange={e => updateItem(idx, 'frequency', e.target.value)} /></td>
-                            <td><input type="number" className="form-input" style={{ ...rxInputStyle, width: 70 }} aria-label={`Days for ${item.medicine_name}`} value={item.duration_days} onChange={e => updateItem(idx, 'duration_days', e.target.value)} /></td>
-                            <td className="text-right">
-                              <button type="button" className="icon-btn" onClick={() => removeRxItem(idx)} aria-label={`Remove ${item.medicine_name}`}>
-                                <X size={16} aria-hidden="true" />
-                              </button>
-                            </td>
-                          </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+              <div hidden={activeTab !== 'prescription'} className="stack" style={{ display: activeTab === 'prescription' ? undefined : 'none' }}>
+                {activeEncounterId ? <>
+                  <MedicationOrderPanel key={`${activePatient.id || activePatient.ID}:${activeEncounterId}`} patientId={activePatient.id || activePatient.ID} encounterId={activeEncounterId} onPendingChange={setHasPendingMedication} />
+                </> : <p role="status">A confirmed encounter is required before ordering medicines.</p>}
+              </div>
             </div>
 
             <div className="panel-pad" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -484,7 +378,6 @@ export default function DoctorQuickConsultPage() {
         </>
       )}
     </main>
-    {allergyGate.modal}
     </>
   );
 }

@@ -18,3 +18,15 @@ test('another facility time zone can be configured', () => {
   process.env.FACILITY_TZ = 'UTC';
   try { assert.equal(serviceDate(new Date('2026-10-13T23:59:00Z')), '2026-10-13'); } finally { delete process.env.FACILITY_TZ; }
 });
+
+test('browser service dates use the hospital calendar and calendar-day increments', async () => {
+  const { localYmd, nextLocalDate, setFacilityTimezone } = await import('../../frontend/src/utils/localDate.js');
+  try {
+    setFacilityTimezone('Asia/Kolkata');
+    assert.equal(localYmd(new Date('2026-10-13T18:30:00Z')), '2026-10-14');
+    assert.equal(nextLocalDate(new Date('2026-12-31T19:00:00Z')), '2027-01-02');
+    setFacilityTimezone('America/New_York');
+    assert.equal(localYmd(new Date('2026-03-08T04:30:00Z')), '2026-03-07');
+    assert.equal(nextLocalDate(new Date('2026-03-08T04:30:00Z')), '2026-03-08');
+  } finally { setFacilityTimezone('Asia/Kolkata'); }
+});

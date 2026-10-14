@@ -28,13 +28,13 @@ function parseHl7(raw) {
 // Results of an ORU^R01: one entry per OBX, with the OBR and PID it belongs to.
 function hl7Results(msg) {
   const out = [];
-  let pid = null; let obr = null;
+  let pid = null; let obr = null; let groupIndex = 0;
   for (const s of msg.segments) {
     if (s.id === 'PID') pid = { identifier: s.comp(3, 1), name: s.field(5) };
-    if (s.id === 'OBR') obr = { placer: s.comp(2, 1), filler: s.comp(3, 1), test: s.comp(4, 1) };
+    if (s.id === 'OBR') { groupIndex++; obr = { placer: s.comp(2, 1), filler: s.comp(3, 1), test: s.comp(4, 1) }; }
     if (s.id === 'OBX') {
       out.push({
-        setId: s.field(1), valueType: s.field(2), code: s.comp(3, 1), codeText: s.comp(3, 2), value: s.field(5), unit: s.comp(6, 1),
+        groupIndex, setId: s.field(1), valueType: s.field(2), code: s.comp(3, 1), codeText: s.comp(3, 2), value: s.field(5), unit: s.comp(6, 1),
         flag: s.field(8), status: s.field(11), observedAt: s.field(14), instrument: s.comp(18, 1) || msg.sendingApp,
         patientIdentifier: pid?.identifier || null, specimen: obr?.filler || obr?.placer || null, orderTest: obr?.test || null,
       });
@@ -82,12 +82,12 @@ function parseAstm(raw) {
 }
 function astmResults(msg) {
   const out = [];
-  let patient = null; let order = null;
+  let patient = null; let order = null; let groupIndex = 0;
   for (const r of msg.records) {
     if (r.type === 'P') patient = { identifier: r.field(3) || r.field(4) || r.field(5) };
-    if (r.type === 'O') order = { specimen: r.comp(3, 1), test: r.comp(5, 4) || r.comp(5, 1) };
+    if (r.type === 'O') { groupIndex++; order = { specimen: r.comp(3, 1), test: r.comp(5, 4) || r.comp(5, 1) }; }
     if (r.type === 'R') {
-      out.push({ setId: r.field(2), code: r.comp(3, 4) || r.comp(3, 1), codeText: r.comp(3, 5), value: r.field(4), unit: r.comp(5, 1), flag: r.field(7), status: r.field(9), observedAt: r.field(13),
+      out.push({ groupIndex, setId: r.field(2), code: r.comp(3, 4) || r.comp(3, 1), codeText: r.comp(3, 5), value: r.field(4), unit: r.comp(5, 1), flag: r.field(7), status: r.field(9), observedAt: r.field(13),
         instrument: r.field(14) || msg.sender, patientIdentifier: patient?.identifier || null, specimen: order?.specimen || null, orderTest: order?.test || null });
     }
   }

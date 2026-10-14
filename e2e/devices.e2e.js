@@ -22,7 +22,7 @@ const oru = ({ control, accession, code = `GLU${tag}`, value = '5.4', patient = 
 
 (async () => {
   const { step, done } = runner('Device interfaces');
-  let pid, test, spec, key, system, labId;
+  let pid, test, spec, key, system, labId, eid;
 
   await step('Set up a coded test, an order and a received specimen; the analyzer account has an ANALYZER grant', async () => {
     for (const role of ['doctor', 'lab_technician', 'super_admin', 'admin']) tokens[role] = await apiLogin(role);
@@ -30,7 +30,7 @@ const oru = ({ control, accession, code = `GLU${tag}`, value = '5.4', patient = 
     [{ id: labId }] = await sql("SELECT id FROM hms_users WHERE username = 'labtech'");
     [{ id: pid }] = await sql("INSERT INTO hms_patients (name, uhid, patienttype, age, gender, opdindoor, testdate) VALUES ($1, $2, 'other', 30, 'Male', 'OPD', CURRENT_DATE) RETURNING id", [`Synthetic device ${tag}`, `DEV-${tag}`]);
     await inCare(pid);
-    const [{ id: eid }] = await sql("INSERT INTO hms_encounters (id, patient_id, doctor_id, status) VALUES (nextval('hms_encounters_seq'), $1, $2, 'Draft') RETURNING id", [pid, uid]);
+    [{ id: eid }] = await sql("INSERT INTO hms_encounters (id, patient_id, doctor_id, status) VALUES (nextval('hms_encounters_seq'), $1, $2, 'Draft') RETURNING id", [pid, uid]);
     for (const p of ['CONTENT', 'ANALYZER']) ok(await req('POST', '/laboratory/privileges', 'super_admin', { user_id: labId, privilege: p, reason: 'Synthetic device fixture', valid_from: new Date(Date.now() - 1000).toISOString(), valid_until: new Date(Date.now() + 864e5).toISOString() }), 201);
     test = ok(await req('POST', '/laboratory/catalogue', 'lab_technician', { code_system: 'TEST-DEV', code: `GLU-${tag}`, kind: 'TEST', name: `Synthetic glucose ${tag}`, section: 'TEST', unit: 'TEST-U', method: 'TEST-METHOD',
       provenance: 'Synthetic device fixture only', effective_at: new Date(Date.now() - 1000).toISOString(), requirements: [{ specimen_type: 'TEST-BLOOD', container: 'TEST-TUBE' }] }), 201);
@@ -58,6 +58,8 @@ const oru = ({ control, accession, code = `GLU${tag}`, value = '5.4', patient = 
   });
 
   await step('A result reaches the laboratory as a provisional analyzer result and is acknowledged AA', async () => {
+    const unsigned = await fetch(`${API}/device-messages/${system}`, { method: 'POST', headers: { 'content-type': 'x-application/hl7-v2+er7' }, body: oru({ control: `UNSIGNED-${tag}`, accession: spec.accession }) });
+    assert(unsigned.status === 401, 'HTTP device request without a key was accepted');
     assert((await device(system, 'wrong-key', oru({ control: `C1-${tag}`, accession: spec.accession }))).status === 401, 'wrong device key accepted');
     assert((await device(`analyzer:nobody-${tag}`, key, 'MSH|x')).status === 404, 'device without a contract accepted');
     const r = await device(system, key, oru({ control: `C1-${tag}`, accession: spec.accession, patient: `DEV-${tag}` }));
@@ -77,15 +79,46 @@ const oru = ({ control, accession, code = `GLU${tag}`, value = '5.4', patient = 
     assert(changed.status === 409, `same ID, other content: ${changed.status}`);
   });
 
+  await step('Analyzer result changes are attributed to the device account on the existing transaction connection', async () => {
+    const audit = await sql("SELECT a.actor_user_id FROM audit.row_changes a JOIN hms_lab_result_versions r ON a.row_id = r.id::text WHERE a.table_name = 'hms_lab_result_versions' AND a.operation = 'INSERT' AND r.specimen_id = $1", [spec.id]);
+    assert(audit.length === 1 && Number(audit[0].actor_user_id) === labId, `device audit attribution ${JSON.stringify(audit)}`);
+  });
+
+  await step('A held analyzer result is acknowledged AE and reaches the interface worklist without overwriting an existing result', async () => {
+    const r = await device(system, key, oru({ control: `HELD-${tag}`, accession: spec.accession, value: '9.9' }));
+    assert(r.status === 200 && msa(r.text)[1] === 'AE', 'a result held by Phase 4 was acknowledged as processed');
+    const [m] = await sql('SELECT status FROM hms_interface_messages WHERE system = $1 AND external_id = $2', [system, `HELD-${tag}`]);
+    const [w] = await sql("SELECT id FROM hms_worklist_items WHERE kind = 'interface.unmatched' AND dedupe_key = $1", [`${system}:HELD-${tag}`]);
+    const [{ n }] = await sql('SELECT count(*)::int AS n FROM hms_lab_result_versions WHERE specimen_id = $1', [spec.id]);
+    assert(m.status === 'Unmatched' && w && n === 1, 'held result lost its worklist or overwrote clinical content');
+  });
+
+  await step('Two order groups may reuse OBX set ID 1 and both create their own provisional result', async () => {
+    const [requirement] = await sql('SELECT id FROM hms_lab_requirements WHERE test_version_id = $1', [test.id]);
+    const specimens = [];
+    for (let i = 0; i < 2; i++) {
+      const order = ok(await req('POST', '/laboratory/orders', 'doctor', { patient_id: pid, encounter_id: eid, test_version_ids: [test.id] }), 201);
+      let sample = ok(await req('POST', '/laboratory/specimens', 'lab_technician', { patient_id: pid, specimen_type: 'TEST-BLOOD', container: 'TEST-TUBE', location: 'TEST', links: [{ item_id: order.items[0].id, requirement_id: requirement.id }] }), 201);
+      for (const state of ['COLLECTED', 'RECEIVED']) sample = ok(await req('POST', `/laboratory/specimens/${sample.id}/transition`, 'lab_technician', { patient_id: pid, accession: sample.accession, state, location: 'TEST', reason: 'Synthetic multigroup custody' }, sample.revision));
+      specimens.push(sample);
+    }
+    const first = oru({ control: `MULTI-${tag}`, accession: specimens[0].accession });
+    const text = first + `\rOBR|2||${specimens[1].accession}|GLU${tag}\rOBX|1|NM|GLU${tag}^Synthetic||6.1|TEST-U||N|||F`;
+    const r = await device(system, key, text);
+    assert(r.status === 200 && msa(r.text)[1] === 'AA', `multigroup ack ${r.status} ${r.text}`);
+    const [{ n }] = await sql('SELECT count(*)::int AS n FROM hms_lab_result_versions WHERE specimen_id = ANY($1::uuid[])', [specimens.map((s) => s.id)]);
+    assert(n === 2, `${n} multigroup results, expected 2`);
+  });
+
   await step('Unmapped codes, unknown specimens and a different patient are held for a person, never guessed', async () => {
     const cases = [oru({ control: `C2-${tag}`, accession: spec.accession, code: 'UNMAPPED' }), oru({ control: `C3-${tag}`, accession: `NOSUCH-${tag}` }), oru({ control: `C4-${tag}`, accession: spec.accession, patient: 'SOMEONE-ELSE' })];
     for (const text of cases) {
       const r = await device(system, key, text);
       assert(msa(r.text)[1] === 'AE', `held message acknowledged ${msa(r.text)[1]}`);
     }
-    const held = await sql("SELECT external_id, status FROM hms_interface_messages WHERE system = $1 AND status = 'Unmatched'", [system]);
+    const held = await sql("SELECT external_id, status FROM hms_interface_messages WHERE system = $1 AND status = 'Unmatched' AND external_id = ANY($2::text[])", [system, [`C2-${tag}`, `C3-${tag}`, `C4-${tag}`]]);
     assert(held.length === 3, `${held.length} held messages`);
-    const items = await sql("SELECT owner_role FROM hms_worklist_items WHERE kind = 'interface.unmatched' AND status = 'Open' AND dedupe_key LIKE $1", [`${system}:%`]);
+    const items = await sql("SELECT owner_role FROM hms_worklist_items WHERE kind = 'interface.unmatched' AND status = 'Open' AND dedupe_key = ANY($1::text[])", [[`${system}:C2-${tag}`, `${system}:C3-${tag}`, `${system}:C4-${tag}`]]);
     assert(items.length === 3 && items.every((i) => i.owner_role === 'lab_technician'), `worklist ${JSON.stringify(items)}`);
     const [{ n }] = await sql('SELECT count(*)::int AS n FROM hms_lab_result_versions WHERE specimen_id = $1', [spec.id]);
     assert(n === 1, 'a held message wrote a result');
@@ -114,6 +147,26 @@ const oru = ({ control, accession, code = `GLU${tag}`, value = '5.4', patient = 
     assert((await sql("SELECT 1 FROM hms_worklist_items WHERE kind = 'interface.manual_review' AND owner_role = 'nurse' AND dedupe_key = $1", [`${bedside}:B1-${tag}`])).length === 1, 'bedside message not on the nursing worklist');
     ok(await req('POST', `/devices/${d.id}/retire`, 'admin'));
     assert((await device(bedside, b.device_key, oru({ control: `B2-${tag}`, accession: 'NA' }))).status === 404, 'a retired contract received a message');
+  });
+
+  await step('Retired MLLP listeners close and a replacement system on the same port receives its own messages', async () => {
+    const [previous] = await sql("SELECT id, mllp_port FROM hms_device_contracts WHERE system=$1 AND status='Active'", [system]);
+    ok(await req('POST', `/devices/${previous.id}/retire`, 'admin'));
+    const replacement = `analyzer:rebind-${tag}`;
+    const draft = ok(await req('POST', '/devices', 'lab_technician', { system: replacement, protocol: 'hl7v2', description: 'Synthetic port replacement', provenance: 'Synthetic interface replacement manual', serviceUserId: labId, mllpPort: previous.mllp_port,
+      codeMap: { [`GLU${tag}`]: { lab_code_system: 'TEST-DEV', lab_code: `GLU-${tag}`, method: 'TEST-METHOD' } } }), 201);
+    ok(await req('POST', `/devices/${draft.id}/approve`, 'admin'));
+    const control = `REBIND-${tag}`;
+    const response = await new Promise((resolve, reject) => {
+      const socket = net.connect(previous.mllp_port, '127.0.0.1', () => socket.write(Buffer.concat([Buffer.from([0x0b]), Buffer.from(oru({ control, accession: spec.accession, code: 'UNMAPPED' })), Buffer.from([0x1c, 0x0d])])));
+      const timer = setTimeout(() => { socket.destroy(); reject(new Error('replacement MLLP did not answer')); }, 8000);
+      let bytes = Buffer.alloc(0);
+      socket.on('data', (chunk) => { bytes = Buffer.concat([bytes, chunk]); if (bytes.includes(Buffer.from([0x1c,0x0d]))) { clearTimeout(timer); socket.end(); resolve(bytes.subarray(1, bytes.length - 2).toString()); } });
+      socket.on('error', (error) => { clearTimeout(timer); reject(error); });
+    });
+    assert(msa(response)[1] === 'AE', `replacement routed to a retired contract: ${response}`);
+    assert((await sql('SELECT id FROM hms_interface_messages WHERE system=$1 AND external_id=$2', [replacement, control])).length === 1, 'replacement system did not own the received message');
+    ok(await req('POST', `/devices/${draft.id}/retire`, 'admin'));
   });
 
   done();

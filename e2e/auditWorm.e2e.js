@@ -63,10 +63,13 @@ function check(laterMs = 0) {
   });
 
   await step('The remote check reports a forged, a mismatching and a missing checkpoint on the worklist', async () => {
-    const [head] = await sql("SELECT chain_seq FROM audit.row_changes WHERE row_hash IS NOT NULL ORDER BY chain_seq DESC LIMIT 1");
+    const heads = await sql("SELECT chain, seq::integer AS seq, encode(head_hash, 'hex') AS hash FROM audit.chain_heads ORDER BY chain");
+    const rowHead = heads.find((head) => head.chain === 'audit.row_changes');
+    assert(rowHead && rowHead.seq > 0, 'row chain is unsealed');
+    rowHead.hash = '0'.repeat(64);
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     await s3.send(new PutObjectCommand({ Bucket, Key: `${prefix}audit-checkpoint-${stamp}-forged.json`, Body: JSON.stringify({ created_at: new Date().toISOString(), heads: [], signature: 'f'.repeat(64) }) }));
-    await s3.send(new PutObjectCommand({ Bucket, Key: `${prefix}audit-checkpoint-${stamp}-wrong.json`, Body: JSON.stringify(sign({ created_at: new Date().toISOString(), heads: [{ chain: 'audit.row_changes', seq: Number(head.chain_seq), hash: '0'.repeat(64) }] })) }));
+    await s3.send(new PutObjectCommand({ Bucket, Key: `${prefix}audit-checkpoint-${stamp}-wrong.json`, Body: JSON.stringify(sign({ created_at: new Date().toISOString(), heads })) }));
     const [dbUser] = await sql("SELECT id FROM hms_users WHERE username = 'admin'");
     await sql(`INSERT INTO hms_audit_checkpoint_shipments (file_name, checkpoint_at, sha256, shipped_at, remote_key, lock_mode, retain_until)
       VALUES ($1, now(), $2, now(), $3, 'COMPLIANCE', now() + interval '1 day')`, [`audit-checkpoint-${stamp}-gone.json`, '1'.repeat(64), `${prefix}audit-checkpoint-${stamp}-gone.json`]);

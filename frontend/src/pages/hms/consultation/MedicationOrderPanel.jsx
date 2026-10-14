@@ -26,7 +26,7 @@ const empty = {
   max_period_hours: "",
   min_interval_minutes: "",
 };
-export default function MedicationOrderPanel({ patientId, encounterId }) {
+export default function MedicationOrderPanel({ patientId, encounterId, onPendingChange }) {
   const products = useRows("/products");
   const data = useRows(
     "/orders" + (encounterId ? "?encounter_id=" + encounterId : ""),
@@ -38,6 +38,11 @@ export default function MedicationOrderPanel({ patientId, encounterId }) {
     [reason, setReason] = useState(""),
     [overrides, setOverrides] = useState({});
   const update = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  useEffect(() => {
+    const unsaved = Object.keys(empty).some((key) => form[key] !== empty[key]);
+    onPendingChange?.(data.state.kind !== 'current' || unsaved || data.rows.some((row) => row.state === 'DRAFT') ||
+      command.saving || command.status.kind === 'pending_confirmation');
+  }, [form, data.rows, data.state.kind, command.saving, command.status.kind, onPendingChange]);
   const choose = (value) => {
     const p = products.rows.find((p) => p.id === value);
     setForm((f) => ({

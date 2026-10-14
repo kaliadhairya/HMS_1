@@ -136,3 +136,17 @@ unchanged; Codex (Phase 7) asks through `docs/requests/`.
   (0098), d5f64c4 doctor lab list -> /lab/governed. Regression 43/43.
   Requests for Codex: docs/requests/phase6-service-date.md (UTC dates in
   Phase 3/4 files), phase4-clinical-navigation.md (consultation coded ordering).
+
+## Clinical completion (Codex, 2026-10-14)
+
+Owner instruction: finish all remaining clinical HMS work alone, in three
+final completion phases. Authoritative checklist: `docs/CLINICAL_COMPLETION.md`.
+STOP: this completion worktree is owned by Codex. Existing phase worktrees
+remain unchanged. This local instruction supersedes their historical file
+ownership restrictions for the completion checkout only.
+- Branch `completion/clinical-final`, baseline `c9940c8`.
+- Additive migrations 0110–0149. Disposable databases `hms_p4_final_*` and
+  `hms_verify_final_*`; API 5064, Vite 5236, second API 15544, PG18 55464.
+- Mission Control is excluded. No shared-app deployment or hospital pilot.
+- 2026-10-14: saved the three-phase inventory; preserving Phase 7 drafts and
+  starting clinical consultation/date fixes and focused Phase 6 repairs.

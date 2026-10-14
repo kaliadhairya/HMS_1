@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "context": {
+    "release_commit": null,
+    "environment": null,
+    "site": null,
+    "scope_id": null
+  },
+  "owner_names": {
+    "clinical": null,
+    "nursing": null,
+    "pharmacy": null,
+    "laboratory": null,
+    "finance": null,
+    "privacy": null,
+    "operations": null
+  },
+  "gates": {
+    "G01": {
+      "evidence": []
+    },
+    "G02": {
+      "evidence": []
+    },
+    "G03": {
+      "evidence": []
+    },
+    "G04": {
+      "evidence": []
+    },
+    "G05": {
+      "evidence": []
+    },
+    "G06": {
+      "evidence": []
+    },
+    "G07": {
+      "evidence": []
+    },
+    "G08": {
+      "evidence": []
+    },
+    "G09": {
+      "evidence": []
+    },
+    "G10": {
+      "evidence": []
+    },
+    "G11": {
+      "evidence": []
+    },
+    "G12": {
+      "evidence": []
+    },
+    "G13": {
+      "evidence": []
+    },
+    "G14": {
+      "evidence": []
+    },
+    "G15": {
+      "evidence": []
+    },
+    "G16": {
+      "evidence": []
+    },
+    "G17": {
+      "evidence": []
+    },
+    "G18": {
+      "evidence": []
+    },
+    "G19": {
+      "evidence": []
+    },
+    "G20": {
+      "evidence": []
+    },
+    "G21": {
+      "evidence": []
+    }
+  },
+  "hazards": {
+    "F01": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F02": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F03": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F04": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F05": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F06": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F07": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F08": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F09": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F10": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F11": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F12": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F13": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F14": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F15": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F16": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F17": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "F18": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H01": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H02": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H03": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H04": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H05": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H06": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H07": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H08": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H09": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H10": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H11": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H12": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H13": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H14": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H15": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H16": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H17": {
+      "state": "OPEN",
+      "evidence_ids": []
+    },
+    "H18": {
+      "state": "OPEN",
+      "evidence_ids": []
+    }
+  }
+}

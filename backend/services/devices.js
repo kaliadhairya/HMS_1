@@ -18,12 +18,21 @@ const { storage } = require('../utils/auditContext');
 // Device messages run as a command of the device's account, like a staff
 // command: nested transactions (Phase 4's result write) become savepoints of
 // this one, on the same connection, and row changes are attributed to it.
-function asDevice(t, userId, fn) {
+async function asDevice(t, userId, fn) {
   const store = storage.getStore() || {};
   const command = { active: true, transaction: t };
-  return storage.run({ ...store, requestId: store.requestId || crypto.randomUUID(), userId: userId ?? store.userId ?? null, command }, async () => {
-    try { return await fn(); } finally { command.active = false; }
-  });
+  const requestId = store.requestId || crypto.randomUUID();
+  const previous = await one("SELECT current_setting('hms.actor_user_id', true) AS actor, current_setting('hms.session_id', true) AS session, current_setting('hms.request_id', true) AS request", {}, t);
+  const setActor = (actor, session, request) => rows("SELECT set_config('hms.actor_user_id', :actor, true), set_config('hms.session_id', :session, true), set_config('hms.request_id', :request, true)", { actor: actor == null ? '' : String(actor), session: session || '', request: request || '' }, t);
+  await setActor(userId, '', requestId);
+  try {
+    return await storage.run({ ...store, requestId, userId, sessionId: null, command }, fn);
+  } finally {
+    command.active = false;
+    // These are transaction-local settings; rollback also resets them. A failed
+    // transaction must preserve its original error rather than masking it.
+    await setActor(previous?.actor, previous?.session, previous?.request).catch(() => {});
+  }
 }
 
 const rows = (sql, replacements, t) => sequelize.query(sql, { replacements, type: QueryTypes.SELECT, transaction: t });
@@ -35,6 +44,7 @@ const keyHash = (key) => crypto.createHash('sha256').update(String(key)).digest(
 async function draft(body, user, t) {
   const { system, kind, protocol, description, provenance, codeMap = {}, serviceUserId = null, ownerRole, mllpPort = null, allowedHosts = [] } = body;
   if (!/^(analyzer|pacs|bloodbank|theatre|bedside):[a-z0-9._-]{2,60}$/.test(system || '')) fail(400, 'Name the device as kind:name, for example analyzer:sysmex-xn1.');
+  if (!Array.isArray(allowedHosts) || allowedHosts.length > 128 || allowedHosts.some((host) => typeof host !== 'string' || !require('net').isIP(host))) fail(400, 'Allowed hosts must be an explicit list of IP addresses.', 'INVALID_DEVICE_HOSTS');
   for (const [code, m] of Object.entries(codeMap)) {
     if (!m || !m.lab_code_system || !m.lab_code || !m.method) fail(400, `Code ${code}: give lab_code_system, lab_code and method.`);
     const known = await one('SELECT 1 FROM hms_lab_tests WHERE code_system = :s AND code = :c', { s: m.lab_code_system, c: m.lab_code }, t);
@@ -52,6 +62,7 @@ async function approve(id, user, t) {
   if (!c) fail(404, 'Contract not found.');
   if (c.status !== 'Draft') fail(409, 'Only a draft can be approved.', 'NOT_DRAFT');
   if (c.created_by === user.id) fail(403, 'A device contract must be approved by someone other than its author.', 'SAME_PERSON');
+  if (c.mllp_port && process.env.NODE_ENV === 'production' && !c.allowed_hosts.length) fail(422, 'A production MLLP contract requires an explicit private-network IP allowlist.', 'DEVICE_ALLOWLIST_REQUIRED');
   if (c.kind === 'analyzer') {
     const svc = await one(`SELECT 1 FROM hms_users u JOIN hms_lab_privileges p ON p.user_id = u.id WHERE u.id = :u AND u.is_active = 1 AND u.role = 'lab_technician'
       AND p.privilege = 'ANALYZER' AND p.revoked_at IS NULL AND p.valid_from <= now() AND p.valid_until > now()`, { u: c.service_user_id }, t);
@@ -94,7 +105,8 @@ async function toAnalyzerBody(c, msgId, r, t) {
     JOIN hms_lab_test_versions tv ON tv.id = i.lab_test_version_id JOIN hms_lab_tests tt ON tt.id = tv.test_id
     WHERE l.specimen_id = :s AND tt.code_system = :cs AND tt.code = :code`, { s: s.id, cs: map.lab_code_system, code: map.lab_code }, t);
   if (items.length !== 1) return { problem: `specimen ${r.specimen} has ${items.length ? 'more than one' : 'no'} ordered ${map.lab_code} test` };
-  return { body: { contract_version: 1, source: c.system, message_id: `${msgId}:${r.setId || r.code}`, accession: r.specimen, patient_id: s.patient_id, item_id: items[0].id,
+  const resultKey = crypto.createHash('sha256').update(JSON.stringify([r.groupIndex, r.specimen, r.code, r.setId])).digest('hex').slice(0, 32);
+  return { body: { contract_version: 1, source: c.system, message_id: `${msgId}:${resultKey}`, accession: r.specimen, patient_id: s.patient_id, item_id: items[0].id,
     instrument: r.instrument || c.system, run_id: msgId, result: { raw_value: r.value, unit: r.unit, method: map.method } } };
 }
 
@@ -121,12 +133,16 @@ async function receive(system, raw, auth, t) {
     problems.push(`${c.kind} messages are kept for a person to act on`);
   } else {
     const svc = await one('SELECT * FROM hms_users WHERE id = :id', { id: c.service_user_id }, t);
+    if (!svc || Number(svc.is_active) !== 1) fail(403, 'The device account is not active.', 'DEVICE_ACCOUNT_INACTIVE');
     await asDevice(t, svc.id, async () => {
       for (const r of results) {
         const { body, problem } = await toAnalyzerBody(c, msgId, r, t);
         if (problem) { problems.push(problem); continue; }
         // A savepoint per result: a refused result rolls back alone.
-        await sequelize.transaction((sp) => Analyzer.ingest(body, svc, sp)).catch((err) => problems.push(`${r.code}: ${err.message}`));
+        try {
+          const outcome = await sequelize.transaction((sp) => Analyzer.ingest(body, svc, sp));
+          if (!outcome?.result?.id) problems.push(`${r.code}: result held for review (${outcome?.failure_code || 'RECONCILIATION_REQUIRED'}; reconciliation ${outcome?.reconciliation_id || 'unknown'})`);
+        } catch (err) { problems.push(`${r.code}: ${err.message}`); }
       }
     });
     if (!results.length) problems.push('the message has no results');
@@ -144,28 +160,60 @@ async function receive(system, raw, auth, t) {
 // MLLP listeners for active HL7 contracts with a port (DEVICE_MLLP=on).
 const net = require('net');
 const listeners = new Map();
-async function startMllp() {
-  if (process.env.DEVICE_MLLP !== 'on') return;
-  const active = await rows("SELECT system, mllp_port FROM hms_device_contracts WHERE status = 'Active' AND protocol = 'hl7v2' AND mllp_port IS NOT NULL", {});
-  for (const { system, mllp_port: port } of active) {
+let listenerWork = Promise.resolve();
+const messageLimit = () => Math.max(1024, Math.min(16 * 1024 * 1024, Number(process.env.DEVICE_MAX_MESSAGE_BYTES) || 2 * 1024 * 1024));
+async function reconcileMllp() {
+  const active = process.env.DEVICE_MLLP === 'on'
+    ? await rows("SELECT id, system, mllp_port FROM hms_device_contracts WHERE status = 'Active' AND protocol = 'hl7v2' AND mllp_port IS NOT NULL", {}) : [];
+  const wanted = new Map(active.map((c) => [Number(c.mllp_port), c]));
+  for (const [port, listener] of listeners) {
+    if (wanted.get(port)?.id === listener.contractId) continue;
+    listeners.delete(port);
+    for (const socket of listener.sockets) socket.destroy();
+    await new Promise((resolve) => listener.server.close(resolve));
+  }
+  for (const [port, contract] of wanted) {
     if (listeners.has(port)) continue;
+    const sockets = new Set();
     const server = net.createServer((socket) => {
-      let buf = Buffer.alloc(0);
-      socket.on('data', async (chunk) => {
-        const [messages, rest] = M.unframe(Buffer.concat([buf, chunk])); buf = rest;
+      sockets.add(socket);
+      socket.setTimeout(Number(process.env.DEVICE_IDLE_TIMEOUT_MS) || 30000, () => socket.destroy());
+      let buffer = Buffer.alloc(0), queued = 0, chain = Promise.resolve();
+      socket.on('data', (chunk) => {
+        buffer = Buffer.concat([buffer, chunk]);
+        if (buffer.length > messageLimit() + 3) { socket.destroy(new Error('Device message size limit exceeded')); return; }
+        const [messages, rest] = M.unframe(buffer); buffer = rest;
         for (const text of messages) {
-          try {
-            const host = socket.remoteAddress?.replace(/^::ffff:/, '');
-            const r = await sequelize.transaction((t) => receive(system, text, { host }, t));
-            socket.write(M.frame(r.ack));
-          } catch (err) { socket.write(M.frame(M.hl7Ack(null, 'AR', err.message))); }
+          if (++queued > 100) { socket.destroy(new Error('Device message queue limit exceeded')); return; }
+          chain = chain.then(async () => {
+            if (socket.destroyed) return;
+            try {
+              const host = socket.remoteAddress?.replace(/^::ffff:/, '');
+              const result = await storage.run({ requestId: crypto.randomUUID(), userId: null, sessionId: null },
+                () => sequelize.transaction((t) => receive(contract.system, text, { host }, t)));
+              if (!socket.destroyed) socket.write(M.frame(result.ack));
+            } catch (err) {
+              if (!socket.destroyed) socket.write(M.frame(M.hl7Ack(null, 'AR', err.message)));
+            } finally { queued--; }
+          });
         }
       });
+      socket.on('close', () => sockets.delete(socket));
       socket.on('error', () => {});
     });
-    server.listen(port, process.env.DEVICE_MLLP_HOST || '0.0.0.0');
-    listeners.set(port, server);
+    await new Promise((resolve, reject) => {
+      const failed = (err) => reject(err);
+      server.once('error', failed);
+      server.listen(port, process.env.DEVICE_MLLP_HOST || '127.0.0.1', () => { server.removeListener('error', failed); resolve(); });
+    });
+    server.on('error', (err) => console.error('Device listener failed:', err.code || err.name));
+    listeners.set(port, { contractId: contract.id, server, sockets });
   }
+}
+function startMllp() {
+  const work = listenerWork.catch(() => {}).then(reconcileMllp);
+  listenerWork = work;
+  return work;
 }
 
 module.exports = { draft, approve, retire, list, receive, contractFor, startMllp, keyHash };

@@ -1,12 +1,18 @@
 const express = require('express');
 const { sequelize } = require('../models/db');
 const { protect, restrictTo } = require('../middleware/auth');
+const { storage } = require('../utils/auditContext');
 const D = require('../services/devices');
 
 // Device contracts (Phase 6F), mounted at /api/devices: drafted by one person,
 // approved by another; the device key is shown once at approval.
 const contracts = express.Router();
 const MANAGERS = ['super_admin', 'admin', 'lab_technician'];
+function observeAfterCommit(transaction) {
+  while (transaction.parent) transaction = transaction.parent;
+  transaction.afterCommit(() => storage.run({ requestId: require('crypto').randomUUID(), userId: null, sessionId: null },
+    () => D.startMllp().catch((err) => console.error('Device listener reconciliation failed:', err.message))));
+}
 const handle = (fallback, fn, status = 200) => async (req, res) => {
   try {
     const data = await sequelize.transaction((t) => fn(req, t));
@@ -28,10 +34,14 @@ contracts.post('/', handle('Could not save the draft', (req, t) => D.draft(req.b
 contracts.post('/:id/approve', handle('Could not approve the contract', async (req, t) => {
   const approved = await D.approve(req.params.id, req.user, t);
   // An MLLP device starts listening once the approval has committed.
-  t.afterCommit(() => D.startMllp().catch((err) => console.error('Device listener failed:', err.message)));
+  observeAfterCommit(t);
   return approved;
 }));
-contracts.post('/:id/retire', handle('Could not retire the contract', (req, t) => D.retire(req.params.id, req.user, t)));
+contracts.post('/:id/retire', handle('Could not retire the contract', async (req, t) => {
+  const result = await D.retire(req.params.id, req.user, t);
+  observeAfterCommit(t);
+  return result;
+}));
 
 // Messages from devices, mounted at /api/device-messages/:system. The device
 // authenticates with its key (X-Device-Key). HL7 v2 is answered with an HL7

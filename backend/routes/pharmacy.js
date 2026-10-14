@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { sequelize } = require('../models/db');
 const { publish } = require('../utils/outbox');
+const { serviceDate } = require('../utils/serviceDate');
 const { protect, checkPermission, restrictTo } = require('../middleware/auth');
 const { logAction } = require('../utils/auditLogger');
 const {
@@ -133,7 +134,7 @@ router.get('/medicines/:id/batches', checkPermission('pharmacy', 'read'), async 
       where: {
         medicineId: id,
         quantity: { [Op.gt]: 0 },
-        expiryDate: { [Op.gte]: sequelize.literal('CURRENT_DATE') },
+        expiryDate: { [Op.gte]: sequelize.literal('hms_service_today()') },
         [Op.and]: sequelize.literal("LOT_STATUS = 'AVAILABLE'"),
       },
       order: [['EXPIRY_DATE', 'ASC'], ['ID', 'ASC']], // FEFO
@@ -221,7 +222,7 @@ router.get('/stock/batches/:medicineId', checkPermission('pharmacy', 'read'), as
       SELECT b.ID as BATCH_ID, b.BATCH_NUMBER, b.EXPIRY_DATE,
              b.QUANTITY, b.MRP, b.PURCHASE_RATE, b.LOT_STATUS,
              b.SUPPLIER_ID, s.NAME as SUPPLIER_NAME,
-             (b.EXPIRY_DATE < CURRENT_DATE) as IS_EXPIRED
+             (b.EXPIRY_DATE < hms_service_today()) as IS_EXPIRED
       FROM HMS_MEDICINE_BATCHES b
       LEFT JOIN HMS_SUPPLIERS s ON s.ID = b.SUPPLIER_ID
       WHERE b.MEDICINE_ID = :medicineId
@@ -309,7 +310,7 @@ router.post('/grn', [
     if (!medicineId) return res.status(400).json({ success: false, message: `Row ${row}: select a medicine.` });
     if (!batchNumber) return res.status(400).json({ success: false, message: `Row ${row}: enter the batch number.` });
     if (!isIsoDate(raw.expiryDate)) return res.status(400).json({ success: false, message: `Row ${row}: enter a valid expiry date.` });
-    if (raw.expiryDate < new Date().toISOString().slice(0, 10)) {
+    if (raw.expiryDate < serviceDate()) {
       return res.status(400).json({ success: false, message: `Row ${row}: batch ${batchNumber} has already expired and cannot be received.` });
     }
     if (!quantity) return res.status(400).json({ success: false, message: `Row ${row}: enter a whole-number quantity above zero.` });
@@ -334,7 +335,7 @@ router.post('/grn', [
       const newStatus = isPartialDelivery ? 'Partial Delivery' : 'Delivered';
       await sequelize.query(
         `UPDATE HMS_PURCHASE_ORDERS SET STATUS = :status, INVOICE_NUMBER = :invoiceNumber, INVOICE_DATE = TO_DATE(:invoiceDate, 'YYYY-MM-DD') WHERE ID = :id`,
-        { replacements: { id: poId, status: newStatus, invoiceNumber: invoiceNumber || null, invoiceDate: invoiceDate || new Date().toISOString().slice(0, 10) }, transaction: t }
+        { replacements: { id: poId, status: newStatus, invoiceNumber: invoiceNumber || null, invoiceDate: invoiceDate || serviceDate() }, transaction: t }
       );
     } else {
       // Direct Purchase — create a new PO record
@@ -350,7 +351,7 @@ router.post('/grn', [
           id: poId,
           supplierId: supplierId || null,
           invoiceNumber: invoiceNumber || null,
-          invoiceDate: invoiceDate || new Date().toISOString().slice(0, 10),
+          invoiceDate: invoiceDate || serviceDate(),
           createdBy: req.user.id,
         },
         transaction: t,
