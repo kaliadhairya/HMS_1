@@ -11,6 +11,7 @@ const { startBackgroundWorkers } = require('./workers');
 
 async function main() {
   assertSecurityConfig();
+  require('./services/dataKeys.cts').assertDataKeys();
   await sequelize.authenticate();
   const problems = await schemaProblems();
   if (problems.length) throw new Error(`the database schema is not current. Run "node migrate.js up".\n  ${problems.join('\n  ')}`);

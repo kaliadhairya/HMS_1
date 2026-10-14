@@ -10,7 +10,7 @@ const User = require('../models/User');
 const { protect, restrictTo } = require('../middleware/auth');
 const { logAction } = require('../utils/auditLogger');
 const { encrypt, decrypt, maskAadhaar } = require('../utils/encryption');
-const { Allergy, ChronicCondition, PatientDocument } = require('../models');
+const { Allergy, ChronicCondition } = require('../models');
 const { body, validationResult } = require('express-validator');
 const { proposeForPatient } = require('./patientMerge');
 const { serviceDate } = require('../utils/serviceDate');
@@ -753,19 +753,7 @@ router.get('/hms/:id/visits', protect, restrictTo('super_admin', 'admin', 'docto
   }
 });
 
-// GET /api/patients/hms/:id/documents
-router.get('/hms/:id/documents', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'lab_technician'), async (req, res) => {
-  try {
-    const docs = await PatientDocument.findAll({
-      where: { patient_id: req.params.id },
-      order: [['uploaded_at', 'DESC']]
-    });
-    res.json({ success: true, data: docs });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Server error.' });
-  }
-});
+// Documents: routes/patientDocuments.js (private, encrypted, A4).
 
 // GET /api/patients/hms/:id/allergies
 router.get('/hms/:id/allergies', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist', 'pharmacist', 'lab_technician'), async (req, res) => {
@@ -843,7 +831,6 @@ router.post('/hms/:id/chronic-conditions', protect, restrictTo('super_admin', 'a
   }
 });
 
-// Note: POST /hms/:id/documents omitted here, will be added after multer installed and separate route if complex
 
 // ═══════════════════════════════════════════════════════════════
 // WILDCARD /:id ROUTES — Must be AFTER all /hms/* routes

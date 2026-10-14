@@ -11,8 +11,9 @@ Codex reviews and integrates in C8. Nothing is deployed or pushed.
 | A8 live-event scope | `bc5363e` | 0151 | `eventScope` 6/6, unit `eventScope.test.js` 5/5 |
 | fixes | `e886d27` | — | pharmacist low-stock key; hospital date in `admin.e2e.js`; A7 fixture clean-up |
 | C6 downtime distribution | `870a078` | 0152 | `downtimeDrill` 7/7, `downtime` 4/4 |
-| C3 workload | (pending) | — | `e2e/workload.js`, `docs/clinical-final/PERFORMANCE.md` |
-| C2 clinical screens | (pending) | — | `clinicalUx`, updated `opd` |
+| C3 workload | `14335fa` | — | `docs/clinical-final/PERFORMANCE.md`, evidence/c3 |
+| C2 clinical screens | `2a0604d` | — | `clinicalUx` 8/8, updated `opd` |
+| A4 documents + data keys | (this commit) | 0153 | `documents` 9/9, unit `dataKeys.test.js` 5/5, `abdm` 10/10 |
 
 Fresh regression on A7+A8 (`bc5363e` working tree): 40/47 suites passed;
 the 7 failures are listed under "Base suites" below. Each one is either
@@ -45,6 +46,25 @@ Codex-owned or fixed in `e886d27`.
 | `frontend/src/pages/hms/pharmacy/PrescriptionPreviewPage.jsx` | Optional second print language (Hindi; marked as not yet language-reviewed), plus an Indian-script font stack. | C2 |
 | `frontend/src/components/dashboards/DoctorDashboard.jsx`, `WorklistPage.jsx` | Shared live reads (`data/liveQuery.js`). A failed load is never shown as an empty queue. | C2 |
 | `e2e/helpers.js` | `E2E_VERBOSE=1` prints the full failure message. | test tooling |
+
+## A4 notes for Codex (shared and deployment files)
+
+- `utils/encryption.js` now delegates to `services/dataKeys.cts` (AES-256-GCM,
+  key IDs, purpose binding). `encrypt(text, purpose)` / `decrypt(value,
+  purpose)`; legacy AES-CBC values still decrypt. ABDM passes the purposes
+  `abdm.sms-text` and `abdm.hiu-private-key`. `models/Patient.js` uses
+  `patient.aadhaar`, which fixes the Aadhaar mask: it was written with
+  `AADHAAR_ENCRYPTION_KEY` and read with `ENCRYPTION_KEY`.
+- `server.js` and `worker.js` call `assertDataKeys()`. **In production, HMS
+  now refuses to start without `HMS_DATA_KEYS`.** `docker-compose.prod.yml`
+  requires it and mounts `hms_private_documents` at `/app/private-documents`
+  (`HMS_DOCUMENT_DIR`); `.env.example` documents both. This is A1 territory,
+  so please fold it into your deployment artifacts. `docker-compose.yml`
+  still publishes a default `AADHAAR_ENCRYPTION_KEY`; treat that key as
+  known (see PRIVACY.md).
+- `routes/patients.js`: the old `GET /hms/:id/documents` was removed; the
+  new router `routes/patientDocuments.js` is mounted before it in
+  `server.js`.
 
 ## Contract for new event publishers (A8)
 

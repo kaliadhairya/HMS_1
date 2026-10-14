@@ -1,35 +1,14 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('./db');
-const crypto = require('crypto');
 
-// ── Aadhaar Encryption (AES-256-CBC) ────────────────────────────
-const ENCRYPTION_KEY = process.env.AADHAAR_ENCRYPTION_KEY || '0'.repeat(64);
-const IV_LENGTH = 16;
-
-function encrypt(text) {
-  if (!text) return null;
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const key = Buffer.from(ENCRYPTION_KEY, 'hex');
-  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-  let encrypted = cipher.update(text);
-  encrypted = Buffer.concat([encrypted, cipher.final()]);
-  return iv.toString('hex') + ':' + encrypted.toString('hex');
-}
-
+// ── Aadhaar encryption: the data keyring (completion A4) ─────────
+// One scheme for writing and reading, so the masked number always shows
+// (it used to be written with AADHAAR_ENCRYPTION_KEY and read with
+// ENCRYPTION_KEY). Older values still decrypt.
+const { encrypt: encryptField, decrypt: decryptField } = require('../utils/encryption');
+const encrypt = (text) => encryptField(text, 'patient.aadhaar');
 function decrypt(text) {
-  if (!text) return null;
-  try {
-    const parts = text.split(':');
-    const iv = Buffer.from(parts[0], 'hex');
-    const key = Buffer.from(ENCRYPTION_KEY, 'hex');
-    const encryptedText = Buffer.from(parts[1], 'hex');
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-    let decrypted = decipher.update(encryptedText);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
-    return decrypted.toString();
-  } catch (e) {
-    return null;
-  }
+  try { return decryptField(text, 'patient.aadhaar'); } catch { return null; }
 }
 const Patient = sequelize.define('Patient', {
   id: {

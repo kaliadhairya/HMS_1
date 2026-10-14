@@ -1,58 +1,28 @@
-const crypto = require('crypto');
+// Field encryption, now through the data keyring (completion A4,
+// services/dataKeys.cts): AES-256-GCM with key IDs and a purpose bound into
+// each value. Values written by the earlier AES-CBC code still decrypt;
+// scripts/rekey-data.js re-encrypts them.
+const keys = require('../services/dataKeys.cts');
 
-const ALGORITHM = 'aes-256-cbc';
-const IV_LENGTH = 16;
+const encrypt = (text, purpose = 'general') => keys.encryptText(text, purpose);
 
-function getKey() {
-  const key = process.env.ENCRYPTION_KEY || 'default_dev_key_32chars_replace!';
-  // Ensure key is exactly 32 bytes
-  return Buffer.from(key.padEnd(32, '0').slice(0, 32), 'utf8');
+function decrypt(value, purpose = 'general') {
+  if (!value) return null;
+  return keys.decryptText(value, purpose);
 }
 
 /**
- * Encrypt a plaintext string using AES-256-CBC
- * @param {string} text
- * @returns {string} iv:encrypted (hex encoded)
- */
-function encrypt(text) {
-  if (!text) return null;
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv(ALGORITHM, getKey(), iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return iv.toString('hex') + ':' + encrypted;
-}
-
-/**
- * Decrypt an encrypted string
- * @param {string} encryptedText - format: iv:encrypted (hex)
- * @returns {string} decrypted plaintext
- */
-function decrypt(encryptedText) {
-  if (!encryptedText) return null;
-  const parts = encryptedText.split(':');
-  if (parts.length !== 2) return null;
-  const iv = Buffer.from(parts[0], 'hex');
-  const decipher = crypto.createDecipheriv(ALGORITHM, getKey(), iv);
-  let decrypted = decipher.update(parts[1], 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
-}
-
-/**
- * Mask Aadhaar: decrypt and return XXXX-XXXX-1234
- * @param {string} encryptedAadhaar
- * @returns {string} masked aadhaar
+ * Mask Aadhaar: decrypt and return XXXX-XXXX-1234.
+ * Unreadable values are shown fully masked (never the stored text).
  */
 function maskAadhaar(encryptedAadhaar) {
   if (!encryptedAadhaar) return null;
   try {
-    const plain = decrypt(encryptedAadhaar);
+    const plain = decrypt(encryptedAadhaar, 'patient.aadhaar');
     if (!plain) return null;
     const digits = plain.replace(/\D/g, '');
     if (digits.length < 4) return 'XXXX-XXXX-XXXX';
-    const last4 = digits.slice(-4);
-    return `XXXX-XXXX-${last4}`;
+    return `XXXX-XXXX-${digits.slice(-4)}`;
   } catch {
     return 'XXXX-XXXX-XXXX';
   }

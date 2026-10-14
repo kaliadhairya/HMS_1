@@ -10,6 +10,7 @@ import PatientBanner from '../../../components/patient/PatientBanner';
 import EmptyState from '../../../components/ui/EmptyState';
 import Modal from '../../../components/ui/Modal';
 import PatientIdentityPanel, { ConfirmIdentityBanner, MergedRecordBanner } from './PatientIdentityPanel';
+import PatientDocumentsPanel from './PatientDocumentsPanel';
 
 const PATIENT_TYPE_LABEL = { corporate_employee: 'Corporate employee', other: 'General' };
 const TABS = [
@@ -54,7 +55,6 @@ export default function PatientProfilePage() {
   const [visits, setVisits] = useState([]);
   const [allergies, setAllergies] = useState([]);
   const [conditions, setConditions] = useState([]);
-  const [documents, setDocuments] = useState([]);
   const [bills, setBills] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
   const [vitals, setVitals] = useState([]);
@@ -87,7 +87,7 @@ export default function PatientProfilePage() {
   const loadTab = async (tab) => {
     const loaders = {
       visits: async () => setVisits((await api.get(`/patients/hms/${id}/visits`)).data.data || []),
-      documents: async () => setDocuments((await api.get(`/patients/hms/${id}/documents`)).data.data || []),
+      documents: async () => {}, // PatientDocumentsPanel loads and refreshes its own list.
       billing: async () => setBills((await api.get(`/billing/patient/${id}`)).data.data || []),
       prescriptions: async () => {
         const res = await api.get(`/hms/prescriptions/patient/${id}`);
@@ -398,34 +398,7 @@ export default function PatientProfilePage() {
           )
         ))}
 
-        {activeTab === 'documents' && (tabNotice || (
-          documents.length === 0 ? <EmptyState icon={FileText} title="No documents uploaded yet" description="Scans and files attached to this patient appear here." /> : (
-            <div className="panel-pad" style={{ overflowX: 'auto' }}>
-              <table className="mini-table">
-                <thead><tr><th>Type</th><th>File name</th><th>Uploaded</th><th><span className="sr-only">Actions</span></th></tr></thead>
-                <tbody>
-                  {documents.map((doc) => (
-                    <tr key={doc.id}>
-                      <td><span className="tag">{doc.doc_type || 'File'}</span></td>
-                      <td>{doc.file_name}</td>
-                      <td className="tabular">{fmtDate(doc.uploaded_at)}</td>
-                      <td className="text-right">
-                        <a
-                          href={doc.file_url?.startsWith('http') ? doc.file_url : `${api.defaults.baseURL}${doc.file_url}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-ghost btn-sm"
-                        >
-                          Open file
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        ))}
+        {activeTab === 'documents' && (tabNotice || <PatientDocumentsPanel patientId={id} role={user?.role} />)}
 
         {activeTab === 'vitals' && (tabNotice || (
           vitals.length === 0 && ipdVitals.length === 0 ? <EmptyState icon={HeartPulse} title="No vitals recorded" description="Vitals from triage, OPD and the wards appear here." /> : (

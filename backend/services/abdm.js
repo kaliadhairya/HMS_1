@@ -257,7 +257,7 @@ async function linkInit(body, t) {
     VALUES (:tx, :ref, :p, :a, CAST(:ids AS uuid[]), :h, :exp)`, { tx: body.transactionId, ref, p: patient.id, a: body.abhaAddress, ids: `{${ccs.map((c) => c.id).join(',')}}`, h: otpHash(ref, otp), exp: expires }, t);
   // The OTP goes to the patient's registered mobile through the SMS provider.
   // The message text is stored encrypted: nobody reading the log sees the OTP.
-  await I.enqueue({ system: 'sms', type: 'abdm-link-otp', version: '1', payload: { to: patient.phonenumber, text_enc: encrypt(`Your OTP to link records at this hospital to your ABHA is ${otp}. Valid 10 minutes.`) }, patientId: patient.id, maxAttempts: 3 }, t);
+  await I.enqueue({ system: 'sms', type: 'abdm-link-otp', version: '1', payload: { to: patient.phonenumber, text_enc: encrypt(`Your OTP to link records at this hospital to your ABHA is ${otp}. Valid 10 minutes.`, 'abdm.sms-text') }, patientId: patient.id, maxAttempts: 3 }, t);
   const mobile = String(patient.phonenumber || '');
   await G.send('linkOnInit', { transactionId: body.transactionId, link: { referenceNumber: ref, authenticationType: 'DIRECT', meta: { communicationMedium: 'MOBILE', communicationHint: mobile ? `******${mobile.slice(-4)}` : 'registered mobile', communicationExpiry: expires.toISOString() } }, response: { requestId: body.requestId } }, {}, t);
   return ref;
@@ -371,7 +371,7 @@ async function hiRequest(body, t) {
 I.register('sms', async (m) => {
   if (!process.env.SMS_PROVIDER_URL) throw Object.assign(new Error('No SMS provider is configured (SMS_PROVIDER_URL).'), { permanent: false });
   const r = await fetch(process.env.SMS_PROVIDER_URL, { method: 'POST', headers: { 'content-type': 'application/json', ...(process.env.SMS_PROVIDER_TOKEN ? { authorization: `Bearer ${process.env.SMS_PROVIDER_TOKEN}` } : {}) },
-    body: JSON.stringify({ to: m.payload.to, text: decrypt(m.payload.text_enc) }), signal: AbortSignal.timeout(15000) });
+    body: JSON.stringify({ to: m.payload.to, text: decrypt(m.payload.text_enc, 'abdm.sms-text') }), signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw Object.assign(new Error(`SMS provider ${r.status}`), { permanent: r.status >= 400 && r.status < 500 && r.status !== 429 });
   return { status: r.status };
 }, { ownerRole: 'receptionist' });
@@ -439,7 +439,7 @@ async function onConsentFetch(body, t) {
   if (!consent) return null; // already stored: nothing more to ask for
   const km = AC.keyMaterial(new Date(detail.permission.dataEraseAt));
   const requestId = crypto.randomUUID();
-  await rows('INSERT INTO hms_abdm_hiu_keys (transaction_id, consent_id, private_key_enc, nonce) VALUES (:tx, :c, :k, :n)', { tx: `req:${requestId}`, c: detail.consentId, k: encrypt(km.privateKeyPem), n: km.material.nonce }, t);
+  await rows('INSERT INTO hms_abdm_hiu_keys (transaction_id, consent_id, private_key_enc, nonce) VALUES (:tx, :c, :k, :n)', { tx: `req:${requestId}`, c: detail.consentId, k: encrypt(km.privateKeyPem, 'abdm.hiu-private-key'), n: km.material.nonce }, t);
   await G.send('hiRequest', { hiRequest: { consent: { id: detail.consentId }, dateRange: detail.permission.dateRange, dataPushUrl: bridgeUrl(G.CALLBACKS.dataPush), keyMaterial: km.material } }, { requestId, correlationId: detail.consentId, patientId: req.patient_id }, t);
   return consent;
 }
@@ -462,7 +462,7 @@ async function receiveData(body, t) {
   if (!key) fail(404, 'Unknown transaction.');
   const { consent, error } = await usableConsent('HIU', key.consent_id, t);
   if (error) fail(403, `Not accepted: ${error}`);
-  const pem = decrypt(key.private_key_enc);
+  const pem = decrypt(key.private_key_enc, 'abdm.hiu-private-key');
   let stored = 0;
   for (const [i, e] of (body.entries || []).entries()) {
     const text = AC.decryptFrom(pem, key.nonce, body.keyMaterial, e.content, i);

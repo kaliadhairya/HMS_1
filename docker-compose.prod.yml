@@ -78,6 +78,9 @@ services:
       CORS_ORIGIN: "*"
       FRONTEND_URL: http://localhost:4999
       AADHAAR_ENCRYPTION_KEY: ${AADHAAR_ENCRYPTION_KEY:?Set AADHAAR_ENCRYPTION_KEY in .env - must match the key existing data was encrypted with}
+      # Data keyring (A4): new values use the first key; older keys stay listed until rekeyed.
+      HMS_DATA_KEYS: ${HMS_DATA_KEYS:?Set HMS_DATA_KEYS in .env (id:64-hex keys) - personal data is not encrypted with a development key}
+      HMS_DOCUMENT_DIR: /app/private-documents
       UPLOAD_DIR: ./uploads
       MAX_FILE_SIZE_MB: 5
       RATE_LIMIT_WINDOW_MS: 900000
@@ -93,6 +96,7 @@ services:
     volumes:
       - hms_uploads:/app/uploads
       - hms_audit_checkpoints:/app/audit-checkpoints
+      - hms_private_documents:/app/private-documents
     command: ["sh", "startup.sh"]
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:5001/api/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
@@ -176,6 +180,7 @@ services:
           memory: 256M
 
 volumes:
+  hms_private_documents:
   hms_wal_archive:
   hms_basebackups:
   hms_pgdata18:

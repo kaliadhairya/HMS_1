@@ -2,6 +2,7 @@ require('dotenv').config();
 const { assertSecurityConfig } = require('./utils/authTokens');
 try {
   assertSecurityConfig();
+  require('./services/dataKeys.cts').assertDataKeys();
 } catch (err) {
   console.error(`❌ Refusing to start: ${err.message}`);
   process.exit(1);
@@ -151,6 +152,8 @@ app.use('/api/hms/vitals/history/:id', require('./middleware/auth').protect, req
 app.use('/api/hms/prescriptions/patient/:id', require('./middleware/auth').protect, requirePatientInCare);
 app.use('/api/patients', require('./routes/patientIdentity').router);
 app.use('/api/patients', require('./routes/patientMerge').router);
+// Private documents (A4): after the care-team check above, before the older patient routes.
+app.use('/api/patients', require('./routes/patientDocuments'));
 app.use('/api/practitioners', require('./routes/practitioners'));
 app.use('/api/facilities', require('./routes/facilities'));
 app.use('/api/triage', require('./routes/triage'));
