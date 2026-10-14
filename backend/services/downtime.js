@@ -137,8 +137,8 @@ function startDowntimeKit() {
   if (!process.env.DOWNTIME_KIT_DIR || !/^[0-9a-f]{64}$/i.test(process.env.DOWNTIME_KIT_KEY || '')) return () => {};
   // After each kit, ward machines that hold no current kit go on the worklist (C6).
   // A kit for every active facility, then the ward-machine check.
-  const tick = () => rows("SELECT id FROM hms_facilities WHERE status = 'ACTIVE' ORDER BY id", {})
-    .then(async (facilities) => { for (const f of facilities) await snapshot(null, f.id); })
+  // Each facility's kit is made in that facility's context (services/workerContext.cts).
+  const tick = () => require('./workerContext.cts').forEachFacility('downtime-kit', (facilityId) => snapshot(null, facilityId))
     .then(() => require('./downtimeStations.cts').checkBehind()
     .catch((err) => console.error('Ward machine check failed:', err.message)), async (err) => {
     console.error('Downtime kit failed:', err.message);

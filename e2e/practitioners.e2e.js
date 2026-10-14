@@ -1,10 +1,10 @@
 // Phase 2 part 3, practitioners (migration 0012): doctors have practitioner
 // records separate from logins; registrations are recorded with dates and
-// verified by an administrator; a doctor whose registrations have ALL expired
-// cannot start or finish clinical work; a doctor with no registration recorded
-// is not blocked.
+// independently verified (by someone other than who recorded it, with
+// evidence); a doctor without a current verified registration cannot start
+// or finish clinical work (Codex A2 tightened this).
 const crypto = require('crypto');
-const { API, apiLogin, sql, runner, assert, stamp, chromium, BASE, browserAs, inCare } = require('./helpers');
+const { API, apiLogin, sql, runner, assert, stamp, chromium, BASE, browserAs, inCare, syntheticClinician } = require('./helpers');
 
 async function call(method, url, token, body) {
   const res = await fetch(API + url, {
@@ -21,6 +21,7 @@ const yearsAgo = (n) => `${new Date().getFullYear() - n}-01-01`;
 (async () => {
   const { step, done } = runner('Practitioners');
   const admin = await apiLogin('admin');
+  const sa = await apiLogin('super_admin');
   const desk = await apiLogin('receptionist');
   const nurse = await apiLogin('nurse');
   const demoDoctor = await apiLogin('doctor');
@@ -32,7 +33,7 @@ const yearsAgo = (n) => `${new Date().getFullYear() - n}-01-01`;
       AND NOT EXISTS (SELECT 1 FROM hms_practitioners p WHERE p.user_id = u.id)`);
     assert(missing === 0, `${missing} doctor logins without a practitioner record`);
     const [demo] = await sql(`SELECT c.verified_at, c.identifier FROM hms_practitioner_credentials c
-      JOIN hms_practitioners p ON p.id = c.practitioner_id JOIN hms_users u ON u.id = p.user_id WHERE u.username = 'doctor'`);
+      JOIN hms_practitioners p ON p.id = c.practitioner_id JOIN hms_users u ON u.id = p.user_id WHERE u.username = 'doctor' AND c.identifier = 'REG-12345'`);
     assert(demo && demo.identifier === 'REG-12345' && demo.verified_at === null, `demo registration: ${JSON.stringify(demo)}`);
   });
 
@@ -48,6 +49,8 @@ const yearsAgo = (n) => `${new Date().getFullYear() - n}-01-01`;
     const created = await call('POST', '/users', admin, { username, password: 'Doctor#Prac2026', name: `Dr Test ${tag}`, role: 'doctor', isActive: 1 });
     assert(created.status === 201, `create doctor ${created.status} ${JSON.stringify(created.data)}`);
     ctx.userId = created.data.data.id;
+    // A facility role and privileges, but no registration: the test records those itself.
+    await syntheticClinician(ctx.userId, 'doctor', { credential: false });
     ctx.token = await (async () => {
       const r = await fetch(`${API}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-auth-transport': 'bearer' }, body: JSON.stringify({ username, password: 'Doctor#Prac2026' }) });
       return (await r.json()).token;
@@ -66,12 +69,20 @@ const yearsAgo = (n) => `${new Date().getFullYear() - n}-01-01`;
     assert(r.status === 403 && r.data.code === 'REGISTRATION_EXPIRED', `consultation with expired registration: ${r.status} ${JSON.stringify(r.data)}`);
   });
 
-  await step('Renewing the registration restores clinical work', async () => {
+  await step('A renewed registration restores clinical work only once someone else verifies it with evidence', async () => {
     const renewed = await call('POST', `/practitioners/${ctx.userId}/credentials`, admin, {
       kind: 'medical_registration', identifier: `E2E-${tag}-R`, issuingBody: 'Test Council', validFrom: yearsAgo(1),
     });
     assert(renewed.status === 201, `renew ${renewed.status}`);
     ctx.renewedCredential = renewed.data.data.id;
+    const [p0] = await sql('SELECT id FROM hms_patients WHERE identity_status = $1 ORDER BY id LIMIT 1', ['registered']);
+    await inCare(p0.id, `e2e.doc.${tag}`);
+    const before = await call('POST', '/hms/encounters', ctx.token, { patient_id: p0.id, chief_complaint: 'unverified renewal check' });
+    assert(before.status === 403 && before.data.code === 'REGISTRATION_EXPIRED', `unverified renewal allowed clinical work: ${before.status}`);
+    assert((await call('POST', `/practitioners/${ctx.userId}/credentials/${ctx.renewedCredential}/verify`, admin, { reference: 'COUNCIL-REG-CHECK-1', reason: 'Checked against the council register (synthetic)' })).status === 403, 'the recorder verified their own entry');
+    assert((await call('POST', `/practitioners/${ctx.userId}/credentials/${ctx.renewedCredential}/verify`, sa, {})).status === 422, 'verified without evidence');
+    const ok = await call('POST', `/practitioners/${ctx.userId}/credentials/${ctx.renewedCredential}/verify`, sa, { reference: 'COUNCIL-REG-CHECK-1', reason: 'Checked against the council register (synthetic)' });
+    assert(ok.status === 200, `verify ${ok.status} ${JSON.stringify(ok.data)}`);
     const [patient] = await sql('SELECT id FROM hms_patients WHERE identity_status = $1 ORDER BY id LIMIT 1', ['registered']);
     await inCare(patient.id, `e2e.doc.${tag}`);
     const r = await call('POST', '/hms/encounters', ctx.token, { patient_id: patient.id, chief_complaint: 'renewed registration check' });
@@ -81,15 +92,14 @@ const yearsAgo = (n) => `${new Date().getFullYear() - n}-01-01`;
   });
 
   await step('A registration can be verified once; a second verification of the same number for another practitioner is refused', async () => {
-    const r1 = await call('POST', `/practitioners/${ctx.userId}/credentials/${ctx.renewedCredential}/verify`, admin);
-    assert(r1.status === 200, `verify ${r1.status} ${JSON.stringify(r1.data)}`);
-    assert((await call('POST', `/practitioners/${ctx.userId}/credentials/${ctx.renewedCredential}/verify`, admin)).status === 404, 'verified twice');
+    const evidence = { reference: 'COUNCIL-REG-CHECK-2', reason: 'Checked against the council register (synthetic)' };
+    assert((await call('POST', `/practitioners/${ctx.userId}/credentials/${ctx.renewedCredential}/verify`, sa, evidence)).status === 404, 'verified twice');
     const demoUser = (await sql("SELECT id FROM hms_users WHERE username = 'doctor'"))[0].id;
     const shared = await call('POST', `/practitioners/${demoUser}/credentials`, admin, {
       kind: 'medical_registration', identifier: `E2E-${tag}-R`, issuingBody: 'Test Council', validFrom: yearsAgo(1),
     });
     assert(shared.status === 201, `second credential ${shared.status}`);
-    const clash = await call('POST', `/practitioners/${demoUser}/credentials/${shared.data.data.id}/verify`, admin);
+    const clash = await call('POST', `/practitioners/${demoUser}/credentials/${shared.data.data.id}/verify`, sa, evidence);
     assert(clash.status === 409 && /already verified/.test(clash.data.message), `clash ${clash.status} ${clash.data?.message}`);
     // Tidy: end the test-only credential on the demo account (reason recorded).
     assert((await call('POST', `/practitioners/${demoUser}/credentials/${shared.data.data.id}/end`, admin, { reason: 'test cleanup', endOn: TODAY })).status === 200, 'end test credential');
@@ -111,8 +121,8 @@ const yearsAgo = (n) => `${new Date().getFullYear() - n}-01-01`;
       await page.goto(`${BASE}/hms/practitioners`);
       await page.getByRole('button', { name: /Dr\.? Ramesh Kumar/ }).click();
       await page.getByText('REG-12345').waitFor({ timeout: 15000 });
-      await page.getByText('Not verified').first().waitFor({ timeout: 15000 });
-      assert(await page.getByRole('button', { name: 'Verify' }).count() >= 1, 'no Verify action for an unverified registration');
+      await page.getByText('Review required').first().waitFor({ timeout: 15000 });
+      assert(await page.getByRole('button', { name: 'Review verification' }).count() >= 1, 'no verification action for an unverified registration');
     } finally {
       await browser.close();
     }

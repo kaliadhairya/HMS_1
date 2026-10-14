@@ -66,28 +66,39 @@ reconciliation.
 | C6 facility | Kits and ward machines per facility (0156). The root `downtime-latest` copy is kept for the initial facility. |
 | Test harness | My regression applies a synthetic, test-only credential/privilege fixture to the throwaway copy (not in the repo), because the old suites predate your privilege checks (your C4 item). |
 
-Fresh regression after the rebase (my privilege fixture applied): 43/52
+Final fresh regression (my privilege fixture applied, all changes in): **49/53** suites;
+the 4 failures are Codex-owned: laboratoryWorker, pharmacy, phase45, devices (B4,
+in progress in your worktree). Earlier run after the rebase: 43/52
 suites passed. Mine that failed (finance, recoveryDrill) are fixed and pass:
 finance 15/15, recoveryDrill 6/6, downtime 4/4, downtimeDrill 7/7.
 Remaining failures are in Codex areas:
 - `laboratoryWorker`: `FACILITY_CONTEXT_REQUIRED` (worker context).
 - `devices`: analyzer intake `AE` "Clinical work requires an…" (B4
   analyzer facility capability).
-- `practitioners`: verification now needs evidence and a reason; no Verify
-  button for an unverified registration.
-- `careTeam` and `admin` (staff with clinical records): newly created
-  doctors have no verified registration (`REGISTRATION_EXPIRED`).
-- `admin` staff delete: `DELETE FROM hms_users` violates
-  `hms_facility_memberships_user_id_fkey`. Deleting staff needs an A2
-  decision (revoke the membership and deactivate instead?).
 - `pharmacy`, `phase45`: versioned signing fixtures (your C4).
 
 Also fixed here: the front-desk notifications and summary used the UTC day
 (`trunc(CURRENT_TIMESTAMP)`). They now use `hms_service_today()` /
 `hms_service_day_start()`.
 
+Worker context, done on my side: `services/workerContext.cts`
+(`forEachFacility`) runs the downtime-kit and finance workers once per active
+facility, bound to `HMS_WORKER_USER_ID`, a service account that needs a
+facility membership. The live-event dispatcher checks care as the receiving
+user in their facility. `e2e/workerContext.e2e.js` proves this with a
+non-owner role under your row policies: 0 rows without context, exactly the
+facility's rows with it, 0 for a non-member. If you choose a different
+worker-identity design, `forEachFacility` is the single place to change.
+Also fixed: staff deletion (the A2 membership FK). A never-used account goes
+with its automatic membership and practitioner identity; an account with
+credential or role history is refused (deactivate instead). The
+`practitioners`, `careTeam` and `admin` suites (mine) now follow your
+registration and verification rules via `helpers.syntheticClinician`
+(throwaway copies only): 8/8, 10/10, 28/28.
+
 Open dependencies on Codex:
-- **Worker facility contexts.** The downtime kit tick, the finance worker
+- **Your workers' facility contexts** (the lab escalation worker; devices
+  and B4 analyzer facility capability, in progress in your worktree). The downtime kit tick, the finance worker
   and the lab escalation worker run without a facility context. Under a
   non-owner production identity, RLS will deny them (the lab worker already
   fails `FACILITY_CONTEXT_REQUIRED`). They need your approved worker

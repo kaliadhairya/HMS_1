@@ -257,12 +257,13 @@ function startFinanceWorker() {
   const every = Number(process.env.FINANCE_WORKER_INTERVAL_MS || 15 * 60 * 1000);
   const tick = async () => {
     try {
-      await sequelize.transaction(async (t) => {
+      // Per facility, in that facility's context (services/workerContext.cts).
+      await require('./workerContext.cts').forEachFacility('finance', () => sequelize.transaction(async (t) => {
         // One run at a time across processes (API and worker roles, completion A8).
         if (!(await one('SELECT pg_try_advisory_xact_lock(727290) AS locked', {}, t)).locked) return;
         await run("SELECT billing_accrue_ward_days(id) FROM hms_admissions WHERE status = 'Active' AND admission_date IS NOT NULL", {}, t);
         await runChecks(t);
-      });
+      }));
     } catch (err) {
       console.error('Finance worker failed:', err.original?.message || err.message);
     }

@@ -76,7 +76,10 @@ async function emitScoped(io, row, care) {
     if (row.facility_id && socket.user.facilityId !== row.facility_id) continue;
     if (row.patient_id != null && scope.needsCare(socket.user.role)) {
       const key = `${socket.user.id}:${row.patient_id}`;
-      if (!care.has(key)) care.set(key, await patientInCare(socket.user.id, Number(row.patient_id)));
+      // Checked as that user in their own facility, so database row policies
+      // apply exactly as for their API reads (no worker-wide context needed).
+      if (!care.has(key)) care.set(key, await storage.run({ requestId: `event-${row.id}`, userId: socket.user.id, sessionId: socket.user.sessionId || null,
+        facilityId: socket.user.facilityId || null, facilityTimezone: socket.user.facilityTimezone }, () => patientInCare(socket.user.id, Number(row.patient_id))));
       if (!care.get(key)) continue;
     }
     socket.emit(row.event_type, event);
