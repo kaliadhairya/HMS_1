@@ -170,3 +170,7 @@ go through `docs/requests/clinical-final-coordination.md`.
   each, sessions 5/5, administration browser 4/4, scoped receipts 4/4, financial
   idempotency 8/8 and Phase 1 failure acceptance 16/16 on PG18. Typecheck/build
   pass. Packages remain partial; continuing complete clinical/worker/v2 integration.
+- 2026-10-15: B3 analyzer engineering completed at 92765a8: actual HL7/ASTM
+  bridge 12/12, restricted-runtime custody/limits/rollback/revocation 9/9 on
+  PG16 and PG18, schema equality through 0126 (5663 facts). B4 now in progress;
+  remaining clinical/facility/v2/release integration continues. No shared deployment.

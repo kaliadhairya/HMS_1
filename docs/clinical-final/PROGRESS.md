@@ -159,3 +159,26 @@ worker contexts, production runtime role provisioning, v2 UUID adapters and
 full clinical regression with explicit synthetic approvals. RLS is not a claim
 that every old route/worker has finished its integration. Local tests use the
 disposable databases and do not establish hospital approvals or a deployment.
+
+## Fifth increment — complete analyzer safety and machine custody (92765a8)
+
+B3 engineering acceptance is complete. HL7 and ASTM bridge tests pass 12/12;
+restricted-role intake tests pass 9/9 on each PostgreSQL engine. Machine
+accounts receive scoped ANALYZER capability without fabricated professional
+credentials, retain full custody/contract provenance, and cannot release
+clinical results. Malformed retries, wrong message types, oversized batches,
+context restoration failure and live revocation fail cleanly. Device secrets
+are absent from replayable receipts. See [device evidence](DEVICES.md).
+
+Migrations 0123–0126 complete ownership of further clinical, laboratory,
+financial and integration child records, including compound identity FKs.
+Both engines have identical structural fingerprints (5,663 facts). The
+backend aggregate before its final added assertion passed 61 with 2 skipped;
+the final assertion passed in the focused suites. Typecheck/build passed.
+
+The reusable `e2e/clinicalFixtures.js` prepares explicit synthetic professional
+approvals through the real APIs. It is test-only, not an application seed or a
+substitute for hospital qualifications. B4 is now IN_PROGRESS; named worklist
+ownership, complete version/delivery policy and recovery suppression remain.
+A2 still needs remaining clinical action guards, facility configuration/switch
+and safe runtime provisioning; A3 v2 adapters and final C4 regression remain.

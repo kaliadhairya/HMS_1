@@ -15,9 +15,11 @@ Original `HMS_1-phase6` is unchanged. Reviewed fixes so far: `9efb0de`.
 | P6-R08 | Retired MLLP listeners/ports not reconciled safely | B3 Codex: close listeners/sockets, reconcile replacements, fresh context after confirmed root commit; port-reuse test passed |
 | P6-R09 | Recovery accepts absent journal checks or unmeasured latest RPO | B6 Codex: pending fail-closed verification/drills; B7 waits for explicit B6-ready commit |
 
-Phase 4 analyzer ingestion contract v1 is unchanged. Device acceptance passed
-11/11, including held results, actual DB actor, multigroup IDs and MLLP
-replacement. Audit Object Lock passed 5/5 using a separate throwaway MinIO
+Phase 4 analyzer ingestion contract v1 is preserved by the bridge. Updated
+device acceptance at **92765a8** passed 12/12, including actual HL7 and ASTM
+clinical writes, held results, actual DB actor, multigroup IDs and MLLP
+replacement. Restricted-runtime device custody passes 9/9 on each PG engine.
+Audit Object Lock passed 5/5 using a separate throwaway MinIO
 bucket. Local tests do not prove production IAM separation or real devices.
 
 Node 24/PostgreSQL 18 preparation and signed/FHIR changes are not the B6
@@ -25,3 +27,8 @@ handoff. Restore engine/data paths, protected credentials, invariants and
 actual drills remain open. Regional RPO/RTO, old-writer fencing, current
 security and delivered-effect reconciliation belong to Claude B7 after B6
 is reviewed and committed. Missing hospital/region evidence stays visible.
+
+Newer B6 core handoff **a59850b** supersedes the pending-core notes above:
+encrypted snapshot logical restores pass 7/7 on each engine and isolated
+physical drills pass on both. Complete document versions and final release
+evidence remain open; this does not claim regional recovery validation.
