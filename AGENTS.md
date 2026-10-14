@@ -130,3 +130,9 @@ unchanged; Codex (Phase 7) asks through `docs/requests/`.
   packages done; final regression 39/39 on hms_p4_p5_p6_e2e, FHIR/ABDM
   documents 0 validator errors. Results and owner items: docs/phase6/README.md.
   Not merged, not deployed. STOP notice remains until the owner decides the merge.
+- 2026-10-14: go-live gap fixes on top of acc1c5b (6F/6G/6H unchanged for
+  Codex's review): 468bd5e hospital calendar day (0096), 15c1538 coded lab
+  pricing (0097), c7e92c7 counter sales + pre-Phase-5 bills in the journal
+  (0098), d5f64c4 doctor lab list -> /lab/governed. Regression 43/43.
+  Requests for Codex: docs/requests/phase6-service-date.md (UTC dates in
+  Phase 3/4 files), phase4-clinical-navigation.md (consultation coded ordering).
