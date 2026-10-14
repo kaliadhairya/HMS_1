@@ -150,3 +150,13 @@ ownership restrictions for the completion checkout only.
 - Mission Control is excluded. No shared-app deployment or hospital pilot.
 - 2026-10-14: saved the three-phase inventory; preserving Phase 7 drafts and
   starting clinical consultation/date fixes and focused Phase 6 repairs.
+
+### Owner-authorized completion split (newer instruction)
+
+The owner approved Claude's proposal. It supersedes the solo rule: Claude
+owns A4/A7/A8/B2/B7/C2/C3/C6 in `../HMS_1-claude-final`, branch
+`completion/claude-final`, migrations 0150–0169, DB prefix
+`hms_p4_final_claude_*`, ports 5074/5246/15574. Codex retains the other
+16 packages and 0110–0149 here. Neither edits the other's checkout.
+B7 waits for an explicit B6-ready commit. A2/A3 and consultation UI overlaps
+go through `docs/requests/clinical-final-coordination.md`.

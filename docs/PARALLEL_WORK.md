@@ -146,3 +146,13 @@ clinical integration, verification and readiness work in its own checkout.
 Original phase worktrees remain unchanged. See `docs/CLINICAL_COMPLETION.md`.
 Migrations 0110–0149; test databases `hms_p4_final_*` / `hms_verify_final_*`;
 API 5064, Vite 5236, second API 15544, PG18 55464. No shared deployment.
+
+## Owner-authorized final completion split
+
+Claude: A4/A7/A8/B2/B7/C2/C3/C6 in ../HMS_1-claude-final, branch
+completion/claude-final, migrations 0150–0169, disposable DB prefix
+hms_p4_final_claude_*, API 5074/Vite 5246/second API 15574. Codex retains
+A1/A2/A3/A5/A6/B1/B3/B4/B5/B6/B8/C1/C4/C5/C7/C8 here, 0110–0149.
+Leave each other's checkout and original phase worktrees unchanged.
+B7 waits for explicit B6-ready; overlapping A2/A3 and consultation UI requests
+go through docs/requests/clinical-final-coordination.md.

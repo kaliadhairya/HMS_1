@@ -5,8 +5,9 @@ especially sections 1.4 and 3–5, plus the repository's clinical phase prompts.
 Baseline: `c9940c82c40e75a5d3a9e803ea3842b40e125e62`.
 Branch: `completion/clinical-final`; worktree: `../HMS_1-clinical-final`.
 
-The owner authorized one agent to finish all remaining HMS software and
-readiness work. Mission Control is a separate product and is excluded. These
+The owner initially authorized solo completion, then approved a split:
+Claude owns A4/A7/A8/B2/B7/C2/C3/C6; Codex owns the other 16 packages.
+Coordination: `docs/requests/clinical-final-coordination.md`. Mission Control is a separate product and is excluded. These
 three completion phases close clinical Phases 0–7; they do not add a Phase 8.
 Live deployment and hospital pilots retain the previously agreed approval
 boundary. Clinical approvals, licensed content, device manuals, external
@@ -22,11 +23,11 @@ and hospital go-live acceptance are recorded separately.
 
 | ID | Remaining work | Completion evidence | State |
 |---|---|---|---|
-| A1 | Trace blueprint requirements to code/tests; standardize Node 24 and PostgreSQL 18 deployment artifacts and CI; preserve PostgreSQL 16 upgrade verification | Versioned inventory, reproducible builds and controlled migration jobs | OPEN |
+| A1 | Trace blueprint requirements to code/tests; standardize Node 24 and PostgreSQL 18 deployment artifacts and CI; preserve PostgreSQL 16 upgrade verification | Versioned inventory, reproducible builds and controlled migration jobs | IN_PROGRESS |
 | A2 | Add clinical facility identity/ownership, membership and scoped privileges; strengthen practitioner verification; preserve UUID/legacy identity mappings without demographic guessing | Cross-facility denial, expired/unverified credential tests, validated additive backfill | OPEN |
-| A3 | Introduce TypeScript domain/contracts and documented `/api/v2` adapters; keep one transaction, audit, receipt and outbox boundary; bounded retry and version semantics | Type checks, generated API contracts, compatibility and conflict tests | OPEN |
+| A3 | Introduce TypeScript domain/contracts and documented `/api/v2` adapters; keep one transaction, audit, receipt and outbox boundary; bounded retry and version semantics | Type checks, generated API contracts, compatibility and conflict tests | IN_PROGRESS |
 | A4 | Finish private document upload/download, quarantine and integrity metadata; authenticated encryption with key IDs and legacy migration; truthful privacy/retention evidence | Unauthorized access, malicious upload, key rotation/decryption and legal-hold checks | OPEN |
-| A5 | Complete shared observations, nursing assessments/care plans and signed discharge continuity; preserve historical records and accountable outstanding tasks | Observation/signature/amendment and discharge/handover acceptance | OPEN |
+| A5 | Complete shared observations, nursing assessments/care plans and signed discharge continuity; preserve historical records and accountable outstanding tasks | Observation/signature/amendment and discharge/handover acceptance | IN_PROGRESS |
 | A6 | Connect Quick Consult and consultation to coded medicines and laboratory ordering; remove unsafe legacy writers; complete navigation, stable keys and hospital-date handling | Browser workflow, stable identities, preserved drafts, midnight/expiry tests | IN_PROGRESS |
 | A7 | Close source-linked returns/credits, pricing approval and stock/financial reconciliation gaps; retain the documented manual payment path | Inventory and balanced financial invariants, replay and approval-separation tests | OPEN |
 | A8 | Scope sockets/events to authorized facility/patient/worklists; complete event metadata, inbox deduplication and worker isolation | Wrong-scope subscriptions, revocation, replay, ordering and crash tests | OPEN |
@@ -39,7 +40,7 @@ acceptance checks pass. Missing clinical content is explicitly unavailable.
 
 | ID | Remaining work | Completion evidence | State |
 |---|---|---|---|
-| B1 | Finish the 15 planned FHIR resource types and four document exports; preserve consent/provenance and current security scope | Capability coverage, profile validation, prescription/discharge exports | OPEN |
+| B1 | Finish the 15 planned FHIR resource types and four document exports; preserve consent/provenance and current security scope | Capability coverage, profile validation, prescription/discharge exports | IN_PROGRESS |
 | B2 | Complete terminology and ABDM contract/configuration validation, consent-at-use and imported-record reconciliation; licensed content and sandbox remain genuine external gates | Mock/failure tests plus separately recorded real exchange/content evidence | OPEN |
 | B3 | Repair held-result acknowledgment, multigroup result IDs and analyzer actor propagation; validate transport lifecycle and message limits | Real PostgreSQL adapter-contract tests and error/replay fixtures | IN_PROGRESS |
 | B4 | Finish versioned departmental/device contract handling, identity/retry/owner queues and external-effect suppression; do not invent specialized clinical safety rules | Contract, duplicate, wrong-patient, failed-message and restore-isolation tests | OPEN |
@@ -73,8 +74,10 @@ training, target-environment validation and successful monitored pilots.
 
 ## Execution and compatibility rules
 
-- Work alone in this completion worktree. Preserve all existing source branches
-  and the unfinished Phase 7 originals. Start with A6 and B3/B5/B6 because
+- Work only in your assigned completion worktree. Preserve existing source branches
+  and the unfinished Phase 7 originals. Claude uses its separate worktree,
+  migrations 0150–0169 and ports 5074/5246/15574; B7 waits for B6-ready.
+  Codex started with A6 and B3/B5/B6 because
   their defects have direct reproductions; perform dependent backfills before
   enforcing new scope constraints.
 - Apply new numbered migrations only; reserve 0110–0149 here and never edit
