@@ -165,3 +165,8 @@ go through `docs/requests/clinical-final-coordination.md`.
   invariant validation, corrected physical backups/PITR and isolated drills.
   Additional own drill ports 55465/55466; private second API 15544. Claude's
   worktree was not yet present when checked; its package ownership is unchanged.
+- 2026-10-15: committed A2/A3 initial facility, professional privilege and scoped
+  receipt foundations at 584e169 (0113–0122). PG16/18 policy/grant tests 19/19
+  each, sessions 5/5, administration browser 4/4, scoped receipts 4/4, financial
+  idempotency 8/8 and Phase 1 failure acceptance 16/16 on PG18. Typecheck/build
+  pass. Packages remain partial; continuing complete clinical/worker/v2 integration.

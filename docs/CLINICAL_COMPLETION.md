@@ -24,7 +24,7 @@ and hospital go-live acceptance are recorded separately.
 | ID | Remaining work | Completion evidence | State |
 |---|---|---|---|
 | A1 | Trace blueprint requirements to code/tests; standardize Node 24 and PostgreSQL 18 deployment artifacts and CI; preserve PostgreSQL 16 upgrade verification | Versioned inventory, reproducible builds and controlled migration jobs | IN_PROGRESS |
-| A2 | Add clinical facility identity/ownership, membership and scoped privileges; strengthen practitioner verification; preserve UUID/legacy identity mappings without demographic guessing | Cross-facility denial, expired/unverified credential tests, validated additive backfill | OPEN |
+| A2 | Add clinical facility identity/ownership, membership and scoped privileges; strengthen practitioner verification; preserve UUID/legacy identity mappings without demographic guessing | Cross-facility denial, expired/unverified credential tests, validated additive backfill | IN_PROGRESS |
 | A3 | Introduce TypeScript domain/contracts and documented `/api/v2` adapters; keep one transaction, audit, receipt and outbox boundary; bounded retry and version semantics | Type checks, generated API contracts, compatibility and conflict tests | IN_PROGRESS |
 | A4 | Finish private document upload/download, quarantine and integrity metadata; authenticated encryption with key IDs and legacy migration; truthful privacy/retention evidence | Unauthorized access, malicious upload, key rotation/decryption and legal-hold checks | OPEN |
 | A5 | Complete shared observations, nursing assessments/care plans and signed discharge continuity; preserve historical records and accountable outstanding tasks | Observation/signature/amendment and discharge/handover acceptance | IN_PROGRESS |

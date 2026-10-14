@@ -85,3 +85,77 @@ The full original regression has not yet been rerun against this increment.
 Older OPD fixtures assume the retired free-text writer/unversioned notes and
 need to exercise the governed workflow. A5/B1 are partial packages; shared
 observations, full continuity integration and consent/ABDM delivery remain.
+
+## Third increment — recovery artifacts (a59850b)
+
+B6 core now produces encrypted, snapshot-consistent logical exports with
+signed manifests and verifies them by restoring into a separate disposable
+database. Corrupt artifacts/manifests, unavailable keys and unsafe writer
+targets are refused. Physical backups verify their actual backup manifest,
+artifact checksums, migration checksums and database invariants during PITR.
+The recovery lab uses isolated resources and does not contact integrations.
+
+- Logical backup/restore integration: 7/7 on PostgreSQL 16 and 18.
+- Complete physical recovery lab: passed on both engines. Latest evidence:
+  `~/hms-verification/clinical-final-b6-20261015-full` and
+  `~/hms-verification/clinical-final-b6-pg18-20261015`.
+- Local PITR measurements were approximately 0.10 seconds RPO and 2.28
+  seconds RTO; these small same-host fixtures do not prove regional recovery
+  or production capacity.
+- Status is `VERIFIED_DATABASE`, not complete clinical protection. Exact
+  private document version verification still depends on A4; B7 target-region
+  evidence remains separate. B7 engineering may build on a59850b.
+
+## Fourth increment — facility authority and scoped receipts (584e169)
+
+Migrations 0113–0122 add explicit clinical facilities, initial single-hospital
+ownership backfills, UUID identity mappings, memberships, professional roles
+and independently governed action privileges. Session state binds the facility;
+caller headers cannot switch it. Pooled SQL and service dates follow verified
+request context. No professional credentials or privileges are manufactured
+by the conversion.
+
+Facility-owned tables have row policies and immutable ownership guards.
+Production refuses a runtime identity that owns clinical tables, can assume
+their owner, bypasses RLS or can create schemas. Audit change capture uses a
+fixed-path trigger authority, so the runtime needs no direct row-audit grants.
+Professional privileges check current credentials/membership and retain row
+locks during commands. Role/privilege approval and revocation carry reasons,
+expected revisions, transactional audit and authorization-change outbox events.
+Administrator screens record verification references and reasons, distinguish
+professional roles from clinical actions, and retain uncertain requests for
+reconciliation.
+
+Command receipt version 2 binds facility and the reviewed If-Match value.
+Historical hashes remain intact. Old receipts lacking revision evidence are
+held for explicit reconciliation; cross-facility/cross-actor receipt reads are
+blocked by database policy.
+
+Latest observed checks on the private stack:
+
+| Check | Result |
+|---|---|
+| Real facility/credential/grant policy integration, PostgreSQL 16 | 19/19 |
+| Same integration, PostgreSQL 18 | 19/19 |
+| Facility session HTTP scope and revocation | 5/5 |
+| Administrator credential/privilege browser flow | 4/4 |
+| Scoped receipt HTTP replay and revision/legacy conflicts | 4/4 |
+| Financial idempotency, concurrent duplicate and crash reconciliation | 8/8 |
+| Previously skipped Phase 1 transaction/failure suite on PostgreSQL 18 | 16/16 |
+| Backend aggregate before the final receipt-policy assertion | 52 passed, 2 skipped; the new assertion passed in both focused runs |
+| Type check and frontend production build | Passed |
+
+The original schema fingerprint matched 5,336 facts through 0121 on both
+engines. This is structural evidence, not the final fresh/legacy release
+verification required by C4. The first browser run failed on labeling and an
+assumed display name; both were corrected and the real flow rerun 4/4. The
+first grant test exposed millisecond truncation of Date objects, which was
+fixed before its successful rerun.
+
+A2/A3 remain IN_PROGRESS. Remaining integration includes complete ownership
+coverage for financial/device/lab approval children, all clinical action gates,
+facility switching/configuration, approved machine identities and explicit
+worker contexts, production runtime role provisioning, v2 UUID adapters and
+full clinical regression with explicit synthetic approvals. RLS is not a claim
+that every old route/worker has finished its integration. Local tests use the
+disposable databases and do not establish hospital approvals or a deployment.

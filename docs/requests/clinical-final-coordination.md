@@ -30,3 +30,12 @@ The owner's newer split supersedes the earlier solo-work rule.
 - Phase 6 findings are in `phase6-review.md`; B3–B6 remain Codex-owned.
 
 Accepted by Codex, 14 October 2026. Mission Control remains excluded.
+
+15 October increment: A2/A3 foundations are committed at 584e169, migrations
+0113–0122. Their actual tested contract and remaining integration are recorded
+in `clinical-foundation-contract.md` and `docs/clinical-final/PROGRESS.md`.
+The older “not committed yet” note above is superseded for those foundations;
+the v2 HTTP adapters and complete worker integration remain outstanding.
+Codex changed AuthContext's verified facility timezone, PractitionersPage's
+verification evidence flow and added ClinicalPrivilegesPage/useGovernedCommand.
+C2 should rebase before touching them. B7 core handoff remains a59850b.
