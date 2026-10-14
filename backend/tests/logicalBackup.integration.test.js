@@ -1,0 +1,16 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto');
+const {backup,verify}=require('../scripts/clinical-backup.cts');
+const {Client}=require('pg');
+test('encrypted snapshot backup and isolated restore reject tampering and unsafe targets',{skip:process.env.HMS_BACKUP_TEST!=='true',timeout:180000},async t=>{
+ assert.match(process.env.DB_NAME||'',/^hms_(p4_final|verify_final)_/);assert(process.env.BACKUP_ENCRYPTION_KEY);
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'hms-backup-acceptance-'));await fs.chmod(root,0o700);
+ const dir=path.join(root,'original'),id=crypto.randomBytes(4).toString('hex'),target='hms_verify_final_backup_'+id;
+ try{
+  await t.test('an actual encrypted export produces STORED, not fabricated verification',async()=>{const r=await backup(dir);assert.equal(r.status,'STORED');const m=JSON.parse(await fs.readFile(path.join(dir,'manifest.json'),'utf8'));assert.equal(m.artifact.algorithm,'aes-256-gcm');assert(m.snapshot.counts['public.hms_patients']);assert.equal((await fs.stat(path.join(dir,'database.dump.gcm'))).mode&0o777,0o600);});
+  await t.test('a real restore matches snapshot counts, checksums and all database invariants',async()=>{const r=await verify(dir,target);assert.equal(r.status,'VERIFIED_DATABASE');assert.equal(r.snapshot_matches,true);assert(Object.values(r.checks).every(n=>n===0));assert.equal(r.document_versions,'NOT_CLAIMED_DATABASE_ONLY');});
+  await t.test('writer/live database targets and malformed names are rejected before restoration',async()=>{for(const name of ['hms',process.env.DB_NAME,'hms_verify_final_x;drop database hms'])await assert.rejects(verify(dir,name),/Restore target/);});
+  await t.test('encrypted artifact corruption is refused',async()=>{const clone=path.join(root,'corrupt');await fs.cp(dir,clone,{recursive:true});const file=path.join(clone,'database.dump.gcm'),data=await fs.readFile(file);data[0]^=1;await fs.writeFile(file,data);await assert.rejects(verify(clone,target),/checksum/);});
+  await t.test('manifest alteration and an unavailable encryption key are refused',async()=>{const clone=path.join(root,'manifest');await fs.cp(dir,clone,{recursive:true});const p=path.join(clone,'manifest.json'),m=JSON.parse(await fs.readFile(p,'utf8'));m.snapshot.counts['public.hms_patients']=String(BigInt(m.snapshot.counts['public.hms_patients'])+1n);await fs.writeFile(p,JSON.stringify(m));await assert.rejects(verify(clone,target),/signature/);const old=process.env.BACKUP_ENCRYPTION_KEY;try{process.env.BACKUP_ENCRYPTION_KEY=crypto.randomBytes(32).toString('hex');await assert.rejects(verify(dir,target),/signature/);}finally{process.env.BACKUP_ENCRYPTION_KEY=old;}});
+  await t.test('verification cleans its private restore database',async()=>{const c=new Client({host:process.env.RESTORE_DB_HOST||process.env.DB_HOST,port:Number(process.env.RESTORE_DB_PORT||process.env.DB_PORT),user:process.env.RESTORE_DB_USER||process.env.DB_USER,password:process.env.RESTORE_DB_PASSWORD||process.env.DB_PASSWORD,database:'postgres'});await c.connect();try{assert.equal((await c.query('SELECT 1 FROM pg_database WHERE datname=$1',[target])).rows.length,0);}finally{await c.end();}});
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});

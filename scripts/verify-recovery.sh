@@ -20,30 +20,33 @@ cd "$(dirname "$0")/.."
 EVID="${1:?Usage: scripts/verify-recovery.sh <evidence-dir>}"; mkdir -p "$EVID"
 IMAGE="${LAB_PG_IMAGE:-postgres:16-alpine}"
 DUMP="${LAB_DUMP:-$(ls -d "$HOME"/hms-backups/2*/ | sort | tail -1)hms.dump}"
-P=hms-lab-primary; SB=hms-lab-standby; PPORT=5445; SPORT=5446; APORT=5072
-DBN=hms_verify_recovery; PW=$(openssl rand -hex 12)
+RUN="clinical-final-$BASHPID"
+P="hms-$RUN-primary"; SB="hms-$RUN-standby"; PPORT="${LAB_PRIMARY_PORT:-55465}"; SPORT="${LAB_STANDBY_PORT:-55466}"; APORT="${LAB_API_PORT:-15544}"
+WAL="hms-$RUN-wal"; BASEVOL="hms-$RUN-base"; NET="hms-$RUN-net"
+PRIVATE_ENV=$(mktemp); chmod 0600 "$PRIVATE_ENV"
+DBN=hms_verify_final_recovery; PW=$(openssl rand -hex 12)
 ARCH_T="${LAB_ARCHIVE_TIMEOUT:-10}"
 export PGPASSWORD=$PW
+printf 'POSTGRES_PASSWORD=%s\nPOSTGRES_DB=%s\nPGDATA=/var/lib/postgresql/data\n' "$PW" "$DBN" > "$PRIVATE_ENV"
 log() { echo "[$(date -u +%H:%M:%S)] $*" | tee -a "$EVID/recovery.log"; }
 cleanup() {
   [ -n "${APP_PID:-}" ] && kill "$APP_PID" 2>/dev/null || true
-  docker rm -f $P $SB >/dev/null 2>&1 || true
-  docker volume rm -f hms-lab-wal hms-lab-base >/dev/null 2>&1 || true
-  docker network rm hms-lab-net >/dev/null 2>&1 || true
+  docker rm -fv $P $SB >/dev/null 2>&1 || true
+  docker volume rm -f "$WAL" "$BASEVOL" >/dev/null 2>&1 || true
+  docker network rm "$NET" >/dev/null 2>&1 || true
 }
-trap cleanup EXIT
-cleanup
+trap 'cleanup; rm -f "$PRIVATE_ENV"; [ -z "${SECRET_DIR:-}" ] || rm -rf "$SECRET_DIR"' EXIT
 psqlp() { psql -h 127.0.0.1 -p "$1" -U postgres -d "$DBN" -v ON_ERROR_STOP=1 -Atc "$2"; }
 now() { date +%s.%N; }
 
 log "primary: $IMAGE, archive_timeout=${ARCH_T}s, dump $DUMP"
-docker volume create hms-lab-wal >/dev/null; docker volume create hms-lab-base >/dev/null
-docker run -d --name $P -p 127.0.0.1:$PPORT:5432 -e POSTGRES_PASSWORD=$PW -e POSTGRES_DB=$DBN \
-  -v hms-lab-wal:/wal-archive -v hms-lab-base:/basebackups --tmpfs /var/lib/postgresql/data:size=1g \
+docker volume create "$WAL" >/dev/null; docker volume create "$BASEVOL" >/dev/null
+docker run -d --name $P -p 127.0.0.1:$PPORT:5432 --env-file "$PRIVATE_ENV" \
+  -v "$WAL:/wal-archive" -v "$BASEVOL:/basebackups" -v "$PWD/scripts/archive-wal.sh:/usr/local/bin/hms-archive-wal:ro" --tmpfs /var/lib/postgresql/data:size=1g \
   $IMAGE postgres -c wal_level=replica -c archive_mode=on -c archive_timeout=$ARCH_T \
-  -c 'archive_command=test ! -f /wal-archive/%f.gz && gzip -c %p > /wal-archive/%f.gz.tmp && mv /wal-archive/%f.gz.tmp /wal-archive/%f.gz' \
+  -c 'archive_command=sh /usr/local/bin/hms-archive-wal "%p" "%f"' \
   -c max_wal_senders=5 -c wal_keep_size=256MB >/dev/null
-docker exec $P sh -c 'chown postgres /wal-archive /basebackups'
+docker exec $P sh -c 'chown postgres:postgres /wal-archive /basebackups; chmod 0700 /wal-archive /basebackups'
 for _ in $(seq 1 60); do docker exec $P pg_isready -U postgres -d $DBN >/dev/null 2>&1 && psqlp $PPORT 'select 1' >/dev/null 2>&1 && break; sleep 1; done
 docker exec $P sh -c 'echo "host replication all all scram-sha-256" >> /var/lib/postgresql/data/pg_hba.conf'
 psqlp $PPORT 'select pg_reload_conf()' >/dev/null
@@ -54,7 +57,7 @@ log "primary loaded and migrated ($(grep -c Applied "$EVID/migrate.log") migrati
 psqlp $PPORT "create table lab_markers (n integer primary key, at timestamptz not null default clock_timestamp())" >/dev/null
 
 # ── 1. Point-in-time restore ─────────────────────────────────
-HMS_DB_CONTAINER=$P bash scripts/pitr-basebackup.sh > "$EVID/basebackup-1.log"
+DB_NAME=$DBN DB_USER=postgres HMS_DB_CONTAINER=$P bash scripts/pitr-basebackup.sh > "$EVID/basebackup-1.log"
 log "$(tail -2 "$EVID/basebackup-1.log" | head -1)"
 for i in $(seq 1 40); do psqlp $PPORT "insert into lab_markers (n) values ($i)" >/dev/null; sleep 0.25; done
 # Restore stops at commit times: target 100 ms after marker 25 was written
@@ -72,19 +75,22 @@ log "restored: $GOT markers/max (expected $EXPECT/25); $(node -e "const r=requir
 [ "$GOT" = "$EXPECT 25" ] || { log "FAIL: restore did not stop exactly at the target"; exit 1; }
 
 # ── 2. Standby takeover ──────────────────────────────────────
-HMS_DB_CONTAINER=$P bash scripts/pitr-basebackup.sh > "$EVID/basebackup-2.log"
+DB_NAME=$DBN DB_USER=postgres HMS_DB_CONTAINER=$P bash scripts/pitr-basebackup.sh > "$EVID/basebackup-2.log"
 BASE=$(docker exec $P sh -c 'ls -1 /basebackups | sort | tail -1')
 docker run -d --name $SB -p 127.0.0.1:$SPORT:5432 --volumes-from $P:ro --user postgres \
   --tmpfs /standby:size=1g,uid=70,gid=70,mode=0700 --entrypoint sh $IMAGE -c "set -e; mkdir -m 700 /standby/data
 tar -xzf /basebackups/$BASE/base.tar.gz -C /standby/data; touch /standby/data/standby.signal
 cat >> /standby/data/postgresql.auto.conf <<EOF
-primary_conninfo = 'host=$P port=5432 user=postgres password=$PW application_name=lab_standby'
+primary_conninfo = 'host=$P port=5432 user=postgres passfile=/standby/.pgpass application_name=lab_standby'
 restore_command = 'gunzip -c /wal-archive/%f.gz > %p'
 EOF
+for n in \$(seq 1 300); do [ ! -f /standby/.pgpass ] || break; sleep 0.1; done
+[ -f /standby/.pgpass ] || exit 1
 exec postgres -D /standby/data -c archive_mode=off -c listen_addresses='*'" >/dev/null
+printf '%s:5432:*:postgres:%s\n' "$P" "$PW" | docker exec -i -u postgres "$SB" sh -c 'umask 077; cat > /standby/.pgpass.tmp; mv /standby/.pgpass.tmp /standby/.pgpass'
 # The standby reaches the primary by container name on a shared network.
-docker network create hms-lab-net >/dev/null 2>&1 || true
-docker network connect hms-lab-net $P; docker network connect hms-lab-net $SB
+docker network create "$NET" >/dev/null 2>&1 || true
+docker network connect "$NET" $P; docker network connect "$NET" $SB
 for _ in $(seq 1 90); do [ "$(psqlp $PPORT "select count(*) from pg_stat_replication where state = 'streaming'" 2>/dev/null)" = 1 ] && break; sleep 1; done
 [ "$(psqlp $PPORT "select count(*) from pg_stat_replication where state = 'streaming'")" = 1 ] || { log "FAIL: standby never streamed"; docker logs $SB 2>&1 | tail -10; exit 1; }
 log "standby streaming from primary"

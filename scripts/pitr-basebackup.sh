@@ -1,29 +1,25 @@
 #!/usr/bin/env bash
-# Base backup for point-in-time restore (Phase 6G). Together with the WAL
-# archive (docker-compose.yml: archive_mode, archive_timeout=60s) it lets the
-# database be restored to any moment after this backup, losing at most about
-# a minute. Run it daily (cron) and keep at least the last two.
-#
-# Usage: scripts/pitr-basebackup.sh            (container hms-db)
-#        HMS_DB_CONTAINER=name scripts/pitr-basebackup.sh
-# Writes /basebackups/<timestamp>/ inside the container (volume hms-basebackups):
-#   base.tar.gz   the data directory     manifest.json   when and from which WAL
+# Physical base backup with verified artifacts. Actual RPO depends on observed
+# WAL archival and protected off-host copies, not archive_timeout alone.
 set -euo pipefail
+umask 077
 C="${HMS_DB_CONTAINER:-hms-db}"
-DB_USER="${DB_USER:-postgres}"
-TS="$(date -u +%Y%m%dT%H%M%SZ)"
-docker exec "$C" sh -c "test \"\$(psql -U $DB_USER -Atc 'show archive_mode')\" = on" \
-  || { echo "archive_mode is off in $C: base backups alone cannot restore to a point in time." >&2; exit 1; }
-# Files are owned by the database user so a restore can read them.
-docker exec "$C" chown postgres /basebackups
-docker exec -u postgres "$C" mkdir -p "/basebackups/$TS"
-start=$(date +%s)
-# -X fetch puts the WAL needed for consistency in the backup itself.
-docker exec -u postgres "$C" pg_basebackup -U "$DB_USER" -D "/basebackups/$TS" -Ft -z -X fetch --checkpoint=fast --label "hms-$TS"
-lsn=$(docker exec "$C" sh -c "tar -xzOf /basebackups/$TS/base.tar.gz backup_label | sed -n 's/^START WAL LOCATION: \([^ ]*\).*/\1/p'")
-size=$(docker exec "$C" du -sk "/basebackups/$TS" | cut -f1)
-docker exec -i -u postgres "$C" sh -c "cat > /basebackups/$TS/manifest.json" <<EOF
-{"taken_at": "$(date -u -d @$start +%Y-%m-%dT%H:%M:%SZ)", "start_lsn": "$lsn", "size_kb": $size, "seconds": $(( $(date +%s) - start )), "pg_version": "$(docker exec "$C" postgres -V | awk '{print $3}')"}
-EOF
-echo "Base backup /basebackups/$TS in $C (${size} KB, start WAL $lsn)"
-echo "Restore drill: scripts/pitr-restore-drill.sh <time|latest>"
+DB_USER="${DB_USER:-postgres}"; DB_NAME="${DB_NAME:-hms}"
+TS="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+[[ "$DB_USER" =~ ^[a-zA-Z0-9_]+$ && "$DB_NAME" =~ ^[a-zA-Z0-9_]+$ ]] || { echo 'Invalid database identity' >&2; exit 2; }
+q() { docker exec "$C" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -Atc "$1"; }
+[ "$(q 'show archive_mode')" = on ] || { echo 'archive_mode is off; no PITR protection' >&2; exit 1; }
+TEMP="/basebackups/.creating-$TS"; FINAL="/basebackups/$TS"
+docker exec "$C" sh -ec 'mkdir -p /basebackups; chown postgres:postgres /basebackups; chmod 0700 /basebackups'
+docker exec -u postgres "$C" mkdir -m 700 "$TEMP"
+cleanup() { docker exec -u postgres "$C" rm -rf "$TEMP" >/dev/null 2>&1 || true; }; trap cleanup EXIT
+start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+MIGRATIONS=$(q "SELECT coalesce(json_agg(x ORDER BY version),'[]'::json) FROM (SELECT version,file,checksum FROM schema_migrations) x")
+docker exec -u postgres "$C" pg_basebackup -U "$DB_USER" -D "$TEMP" -Ft -z -X fetch --checkpoint=fast --manifest-checksums=SHA256 --label "hms-$TS"
+printf '%s\n' "$MIGRATIONS" | docker exec -i -u postgres "$C" sh -c 'cat > "$1/migrations.json"' sh "$TEMP"
+docker exec -u postgres "$C" sh -ec 'cd "$1"; sha256sum base.tar.gz backup_manifest migrations.json > artifacts.sha256' sh "$TEMP"
+docker exec -i -u postgres "$C" sh -c 'cat > "$1/manifest.json"' sh "$TEMP" <<JSON
+{"version":1,"status":"STORED","taken_at":"$start","database":"$DB_NAME","finished_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+JSON
+docker exec -u postgres "$C" mv "$TEMP" "$FINAL"
+printf 'STORED: base backup %s in %s; restore verification still required\n' "$TS" "$C"

@@ -10,5 +10,5 @@
     "types": ["node"],
     "skipLibCheck": true
   },
-  "include": ["domain/**/*.cts", "domain/**/*.ts", "services/**/*.cts"]
+  "include": ["domain/**/*.cts", "domain/**/*.ts", "services/**/*.cts", "scripts/**/*.cts"]
 }

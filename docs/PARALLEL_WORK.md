@@ -156,3 +156,6 @@ A1/A2/A3/A5/A6/B1/B3/B4/B5/B6/B8/C1/C4/C5/C7/C8 here, 0110–0149.
 Leave each other's checkout and original phase worktrees unchanged.
 B7 waits for explicit B6-ready; overlapping A2/A3 and consultation UI requests
 go through docs/requests/clinical-final-coordination.md.
+- Codex B6 disposable drill resources: unique hms-clinical-final-* containers,
+  volumes/network; DB ports 55465/55466 and own second API 15544. Do not run
+  another job on those ports while the drill is active. No shared resources changed.

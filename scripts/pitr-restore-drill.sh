@@ -1,83 +1,62 @@
 #!/usr/bin/env bash
-# Point-in-time restore drill (Phase 6G). Restores the newest suitable base
-# backup plus the WAL archive into a throwaway container, up to the moment
-# asked for, then checks the result: migrations, audit chains, financial
-# journal balance and key row counts. Measures how long the restore took (RTO)
-# and how close to the target the restored data reaches (RPO). The live
-# database is only read (its backup volumes are mounted read-only).
-#
-# Usage: scripts/pitr-restore-drill.sh <ISO time, e.g. 2026-10-14T10:30:00Z | latest>
-#        HMS_DB_CONTAINER=name  (default hms-db)
-#        RPO_TARGET_SECONDS (300) RTO_TARGET_SECONDS (3600) — blueprint 3.13
-# Report: ${HMS_BACKUP_DIR:-~/hms-backups}/drills/<timestamp>-pitr.json
+# Restore only into a private, network-isolated disposable container. Unknown
+# RPO, absent checks and corrupt artifacts fail; no writer activation occurs.
 set -euo pipefail
-TARGET="${1:?Usage: scripts/pitr-restore-drill.sh <ISO time|latest>}"
-C="${HMS_DB_CONTAINER:-hms-db}"
-DB_USER="${DB_USER:-postgres}"
-DB_NAME="${DB_NAME:-hms}"
+umask 077
+cd "$(dirname "$0")/.."
+TARGET="${1:?Usage: pitr-restore-drill.sh <ISO time|latest>}"
+C="${HMS_DB_CONTAINER:-hms-db}"; DB_USER="${DB_USER:-postgres}"; DB_NAME="${DB_NAME:-hms}"
 RPO_T="${RPO_TARGET_SECONDS:-300}"; RTO_T="${RTO_TARGET_SECONDS:-3600}"
-OUT="${HMS_BACKUP_DIR:-$HOME/hms-backups}/drills"; mkdir -p "$OUT"
-D="hms-drill-$$"
-IMAGE=$(docker inspect -f '{{.Config.Image}}' "$C")
-cleanup() { docker rm -f "$D" >/dev/null 2>&1 || true; }
-trap cleanup EXIT
-
-if [ "$TARGET" != latest ]; then target_epoch=$(date -u -d "$TARGET" +%s.%N) || { echo "Not a time: $TARGET" >&2; exit 2; }; fi
-# Newest base backup taken before the target.
-BASE=$(docker exec "$C" sh -c 'for d in $(ls -1 /basebackups 2>/dev/null | sort -r); do [ -f /basebackups/$d/manifest.json ] && echo $d; done' | while read -r b; do
-  taken=$(date -u -d "$(echo "$b" | sed -E 's/(....)(..)(..)T(..)(..)(..)Z/\1-\2-\3T\4:\5:\6Z/')" +%s)
-  if [ "$TARGET" = latest ] || [ "$taken" -le "${target_epoch%.*}" ]; then echo "$b"; break; fi
-done)
-[ -n "$BASE" ] || { echo "No base backup in $C:/basebackups older than $TARGET" >&2; exit 1; }
-
+[[ "$DB_USER" =~ ^[a-zA-Z0-9_]+$ && "$DB_NAME" =~ ^[a-zA-Z0-9_]+$ && "$RPO_T" =~ ^[1-9][0-9]*$ && "$RTO_T" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid drill configuration' >&2; exit 2; }
+OUT="${HMS_BACKUP_DIR:-$HOME/hms-backups}/drills"; mkdir -p "$OUT"; chmod 0700 "$OUT"
+D="hms-clinical-drill-$$"; IMAGE=$(docker inspect -f '{{.Config.Image}}' "$C")
+uid=$(docker exec "$C" id -u postgres); gid=$(docker exec "$C" id -g postgres)
+cleanup() { docker rm -f "$D" >/dev/null 2>&1 || true; }; trap cleanup EXIT
+reference=$(date +%s.%N)
+if [ "$TARGET" != latest ]; then reference=$(date -u -d "$TARGET" +%s.%N) || exit 2; fi
+BASE=""
+while read -r b; do
+ [[ "$b" =~ ^[0-9]{8}T[0-9]{6}Z(-[0-9]+)?$ ]] || continue
+ taken=$(date -u -d "$(echo "${b%%Z*}Z" | sed -E 's/(....)(..)(..)T(..)(..)(..)Z/\1-\2-\3T\4:\5:\6Z/')" +%s)
+ if [ "$TARGET" = latest ] || [ "$taken" -le "${reference%.*}" ]; then BASE="$b"; break; fi
+done < <(docker exec "$C" sh -c 'ls -1 /basebackups | sort -r')
+[ -n "$BASE" ] || { echo 'No suitable base backup' >&2; exit 1; }
 if [ "$TARGET" = latest ]; then RECOVERY="recovery_target_timeline = 'latest'"; else RECOVERY="recovery_target_time = '$(date -u -d "$TARGET" '+%Y-%m-%d %H:%M:%S.%6N+00')'"; fi
 start=$(date +%s.%N)
-docker run -d --name "$D" --volumes-from "$C:ro" --user postgres --tmpfs /drill:size=4g,uid=70,gid=70,mode=0700 \
-  --entrypoint sh "$IMAGE" -c "set -e; mkdir -m 700 /drill/data; tar -xzf /basebackups/$BASE/base.tar.gz -C /drill/data; touch /drill/data/recovery.signal
-cat >> /drill/data/postgresql.auto.conf <<EOF
+docker run -d --name "$D" --network none --volumes-from "$C:ro" --user postgres --tmpfs "/drill:size=4g,uid=$uid,gid=$gid,mode=0700" \
+ --entrypoint sh "$IMAGE" -ec "cd /basebackups/$BASE; sha256sum -c artifacts.sha256 >/dev/null
+mkdir -m 700 /drill/data; tar -xzf base.tar.gz -C /drill/data; cp backup_manifest /drill/data/backup_manifest
+pg_verifybackup --no-parse-wal /drill/data >/dev/null
+touch /drill/data/recovery.signal
+cat >> /drill/data/postgresql.auto.conf <<CONFIG
 restore_command = 'gunzip -c /wal-archive/%f.gz > %p'
+primary_conninfo = ''
 $RECOVERY
 recovery_target_action = 'promote'
-EOF
+CONFIG
 exec postgres -D /drill/data -c archive_mode=off -c listen_addresses='' -c unix_socket_directories=/drill" >/dev/null
-
-q() { docker exec "$D" psql -h /drill -U "$DB_USER" -d "$DB_NAME" -Atc "$1"; }
-promoted=""
+q() { docker exec "$D" psql -h /drill -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -Atc "$1"; }
+promoted=false
 for _ in $(seq 1 "$RTO_T"); do
-  if ! docker inspect -f '{{.State.Running}}' "$D" 2>/dev/null | grep -q true; then break; fi
-  if [ "$(q 'select pg_is_in_recovery()' 2>/dev/null)" = f ]; then promoted=1; break; fi
-  sleep 1
+ [ "$(docker inspect -f '{{.State.Running}}' "$D")" = true ] || break
+ if [ "$(q 'select pg_is_in_recovery()' 2>/dev/null)" = f ]; then promoted=true; break; fi
+ sleep 1
 done
-rto=$(echo "$(date +%s.%N) - $start" | bc)
-if [ -z "$promoted" ]; then
-  echo "Restore did not complete:"; docker logs "$D" 2>&1 | tail -15
-  exit 1
-fi
-
-last=$(q "select extract(epoch from pg_last_xact_replay_timestamp())::numeric(20,3)")
-migrations=$(q "select count(*) from schema_migrations")
-audit_problems=$(q "select (select count(*) from audit.verify('audit.row_changes'::regclass)) + (select count(*) from audit.verify('audit.access_events'::regclass)) + (select count(*) from audit.verify('public.hms_audit_logs'::regclass))")
-unbalanced=$(q "select count(*) from (select entry_id from hms_journal_lines group by 1 having sum(debit) <> sum(credit)) x" 2>/dev/null || echo n/a)
-# Optional extra check for drills (a query returning one JSON value).
-extra=null; [ -n "${DRILL_CHECK_SQL:-}" ] && extra=$(q "$DRILL_CHECK_SQL")
-counts=$(q "select json_object_agg(t, n) from (select 'patients' t, count(*) n from hms_patients union all select 'encounters', count(*) from hms_encounters union all select 'admissions', count(*) from hms_admissions union all select 'audit_row_changes', count(*) from audit.row_changes) x")
-if [ "$TARGET" = latest ]; then rpo=null; else rpo=$(printf "%.3f" "$(echo "$target_epoch - ${last:-0}" | bc)"); fi
-
-status=PASS; problems=()
-[ "$audit_problems" = 0 ] || { status=FAIL; problems+=("audit chains: $audit_problems problem(s)"); }
-[ "$unbalanced" = 0 ] || [ "$unbalanced" = n/a ] || { status=FAIL; problems+=("journal: $unbalanced unbalanced entr(ies)"); }
-if [ "$rpo" != null ] && [ "$(echo "$rpo > $RPO_T" | bc)" = 1 ]; then status=FAIL; problems+=("RPO ${rpo}s exceeds ${RPO_T}s"); fi
-[ "$(echo "$rto > $RTO_T" | bc)" = 1 ] && { status=FAIL; problems+=("RTO ${rto}s exceeds ${RTO_T}s"); }
-
-plist=""; [ ${#problems[@]} -gt 0 ] && plist=$(printf '"%s",' "${problems[@]}" | sed 's/,$//')
-REPORT="$OUT/$(date -u +%Y%m%dT%H%M%SZ)-pitr.json"
-cat > "$REPORT" <<EOF
-{"kind": "pitr", "status": "$status", "source_container": "$C", "base_backup": "$BASE", "target": "$TARGET",
- "restored_last_commit": $( [ -n "$last" ] && echo "\"$(date -u -d @"${last%.*}" +%Y-%m-%dT%H:%M:%SZ)\"" || echo null ),
- "rpo_seconds": $rpo, "rto_seconds": $(printf '%.1f' "$rto"), "rpo_target_seconds": $RPO_T, "rto_target_seconds": $RTO_T,
- "migrations": $migrations, "audit_chain_problems": $audit_problems, "unbalanced_journal_entries": "$unbalanced", "row_counts": $counts,
- "check": $extra, "problems": [$plist], "finished_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
-EOF
-cat "$REPORT"
-echo "$status: restored $C to $TARGET from $BASE in ${rto}s (report $REPORT)"
-[ "$status" = PASS ]
+[ "$promoted" = true ] || { docker logs "$D" > "$OUT/$D-failure.log" 2>&1; echo 'Restore failed; see protected failure log' >&2; exit 1; }
+last=$(q 'select extract(epoch from pg_last_xact_replay_timestamp())::text')
+actual=$(q "SELECT coalesce(json_agg(x ORDER BY version),'[]'::json) FROM (SELECT version,file,checksum FROM schema_migrations) x")
+expected=$(docker exec "$C" cat "/basebackups/$BASE/migrations.json")
+audit=$(q "select (select count(*) from audit.verify('audit.row_changes'::regclass))+(select count(*) from audit.verify('audit.access_events'::regclass))+(select count(*) from audit.verify('public.hms_audit_logs'::regclass))")
+journal=$(q 'select count(*) from (select e.id from hms_journal_entries e left join hms_journal_lines l on l.entry_id=e.id group by e.id having count(l.id)=0 or sum(l.debit)<>sum(l.credit)) x')
+stock=$(q 'select count(*) from hms_med_balances b full join (select batch_id,location_id,sum(delta) quantity from hms_med_movements group by 1,2) m using(batch_id,location_id) where coalesce(b.quantity,0)<>coalesce(m.quantity,0)')
+clinical=$(q 'select count(*) from hms_med_administrations a join hms_med_order_versions v on v.id=a.version_id join hms_med_orders o on o.id=v.order_id where a.patient_id<>o.patient_id')
+complete=$(node backend/scripts/validate-restore-container.cts "$D" "$DB_USER" "$DB_NAME")
+extra=null; [ -z "${DRILL_CHECK_SQL:-}" ] || extra=$(q "$DRILL_CHECK_SQL")
+REPORT="$OUT/$(date -u +%Y%m%dT%H%M%SZ)-$$-pitr.json"
+node - "$reference" "$last" "$start" "$audit" "$journal" "$stock" "$clinical" "$actual" "$expected" "$RPO_T" "$RTO_T" "$extra" "$REPORT" "$BASE" "$TARGET" "$complete" <<'JS'
+const fs=require('fs'),{recoveryProblems}=require('./backend/domain/recoveryEvidence.cts');
+const [reference,last,start,audit,journal,stock,clinical,actual,expected,rpoTarget,rtoTarget,extra,file,base,target,complete]=process.argv.slice(2);
+const m={rpoSeconds:last?Number(reference)-Number(last):null,rtoSeconds:Date.now()/1000-Number(start),rpoTargetSeconds:Number(rpoTarget),rtoTargetSeconds:Number(rtoTarget),auditProblems:Number(audit),unbalancedEntries:Number(journal),stockProblems:Number(stock),clinicalProblems:Number(clinical),schemaMatches:JSON.stringify(JSON.parse(actual))===JSON.stringify(JSON.parse(expected)),artifactVerified:true};
+const full=JSON.parse(complete),problems=[...recoveryProblems(m),...(!full.valid?['Complete database invariants failed']:[])],r={kind:'pitr',status:problems.length?'FAIL':'PASS',scope:'ISOLATED_DATABASE_RESTORE',target,base_backup:base,rpo_seconds:m.rpoSeconds,rto_seconds:m.rtoSeconds,audit_chain_problems:m.auditProblems,unbalanced_journal_entries:m.unbalancedEntries,stock_problems:m.stockProblems,clinical_link_problems:m.clinicalProblems,schema_matches:m.schemaMatches,artifact_verified:true,database_checks:full.checks,document_versions:'NOT_CLAIMED_DATABASE_ONLY',check:JSON.parse(extra),problems,finished_at:new Date().toISOString()};
+fs.writeFileSync(file,JSON.stringify(r,null,2)+'\n',{mode:0o600});console.log(JSON.stringify(r));process.exitCode=problems.length?1:0;
+JS

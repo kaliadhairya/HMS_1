@@ -160,3 +160,8 @@ owns A4/A7/A8/B2/B7/C2/C3/C6 in `../HMS_1-claude-final`, branch
 16 packages and 0110–0149 here. Neither edits the other's checkout.
 B7 waits for an explicit B6-ready commit. A2/A3 and consultation UI overlaps
 go through `docs/requests/clinical-final-coordination.md`.
+- 2026-10-15: owner explicitly resumed all 16 Codex packages without pausing.
+  B6: implementing encrypted snapshot exports, counts/checksums and complete
+  invariant validation, corrected physical backups/PITR and isolated drills.
+  Additional own drill ports 55465/55466; private second API 15544. Claude's
+  worktree was not yet present when checked; its package ownership is unchanged.
