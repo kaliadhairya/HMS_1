@@ -243,7 +243,7 @@ router.post('/hms/:id/identifiers/:identifierId/verify', protect, restrictTo(...
         return { review: `Not verified: this identifier is already verified for ${other.name} (${other.uhid}). Both records were added to the possible-duplicates review.` };
       }
       await sequelize.query(
-        "UPDATE hms_patient_identifiers SET verification_status = 'verified', verified_at = now(), verified_by = :userId WHERE id = :identifierId",
+        "UPDATE hms_patient_identifiers SET verification_status = 'verified', verified_via = 'staff', verified_at = now(), verified_by = :userId WHERE id = :identifierId",
         { replacements: { identifierId: identifier.id, userId: req.user.id }, transaction }
       );
       return {};

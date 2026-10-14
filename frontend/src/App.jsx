@@ -87,6 +87,8 @@ const ReconciliationPage = lazy(() => import('./pages/hms/billing/Reconciliation
 const PriceListPage = lazy(() => import('./pages/hms/billing/PriceListPage'));
 const TerminologyPage = lazy(() => import('./pages/hms/admin/TerminologyPage'));
 const WorklistPage = lazy(() => import('./pages/hms/admin/WorklistPage'));
+const AbdmDeskPage = lazy(() => import('./pages/hms/abdm/AbdmDeskPage'));
+const OutsideRecordsPage = lazy(() => import('./pages/hms/abdm/OutsideRecordsPage'));
 
 // Part C - Reports & Admin Settings Pages
 const AdminSettingsPage = lazy(() => import('./pages/AdminSettingsPage'));
@@ -482,6 +484,8 @@ export default function App() {
             <Route path="/billing/price-list" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin']}><PriceListPage /></HMSProtectedRoute>} />
             <Route path="/admin/terminology" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'lab_technician', 'pharmacist']}><TerminologyPage /></HMSProtectedRoute>} />
             <Route path="/worklist" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'lab_technician', 'pharmacist', 'receptionist']}><WorklistPage /></HMSProtectedRoute>} />
+            <Route path="/abdm" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}><AbdmDeskPage /></HMSProtectedRoute>} />
+            <Route path="/abdm/outside-records" element={<HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}><OutsideRecordsPage /></HMSProtectedRoute>} />
 
             {/* Part C — Admin Settings & Reports Routes */}
             <Route path="/admin/settings" element={

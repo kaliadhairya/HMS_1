@@ -38,11 +38,13 @@ DB_NAME="$LEGACY" node migrate.js up
 # concepts are reference content: their audited release row records the
 # loaded file's checksum and count, and a trigger forbids any change (0090).
 # The checkpoint shipping queue is delivery bookkeeping like the outbox; the
-# write-once store is the evidence (0091).
+# write-once store is the evidence (0091). Interface messages are their own
+# append-only log and carry whole health records (0092); so do documents
+# imported from other facilities (0093).
 UNAUDITED=$(psql -d "$FRESH" -Atc "
   SELECT string_agg(c.relname, ', ') FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
    WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname LIKE 'hms\\_%'
-     AND c.relname NOT IN ('hms_audit_logs', 'hms_sessions', 'hms_idempotency_keys', 'hms_outbox', 'hms_inbox', 'hms_term_concepts', 'hms_audit_checkpoint_shipments')
+     AND c.relname NOT IN ('hms_audit_logs', 'hms_sessions', 'hms_idempotency_keys', 'hms_outbox', 'hms_inbox', 'hms_term_concepts', 'hms_audit_checkpoint_shipments', 'hms_interface_messages', 'hms_abdm_imports')
      AND NOT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
                       WHERE t.tgrelid = c.oid AND p.proname = 'capture_change')")
 if [ -n "$UNAUDITED" ]; then

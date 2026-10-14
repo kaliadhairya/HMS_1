@@ -72,6 +72,14 @@ const RULES = [
   ['GET', '/fhir/Organization/hospital', [SA, A, D, N, L]],
   // Phase 6 accountable worklist: every staff role sees its own items.
   ['GET', '/worklist', ALL],
+  // Phase 6C-6E ABDM (patient-scoped doctor reads are covered in abdm.e2e.js).
+  ['GET', '/abdm/patients/{patient}/abha', [SA, A, R, D]],
+  ['POST', '/abdm/patients/{patient}/abha/otp', [SA, A, R]],
+  ['GET', '/abdm/shares', [SA, A, R]],
+  ['GET', '/abdm/patients/{patient}/care-contexts', [SA, A, R, D]],
+  ['POST', '/abdm/patients/{patient}/care-contexts/link', [SA, A, R]],
+  ['GET', '/abdm/consents', [SA, A]],
+  ['GET', '/abdm/transfers', [SA, A]],
 ];
 
 (async () => {

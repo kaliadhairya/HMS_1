@@ -31,6 +31,7 @@ const REQUIRED = [
   /^\/api\/finance(?:\/.*)?$/,
   /^\/api\/terminology(?:\/.*)?$/,
   /^\/api\/worklist(?:\/.*)?$/,
+  /^\/api\/abdm(?:\/.*)?$/,
 ];
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const KEY_FORMAT = /^[\w.:-]{8,200}$/;

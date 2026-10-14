@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Search, UserPlus, Pill, Users, BedDouble, Inbox, ChartColumn, CalendarDays, Hospital,
   Settings, Droplet, TestTube, ShoppingCart, Bell, ShieldCheck, Repeat, Package, ClipboardList, ChartLine,
-  FileText, CreditCard, Wallet, Factory, Ticket, HeartPulse, Clock, Undo2, ListOrdered, BookOpen, ListChecks, FilePlus2, Truck, Megaphone, Stethoscope,
+  FileText, CreditCard, Wallet, Factory, Ticket, HeartPulse, Clock, Undo2, ListOrdered, BookOpen, ListChecks, BadgeCheck, FileInput, FilePlus2, Truck, Megaphone, Stethoscope,
 } from 'lucide-react';
 
 // Navigation per role. `group` drives the sidebar sections.
@@ -23,6 +23,8 @@ export const NAV_BY_ROLE = {
     { to: '/hms/triage', label: 'Emergency triage', icon: HeartPulse, group: 'Patients' },
     { to: '/hms/adt', label: 'Beds and discharge', icon: BedDouble, group: 'Inpatient' },
     { to: '/hms/practitioners', label: 'Practitioners', icon: Stethoscope, group: 'Patients' },
+    { to: '/abdm/outside-records', label: 'Outside records', icon: FileInput, group: 'Patients' },
+    { to: '/abdm', label: 'ABDM', icon: BadgeCheck, group: 'Patients' },
     { to: '/pharmacy/medicines', label: 'Medicines', icon: Pill, group: 'Pharmacy' },
     { to: '/reports', label: 'Reports', icon: ChartColumn, group: 'Insights' },
     { to: '/hms/admin/users', label: 'Users', icon: Users, group: 'Administration' },
@@ -43,6 +45,8 @@ export const NAV_BY_ROLE = {
     { to: '/hms/adt', label: 'Beds and discharge', icon: BedDouble, group: 'Inpatient' },
     { to: '/hms/practitioners', label: 'Practitioners', icon: Stethoscope, group: 'Patients' },
     { to: '/hms/appointments', label: 'Appointments', icon: CalendarDays, group: 'Patients' },
+    { to: '/abdm/outside-records', label: 'Outside records', icon: FileInput, group: 'Patients' },
+    { to: '/abdm', label: 'ABDM', icon: BadgeCheck, group: 'Patients' },
     { to: '/hms/admin/bed-management', label: 'Bed management', icon: BedDouble, group: 'Inpatient' },
     { to: '/hms/admin/pharmacy', label: 'Pharmacy', icon: Package, group: 'Pharmacy' },
     { to: '/pharmacy/medicines', label: 'Medicines', icon: Pill, group: 'Pharmacy' },
@@ -70,6 +74,7 @@ export const NAV_BY_ROLE = {
     { to: '/doctor/prescriptions', label: 'Prescriptions', icon: Pill, group: 'Clinical' },
     { to: '/doctor/referrals', label: 'Referrals', icon: Repeat, group: 'Clinical' },
     { to: '/doctor/rest-forms', label: 'Rest forms', icon: FilePlus2, group: 'Clinical' },
+    { to: '/abdm/outside-records', label: 'Outside records', icon: FileInput, group: 'Patients' },
     { to: '/ipd/patients', label: 'Inpatients', icon: Hospital, group: 'Inpatient' },
     { to: '/ipd/requests', label: 'Admission requests', icon: Inbox, group: 'Inpatient' },
   ],
@@ -97,6 +102,7 @@ export const NAV_BY_ROLE = {
     { to: '/billing/desk', label: 'Billing desk', icon: Wallet, group: 'Front desk' },
     { to: '/receptionist/visitors', label: 'Visitors', icon: Users, group: 'Front desk' },
     { to: '/receptionist/notifications', label: 'Alerts', icon: Bell, group: 'Front desk' },
+    { to: '/abdm', label: 'ABDM', icon: BadgeCheck, group: 'Patients' },
   ],
   pharmacist: [
     { to: '/pharmacist/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },

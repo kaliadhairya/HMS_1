@@ -49,10 +49,10 @@ async function patientRow(id, t) {
 async function patient(id, t) {
   const p = await patientRow(id, t);
   const ids = await rows(`SELECT system, value, issuer FROM hms_patient_identifiers
-    WHERE patient_id = :id AND verification_status = 'verified' AND (valid_to IS NULL OR valid_to > now())`, { id: p.id }, t);
+    WHERE patient_id = :id AND verification_status = 'verified' AND verified_via = 'abdm' AND (valid_to IS NULL OR valid_to > now())`, { id: p.id }, t);
   const identifier = [];
   if (p.uhid) identifier.push({ type: typeCode('MR', 'Medical record number'), system: local('uhid'), value: p.uhid });
-  // Only ABDM-verified ABHA numbers are sent as ABHA (blueprint 3.12).
+  // Only ABHA numbers verified by ABDM itself are sent (blueprint 3.12).
   for (const i of ids) {
     if (i.system === 'ABHA_NUMBER') identifier.push({ type: typeCode('MR', 'Medical record number'), system: ABHA_SYSTEM, value: i.value.replace(/(\d{2})(\d{4})(\d{4})(\d{4})/, '$1-$2-$3-$4') });
   }

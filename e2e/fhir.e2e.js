@@ -35,8 +35,9 @@ async function fhir(p, token, { method = 'GET', headers = {} } = {}) {
     pid = p.id;
     await inCare(pid);
     const abha = () => String(Math.floor(1e13 + Math.random() * 9e13));
-    await sql(`INSERT INTO hms_patient_identifiers (patient_id, system, value, issuer, verification_status, verified_by, verified_at, created_by)
-      VALUES ($1, 'ABHA_NUMBER', $2, 'ABDM', 'verified', $3, now(), $3), ($1, 'ABHA_ADDRESS', $4, 'ABDM', 'unverified', NULL, NULL, $3)`, [pid, abha(), doc.id, `fhir${tag}@sbx`]);
+    await sql(`INSERT INTO hms_patient_identifiers (patient_id, system, value, issuer, verification_status, verified_via, verified_by, verified_at, created_by)
+      VALUES ($1, 'ABHA_NUMBER', $2, 'ABDM', 'verified', 'abdm', $3, now(), $3), ($1, 'ABHA_NUMBER', $5, 'card', 'verified', 'staff', $3, now(), $3),
+      ($1, 'ABHA_ADDRESS', $4, 'ABDM', 'unverified', NULL, NULL, NULL, $3)`, [pid, abha(), doc.id, `fhir${tag}@sbx`, abha()]);
     [enc] = await sql("INSERT INTO hms_encounters (id, patient_id, doctor_id, status, chief_complaint) VALUES (nextval('hms_encounters_seq'), $1, $2, 'Draft', 'Synthetic complaint') RETURNING id", [pid, doc.id]);
     [dx] = await sql("INSERT INTO hms_diagnoses (id, encounter_id, icd10_code, icd10_description, status) VALUES (nextval('hms_diagnoses_seq'), $1, 'R50.9', 'Fever, unspecified', 'Provisional') RETURNING id", [enc.id]);
     await sql("INSERT INTO hms_vitals (patient_id, encounter_type, reference_id, bp_systolic, bp_diastolic, pulse, temperature, temp_unit, spo2, weight_kg, recorded_by, recorded_at) VALUES ($1, 'OPD', $2, 120, 80, 72, 37.0, 'C', 98, 61.5, $3, now())", [pid, enc.id, doc.id]);
@@ -85,11 +86,12 @@ async function fhir(p, token, { method = 'GET', headers = {} } = {}) {
     assert(denied && denied.outcome === 'denied', 'the refused read was not audited');
   });
 
-  await step('Only verified ABHA numbers leave; an estimated birth date is sent as its year', async () => {
+  await step('Only ABDM-verified ABHA numbers leave; an estimated birth date is sent as its year', async () => {
     const p = (await fhir(`Patient/${pid}`, admin)).data;
     const systems = p.identifier.map((i) => i.system);
     assert(systems.includes('https://healthid.ndhm.gov.in') && p.identifier.length === 2, `identifiers ${JSON.stringify(p.identifier)}`);
     assert(!JSON.stringify(p).includes(`fhir${tag}@sbx`), 'an unverified ABHA address was sent');
+    assert(p.identifier.filter((i) => i.system.includes('healthid')).length === 1, 'an ABHA verified only by staff was sent as ABDM-verified');
     assert(p.birthDate === '1992' && p.gender === 'female', `birthDate ${p.birthDate}`);
     const found = await fhir(`Patient?identifier=${encodeURIComponent(p.identifier.find((i) => i.system.includes('healthid')).system + '|' + p.identifier.find((i) => i.system.includes('healthid')).value)}`, admin);
     assert(found.status === 200 && found.data.total === 1 && found.data.entry[0].resource.id === String(pid), 'search by ABHA failed');

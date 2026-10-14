@@ -205,6 +205,9 @@ app.use('/api/laboratory', require('./routes/laboratory'));
 app.use('/api/terminology', require('./routes/terminology'));
 app.use('/api/fhir', require('./routes/fhir'));
 app.use('/api/worklist', require('./routes/worklist'));
+app.use('/api/abdm', require('./routes/abdm'));
+// Calls from the ABDM gateway (and data pushes from other facilities).
+app.use('/abdm', require('./routes/abdmBridge'));
 
 // Legacy pharmacist namespace retained for frontend compatibility
 app.use(
@@ -320,6 +323,8 @@ async function start() {
   });
   startAuditSealer(sequelize);
   startAuditShipper(sequelize);
+  require('./services/interfaces').startInterfaceWorker();
+  require('./services/abdm').startAbdmWorker();
   startOutboxDispatcher(io);
   startFinanceWorker();
   startSocketSessionGuard(io);

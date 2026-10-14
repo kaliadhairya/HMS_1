@@ -70,7 +70,7 @@ router.get('/Patient', read(async (req, t) => {
   const [system, value] = String(req.query.identifier || '').split('|');
   if (!value) throw Object.assign(new Error('Search patients by identifier=system|value.'), { status: 400, code: 'required' });
   const found = system === 'https://healthid.ndhm.gov.in'
-    ? await sequelize.query(`SELECT patient_id AS id FROM hms_patient_identifiers WHERE system = 'ABHA_NUMBER' AND value = :v AND verification_status = 'verified'`, { replacements: { v: value.replace(/-/g, '') }, type: 'SELECT', transaction: t })
+    ? await sequelize.query(`SELECT patient_id AS id FROM hms_patient_identifiers WHERE system = 'ABHA_NUMBER' AND value = :v AND verification_status = 'verified' AND verified_via = 'abdm'`, { replacements: { v: value.replace(/-/g, '') }, type: 'SELECT', transaction: t })
     : system === F.local('uhid') ? await sequelize.query('SELECT id FROM hms_patients WHERE uhid = :v', { replacements: { v: value }, type: 'SELECT', transaction: t }) : [];
   if (found.length > 1) throw Object.assign(new Error('More than one patient has this identifier; resolve it in duplicate review.'), { status: 409, code: 'multiple-matches' });
   if (!found.length) return { body: F.searchset(base(req), []) };
