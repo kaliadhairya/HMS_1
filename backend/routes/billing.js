@@ -1,8 +1,23 @@
 const express = require('express');
 const router = express.Router();
-const { sequelize, Bill, BillItem, Payment, PatientAdvance, Encounter, User, Patient } = require('../models');
+const { sequelize, Bill } = require('../models');
 const { protect, checkPermission } = require('../middleware/auth');
 const logAction = require('../utils/auditLogger');
+const B = require('../services/billing');
+
+// Phase 5: bills raised from now on are invoices of the episode's billing
+// account (services/billing.js); hms_bills rows are their read projection.
+// Bills raised before Phase 5 have no invoice and keep the old payment path.
+const PAYMENT_METHOD = { Cash: 'Cash', Card: 'Card', UPI: 'UPI', Cheque: 'Cheque', Bank: 'BankTransfer', BankTransfer: 'BankTransfer', Online: 'UPI' };
+function domainError(res, err, fallback) {
+  const code = err.original?.code || err.parent?.code;
+  if (err.status) return res.status(err.status).json({ success: false, message: err.message, ...(err.code ? { code: err.code } : {}) });
+  if (code === '55P03' || code === '40P01') return res.status(409).json({ success: false, code: 'BUSY', message: 'Someone else is changing this bill. Try again.' });
+  if (code === '23514' || code === '23001' || code === '23505') return res.status(409).json({ success: false, code: 'REFUSED', message: (err.original || err.parent).message });
+  console.error(`${fallback}:`, err.original?.message || err.message);
+  return res.status(500).json({ success: false, message: fallback });
+}
+const invoiceForBill = (billId, t) => B.one('SELECT * FROM hms_invoices WHERE legacy_bill_id = :id', { id: Number(billId) || 0 }, t);
 
 async function nextval(sequenceName, transaction) {
   const name = String(sequenceName).toLowerCase();
@@ -46,21 +61,20 @@ router.get('/opd/unpaid-today', protect, checkPermission('billing', 'read'), asy
 });
 
 // ── GET /api/billing/advance/:patientId ──────────────────────
+// Deposits (advances) of a patient: everything taken, what is still unused.
 router.get('/advance/:patientId', protect, checkPermission('billing', 'read'), async (req, res) => {
   try {
-    const { patientId } = req.params;
-    const [result] = await sequelize.query(`
-      SELECT SUM(AMOUNT) as TOTAL_ADVANCE,
-             SUM(CASE WHEN ADJUSTED_BILL_ID IS NOT NULL OR IS_REFUNDED = 1 THEN AMOUNT ELSE 0 END) as ADJUSTED
-      FROM HMS_PATIENT_ADVANCES
-      WHERE PATIENT_ID = :patientId
-    `, { replacements: { patientId } });
-
-    const totalAdvance = result[0].TOTAL_ADVANCE || 0;
-    const adjusted = result[0].ADJUSTED || 0;
-    const availableAdvance = totalAdvance - adjusted;
-
-    res.json({ success: true, data: { totalAdvance, adjusted, availableAdvance } });
+    const patientId = Number(req.params.patientId) || 0;
+    const [[sums]] = await sequelize.query(`
+      SELECT COALESCE(sum(f.amount), 0) AS total, COALESCE(sum(GREATEST(0, billing_fund_balance(f.id))), 0) AS available
+        FROM hms_patient_funds f WHERE f.patient_id = :patientId AND f.kind = 'deposit'`, { replacements: { patientId } });
+    // Advances used up before Phase 5 are history only.
+    const [[old]] = await sequelize.query(`
+      SELECT COALESCE(sum(amount), 0) AS used FROM hms_patient_advances
+       WHERE patient_id = :patientId AND (adjusted_bill_id IS NOT NULL OR COALESCE(is_refunded, 0) = 1)`, { replacements: { patientId } });
+    const totalAdvance = B.money(Number(sums.total) + Number(old.used));
+    const availableAdvance = B.money(sums.available);
+    res.json({ success: true, data: { totalAdvance, adjusted: B.money(totalAdvance - availableAdvance), availableAdvance } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: 'Failed to fetch advances' });
@@ -68,213 +82,69 @@ router.get('/advance/:patientId', protect, checkPermission('billing', 'read'), a
 });
 
 // ── POST /api/billing/advance ──────────────────────────────
+// A deposit: money held for the patient until applied to an invoice or refunded.
 router.post('/advance', protect, checkPermission('billing', 'write'), async (req, res) => {
   try {
-    const { patientId, admissionId, paymentMode = 'Cash', notes } = req.body || {};
+    const { patientId, admissionId, paymentMode = 'Cash', notes, referenceNumber } = req.body || {};
     const amount = Number(req.body?.amount);
     if (!patientId || !Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ success: false, message: 'Valid Patient ID and Amount required' });
     }
-    const patient = await Patient.findByPk(patientId, { attributes: ['id'] });
-    if (!patient) return res.status(404).json({ success: false, message: 'Patient not found' });
-    if (admissionId) {
-      const [[admission]] = await sequelize.query(
-        'SELECT PATIENT_ID FROM HMS_ADMISSIONS WHERE ID = :admissionId',
-        { replacements: { admissionId: Number(admissionId) } }
-      );
-      if (!admission || Number(admission.PATIENT_ID) !== Number(patient.id)) {
-        return res.status(400).json({ success: false, message: 'The admission does not belong to this patient' });
+    const result = await sequelize.transaction(async (t) => {
+      const patient = await B.one('SELECT id FROM hms_patients WHERE id = :id', { id: Number(patientId) || 0 }, t);
+      if (!patient) B.fail(404, 'Patient not found');
+      let accountId = null;
+      if (admissionId) {
+        const admission = await B.one('SELECT patient_id FROM hms_admissions WHERE id = :id', { id: Number(admissionId) || 0 }, t);
+        if (!admission || Number(admission.patient_id) !== Number(patient.id)) B.fail(400, 'The admission does not belong to this patient');
+        accountId = await B.accountFor({ admissionId: Number(admissionId) }, t);
       }
-    }
-
-    const id = await nextval('HMS_PATIENT_ADVANCES_SEQ');
-    const advance = await PatientAdvance.create({
-      id,
-      patientId: patient.id,
-      admissionId: admissionId || null,
-      amount,
-      paymentMode,
-      notes: notes || null,
-      receivedBy: req.user.id
+      const { intent, receipt } = await B.startPayment({
+        patientId: patient.id, accountId, amount, method: PAYMENT_METHOD[paymentMode] || paymentMode,
+        providerReference: referenceNumber, notes,
+      }, req.user, t);
+      const fund = await B.one('SELECT * FROM hms_patient_funds WHERE receipt_id = :r', { r: receipt.id }, t);
+      return { id: fund.id, patientId: patient.id, admissionId: admissionId || null, amount: B.money(fund.amount), paymentMode: intent.method,
+        receiptNumber: receipt.receipt_number, receivedAt: receipt.received_at };
     });
-    await logAction(req.user.id, 'CREATE', 'billing', advance.id, null, { action: 'collect_advance', amount }, req.ip);
-    res.status(201).json({ success: true, data: advance });
+    await logAction(req.user.id, 'CREATE', 'billing', null, null, { action: 'collect_deposit', amount, receipt: result.receiptNumber }, req.ip);
+    res.status(201).json({ success: true, data: result });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Failed to record advance' });
+    domainError(res, err, 'Failed to record advance');
   }
 });
 
 // ── POST /api/billing/opd ──────────────────────────────────
-// Consultation fee and lab charges for one finalized OPD encounter.
-async function opdCharges(encounter, transaction) {
-  // Consultation tariff (prefer doctor-specific, fall back to general)
-  const [tariffResult] = await sequelize.query(`
-    SELECT RATE, GST_RATE FROM HMS_TARIFFS
-    WHERE CATEGORY = 'Consultation' AND IS_ACTIVE = 1
-    AND (DOCTOR_ID = :doctorId OR DOCTOR_ID IS NULL)
-    ORDER BY DOCTOR_ID DESC NULLS LAST
-    LIMIT 1
-  `, { replacements: { doctorId: encounter.doctor_id }, transaction });
-  const consultationFee = tariffResult.length > 0 ? Number(tariffResult[0].RATE) : 200;
-  const consultGst = tariffResult.length > 0 ? Number(tariffResult[0].GST_RATE) : 0;
-
-  // Lab charges: each ordered test matched against the tariff table
-  const [labItems] = await sequelize.query(`
-    SELECT ioi.ITEM_NAME, ioi.ID
-    FROM HMS_INVESTIGATION_ORDERS o
-    JOIN HMS_INVESTIGATION_ORDER_ITEMS ioi ON ioi.ORDER_ID = o.ID
-    WHERE o.ENCOUNTER_ID = :encounterId
-      -- Cancelled tests are not performed, so they are not charged
-      AND COALESCE(o.STATUS, '') <> 'Cancelled'
-      AND COALESCE(ioi.STATUS, '') <> 'Cancelled'
-  `, { replacements: { encounterId: encounter.id }, transaction });
-
-  let labTotal = 0;
-  let labGstTotal = 0;
-  for (const item of labItems) {
-    const [tariff] = await sequelize.query(`
-      SELECT RATE, GST_RATE FROM HMS_TARIFFS
-      WHERE CATEGORY = 'Lab' AND IS_ACTIVE = 1
-      AND UPPER(NAME) LIKE '%' || UPPER(:testName) || '%'
-      LIMIT 1
-    `, { replacements: { testName: item.ITEM_NAME }, transaction });
-    const rate = tariff.length > 0 ? Number(tariff[0].RATE) : 100;
-    const gst = tariff.length > 0 ? Number(tariff[0].GST_RATE) : 0;
-    labTotal += rate;
-    labGstTotal += rate * gst / 100;
-  }
-
-  return {
-    consultationFee,
-    consultationGst: consultationFee * consultGst / 100,
-    labCount: labItems.length,
-    labTotal,
-    labGstTotal,
-  };
-}
-
-async function insertBillItems(billId, items, transaction) {
-  for (const item of items) {
-    item.billId = billId;
-    item.id = await nextval('HMS_BILL_ITEMS_SEQ', transaction);
-  }
-  if (items.length) await BillItem.bulkCreate(items, { transaction });
-}
-
+// The bill for a finalized consultation: an invoice of everything charged to
+// the visit and not billed yet. Asking again returns the existing bill.
 router.post('/opd', protect, checkPermission('billing', 'write'), async (req, res) => {
-  const t = await sequelize.transaction();
   try {
-    const { encounterId } = req.body;
-    // Lock the encounter row so two "generate" clicks (or two desks) cannot both create a bill.
-    const encounter = await Encounter.findByPk(encounterId, { transaction: t, lock: t.LOCK.UPDATE });
-    if (!encounter) {
-      await t.rollback();
-      return res.status(404).json({ success: false, message: 'Encounter not found.' });
-    }
-    // Billing staff cannot read clinical encounters, so take the patient from the encounter here
-    const patientId = encounter.patient_id;
-
-    const existingBills = await Bill.findAll({ where: { encounterId, billType: 'OPD' }, order: [['id', 'ASC']], transaction: t });
-    const billIds = existingBills.map((b) => b.id);
-    const [billedTypes] = billIds.length
-      ? await sequelize.query('SELECT DISTINCT ITEM_TYPE FROM HMS_BILL_ITEMS WHERE BILL_ID IN (:billIds)', { replacements: { billIds }, transaction: t })
-      : [[]];
-    const consultationBilled = billedTypes.some((r) => r.ITEM_TYPE === 'Consultation');
-
-    // Already billed: return the bill that carries the consultation so the billing screen reopens it
-    if (consultationBilled) {
-      const [withConsult] = await sequelize.query(
-        "SELECT BILL_ID FROM HMS_BILL_ITEMS WHERE BILL_ID IN (:billIds) AND ITEM_TYPE = 'Consultation' ORDER BY BILL_ID LIMIT 1",
-        { replacements: { billIds }, transaction: t }
-      );
-      const bill = existingBills.find((b) => b.id === Number(withConsult[0].BILL_ID)) || existingBills[0];
-      await t.rollback();
-      return res.json({ success: true, existing: true, data: bill });
-    }
-    // Lab orders and medicines can still change while the consultation is open; a bill raised
-    // then would miss them. Bill only finalized consultations.
-    if (encounter.status !== 'Finalized') {
-      await t.rollback();
-      return res.status(409).json({ success: false, message: 'The consultation is not finalized yet. Bill it after the doctor finalizes it.' });
-    }
-
-    const charges = await opdCharges(encounter, t);
-    const labAlreadyBilled = billedTypes.some((r) => r.ITEM_TYPE === 'Lab');
-    const newItems = [{ itemType: 'Consultation', itemName: 'Doctor Consultation', quantity: 1, rate: charges.consultationFee, amount: charges.consultationFee }];
-    let addedGst = charges.consultationGst;
-    if (charges.labCount > 0 && !labAlreadyBilled) {
-      newItems.push({ itemType: 'Lab', itemName: `Lab Investigations (${charges.labCount})`, quantity: charges.labCount, rate: charges.labTotal / charges.labCount, amount: charges.labTotal });
-      addedGst += charges.labGstTotal;
-    }
-
-    // The pharmacy may have dispensed first and opened a pending bill for this visit with the
-    // medicines on it. Add the consultation (and lab) charges to that bill: before, the visit
-    // counted as "already billed" and the consultation fee was never charged.
-    const pendingBill = existingBills.find((b) => b.status === 'Pending');
-    if (pendingBill) {
-      await insertBillItems(pendingBill.id, newItems, t);
-      const [[sums]] = await sequelize.query(
-        'SELECT COALESCE(SUM(AMOUNT), 0) AS TOTAL FROM HMS_BILL_ITEMS WHERE BILL_ID = :billId',
-        { replacements: { billId: pendingBill.id }, transaction: t }
-      );
-      const totalAmount = Math.round(Number(sums.TOTAL || 0) * 100) / 100;
-      const gstAmount = Math.round((Number(pendingBill.gstAmount || 0) + addedGst) * 100) / 100;
-      const netPayable = Math.max(0, Math.round((totalAmount + gstAmount - Number(pendingBill.discountAmount || 0) - Number(pendingBill.advanceAdjusted || 0)) * 100) / 100);
-      await pendingBill.update({ totalAmount, gstAmount, netPayable }, { transaction: t });
-      await t.commit();
-      await logAction(req.user.id, 'UPDATE', 'billing', pendingBill.id, null, { action: 'add_opd_charges', billNumber: pendingBill.billNumber }, req.ip);
-      return res.json({ success: true, existing: true, updated: true, data: pendingBill });
-    }
-
-    // New bill. Medicines already on another bill (dispensing records linked to a bill) are not charged again.
-    const billId = await nextval('HMS_BILLS_SEQ', t);
-    const year = new Date().getFullYear();
-    const billNumber = `BILL-${year}-${String(billId).padStart(6, '0')}`;
-
-    const [pharmResult] = await sequelize.query(`
-      SELECT SUM(d.TOTAL_AMOUNT) as PHARM_TOTAL
-      FROM HMS_PRESCRIPTIONS pr
-      JOIN HMS_DISPENSING_RECORDS d ON d.PRESCRIPTION_ID = pr.ID
-      WHERE pr.ENCOUNTER_ID = :encounterId AND d.BILL_ID IS NULL
-    `, { replacements: { encounterId }, transaction: t });
-    // SUM() of a NUMERIC column comes back as a string; without Number() it was concatenated
-    // onto the total ("300" + "125.00").
-    const pharmTotal = pharmResult.length > 0 ? Number(pharmResult[0].PHARM_TOTAL || 0) : 0;
-    if (pharmTotal > 0) {
-      newItems.push({ itemType: 'Pharmacy', itemName: 'Pharmacy Medicines', quantity: 1, rate: pharmTotal, amount: pharmTotal });
-    }
-
-    const totalAmount = newItems.reduce((sum, i) => sum + Number(i.amount), 0);
-    const gstAmount = addedGst;
-    const netPayable = totalAmount + gstAmount;
-    await sequelize.query(`
-      INSERT INTO HMS_BILLS (
-        ID, PATIENT_ID, ENCOUNTER_ID, BILL_TYPE, BILL_NUMBER, STATUS,
-        TOTAL_AMOUNT, DISCOUNT_AMOUNT, GST_AMOUNT, NET_PAYABLE, ADVANCE_ADJUSTED,
-        CREATED_BY, CREATED_AT, UPDATED_AT
-      ) VALUES (
-        :id, :patientId, :encounterId, 'OPD', :billNumber, 'Pending',
-        :totalAmount, 0, :gstAmount, :netPayable, 0,
-        :createdBy, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-      )
-    `, {
-      replacements: { id: billId, patientId, encounterId, billNumber, totalAmount, gstAmount, netPayable, createdBy: req.user.id },
-      transaction: t,
+    const encounterId = Number(req.body?.encounterId) || 0;
+    const result = await sequelize.transaction(async (t) => {
+      const encounter = await B.one('SELECT id, status FROM hms_encounters WHERE id = :id FOR UPDATE', { id: encounterId }, t);
+      if (!encounter) B.fail(404, 'Encounter not found.');
+      const latestBill = () => B.one(`SELECT * FROM hms_bills WHERE encounter_id = :id AND COALESCE(status, '') <> 'Cancelled'
+        ORDER BY (EXISTS (SELECT 1 FROM hms_invoices i WHERE i.legacy_bill_id = hms_bills.id)) DESC, id DESC LIMIT 1`, { id: encounterId }, t);
+      if (encounter.status !== 'Finalized') {
+        const billed = await latestBill();
+        if (billed) return { existing: true, bill: billed };
+        B.fail(409, 'The consultation is not finalized yet. Bill it after the doctor finalizes it.');
+      }
+      const accountId = await B.accountFor({ encounterId }, t);
+      const draft = await B.refreshDraft(accountId, req.user, t, { create: true });
+      if (!draft) {
+        const billed = await latestBill();
+        if (billed) return { existing: true, bill: billed };
+        B.fail(409, 'Nothing has been charged to this visit.', 'NOTHING_TO_BILL');
+      }
+      const inv = await B.issueInvoice(draft.id, {}, req.user, t);
+      return { existing: false, bill: await B.one('SELECT * FROM hms_bills WHERE id = :id', { id: inv.legacy_bill_id }, t), invoiceId: inv.id };
     });
-    await insertBillItems(billId, newItems, t);
-
-    await t.commit();
-    await logAction(req.user.id, 'CREATE', 'billing', billId, null, { action: 'generate_opd_bill', billNumber }, req.ip);
-
-    res.json({
-      success: true,
-      data: { id: billId, patientId, encounterId, billType: 'OPD', billNumber, status: 'Pending', totalAmount, gstAmount, netPayable, createdBy: req.user.id },
-    });
+    if (!result.existing) await logAction(req.user.id, 'CREATE', 'billing', result.bill.id, null, { action: 'issue_opd_invoice', billNumber: result.bill.bill_number }, req.ip);
+    const bill = result.bill;
+    res.json({ success: true, existing: result.existing, data: { ...bill, id: bill.id, billNumber: bill.bill_number, billType: bill.bill_type, invoiceId: result.invoiceId } });
   } catch (err) {
-    await t.rollback();
-    console.error(err);
-    res.status(500).json({ success: false, message: 'Failed to generate OPD bill' });
+    domainError(res, err, 'Failed to generate OPD bill');
   }
 });
 
@@ -320,6 +190,8 @@ router.get('/:billId', protect, checkPermission('billing', 'read'), async (req, 
 
     bill.items = items;
     bill.payments = payments;
+    const invoice = await invoiceForBill(bill.ID);
+    bill.INVOICE_ID = invoice ? invoice.id : null;
     const paidAmount = payments.reduce((sum, p) => sum + Number(p.AMOUNT || 0), 0);
     bill.PAID_AMOUNT = Math.round(paidAmount * 100) / 100;
     bill.BALANCE_DUE = Math.max(0, Math.round((Number(bill.NET_PAYABLE || 0) - paidAmount) * 100) / 100);
@@ -354,9 +226,14 @@ router.get('/patient/:patientId', protect, checkPermission('billing', 'read'), a
 // see each other, and a payment larger than the balance due is refused (it used to be accepted,
 // overstating the day's collection).
 async function recordPayment(req, res, billId) {
+  if (await invoiceForBill(billId)) return invoicePayment(req, res, billId);
+  if (req.body?.applyAdvance) {
+    // Paying "by advance" used to relabel the payment without using any deposit.
+    return res.status(409).json({ success: false, code: 'ADVANCE_NOT_APPLICABLE', message: 'Deposits are applied to bills raised under the new billing. Take this payment normally.' });
+  }
   const t = await sequelize.transaction();
   try {
-    const { amount, paymentMode = 'Cash', referenceNumber, notes, applyAdvance = false } = req.body;
+    const { amount, paymentMode = 'Cash', referenceNumber, notes } = req.body;
 
     if (!billId || !amount || !(Number(amount) > 0)) {
       await t.rollback();
@@ -388,7 +265,7 @@ async function recordPayment(req, res, billId) {
 
     const paymentId = await nextval('hms_payments_seq', t);
     const receiptNumber = `REC-${paymentId}`;
-    const mode = applyAdvance ? 'Advance' : paymentMode;
+    const mode = paymentMode;
 
     const [inserted] = await sequelize.query(`
       INSERT INTO HMS_PAYMENTS (
@@ -445,6 +322,35 @@ async function recordPayment(req, res, billId) {
   }
 }
 
+// Payment on an invoice-backed bill: a receipt allocated to the invoice, or
+// (applyAdvance) the patient's deposits applied to it.
+async function invoicePayment(req, res, billId) {
+  try {
+    const { amount, paymentMode = 'Cash', referenceNumber, notes, applyAdvance = false } = req.body || {};
+    const data = await sequelize.transaction(async (t) => {
+      const invoice = await invoiceForBill(billId, t);
+      if (applyAdvance) {
+        const applied = await B.applyAvailableFunds(invoice.id, req.user, t);
+        if (!applied.length) B.fail(400, 'No deposit is available for this patient.', 'NO_DEPOSIT');
+        const total = B.money(applied.reduce((s, a) => s + Number(a.amount), 0));
+        return { id: applied[0].id, billId: Number(billId), paymentMode: 'Advance', amount: total, receiptNumber: null, paymentDate: applied[0].allocated_at };
+      }
+      if (!amount || !(Number(amount) > 0)) B.fail(400, 'Valid Bill ID and Payment Amount required');
+      const { intent, receipt } = await B.startPayment({
+        invoiceId: invoice.id, amount: Number(amount), method: PAYMENT_METHOD[paymentMode] || paymentMode, providerReference: referenceNumber, notes,
+      }, req.user, t);
+      return { id: receipt.legacy_payment_id || receipt.id, billId: Number(billId), patientId: intent.patient_id, paymentMode: paymentMode,
+        amount: B.money(receipt.amount), referenceNumber: receipt.provider_reference, receivedBy: req.user.id,
+        receiptNumber: receipt.receipt_number, paymentDate: receipt.received_at };
+    });
+    await logAction(req.user.id, 'CREATE', 'billing', data.id, null, { action: 'record_payment', receiptNumber: data.receiptNumber, amount: data.amount }, req.ip);
+    res.json({ success: true, data });
+  } catch (err) {
+    if (err.code === 'NOTHING_DUE') return res.status(400).json({ success: false, message: 'Bill is already fully paid' });
+    domainError(res, err, 'Payment failed');
+  }
+}
+
 // ── POST /api/billing/:billId/payment ─────────────────────
 router.post('/:billId/payment', protect, checkPermission('billing', 'write'), (req, res) => recordPayment(req, res, req.params.billId));
 
@@ -462,6 +368,24 @@ router.post('/:billId/discount', protect, checkPermission('billing', 'write'), a
 
     const { billId } = req.params;
     const { amount } = req.body;
+
+    if (await invoiceForBill(billId)) {
+      // After issue a reduction is a credit note for the extra discount.
+      const data = await sequelize.transaction(async (t) => {
+        const invoice = await invoiceForBill(billId, t);
+        const [[given]] = await sequelize.query(`SELECT COALESCE(sum(amount), 0) AS v FROM hms_invoice_notes
+          WHERE invoice_id = :id AND kind = 'credit' AND source_type IS NULL`, { replacements: { id: invoice.id }, transaction: t });
+        const extra = B.money(Number(amount || 0) - Number(invoice.discount_amount) - Number(given.v));
+        if (extra < 0) B.fail(409, 'A discount cannot be reduced after the bill is issued.');
+        if (extra > 0) {
+          await B.createNote(invoice.id, { kind: 'credit', reason: req.body?.reason || 'Discount approved by administrator',
+            lines: [{ category: 'Service', description: 'Discount approved after the bill was issued', amount: extra, gstAmount: 0 }] }, req.user, t);
+        }
+        return B.one('SELECT * FROM hms_bills WHERE id = :id', { id: Number(billId) }, t);
+      });
+      await logAction(req.user.id, 'UPDATE', 'billing', Number(billId), null, { action: 'discount_credit_note', amount }, req.ip);
+      return res.json({ success: true, data });
+    }
 
     const bill = await Bill.findByPk(billId);
     if (!bill) return res.status(404).json({ success: false, message: 'Bill not found' });

@@ -143,7 +143,8 @@ async function pickPatient(page, query, name) {
       assert(rowText.includes(doctorUser.name.replace(/^Dr\.?\s*/, '')), `appointment row lacks the doctor name: ${rowText}`);
       await row.first().getByRole('button', { name: 'Check in' }).click();
       const a = await waitFor(async () => {
-        const [r] = await sql("SELECT id, status, slot_start, department_id FROM hms_appointments WHERE patient_id = $1 AND appointment_date::date = CURRENT_DATE", [state.patient.id]);
+        // The page books for the browser's local day, which is not the database's UTC day after midnight IST.
+        const [r] = await sql("SELECT id, status, slot_start, department_id FROM hms_appointments WHERE patient_id = $1 AND appointment_date::date = $2::date", [state.patient.id, new Date().toLocaleDateString('en-CA')]);
         return r && r.status === 'Checked-in' ? r : null;
       }, 'appointment check-in');
       assert(a.slot_start === slotText, `slot ${a.slot_start} != ${slotText}`);
@@ -492,7 +493,7 @@ async function pickPatient(page, query, name) {
       noPageErrors(errors, 'billing again');
     });
 
-    await step('Legacy dispensing is blocked; a historical pharmacy invoice receives one OPD consultation fee (API)', async () => {
+    await step('Legacy dispensing is blocked; a historical pharmacy invoice stays as it was and the consultation is billed once on its own invoice (API)', async () => {
       const [rec, doc, ph] = [await apiLogin('receptionist'), await apiLogin('doctor'), await apiLogin('pharmacist')];
       const pt = await api('POST', '/patients/hms', { token: rec, body: { patientType: 'other', name: `E2E OPD Rx ${S}`, age: 29, gender: 'Female', opdIndoor: 'OPD', testDate: new Date().toISOString().slice(0, 10), phoneNumber: `6${S.padStart(9, '0')}` } });
       await inCare(pt.data.data.id);
@@ -519,15 +520,20 @@ async function pickPatient(page, query, name) {
       await sql(`INSERT INTO hms_bill_items(bill_id,item_type,item_name,quantity,rate,amount)
         VALUES($1,'Medicine','Synthetic historical invoice item',2,10,20)`,[pharmBill.id]);
       const fee = Number((await sql("SELECT rate FROM hms_bill_items WHERE bill_id = $1 AND item_type = 'Consultation'", [state.bill.id]))[0].rate);
+      // Phase 5: the consultation was charged when the visit was finalized. It is
+      // billed on its own invoice; the earlier pharmacy bill is not rewritten.
+      const ids = [];
       for (let i = 0; i < 2; i++) {
         const r = await api('POST', '/billing/opd', { token: rec, body: { encounterId: enc.id } });
-        assert(r.status === 200 && Number(r.data.data.id ?? r.data.data.ID) === Number(pharmBill.id), `generate #${i + 1}: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
+        assert(r.status === 200 && Number(r.data.data.id) !== Number(pharmBill.id), `generate #${i + 1}: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
+        ids.push(Number(r.data.data.id));
       }
-      const bills = await sql('SELECT id, net_payable, total_amount FROM hms_bills WHERE encounter_id = $1', [enc.id]);
-      const items = await sql('SELECT item_type, amount FROM hms_bill_items WHERE bill_id = $1 ORDER BY id', [pharmBill.id]);
-      assert(bills.length === 1, `${bills.length} bills for the visit`);
-      assert(items.filter((it) => it.item_type === 'Consultation').length === 1, `consultation lines ${JSON.stringify(items)}`);
-      assert(Number(bills[0].net_payable) === 20 + fee && Number(bills[0].total_amount) === 20 + fee, `bill total ${JSON.stringify(bills[0])}, expected ${20 + fee}`);
+      assert(ids[0] === ids[1], `regenerating returned another bill (${ids})`);
+      const bills = await sql('SELECT id, net_payable, total_amount FROM hms_bills WHERE encounter_id = $1 ORDER BY id', [enc.id]);
+      const consult = await sql("SELECT bi.amount FROM hms_bill_items bi JOIN hms_bills b ON b.id = bi.bill_id WHERE b.encounter_id = $1 AND bi.item_type = 'Consultation'", [enc.id]);
+      assert(bills.length === 2 && consult.length === 1 && Number(consult[0].amount) === fee, `bills ${JSON.stringify(bills)}, consultation lines ${JSON.stringify(consult)}`);
+      const old = bills.find((b) => Number(b.id) === Number(pharmBill.id));
+      assert(Number(old.net_payable) === 20 && Number(old.total_amount) === 20, `historical bill changed: ${JSON.stringify(old)}`);
       await api('POST', '/pharmacy/return', { token: ph, body: { batchId: batch.id, quantity: 10, type: 'discard', reason: 'E2E test cleanup' } });
     });
 

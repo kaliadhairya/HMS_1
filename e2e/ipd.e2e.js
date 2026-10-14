@@ -365,8 +365,10 @@ async function newPatient(name, phonePrefix) {
       await page.goto(`${BASE}/receptionist/ipd`, { waitUntil: 'networkidle' });
       const row = page.locator('tbody tr', { hasText: ctx.patientName });
       await row.waitFor({ timeout: 10000 });
-      const [hasAdv] = await sql('SELECT id FROM hms_patient_advances WHERE patient_id = $1', [ctx.patientId]);
-      if (!hasAdv) {
+      const deposits = () => sql(`SELECT f.amount, acc.admission_id, f.created_by, r.receipt_number FROM hms_patient_funds f
+        JOIN hms_billing_accounts acc ON acc.id = f.account_id JOIN hms_receipts r ON r.id = f.receipt_id
+        WHERE f.patient_id = $1 AND f.kind = 'deposit'`, [ctx.patientId]);
+      if (!(await deposits()).length) {
         await row.getByRole('button', { name: 'Add advance' }).click();
         const dialog = page.getByRole('dialog');
         await dialog.getByLabel('Amount (₹)').fill('500');
@@ -374,8 +376,9 @@ async function newPatient(name, phonePrefix) {
         await toast(page, 'Advance recorded');
       }
       await row.getByText('₹500').waitFor({ timeout: 10000 });
-      const [adv] = await sql('SELECT amount, admission_id, received_by, adjusted_bill_id FROM hms_patient_advances WHERE patient_id = $1', [ctx.patientId]);
-      assert(adv && Number(adv.amount) === 500 && adv.admission_id === ctx.admissionId && adv.received_by === ctx.uid.receptionist && !adv.adjusted_bill_id, `advance ${JSON.stringify(adv)}`);
+      // Phase 5: an advance is a deposit (a liability) on the admission's billing account, with a receipt.
+      const [adv] = await deposits();
+      assert(adv && Number(adv.amount) === 500 && adv.admission_id === ctx.admissionId && adv.created_by === ctx.uid.receptionist && adv.receipt_number, `deposit ${JSON.stringify(adv)}`);
       noErrors(rec, 'advance');
     });
 
@@ -448,104 +451,107 @@ async function newPatient(name, phonePrefix) {
       noErrors(doc, 'discharge summaries');
     });
 
-    await step('IPD billing: bed days and medicines accrue, discount and advance applied, bill generated and printed', async () => {
+    await step('IPD billing: bed days and medicines on the account, discount, the deposit partly applied, final bill issued and printed', async () => {
       const admin = await as('admin');
       const page = admin.page;
-      const [billed] = await sql("SELECT id FROM hms_bills WHERE admission_id = $1 AND bill_type = 'IPD'", [ctx.admissionId]);
       const [w] = await sql(`SELECT GREATEST(1, EXTRACT(DAY FROM (COALESCE(a.discharge_date, NOW()::timestamp) - a.admission_date)))::int AS days
         FROM hms_admissions a WHERE a.id = $1`, [ctx.admissionId]);
       const rate = { General: 400, Private: 800, ICU: 400, 'Semi-Private': 400 }[ctx.bed.ward_type] || 400;
       ctx.wardTotal = w.days * rate;
-      const [price] = await sql(`SELECT mrp FROM hms_medicine_batches WHERE medicine_id = 1 AND quantity > 0 ORDER BY expiry_date ASC LIMIT 1`);
+      const [price] = await sql(`SELECT mrp FROM hms_medicine_batches WHERE medicine_id = 1 AND quantity > 0 AND COALESCE(lot_status, 'AVAILABLE') = 'AVAILABLE'
+        AND expiry_date >= CURRENT_DATE ORDER BY expiry_date ASC LIMIT 1`);
       const unit = money(price ? price.mrp : 0);
       ctx.medTotal = money(unit * 4);
       ctx.total = money(ctx.wardTotal + ctx.medTotal);
       ctx.discount = 100;
-      ctx.net = money(ctx.total - ctx.discount - 500);
-      if (!billed) { // a retry after an API restart only re-checks the generated bill
-      await page.goto(`${BASE}/ipd/billing`, { waitUntil: 'networkidle' });
-      await page.getByPlaceholder('Search patient, UHID, ward, bed or doctor').fill(ctx.patientName);
-      await page.getByRole('row', { name: `Manage billing for ${ctx.patientName}` }).click();
-      await page.waitForURL(new RegExp(`/ipd/billing/${ctx.admissionId}$`));
-      const summary = page.locator('section', { has: page.getByRole('heading', { name: 'Bill summary' }) });
-      await summary.waitFor({ timeout: 10000 });
+      // The 500 deposit pays what it can; the rest stays with the patient.
+      ctx.applied = Math.min(500, money(ctx.total - ctx.discount));
+      ctx.net = money(ctx.total - ctx.discount - ctx.applied);
+      const [billed] = await sql("SELECT id FROM hms_bills WHERE admission_id = $1 AND bill_type = 'IPD'", [ctx.admissionId]);
+      if (!billed) { // a retry after an API restart only re-checks the issued bill
+        await page.goto(`${BASE}/ipd/billing`, { waitUntil: 'networkidle' });
+        await page.getByPlaceholder('Search patient, UHID, ward, bed or doctor').fill(ctx.patientName);
+        await page.getByRole('row', { name: `Manage billing for ${ctx.patientName}` }).click();
+        await page.waitForURL(new RegExp(`/ipd/billing/${ctx.admissionId}$`));
+        const summary = page.locator('section', { has: page.getByRole('heading', { name: 'Bill summary' }) });
+        await summary.waitFor({ timeout: 10000 });
+        const st = (await summary.innerText()).replace(/\s+/g, ' ');
+        assert(st.includes(`Bed days so far: ${w.days} (₹${rate}.00/day)`), `bed days: ${st}`);
 
-      const st = (await summary.innerText()).replace(/\s+/g, ' ');
-      assert(st.includes(`₹${rate}/day`) && st.includes(`${w.days} day`) && st.includes(`₹${ctx.wardTotal.toFixed(2)}`), `ward charges: ${st}`);
+        // Medicine at the MRP of the batch the pharmacy would issue first.
+        await page.getByPlaceholder('Search medicines by name').fill('Paracetamol');
+        const med = page.locator('li.list-row', { has: page.locator('.cell-primary', { hasText: /^Paracetamol$/ }) }).first();
+        await med.getByRole('button', { name: 'Select' }).click();
+        await med.getByLabel('Quantity').fill('4');
+        await med.getByRole('button', { name: 'Add' }).click();
+        await toast(page, 'Paracetamol added');
+        const item = page.locator('tbody tr', { hasText: 'Paracetamol' }).first();
+        await item.waitFor();
+        assert((await item.innerText()).includes(`₹${ctx.medTotal.toFixed(2)}`) && (await item.innerText()).includes('Not billed yet'), `medicine line ${await item.innerText()}`);
 
-      // Medicine at the MRP of the batch the pharmacy would issue first.
-      await page.getByPlaceholder('Search medicines by name').fill('Paracetamol');
-      const med = page.locator('li.list-row', { has: page.locator('.cell-primary', { hasText: /^Paracetamol$/ }) }).first();
-      await med.getByRole('button', { name: 'Select' }).click();
-      await med.getByLabel('Quantity').fill('4');
-      await med.getByRole('button', { name: 'Add' }).click();
-      await toast(page, 'Paracetamol added');
-      const item = page.locator('tbody tr', { hasText: 'Paracetamol' });
-      await item.waitFor();
-      assert((await item.innerText()).includes(`₹${ctx.medTotal.toFixed(2)}`), `medicine line ${await item.innerText()}`);
-
-      // Save progress -> saved drafts -> reopen.
-      await page.getByRole('button', { name: 'Save progress' }).click();
-      await page.waitForURL(/\/ipd\/saved-bills$/);
-      const draft = page.locator('tbody tr', { hasText: ctx.patientName });
-      await draft.waitFor({ timeout: 10000 });
-      assert((await draft.innerText()).includes(`₹${ctx.medTotal}`), `draft row ${await draft.innerText()}`);
-      await draft.getByRole('button', { name: 'Review and finalize' }).click();
-      await page.waitForURL(new RegExp(`/ipd/billing/${ctx.admissionId}$`));
-      await page.locator('tbody tr', { hasText: 'Paracetamol' }).waitFor({ timeout: 10000 });
-
-      await page.getByLabel('Discount (₹)').fill(String(ctx.discount));
-      const st2 = (await summary.innerText()).replace(/\s+/g, ' ');
-      assert(st2.includes('Advance adjusted') && st2.includes(`₹${ctx.net.toFixed(2)}`), `summary before generating: ${st2}`);
-      await page.getByRole('button', { name: 'Generate IPD bill' }).click();
-      await toast(page, /Bill generated: IPD-/);
+        await summary.getByRole('button', { name: /Prepare bill/ }).click();
+        await summary.getByLabel('Discount (₹)').fill(String(ctx.discount));
+        await summary.getByLabel('Reason for the discount').fill('Long-stay goodwill');
+        await summary.getByRole('button', { name: 'Apply discount' }).click();
+        await toast(page, 'Discount applied');
+        await page.waitForFunction((n) => document.body.innerText.includes(n), `₹${ctx.net.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`);
+        await summary.getByRole('button', { name: 'Generate final bill' }).click();
+        await toast(page, /Bill generated: INV-/);
       } else await page.goto(`${BASE}/ipd/billing/${ctx.admissionId}`, { waitUntil: 'networkidle' });
-      const paper = page.locator('.bill-preview-paper');
-      await paper.waitFor();
-      const pt = (await paper.innerText()).replace(/\s+/g, ' ');
 
       const bills = await sql("SELECT * FROM hms_bills WHERE admission_id = $1 AND bill_type = 'IPD'", [ctx.admissionId]);
       assert(bills.length === 1, `expected one IPD bill, got ${bills.length}`);
       const b = bills[0];
       ctx.billNumber = b.bill_number;
-      assert(money(b.total_amount) === ctx.total && money(b.discount_amount) === ctx.discount && money(b.advance_adjusted) === 500 && money(b.net_payable) === ctx.net
-        && b.discount_approved_by === ctx.uid.admin && b.patient_id === ctx.patientId && b.status === 'Pending', `bill ${JSON.stringify(b)}`);
+      assert(money(b.total_amount) === ctx.total && money(b.discount_amount) === ctx.discount && money(b.advance_adjusted) === ctx.applied && money(b.net_payable) === ctx.net
+        && b.discount_approved_by === ctx.uid.admin && b.patient_id === ctx.patientId && b.status === (ctx.net > 0 ? 'Pending' : 'Paid'), `bill ${JSON.stringify(b)}`);
       const items = await sql('SELECT item_type, quantity, rate, amount FROM hms_bill_items WHERE bill_id = $1 ORDER BY id', [b.id]);
       assert(items.length === 2 && items[0].item_type === 'Ward' && money(items[0].amount) === ctx.wardTotal && items[1].item_type === 'Medicine' && Number(items[1].quantity) === 4 && money(items[1].amount) === ctx.medTotal,
         `bill items ${JSON.stringify(items)}`);
-      const [adv] = await sql('SELECT adjusted_bill_id FROM hms_patient_advances WHERE patient_id = $1', [ctx.patientId]);
-      assert(adv.adjusted_bill_id === b.id, 'advance not marked as adjusted against the bill');
-      for (const needle of [b.bill_number, ctx.patientName, ctx.total.toFixed(2), ctx.discount.toFixed(2), '500.00', ctx.net.toFixed(2)]) {
+      const [inv] = await sql('SELECT * FROM hms_invoices WHERE legacy_bill_id = $1', [b.id]);
+      assert(inv && inv.kind === 'final' && inv.status === 'Issued' && money(inv.total) === money(ctx.total - ctx.discount), `invoice ${JSON.stringify(inv)}`);
+      const [left] = await sql("SELECT billing_fund_balance(f.id) AS b FROM hms_patient_funds f WHERE f.patient_id = $1 AND f.kind = 'deposit'", [ctx.patientId]);
+      assert(money(left.b) === money(500 - ctx.applied), `deposit left ${left.b}`);
+
+      await page.locator('tbody tr', { hasText: b.bill_number }).getByRole('button', { name: 'View' }).click();
+      const paper = page.locator('.bill-preview-paper');
+      await paper.waitFor();
+      const pt = (await paper.innerText()).replace(/\s+/g, ' ');
+      for (const needle of [b.bill_number, ctx.patientName, ctx.discount.toFixed(2), 'Advance adjusted', ctx.applied.toFixed(2)]) {
         assert(pt.includes(needle), `bill preview has no "${needle}": ${pt.slice(0, 400)}`);
       }
       await page.evaluate(() => { window.__printed = 0; window.print = () => { window.__printed += 1; }; });
       await page.getByRole('button', { name: 'Print bill' }).click();
       assert(await page.evaluate(() => window.__printed) === 1, 'bill print not triggered');
 
-      // Reopening the admission shows the bill instead of billing it twice; a second bill is refused.
-      await page.goto(`${BASE}/ipd/billing/${ctx.admissionId}`, { waitUntil: 'networkidle' });
-      await page.locator('.bill-preview-paper', { hasText: b.bill_number }).waitFor({ timeout: 10000 });
-      const twice = await api('POST', `/ipd/admissions/${ctx.admissionId}/generate-bill`, { token: await apiLogin('admin') });
-      assert(twice.status === 409, `second bill for the admission returned ${twice.status}`);
+      // Nothing new to bill: a second bill is refused; the old generate endpoint is retired.
+      const token = await apiLogin('admin');
+      const again = await api('POST', `/finance/accounts/${inv.account_id}/invoices/draft`, { token });
+      assert(again.status === 409 && again.data.code === 'NOTHING_TO_BILL', `second bill ${again.status} ${JSON.stringify(again.data).slice(0, 160)}`);
+      const old = await api('POST', `/ipd/admissions/${ctx.admissionId}/generate-bill`, { token });
+      assert(old.status === 410, `old generate-bill returned ${old.status}`);
       noErrors(admin, 'IPD billing');
     });
 
-    await step('Billing history lists the IPD bill with its totals; the advance is used up', async () => {
+    await step('Billing history lists the IPD bill with its totals; the deposit shows what is left', async () => {
       const admin = await as('admin');
       const page = admin.page;
       await page.goto(`${BASE}/billing/patient/${ctx.patientId}`, { waitUntil: 'networkidle' });
       const row = page.locator('tbody tr', { hasText: ctx.billNumber });
       await row.waitFor({ timeout: 10000 });
       const t = await row.innerText();
-      assert(t.includes('IPD') && t.includes(`₹${ctx.net.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`) && t.includes('Pending'), `history row ${t}`);
+      assert(t.includes('IPD') && t.includes(`₹${ctx.net.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`) && t.includes(ctx.net > 0 ? 'Pending' : 'Paid'), `history row ${t}`);
       const kpis = (await page.locator('.kpi-strip').innerText()).replace(/\s+/g, ' ');
-      assert(kpis.includes('Advance deposited ₹500') && kpis.includes('Available balance ₹0'), `advance KPIs ${kpis}`);
+      const left = money(500 - ctx.applied).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+      assert(kpis.includes('Advance deposited ₹500') && kpis.includes(`Available balance ₹${left}`), `advance KPIs ${kpis}`);
       noErrors(admin, 'billing history');
     });
 
     await step('Role access: discounts need an admin, notes by their own role; receptionist and other roles kept out of inpatient records', async () => {
       const nurseTok = await apiLogin('nurse');
-      const disc = await api('POST', `/ipd/admissions/${ctx.bbAdmissionId}/generate-bill`, { token: nurseTok, body: { discountAmount: 50 } });
+      const [bbAcc] = await sql('SELECT id FROM hms_billing_accounts WHERE admission_id = $1', [ctx.bbAdmissionId]);
+      const draft = bbAcc ? await api('POST', `/finance/accounts/${bbAcc.id}/invoices/draft`, { token: nurseTok }) : null;
+      const disc = await api('PUT', `/finance/invoices/${draft?.data?.data?.id || '00000000-0000-4000-8000-000000000000'}/discount`, { token: nurseTok, body: { amount: 50, reason: 'Nurse discount' } });
       assert(disc.status === 403, `nurse discount returned ${disc.status}`);
       const checks = [
         ['pharmacist reads admissions', await api('GET', '/ipd/admissions', { token: await apiLogin('pharmacist') })],

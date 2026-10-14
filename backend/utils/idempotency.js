@@ -28,6 +28,7 @@ const REQUIRED = [
   /^\/api\/triage(?:\/.*)?$/,
   /^\/api\/adt(?:\/.*)?$/,
   /^\/api\/referrals(?:\/.*)?$/,
+  /^\/api\/finance(?:\/.*)?$/,
 ];
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const KEY_FORMAT = /^[\w.:-]{8,200}$/;

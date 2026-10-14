@@ -144,16 +144,18 @@ async function amend(base,token,rx) {
     second = startSecondServer();
     assert(await waitUntil(async () => (await fetch(`${SECOND}/api/ready`)).ok, 30000), 'second server did not start');
 
-    await step('Settings and IPD draft charges written by one process are seen by a freshly started one', async () => {
+    await step('Settings and IPD charges written by one process are seen by a freshly started one', async () => {
       const [admission] = await sql("SELECT id FROM hms_admissions WHERE status = 'Active' AND NOT EXISTS (SELECT 1 FROM hms_bills b WHERE b.admission_id = hms_admissions.id) ORDER BY id LIMIT 1");
       const [medicine] = await sql('SELECT id, generic_name FROM hms_medicines WHERE is_active = 1 ORDER BY id LIMIT 1');
       assert(admission && medicine, 'no unbilled active admission or medicine to use');
-      const added = await call(ORIGIN, 'POST', `/ipd/admissions/${admission.id}/charges`, sa, { medicineId: medicine.id, medicineName: medicine.generic_name, quantity: 2 });
-      assert(added.status === 200, `add charge ${added.status} ${JSON.stringify(added.data)}`);
+      // Phase 5: an item added on the billing page is a charge on the admission's account.
+      const account = (await call(ORIGIN, 'GET', `/finance/accounts/by-episode?admissionId=${admission.id}`, sa)).data.data;
+      const added = await call(ORIGIN, 'POST', `/finance/accounts/${account.id}/charges`, sa, { medicineId: medicine.id, quantity: 2 });
+      assert(added.status === 201, `add charge ${added.status} ${JSON.stringify(added.data)}`);
       try {
         const sa2 = await loginAt(SECOND, 'superadmin', 'Superadmin@123');
-        const charges = (await call(SECOND, 'GET', `/ipd/admissions/${admission.id}/charges`, sa2)).data.data.charges;
-        assert(charges.some((c) => c.ID === added.data.data.ID && c.QUANTITY === 2), 'second process does not see the draft charge');
+        const charges = (await call(SECOND, 'GET', `/finance/accounts/${account.id}`, sa2)).data.data.charges;
+        assert(charges.some((c) => c.id === added.data.data.id && Number(c.quantity) === 2), 'second process does not see the charge');
         const [ip] = await sql("SELECT value FROM hms_app_settings WHERE key = 'session_timeout'");
         const consistent=await waitUntil(async()=>{
           const observed=(await call(SECOND,'GET','/security/sessions',sa2)).data.data.timeout_settings;
@@ -161,7 +163,7 @@ async function amend(base,token,rx) {
         },12000);
         assert(consistent, 'second process has different settings beyond the refresh interval');
       } finally {
-        await call(ORIGIN, 'DELETE', `/ipd/admissions/${admission.id}/charges/${added.data.data.ID}`, sa);
+        await call(ORIGIN, 'POST', `/finance/charges/${added.data.data.id}/reverse`, sa, { reason: 'E2E durability cleanup' });
       }
     });
 
