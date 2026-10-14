@@ -27,9 +27,9 @@ async function call(method, url, token, body) {
   for (let i = 0; i < 2; i++) {
     const [patient] = await sql(`INSERT INTO hms_patients(name,uhid,patienttype,age,gender,opdindoor,testdate)
       VALUES ($1,$2,'other',30,'Female','Indoor',CURRENT_DATE) RETURNING id`,
-      [`Synthetic IPD charges ${tag}-${i}`, `IPD-CHARGES-${tag}-${i}`]);
+      [`Synthetic IPD charges ${tag}-${i}`, `IPDC-${tag}-${i}`]);
     const [bed] = await sql(`INSERT INTO hms_beds(ward_id,room_number,bed_number,status)
-      SELECT id,'E2E',$1,'Occupied' FROM hms_wards WHERE type='Private' AND is_active=1 ORDER BY id LIMIT 1 RETURNING id`, [`IPD-CHARGES-${tag}-${i}`]);
+      SELECT id,'E2E',$1,'Occupied' FROM hms_wards WHERE type='Private' AND is_active=1 ORDER BY id LIMIT 1 RETURNING id`, [`IPDC-${tag}-${i}`]);
     assert(bed, 'need an active Private ward');
     const [adm] = await sql(`INSERT INTO hms_admissions(patient_id,admitting_doctor_id,bed_id,admission_type,admission_date,status,created_by)
       VALUES ($1,$2,$3,'Planned',now(),'Active',$2) RETURNING id,admission_date`, [patient.id,doc.id,bed.id]);
