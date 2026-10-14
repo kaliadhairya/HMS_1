@@ -26,6 +26,11 @@ assert.equal(
   "5214",
   "Use the isolated Phase 4/5 integration frontend",
 );
+assert.equal(
+  path.basename(process.env.AUDIT_CHECKPOINT_DIR || ""),
+  process.env.DB_NAME,
+  "Use a separate audit checkpoint directory named after this test database",
+);
 const root = path.resolve(__dirname, "../..");
 const evidence =
   process.env.PHASE45_EVIDENCE_DIR ||
