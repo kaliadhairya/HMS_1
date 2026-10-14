@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Search, UserPlus, Pill, Users, BedDouble, Inbox, ChartColumn, CalendarDays, Hospital,
   Settings, Droplet, TestTube, ShoppingCart, Bell, ShieldCheck, Repeat, Package, ClipboardList, ChartLine,
-  FileText, CreditCard, Wallet, Factory, Ticket, HeartPulse, Clock, Undo2, ListOrdered, BookOpen, FilePlus2, Truck, Megaphone, Stethoscope,
+  FileText, CreditCard, Wallet, Factory, Ticket, HeartPulse, Clock, Undo2, ListOrdered, BookOpen, ListChecks, FilePlus2, Truck, Megaphone, Stethoscope,
 } from 'lucide-react';
 
 // Navigation per role. `group` drives the sidebar sections.
@@ -32,6 +32,7 @@ export const NAV_BY_ROLE = {
     { to: '/billing/price-list', label: 'Price list', icon: ListOrdered, group: 'Finance' },
     { to: '/admin/settings', label: 'Settings', icon: Settings, group: 'Administration' },
     { to: '/admin/terminology', label: 'Terminology', icon: BookOpen, group: 'Administration' },
+    { to: '/worklist', label: 'Worklist', icon: ListChecks, group: 'Administration' },
   ],
   admin: [
     { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
@@ -51,6 +52,7 @@ export const NAV_BY_ROLE = {
     { to: '/billing/price-list', label: 'Price list', icon: ListOrdered, group: 'Finance' },
     { to: '/ipd/billing', label: 'IPD billing', icon: BedDouble, group: 'Finance' },
     { to: '/admin/terminology', label: 'Terminology', icon: BookOpen, group: 'Administration' },
+    { to: '/worklist', label: 'Worklist', icon: ListChecks, group: 'Administration' },
     { to: '/reports', label: 'Reports', icon: ChartColumn, group: 'Insights' },
     { to: '/hms/admin/staff', label: 'Staff', icon: Users, group: 'Administration' },
     { to: '/hms/admin/attendance', label: 'Attendance & leave', icon: Clock, group: 'Administration' },

@@ -64,7 +64,9 @@ function startAuditSealer(sequelize) {
   const checkpointTimer = dir && key ? setInterval(async () => {
     try {
       await sealOnce(sequelize);
-      await writeCheckpoint(sequelize, dir, key);
+      const file = await writeCheckpoint(sequelize, dir, key);
+      // Queued for write-once storage (utils/auditShipper.js, Phase 6H).
+      await require('./auditShipper').queue(sequelize, file);
     } catch (err) {
       console.error('Audit checkpoint failed:', err.message);
     }

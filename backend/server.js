@@ -15,6 +15,7 @@ const { sequelize } = require('./models');
 const { schemaProblems } = require('./migrate');
 const { requestContext, bindAuditActor } = require('./utils/auditContext');
 const { startAuditSealer } = require('./utils/auditSealer');
+const { startAuditShipper } = require('./utils/auditShipper');
 const { startOutboxDispatcher } = require('./utils/outbox');
 const { startFinanceWorker } = require('./services/reconciliation');
 const { startSocketSessionGuard } = require('./utils/socketSessions');
@@ -203,6 +204,7 @@ app.use('/api/lab', require('./middleware/auth').protect, require('./routes/lab'
 app.use('/api/laboratory', require('./routes/laboratory'));
 app.use('/api/terminology', require('./routes/terminology'));
 app.use('/api/fhir', require('./routes/fhir'));
+app.use('/api/worklist', require('./routes/worklist'));
 
 // Legacy pharmacist namespace retained for frontend compatibility
 app.use(
@@ -317,6 +319,7 @@ async function start() {
     console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
   });
   startAuditSealer(sequelize);
+  startAuditShipper(sequelize);
   startOutboxDispatcher(io);
   startFinanceWorker();
   startSocketSessionGuard(io);

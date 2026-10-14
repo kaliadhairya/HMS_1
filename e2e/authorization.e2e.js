@@ -70,6 +70,8 @@ const RULES = [
   ['POST', '/terminology/releases/00000000-0000-0000-0000-000000000000/activate', [SA, A]],
   // Phase 6B FHIR reads: clinical roles only (patient scope in fhir.e2e.js).
   ['GET', '/fhir/Organization/hospital', [SA, A, D, N, L]],
+  // Phase 6 accountable worklist: every staff role sees its own items.
+  ['GET', '/worklist', ALL],
 ];
 
 (async () => {

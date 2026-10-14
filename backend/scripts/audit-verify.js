@@ -3,6 +3,8 @@
 //
 //   node scripts/audit-verify.js                         chains only
 //   AUDIT_CHECKPOINT_KEY=... node scripts/audit-verify.js <checkpoint-dir>
+//   AUDIT_CHECKPOINT_KEY=... AUDIT_WORM_BUCKET=... node scripts/audit-verify.js --remote
+//       checks the write-once store (Phase 6H) and puts problems on the worklist
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const crypto = require('crypto');
 const fs = require('fs');
@@ -24,7 +26,13 @@ async function main() {
     console.log(`${chain}: ${sealed} sealed, ${unsealed} awaiting seal, ${rows.length} problem(s)`);
   }
 
-  const dir = process.argv[2];
+  if (process.argv[2] === '--remote') {
+    const { checkAndReport } = require('../utils/auditShipper');
+    const { problems: remote, checked } = await checkAndReport(sequelize);
+    remote.forEach((p) => problems.push(`${p.kind}: ${p.title}`));
+    console.log(`${checked} remote checkpoint(s) checked; problems are on the worklist`);
+  }
+  const dir = process.argv[2] === '--remote' ? null : process.argv[2];
   if (dir) {
     const key = process.env.AUDIT_CHECKPOINT_KEY;
     if (!key) throw new Error('AUDIT_CHECKPOINT_KEY is required to check checkpoints');
