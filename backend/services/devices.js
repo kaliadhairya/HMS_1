@@ -14,26 +14,7 @@ const I = require('./interfaces');
 const W = require('./worklist');
 const Analyzer = require('./laboratoryAnalyzer');
 const { storage } = require('../utils/auditContext');
-
-// Device messages run as a command of the device's account, like a staff
-// command: nested transactions (Phase 4's result write) become savepoints of
-// this one, on the same connection, and row changes are attributed to it.
-async function asDevice(t, userId, fn) {
-  const store = storage.getStore() || {};
-  const command = { active: true, transaction: t };
-  const requestId = store.requestId || crypto.randomUUID();
-  const previous = await one("SELECT current_setting('hms.actor_user_id', true) AS actor, current_setting('hms.session_id', true) AS session, current_setting('hms.request_id', true) AS request", {}, t);
-  const setActor = (actor, session, request) => rows("SELECT set_config('hms.actor_user_id', :actor, true), set_config('hms.session_id', :session, true), set_config('hms.request_id', :request, true)", { actor: actor == null ? '' : String(actor), session: session || '', request: request || '' }, t);
-  await setActor(userId, '', requestId);
-  try {
-    return await storage.run({ ...store, requestId, userId, sessionId: null, command }, fn);
-  } finally {
-    command.active = false;
-    // These are transaction-local settings; rollback also resets them. A failed
-    // transaction must preserve its original error rather than masking it.
-    await setActor(previous?.actor, previous?.session, previous?.request).catch(() => {});
-  }
-}
+const DeviceContext = require('./deviceContext.cts');
 
 const rows = (sql, replacements, t) => sequelize.query(sql, { replacements, type: QueryTypes.SELECT, transaction: t });
 const one = async (sql, replacements, t) => (await rows(sql, replacements, t))[0] || null;
@@ -44,13 +25,15 @@ const keyHash = (key) => crypto.createHash('sha256').update(String(key)).digest(
 async function draft(body, user, t) {
   const { system, kind, protocol, description, provenance, codeMap = {}, serviceUserId = null, ownerRole, mllpPort = null, allowedHosts = [] } = body;
   if (!/^(analyzer|pacs|bloodbank|theatre|bedside):[a-z0-9._-]{2,60}$/.test(system || '')) fail(400, 'Name the device as kind:name, for example analyzer:sysmex-xn1.');
+  if (!Number.isSafeInteger(Number(serviceUserId)) || Number(serviceUserId) <= 0) fail(422, 'Every device contract requires an explicit service account.', 'DEVICE_SERVICE_IDENTITY_REQUIRED');
+  if (!(await require('./facilities.cts').membership(Number(serviceUserId),user.facilityId,t)).length) fail(403, 'The service account requires current membership in this facility.', 'FACILITY_MEMBERSHIP_REQUIRED');
   if (!Array.isArray(allowedHosts) || allowedHosts.length > 128 || allowedHosts.some((host) => typeof host !== 'string' || !require('net').isIP(host))) fail(400, 'Allowed hosts must be an explicit list of IP addresses.', 'INVALID_DEVICE_HOSTS');
   for (const [code, m] of Object.entries(codeMap)) {
     if (!m || !m.lab_code_system || !m.lab_code || !m.method) fail(400, `Code ${code}: give lab_code_system, lab_code and method.`);
     const known = await one('SELECT 1 FROM hms_lab_tests WHERE code_system = :s AND code = :c', { s: m.lab_code_system, c: m.lab_code }, t);
     if (!known) fail(422, `Code ${code} maps to ${m.lab_code_system}|${m.lab_code}, which is not in the laboratory catalogue.`, 'UNKNOWN_TEST');
   }
-  const [{ v }] = await rows('SELECT COALESCE(max(version), 0) + 1 AS v FROM hms_device_contracts WHERE system = :s', { s: system }, t);
+  const [{ v }] = await rows('SELECT COALESCE(max(version), 0) + 1 AS v FROM hms_device_contracts WHERE system = :s AND facility_id=:facility', { s: system,facility:user.facilityId }, t);
   return one(`INSERT INTO hms_device_contracts (system, version, kind, protocol, description, provenance, code_map, service_user_id, owner_role, mllp_port, allowed_hosts, created_by)
     VALUES (:system, :v, :kind, :protocol, :description, :provenance, CAST(:map AS jsonb), :svc, :owner, :port, CAST(:hosts AS text[]), :u) RETURNING *`,
   { system, v, kind: kind || system.split(':')[0], protocol, description, provenance, map: JSON.stringify(codeMap), svc: serviceUserId, owner: ownerRole || (system.startsWith('analyzer') ? 'lab_technician' : 'super_admin'), port: mllpPort, hosts: `{${allowedHosts.join(',')}}`, u: user.id }, t);
@@ -58,36 +41,30 @@ async function draft(body, user, t) {
 
 // A second person approves; the device key is shown once.
 async function approve(id, user, t) {
-  const c = await one('SELECT * FROM hms_device_contracts WHERE id = :id FOR UPDATE', { id }, t);
+  const c = await one('SELECT * FROM hms_device_contracts WHERE id = :id AND facility_id=:facility FOR UPDATE', { id,facility:user.facilityId }, t);
   if (!c) fail(404, 'Contract not found.');
   if (c.status !== 'Draft') fail(409, 'Only a draft can be approved.', 'NOT_DRAFT');
   if (c.created_by === user.id) fail(403, 'A device contract must be approved by someone other than its author.', 'SAME_PERSON');
-  if (c.mllp_port && process.env.NODE_ENV === 'production' && !c.allowed_hosts.length) fail(422, 'A production MLLP contract requires an explicit private-network IP allowlist.', 'DEVICE_ALLOWLIST_REQUIRED');
+  if (c.mllp_port && !c.allowed_hosts.length) fail(422, 'An MLLP contract requires an explicit private-network IP allowlist.', 'DEVICE_ALLOWLIST_REQUIRED');
+  if(!c.service_user_id || !(await require('./facilities.cts').membership(c.service_user_id,c.facility_id,t)).length) fail(403,'The service account requires current facility membership.','FACILITY_MEMBERSHIP_REQUIRED');
   if (c.kind === 'analyzer') {
     const svc = await one(`SELECT 1 FROM hms_users u JOIN hms_lab_privileges p ON p.user_id = u.id WHERE u.id = :u AND u.is_active = 1 AND u.role = 'lab_technician'
-      AND p.privilege = 'ANALYZER' AND p.revoked_at IS NULL AND p.valid_from <= now() AND p.valid_until > now()`, { u: c.service_user_id }, t);
+      AND p.facility_id=:facility AND p.privilege = 'ANALYZER' AND p.revoked_at IS NULL AND p.valid_from <= now() AND p.valid_until > now()`, { u: c.service_user_id,facility:c.facility_id }, t);
     if (!svc) fail(422, 'The analyzer account needs a current ANALYZER grant in the laboratory before the contract can go live.', 'NO_ANALYZER_GRANT');
   }
-  await rows("UPDATE hms_device_contracts SET status = 'Retired', retired_at = now(), retired_by = :u WHERE system = :s AND status = 'Active'", { s: c.system, u: user.id }, t);
+  await rows("UPDATE hms_device_contracts SET status = 'Retired', retired_at = now(), retired_by = :u WHERE system = :s AND facility_id=:facility AND status = 'Active'", { s: c.system, u: user.id,facility:user.facilityId }, t);
   const key = `dev_${crypto.randomBytes(24).toString('base64url')}`;
   const row = await one("UPDATE hms_device_contracts SET status = 'Active', approved_by = :u, approved_at = now(), api_key_hash = :h WHERE id = :id RETURNING *", { id, u: user.id, h: keyHash(key) }, t);
   return { ...row, api_key_hash: undefined, device_key: key };
 }
-const retire = (id, user, t) => one("UPDATE hms_device_contracts SET status = 'Retired', retired_at = now(), retired_by = :u WHERE id = :id AND status = 'Active' RETURNING *", { id, u: user.id }, t);
+const retire = (id, user, t) => one("UPDATE hms_device_contracts SET status = 'Retired', retired_at = now(), retired_by = :u WHERE id = :id AND facility_id=:facility AND status = 'Active' RETURNING *", { id, u: user.id,facility:user.facilityId }, t);
 const list = (t) => rows(`SELECT c.id, c.system, c.version, c.kind, c.protocol, c.description, c.provenance, c.code_map, c.owner_role, c.mllp_port, c.allowed_hosts, c.status,
     c.created_at, cu.name AS created_by, au.name AS approved_by, c.approved_at, c.retired_at
-  FROM hms_device_contracts c JOIN hms_users cu ON cu.id = c.created_by LEFT JOIN hms_users au ON au.id = c.approved_by ORDER BY c.system, c.version DESC`, {}, t);
+  FROM hms_device_contracts c JOIN hms_users cu ON cu.id = c.created_by LEFT JOIN hms_users au ON au.id = c.approved_by WHERE c.facility_id=hms_current_facility() ORDER BY c.system, c.version DESC`, {}, t);
 
 // ── Receiving ───────────────────────────────────────────────
 async function contractFor(system, { key, host } = {}, t) {
-  const c = await one("SELECT * FROM hms_device_contracts WHERE system = :s AND status = 'Active'", { s: system }, t);
-  if (!c) fail(404, `No active contract for ${system}.`, 'NO_CONTRACT');
-  if (key !== undefined) {
-    const a = Buffer.from(keyHash(key)); const b = Buffer.from(c.api_key_hash);
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) fail(401, 'Device key refused.', 'BAD_KEY');
-  }
-  if (host !== undefined && c.allowed_hosts.length && !c.allowed_hosts.includes(host)) fail(401, `Host ${host} is not allowed for ${system}.`, 'HOST_REFUSED');
-  return c;
+  return DeviceContext.contractFor(system,{key,host},t);
 }
 
 // One analyzer result -> the Phase 4 contract body, or a reason it cannot be.
@@ -95,7 +72,7 @@ async function toAnalyzerBody(c, msgId, r, t) {
   const map = c.code_map[r.code];
   if (!map) return { problem: `test code ${r.code} is not in contract ${c.system} v${c.version}` };
   if (!r.specimen) return { problem: `result ${r.code} has no specimen identifier` };
-  const s = await one('SELECT * FROM hms_lab_specimens WHERE accession = :a', { a: r.specimen }, t);
+  const s = await one('SELECT * FROM hms_lab_specimens WHERE accession = :a AND facility_id=:facility', { a: r.specimen,facility:c.facility_id }, t);
   if (!s) return { problem: `specimen ${r.specimen} is not known` };
   if (r.patientIdentifier) {
     const p = await one('SELECT id, uhid FROM hms_patients WHERE id = :id', { id: s.patient_id }, t);
@@ -114,15 +91,22 @@ async function toAnalyzerBody(c, msgId, r, t) {
 // acknowledgement format. Re-sending the same message gets the same answer.
 async function receive(system, raw, auth, t) {
   const c = await contractFor(system, auth, t);
+  return DeviceContext.withBinding(t,c,user=>receiveBound(c,raw,user,t));
+}
+async function receiveBound(c,raw,user,t) {
+  const system=c.system;
   let parsed; let results;
   try {
     parsed = c.protocol === 'hl7v2' ? M.parseHl7(raw) : M.parseAstm(raw);
+    if(c.kind==='analyzer'&&c.protocol==='hl7v2'&&parsed.type!=='ORU^R01')throw new Error('The approved analyzer adapter requires an ORU^R01 result message.');
     results = c.protocol === 'hl7v2' ? M.hl7Results(parsed) : M.astmResults(parsed);
+    const limit=Math.max(1,Math.min(1000,Number(process.env.DEVICE_MAX_RESULTS)||100));
+    if(results.length>limit)throw new Error(`Message exceeds the configured ${limit}-result limit; split the batch before retrying.`);
   } catch (err) {
-    const id = `unparsed:${crypto.createHash('sha256').update(String(raw)).digest('hex').slice(0, 32)}`;
-    const { message } = await I.receive({ system, type: 'unparsed', version: `${c.protocol}/v${c.version}`, externalId: id, raw }, t);
-    await I.settle(message.id, 'Rejected', { error: err.message }, t);
-    return { status: 'Rejected', ack: c.protocol === 'hl7v2' ? M.hl7Ack(null, 'AR', err.message) : { ack: 'NAK', reason: err.message } };
+    const id = parsed?.controlId || `unparsed:${crypto.createHash('sha256').update(String(raw)).digest('hex').slice(0, 32)}`;
+    const { message,duplicate } = await I.receive({ system, type: 'unparsed', version: `${c.protocol}/v${c.version}`, externalId: id, raw }, t);
+    if(!duplicate)await I.settle(message.id, 'Rejected', { error: err.message }, t);
+    return { status: 'Rejected',duplicate, ack: c.protocol === 'hl7v2' ? M.hl7Ack(parsed||null, 'AR', message.last_error||err.message) : { ack: 'NAK', reason: message.last_error||err.message } };
   }
   const msgId = parsed.controlId || `sha:${crypto.createHash('sha256').update(String(raw)).digest('hex').slice(0, 32)}`;
   const { message, duplicate } = await I.receive({ system, type: parsed.type || 'astm', version: `${c.protocol}/v${c.version}`, externalId: msgId, raw }, t);
@@ -132,19 +116,15 @@ async function receive(system, raw, auth, t) {
   if (c.kind !== 'analyzer') {
     problems.push(`${c.kind} messages are kept for a person to act on`);
   } else {
-    const svc = await one('SELECT * FROM hms_users WHERE id = :id', { id: c.service_user_id }, t);
-    if (!svc || Number(svc.is_active) !== 1) fail(403, 'The device account is not active.', 'DEVICE_ACCOUNT_INACTIVE');
-    await asDevice(t, svc.id, async () => {
       for (const r of results) {
         const { body, problem } = await toAnalyzerBody(c, msgId, r, t);
         if (problem) { problems.push(problem); continue; }
         // A savepoint per result: a refused result rolls back alone.
         try {
-          const outcome = await sequelize.transaction((sp) => Analyzer.ingest(body, svc, sp));
+          const outcome = await sequelize.transaction((sp) => Analyzer.ingest(body, user, sp));
           if (!outcome?.result?.id) problems.push(`${r.code}: result held for review (${outcome?.failure_code || 'RECONCILIATION_REQUIRED'}; reconciliation ${outcome?.reconciliation_id || 'unknown'})`);
         } catch (err) { problems.push(`${r.code}: ${err.message}`); }
       }
-    });
     if (!results.length) problems.push('the message has no results');
   }
   if (problems.length) {
@@ -164,7 +144,7 @@ let listenerWork = Promise.resolve();
 const messageLimit = () => Math.max(1024, Math.min(16 * 1024 * 1024, Number(process.env.DEVICE_MAX_MESSAGE_BYTES) || 2 * 1024 * 1024));
 async function reconcileMllp() {
   const active = process.env.DEVICE_MLLP === 'on'
-    ? await rows("SELECT id, system, mllp_port FROM hms_device_contracts WHERE status = 'Active' AND protocol = 'hl7v2' AND mllp_port IS NOT NULL", {}) : [];
+    ? await rows("SELECT * FROM hms_device_listener_registry()", {}) : [];
   const wanted = new Map(active.map((c) => [Number(c.mllp_port), c]));
   for (const [port, listener] of listeners) {
     if (wanted.get(port)?.id === listener.contractId) continue;

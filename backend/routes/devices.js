@@ -50,7 +50,7 @@ const inbound = express.Router();
 inbound.post('/:system', express.text({ type: ['text/*', 'application/hl7-v2', 'x-application/hl7-v2+er7', 'application/edi-hl7'], limit: '2mb' }), async (req, res) => {
   try {
     const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || '');
-    const r = await sequelize.transaction((t) => D.receive(req.params.system, raw, { key: req.get('x-device-key') || '' }, t));
+    const r = await sequelize.transaction((t) => D.receive(req.params.system, raw, { key: req.get('x-device-key') || '',host:req.socket.remoteAddress?.replace(/^::ffff:/,'') }, t));
     if (typeof r.ack === 'string') return res.status(200).type('x-application/hl7-v2+er7').send(r.ack);
     return res.status(200).json(r.ack);
   } catch (err) {

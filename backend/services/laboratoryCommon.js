@@ -72,7 +72,10 @@ async function scope(user, patientId, tx) {
     );
 }
 async function privilege(user, name, tx) {
-  await require('./facilities.cts').requirePrivilege(user, name === 'RELEASE' ? 'LAB_RELEASE' : 'LAB_PROCESS', tx);
+  const F=require('./facilities.cts');
+  if(name==='ANALYZER') {
+    check(user.facilityId && (await F.membership(user.id,user.facilityId,tx)).length,'FACILITY_MEMBERSHIP_REQUIRED','Approved analyzer processing requires current service-account facility membership.',403);
+  } else await F.requirePrivilege(user, name === 'RELEASE' ? 'LAB_RELEASE' : 'LAB_PROCESS', tx);
   const u = await one(
     "SELECT id,role,is_active FROM hms_users WHERE id= :id FOR SHARE",
     { id: user.id },
@@ -84,6 +87,7 @@ async function privilege(user, name, tx) {
     "An active account is required.",
     403,
   );
+  if(name==='ANALYZER')check(u.role==='lab_technician','DEVICE_ACCOUNT_ROLE_REQUIRED','Analyzer processing requires an approved laboratory service account.',403);
   if (["RELEASE", "CONTENT"].includes(name) && u.role === "doctor") {
     const c = await one(
       "SELECT practitioner_credentials_expired(:id) AS expired",
@@ -99,9 +103,9 @@ async function privilege(user, name, tx) {
   }
   check(
     await one(
-      `SELECT id FROM hms_lab_privileges WHERE user_id= :id AND privilege= :name AND revoked_at IS NULL
+      `SELECT id FROM hms_lab_privileges WHERE user_id= :id AND facility_id=:facility AND privilege= :name AND revoked_at IS NULL
  AND valid_from<=now() AND valid_until>now() FOR SHARE`,
-      { id: user.id, name },
+      { id: user.id, name,facility:user.facilityId },
       tx,
     ),
     "CLINICAL_PRIVILEGE_REQUIRED",

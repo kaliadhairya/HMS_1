@@ -5,14 +5,15 @@
 const crypto = require('crypto');
 const net = require('net');
 const { API, api, apiLogin, sql, runner, assert, sleep, inCare, requireThrowawayDb } = require('./helpers');
+const {clinicalFixture}=require('./clinicalFixtures');
 
 requireThrowawayDb();
 const tag = crypto.randomUUID().slice(0, 6);
 const tokens = {};
 const req = (method, path, role, body, revision) => api(method, path, { token: tokens[role], body, headers: revision !== undefined ? { 'if-match': String(revision) } : {} });
 const ok = (r, n = 200) => { assert(r.status === n, `${r.status}: ${JSON.stringify(r.data).slice(0, 300)}`); return r.data.data; };
-async function device(system, key, text) {
-  const r = await fetch(`${API}/device-messages/${system}`, { method: 'POST', headers: { 'content-type': 'x-application/hl7-v2+er7', 'x-device-key': key }, body: text });
+async function device(system, key, text,mediaType='x-application/hl7-v2+er7') {
+  const r = await fetch(`${API}/device-messages/${system}`, { method: 'POST', headers: { 'content-type': mediaType, 'x-device-key': key }, body: text });
   return { status: r.status, text: await r.text() };
 }
 const msa = (ack) => ack.split('\r').find((l) => l.startsWith('MSA'))?.split('|') || [];
@@ -22,16 +23,19 @@ const oru = ({ control, accession, code = `GLU${tag}`, value = '5.4', patient = 
 
 (async () => {
   const { step, done } = runner('Device interfaces');
-  let pid, test, spec, key, system, labId, eid;
+  let pid, test, spec, key, system, labId, machineId, eid;
 
   await step('Set up a coded test, an order and a received specimen; the analyzer account has an ANALYZER grant', async () => {
     for (const role of ['doctor', 'lab_technician', 'super_admin', 'admin']) tokens[role] = await apiLogin(role);
+    await clinicalFixture('doctor',['PRESCRIBE']);
+    await clinicalFixture('lab_technician',['LAB_PROCESS']);
     const [{ id: uid }] = await sql("SELECT id FROM hms_users WHERE username = 'doctor'");
     [{ id: labId }] = await sql("SELECT id FROM hms_users WHERE username = 'labtech'");
+    [{id:machineId}]=await sql("INSERT INTO hms_users(username,password,name,role) VALUES($1,$2,'Synthetic nonclinical analyzer service account','lab_technician') RETURNING id",['devsvc_'+tag,crypto.randomBytes(32).toString('hex')]);
     [{ id: pid }] = await sql("INSERT INTO hms_patients (name, uhid, patienttype, age, gender, opdindoor, testdate) VALUES ($1, $2, 'other', 30, 'Male', 'OPD', CURRENT_DATE) RETURNING id", [`Synthetic device ${tag}`, `DEV-${tag}`]);
     await inCare(pid);
     [{ id: eid }] = await sql("INSERT INTO hms_encounters (id, patient_id, doctor_id, status) VALUES (nextval('hms_encounters_seq'), $1, $2, 'Draft') RETURNING id", [pid, uid]);
-    for (const p of ['CONTENT', 'ANALYZER']) ok(await req('POST', '/laboratory/privileges', 'super_admin', { user_id: labId, privilege: p, reason: 'Synthetic device fixture', valid_from: new Date(Date.now() - 1000).toISOString(), valid_until: new Date(Date.now() + 864e5).toISOString() }), 201);
+    for (const [p,userId] of [['CONTENT',labId],['ANALYZER',machineId]]) ok(await req('POST', '/laboratory/privileges', 'super_admin', { user_id: userId, privilege: p, reason: 'Synthetic device fixture', valid_from: new Date(Date.now() - 1000).toISOString(), valid_until: new Date(Date.now() + 864e5).toISOString() }), 201);
     test = ok(await req('POST', '/laboratory/catalogue', 'lab_technician', { code_system: 'TEST-DEV', code: `GLU-${tag}`, kind: 'TEST', name: `Synthetic glucose ${tag}`, section: 'TEST', unit: 'TEST-U', method: 'TEST-METHOD',
       provenance: 'Synthetic device fixture only', effective_at: new Date(Date.now() - 1000).toISOString(), requirements: [{ specimen_type: 'TEST-BLOOD', container: 'TEST-TUBE' }] }), 201);
     const order = ok(await req('POST', '/laboratory/orders', 'doctor', { patient_id: pid, encounter_id: eid, test_version_ids: [test.id] }), 201);
@@ -42,16 +46,21 @@ const oru = ({ control, accession, code = `GLU${tag}`, value = '5.4', patient = 
 
   await step('A contract maps device codes only to catalogue tests and needs a second person to approve; the key is shown once', async () => {
     system = `analyzer:synth-${tag}`;
-    const bad = await req('POST', '/devices', 'lab_technician', { system, protocol: 'hl7v2', description: 'Synthetic analyzer', provenance: 'Synthetic interface manual v1', codeMap: { X: { lab_code_system: 'TEST-DEV', lab_code: 'NOPE', method: 'M' } }, serviceUserId: labId });
+    const bad = await req('POST', '/devices', 'lab_technician', { system, protocol: 'hl7v2', description: 'Synthetic analyzer', provenance: 'Synthetic interface manual v1', codeMap: { X: { lab_code_system: 'TEST-DEV', lab_code: 'NOPE', method: 'M' } }, serviceUserId: machineId });
     assert(bad.status === 422, `unknown catalogue code accepted: ${bad.status}`);
-    const draft = ok(await req('POST', '/devices', 'lab_technician', { system, protocol: 'hl7v2', description: 'Synthetic analyzer', provenance: 'Synthetic interface manual v1', serviceUserId: labId, mllpPort: 25000 + (parseInt(tag, 16) % 1000),
-      codeMap: { [`GLU${tag}`]: { lab_code_system: 'TEST-DEV', lab_code: `GLU-${tag}`, method: 'TEST-METHOD' } } }), 201);
+    const draft = ok(await req('POST', '/devices', 'lab_technician', { system, protocol: 'hl7v2', description: 'Synthetic analyzer', provenance: 'Synthetic interface manual v1', serviceUserId: machineId, mllpPort: 25000 + (parseInt(tag, 16) % 1000),
+      allowedHosts:['127.0.0.1'],codeMap: { [`GLU${tag}`]: { lab_code_system: 'TEST-DEV', lab_code: `GLU-${tag}`, method: 'TEST-METHOD' } } }), 201);
     assert((await req('POST', `/devices/${draft.id}/approve`, 'lab_technician')).status === 403, 'author approved their own contract');
-    const approved = ok(await req('POST', `/devices/${draft.id}/approve`, 'admin'));
+    const approvalKey=crypto.randomUUID();
+    const approved = ok(await api('POST',`/devices/${draft.id}/approve`,{token:tokens.admin,body:{},headers:{'idempotency-key':approvalKey}}));
     key = approved.device_key;
     assert(key && approved.status === 'Active', 'no device key');
     const listed = ok(await req('GET', '/devices', 'admin'));
     assert(!JSON.stringify(listed).includes(key) && !JSON.stringify(listed).includes('api_key_hash'), 'the key or its hash is listed');
+    const replay=await api('POST',`/devices/${draft.id}/approve`,{token:tokens.admin,body:{},headers:{'idempotency-key':approvalKey}});
+    assert(replay.status===409&&replay.data.code==='ONE_TIME_SECRET_ALREADY_ISSUED','Device key was replayed');
+    const [receipt]=await sql('SELECT response_body FROM hms_idempotency_keys WHERE idempotency_key=$1',[approvalKey]);
+    assert(!JSON.stringify(receipt.response_body).includes(key),'Plaintext device key persisted in receipt');
     let edited = false;
     try { await sql("UPDATE hms_device_contracts SET code_map = '{}' WHERE id = $1", [draft.id]); } catch { edited = true; }
     assert(edited, 'an approved contract was changed');
@@ -81,7 +90,12 @@ const oru = ({ control, accession, code = `GLU${tag}`, value = '5.4', patient = 
 
   await step('Analyzer result changes are attributed to the device account on the existing transaction connection', async () => {
     const audit = await sql("SELECT a.actor_user_id FROM audit.row_changes a JOIN hms_lab_result_versions r ON a.row_id = r.id::text WHERE a.table_name = 'hms_lab_result_versions' AND a.operation = 'INSERT' AND r.specimen_id = $1", [spec.id]);
-    assert(audit.length === 1 && Number(audit[0].actor_user_id) === labId, `device audit attribution ${JSON.stringify(audit)}`);
+    assert(audit.length === 1 && Number(audit[0].actor_user_id) === machineId, `device audit attribution ${JSON.stringify(audit)}`);
+    const [provenance]=await sql(`SELECT m.accepted_by_user_id,m.device_contract_id,m.facility_id,c.facility_id contract_facility
+      FROM hms_interface_messages m JOIN hms_device_contracts c ON c.id=m.device_contract_id WHERE m.system=$1 AND m.external_id=$2`,[system,`C1-${tag}`]);
+    assert(provenance.accepted_by_user_id===machineId&&provenance.facility_id===provenance.contract_facility,'Intake lacks its immutable service/contract/facility provenance');
+    const [{n}]=await sql('SELECT count(*)::int n FROM hms_practitioner_credentials x JOIN hms_practitioners p ON p.id=x.practitioner_id WHERE p.user_id=$1',[machineId]);
+    assert(n===0,'Machine account acquired fabricated professional credentials');
   });
 
   await step('A held analyzer result is acknowledged AE and reaches the interface worklist without overwriting an existing result', async () => {
@@ -108,6 +122,27 @@ const oru = ({ control, accession, code = `GLU${tag}`, value = '5.4', patient = 
     assert(r.status === 200 && msa(r.text)[1] === 'AA', `multigroup ack ${r.status} ${r.text}`);
     const [{ n }] = await sql('SELECT count(*)::int AS n FROM hms_lab_result_versions WHERE specimen_id = ANY($1::uuid[])', [specimens.map((s) => s.id)]);
     assert(n === 2, `${n} multigroup results, expected 2`);
+  });
+
+  await step('ASTM order groups translate unchanged to contract v1, remain provisional and deduplicate',async()=>{
+    const [requirement]=await sql('SELECT id FROM hms_lab_requirements WHERE test_version_id=$1',[test.id]);
+    const specimens=[];
+    for(let i=0;i<2;i++){
+      const order=ok(await req('POST','/laboratory/orders','doctor',{patient_id:pid,encounter_id:eid,test_version_ids:[test.id]}),201);
+      let sample=ok(await req('POST','/laboratory/specimens','lab_technician',{patient_id:pid,specimen_type:'TEST-BLOOD',container:'TEST-TUBE',location:'TEST',links:[{item_id:order.items[0].id,requirement_id:requirement.id}]}),201);
+      for(const state of ['COLLECTED','RECEIVED'])sample=ok(await req('POST',`/laboratory/specimens/${sample.id}/transition`,'lab_technician',{patient_id:pid,accession:sample.accession,state,location:'TEST',reason:'Synthetic ASTM custody'},sample.revision));
+      specimens.push(sample);
+    }
+    const astmSystem=`analyzer:astm-${tag}`,draft=ok(await req('POST','/devices','lab_technician',{system:astmSystem,protocol:'astm',description:'Synthetic ASTM analyzer',provenance:'Synthetic ASTM manual fixture',serviceUserId:machineId,codeMap:{[`GLU${tag}`]:{lab_code_system:'TEST-DEV',lab_code:`GLU-${tag}`,method:'TEST-METHOD'}}}),201);
+    const approved=ok(await req('POST',`/devices/${draft.id}/approve`,'admin'));
+    const text=[`H|\\^&|ASTM-${tag}||SYNTHETIC-ASTM`,`P|1||DEV-${tag}`,
+      ...specimens.flatMap((s,i)=>[`O|${i+1}|${s.accession}||^^^GLU${tag}`,`R|1|^^^GLU${tag}|${5+i}.2|TEST-U||N||F||||20261015110000|SYNTHETIC-ASTM`]),'L|1|N'].join('\r');
+    const first=await device(astmSystem,approved.device_key,text,'text/plain');assert(first.status===200&&JSON.parse(first.text).status==='accepted','ASTM intake not accepted');
+    const repeat=await device(astmSystem,approved.device_key,text,'text/plain');assert(repeat.status===200&&JSON.parse(repeat.text).duplicate===true,'ASTM repeat did not preserve its original outcome');
+    const rows=await sql('SELECT r.source,r.id,i.lab_state FROM hms_lab_result_versions r JOIN hms_investigation_order_items i ON i.id=r.item_id WHERE r.specimen_id=ANY($1::uuid[])',[specimens.map(s=>s.id)]);
+    assert(rows.length===2&&new Set(rows.map(r=>r.id)).size===2&&rows.every(r=>r.source==='ANALYZER'&&r.lab_state==='ENTERED'),'ASTM group results were duplicated or released automatically');
+    const [m]=await sql('SELECT contract_version,accepted_by_user_id FROM hms_interface_messages WHERE system=$1 AND external_id=$2',[astmSystem,`ASTM-${tag}`]);assert(m.contract_version==='astm/v1'&&m.accepted_by_user_id===machineId,'ASTM provenance mismatch');
+    ok(await req('POST',`/devices/${draft.id}/retire`,'admin'));
   });
 
   await step('Unmapped codes, unknown specimens and a different patient are held for a person, never guessed', async () => {
@@ -140,7 +175,7 @@ const oru = ({ control, accession, code = `GLU${tag}`, value = '5.4', patient = 
 
   await step('Other device kinds are kept for a person to act on; a retired contract receives nothing', async () => {
     const bedside = `bedside:monitor-${tag}`;
-    const d = ok(await req('POST', '/devices', 'admin', { system: bedside, protocol: 'hl7v2', description: 'Synthetic bedside monitor', provenance: 'Synthetic manual v2', ownerRole: 'nurse' }), 201);
+    const d = ok(await req('POST', '/devices', 'admin', { system: bedside, protocol: 'hl7v2', description: 'Synthetic bedside monitor', provenance: 'Synthetic manual v2', ownerRole: 'nurse',serviceUserId:machineId }), 201);
     const b = ok(await req('POST', `/devices/${d.id}/approve`, 'super_admin'));
     const r = await device(bedside, b.device_key, oru({ control: `B1-${tag}`, accession: 'NA' }));
     assert(msa(r.text)[1] === 'AA', `bedside ack ${r.text}`);
@@ -153,8 +188,8 @@ const oru = ({ control, accession, code = `GLU${tag}`, value = '5.4', patient = 
     const [previous] = await sql("SELECT id, mllp_port FROM hms_device_contracts WHERE system=$1 AND status='Active'", [system]);
     ok(await req('POST', `/devices/${previous.id}/retire`, 'admin'));
     const replacement = `analyzer:rebind-${tag}`;
-    const draft = ok(await req('POST', '/devices', 'lab_technician', { system: replacement, protocol: 'hl7v2', description: 'Synthetic port replacement', provenance: 'Synthetic interface replacement manual', serviceUserId: labId, mllpPort: previous.mllp_port,
-      codeMap: { [`GLU${tag}`]: { lab_code_system: 'TEST-DEV', lab_code: `GLU-${tag}`, method: 'TEST-METHOD' } } }), 201);
+    const draft = ok(await req('POST', '/devices', 'lab_technician', { system: replacement, protocol: 'hl7v2', description: 'Synthetic port replacement', provenance: 'Synthetic interface replacement manual', serviceUserId: machineId, mllpPort: previous.mllp_port,
+      allowedHosts:['127.0.0.1'],codeMap: { [`GLU${tag}`]: { lab_code_system: 'TEST-DEV', lab_code: `GLU-${tag}`, method: 'TEST-METHOD' } } }), 201);
     ok(await req('POST', `/devices/${draft.id}/approve`, 'admin'));
     const control = `REBIND-${tag}`;
     const response = await new Promise((resolve, reject) => {

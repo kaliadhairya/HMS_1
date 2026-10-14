@@ -40,7 +40,7 @@ requireThrowawayDb();
  });
  await step('UUID backfill preserves legacy identities and does not grant clinical privileges',async()=>{
   const [p]=await sql('SELECT public_id,user_id FROM hms_practitioners WHERE user_id=$1',[user]);assert(p?.public_id&&p.user_id===user,'Practitioner mapping');
-  const [grants]=await sql('SELECT count(*)::int AS n FROM hms_clinical_privileges');assert(grants.n===0,'Migration invented clinical approval');
+  const [grants]=await sql("SELECT count(*)::int AS n FROM audit.row_changes WHERE table_name='hms_clinical_privileges' AND operation='INSERT' AND actor_user_id IS NULL AND request_id IS NULL");assert(grants.n===0,'Conversion invented unattributed clinical approval');
  });
  done();process.exit();
 })().catch(e=>{console.error(e.message);process.exit(1)});

@@ -30,10 +30,11 @@ async function enqueue({ system, type, version, externalId = crypto.randomUUID()
 
 // Records an incoming message once. Returns { message, duplicate }.
 async function receive({ system, type, version, externalId, raw, payload = null, correlationId = null, patientId = null }, t) {
-  const inserted = await one(`INSERT INTO hms_interface_messages (direction, system, message_type, contract_version, external_id, correlation_id, raw, payload, status, patient_id)
-    VALUES ('in', :system, :type, :version, :externalId, :correlationId, :raw, CAST(:payload AS jsonb), 'Received', :patientId)
+  const context=require('../utils/auditContext').storage.getStore()||{};
+  const inserted = await one(`INSERT INTO hms_interface_messages (direction, system, message_type, contract_version, external_id, correlation_id, raw, payload, status, patient_id,accepted_by_user_id,device_contract_id)
+    VALUES ('in', :system, :type, :version, :externalId, :correlationId, :raw, CAST(:payload AS jsonb), 'Received', :patientId,:acceptedBy,:deviceContract)
     ON CONFLICT (system, direction, external_id) DO NOTHING RETURNING *`,
-  { system, type, version: String(version), externalId: String(externalId), correlationId, raw: String(raw), payload: JSON.stringify(payload), patientId }, t);
+  { system, type, version: String(version), externalId: String(externalId), correlationId, raw: String(raw), payload: JSON.stringify(payload), patientId,acceptedBy:context.userId||null,deviceContract:context.deviceContractId||null }, t);
   if (inserted) return { message: inserted, duplicate: false };
   const existing = await one("SELECT * FROM hms_interface_messages WHERE system = :system AND direction = 'in' AND external_id = :externalId", { system, externalId: String(externalId) }, t);
   if (existing.raw !== String(raw)) fail(409, `Message ${externalId} from ${system} was already received with different content.`, 'DUPLICATE_ID_DIFFERENT_CONTENT');

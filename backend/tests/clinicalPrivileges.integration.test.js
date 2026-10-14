@@ -10,6 +10,8 @@ test('facility clinical grants require independent credentials, exact revisions 
   const users=await q("SELECT id,role FROM hms_users WHERE username IN ('doctor','admin','superadmin')");
   const doctor={...users.find(u=>u.role==='doctor'),facilityId},admin={...users.find(u=>u.role==='admin'),facilityId},verifier=users.find(u=>u.role==='super_admin');
   const [p]=await q('SELECT id,public_id FROM hms_practitioners WHERE user_id=:id',{id:doctor.id});
+  await q(`UPDATE hms_practitioner_roles SET revoked_at=now(),revoked_by_user_id=:actor,revocation_reason='Synthetic privilege acceptance isolation'
+   WHERE practitioner_id=:p AND revoked_at IS NULL`,{actor:admin.id,p:p.id});
   await q("UPDATE hms_practitioner_credentials SET ended_by=:actor,ended_reason='Synthetic privilege acceptance isolation' WHERE practitioner_id=:p AND ended_by IS NULL",{actor:admin.id,p:p.id});
   const now=Date.now(),validFrom=new Date(now-3600000).toISOString(),validUntil=new Date(now+3600000).toISOString();
   const input={practitionerId:p.public_id,role:'doctor',validFrom,validUntil,reason:'Synthetic privilege acceptance fixture'};

@@ -105,8 +105,8 @@ async function idempotencyGuard(req, res, next) {
       if (status >= 500) { await res.locals.abortCommand(); return; }
       if (status >= 400) await query('ROLLBACK TO SAVEPOINT clinical_command');
       if (res.locals.responseBody === undefined) throw new Error('Idempotent commands must return a JSON response');
-      const secretIssued = path === '/api/security/api-keys' && req.method === 'POST' && status < 400;
-      const receiptBody = secretIssued ? { success: false, code: 'ONE_TIME_SECRET_ALREADY_ISSUED', message: 'This key was already issued. Its secret is shown once; revoke it and create a replacement if the response was lost.', data: { ...res.locals.responseBody.data, key: undefined } } : res.locals.responseBody;
+      const secretIssued = req.method === 'POST' && status < 400 && (path === '/api/security/api-keys' || /^\/api\/devices\/[^/]+\/approve$/.test(path));
+      const receiptBody = secretIssued ? { success: false, code: 'ONE_TIME_SECRET_ALREADY_ISSUED', message: 'This key was already issued. Its secret is shown once; revoke it and create a replacement if the response was lost.', data: { ...res.locals.responseBody.data, key: undefined,device_key:undefined,api_key_hash:undefined } } : res.locals.responseBody;
       await query(`UPDATE hms_idempotency_keys SET state = 'completed', response_status = :status,
         response_body = CAST(:body AS jsonb), finished_at = now() WHERE user_id = :userId AND idempotency_key = :key`, {
         replacements: { ...replacements, status: secretIssued ? 409 : status, body: JSON.stringify(receiptBody) },
