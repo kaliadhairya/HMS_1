@@ -77,6 +77,8 @@ const run = async (token) => { const r = await call('POST', '/finance/reconcilia
     if (loc && b) assert(kinds('stock_mismatch', `${b.batch_id}:${loc.id}`), 'stock off its journal not reported');
     const open = await sql("SELECT kind FROM hms_recon_exceptions WHERE status = 'Open' AND kind IN ('return_uncredited', 'charge_without_dispense', 'stock_mismatch')");
     assert(open.length >= 2, 'exceptions not opened for follow-up');
+    // Leave stock as the other suites expect it: the shelf existed only for this check.
+    if (loc && b) await sql('DELETE FROM hms_med_balances WHERE location_id = $1', [loc.id]);
   });
 
   done();

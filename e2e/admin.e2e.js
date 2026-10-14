@@ -105,7 +105,8 @@ async function settle(label, readUi, readDb, { tries = 4, reload } = {}) {
   throw new Error(`${label}: screen shows ${ui}, database says ${db}`);
 }
 
-const ymd = (d) => d.toISOString().slice(0, 10);
+// The hospital's calendar date (the screens list days in hospital time, not UTC).
+const ymd = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: process.env.FACILITY_TZ || 'Asia/Kolkata' }).format(d);
 
 // ── test ─────────────────────────────────────────────────────────────────────
 (async () => {

@@ -379,7 +379,7 @@ router.get('/pharmacist', restrictTo('pharmacist', 'super_admin', 'admin'), asyn
 
     // Top 5 low stock items
     const [lowItems] = await sequelize.query(`
-      SELECT m.GENERIC_NAME, COALESCE(SUM(b.QUANTITY), 0) as TOTAL_QTY
+      SELECT m.ID, m.GENERIC_NAME, COALESCE(SUM(b.QUANTITY), 0) as TOTAL_QTY
       FROM HMS_MEDICINES m
       LEFT JOIN HMS_MEDICINE_BATCHES b ON b.MEDICINE_ID = m.ID
       WHERE m.IS_ACTIVE = 1
