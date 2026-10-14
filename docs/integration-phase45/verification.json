@@ -1,0 +1,800 @@
+{
+  "recorded_at": "2026-10-14T05:58:52.482005+00:00",
+  "tested_commit": "7f9c2eb19682679f3114172dab41703f0901cd29",
+  "branch": "integration/phase4-phase5",
+  "source_commits": {
+    "phase4": "3eb076e",
+    "phase5": "36a1fac"
+  },
+  "shared_deployment": false,
+  "archive_directory": "/home/kalmaf/hms-verification/phase45-20261014T055852Z-7f9c2eb",
+  "full_regression": {
+    "started_at": "2026-10-14T05:49:44.380Z",
+    "database": "hms_p4_p5_acceptance",
+    "branch": "integration/phase4-phase5",
+    "suites": [
+      {
+        "name": "backend-unit",
+        "exit_code": 0,
+        "duration_ms": 155,
+        "log_file": "backend-unit.log"
+      },
+      {
+        "name": "phase1-foundation",
+        "exit_code": 0,
+        "duration_ms": 3496,
+        "log_file": "phase1-foundation.log"
+      },
+      {
+        "name": "laboratory",
+        "exit_code": 0,
+        "duration_ms": 3593,
+        "log_file": "laboratory.log",
+        "passed": 21,
+        "total": 21
+      },
+      {
+        "name": "laboratoryGuards",
+        "exit_code": 0,
+        "duration_ms": 1608,
+        "log_file": "laboratoryGuards.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "laboratoryWorker",
+        "exit_code": 0,
+        "duration_ms": 1590,
+        "log_file": "laboratoryWorker.log",
+        "passed": 3,
+        "total": 3
+      },
+      {
+        "name": "laboratoryFrontend",
+        "exit_code": 0,
+        "duration_ms": 9897,
+        "log_file": "laboratoryFrontend.log",
+        "passed": 6,
+        "total": 6
+      },
+      {
+        "name": "medication",
+        "exit_code": 0,
+        "duration_ms": 64186,
+        "log_file": "medication.log",
+        "passed": 20,
+        "total": 20
+      },
+      {
+        "name": "medicationGuards",
+        "exit_code": 0,
+        "duration_ms": 1694,
+        "log_file": "medicationGuards.log",
+        "passed": 9,
+        "total": 9
+      },
+      {
+        "name": "medicationFrontend",
+        "exit_code": 0,
+        "duration_ms": 16763,
+        "log_file": "medicationFrontend.log",
+        "passed": 6,
+        "total": 6
+      },
+      {
+        "name": "pharmacy",
+        "exit_code": 0,
+        "duration_ms": 19667,
+        "log_file": "pharmacy.log",
+        "passed": 18,
+        "total": 18
+      },
+      {
+        "name": "opd",
+        "exit_code": 0,
+        "duration_ms": 21745,
+        "log_file": "opd.log",
+        "passed": 20,
+        "total": 20
+      },
+      {
+        "name": "lab",
+        "exit_code": 0,
+        "duration_ms": 6398,
+        "log_file": "lab.log",
+        "passed": 10,
+        "total": 10
+      },
+      {
+        "name": "ipd",
+        "exit_code": 0,
+        "duration_ms": 29512,
+        "log_file": "ipd.log",
+        "passed": 13,
+        "total": 13
+      },
+      {
+        "name": "admin",
+        "exit_code": 0,
+        "duration_ms": 35087,
+        "log_file": "admin.log",
+        "passed": 28,
+        "total": 28
+      },
+      {
+        "name": "authorization",
+        "exit_code": 0,
+        "duration_ms": 3803,
+        "log_file": "authorization.log",
+        "passed": 5,
+        "total": 5
+      },
+      {
+        "name": "sessions",
+        "exit_code": 0,
+        "duration_ms": 4744,
+        "log_file": "sessions.log",
+        "passed": 7,
+        "total": 7
+      },
+      {
+        "name": "idempotency",
+        "exit_code": 0,
+        "duration_ms": 1488,
+        "log_file": "idempotency.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "durability",
+        "exit_code": 0,
+        "duration_ms": 8519,
+        "log_file": "durability.log",
+        "passed": 11,
+        "total": 11
+      },
+      {
+        "name": "frontendReliability",
+        "exit_code": 0,
+        "duration_ms": 3700,
+        "log_file": "frontendReliability.log",
+        "passed": 2,
+        "total": 2
+      },
+      {
+        "name": "ipdDrafts",
+        "exit_code": 0,
+        "duration_ms": 1053,
+        "log_file": "ipdDrafts.log",
+        "passed": 3,
+        "total": 3
+      },
+      {
+        "name": "patientIdentity",
+        "exit_code": 0,
+        "duration_ms": 3957,
+        "log_file": "patientIdentity.log",
+        "passed": 9,
+        "total": 9
+      },
+      {
+        "name": "patientMerge",
+        "exit_code": 0,
+        "duration_ms": 3706,
+        "log_file": "patientMerge.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "practitioners",
+        "exit_code": 0,
+        "duration_ms": 4101,
+        "log_file": "practitioners.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "scheduling",
+        "exit_code": 0,
+        "duration_ms": 1445,
+        "log_file": "scheduling.log",
+        "passed": 6,
+        "total": 6
+      },
+      {
+        "name": "careTeam",
+        "exit_code": 0,
+        "duration_ms": 2539,
+        "log_file": "careTeam.log",
+        "passed": 10,
+        "total": 10
+      },
+      {
+        "name": "triage",
+        "exit_code": 0,
+        "duration_ms": 1615,
+        "log_file": "triage.log",
+        "passed": 7,
+        "total": 7
+      },
+      {
+        "name": "clinicalDocuments",
+        "exit_code": 0,
+        "duration_ms": 1329,
+        "log_file": "clinicalDocuments.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "adt",
+        "exit_code": 0,
+        "duration_ms": 1661,
+        "log_file": "adt.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "referrals",
+        "exit_code": 0,
+        "duration_ms": 1874,
+        "log_file": "referrals.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "finance",
+        "exit_code": 0,
+        "duration_ms": 4225,
+        "log_file": "finance.log",
+        "passed": 15,
+        "total": 15
+      },
+      {
+        "name": "phase45",
+        "exit_code": 0,
+        "duration_ms": 2304,
+        "log_file": "phase45.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "audit",
+        "exit_code": 1,
+        "duration_ms": 30311,
+        "log_file": "audit.log",
+        "passed": 6,
+        "total": 7
+      }
+    ],
+    "finished_at": "2026-10-14T05:54:42.161Z",
+    "passed": false
+  },
+  "latest_results": {
+    "started_at": "2026-10-14T05:49:44.380Z",
+    "database": "hms_p4_p5_acceptance",
+    "branch": "integration/phase4-phase5",
+    "suites": [
+      {
+        "name": "backend-unit",
+        "exit_code": 0,
+        "duration_ms": 155,
+        "log_file": "backend-unit.log"
+      },
+      {
+        "name": "phase1-foundation",
+        "exit_code": 0,
+        "duration_ms": 3496,
+        "log_file": "phase1-foundation.log"
+      },
+      {
+        "name": "laboratory",
+        "exit_code": 0,
+        "duration_ms": 3593,
+        "log_file": "laboratory.log",
+        "passed": 21,
+        "total": 21
+      },
+      {
+        "name": "laboratoryGuards",
+        "exit_code": 0,
+        "duration_ms": 1608,
+        "log_file": "laboratoryGuards.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "laboratoryWorker",
+        "exit_code": 0,
+        "duration_ms": 1590,
+        "log_file": "laboratoryWorker.log",
+        "passed": 3,
+        "total": 3
+      },
+      {
+        "name": "laboratoryFrontend",
+        "exit_code": 0,
+        "duration_ms": 9897,
+        "log_file": "laboratoryFrontend.log",
+        "passed": 6,
+        "total": 6
+      },
+      {
+        "name": "medication",
+        "exit_code": 0,
+        "duration_ms": 64186,
+        "log_file": "medication.log",
+        "passed": 20,
+        "total": 20
+      },
+      {
+        "name": "medicationGuards",
+        "exit_code": 0,
+        "duration_ms": 1694,
+        "log_file": "medicationGuards.log",
+        "passed": 9,
+        "total": 9
+      },
+      {
+        "name": "medicationFrontend",
+        "exit_code": 0,
+        "duration_ms": 16763,
+        "log_file": "medicationFrontend.log",
+        "passed": 6,
+        "total": 6
+      },
+      {
+        "name": "pharmacy",
+        "exit_code": 0,
+        "duration_ms": 19667,
+        "log_file": "pharmacy.log",
+        "passed": 18,
+        "total": 18
+      },
+      {
+        "name": "opd",
+        "exit_code": 0,
+        "duration_ms": 21745,
+        "log_file": "opd.log",
+        "passed": 20,
+        "total": 20
+      },
+      {
+        "name": "lab",
+        "exit_code": 0,
+        "duration_ms": 6398,
+        "log_file": "lab.log",
+        "passed": 10,
+        "total": 10
+      },
+      {
+        "name": "ipd",
+        "exit_code": 0,
+        "duration_ms": 29512,
+        "log_file": "ipd.log",
+        "passed": 13,
+        "total": 13
+      },
+      {
+        "name": "admin",
+        "exit_code": 0,
+        "duration_ms": 35087,
+        "log_file": "admin.log",
+        "passed": 28,
+        "total": 28
+      },
+      {
+        "name": "authorization",
+        "exit_code": 0,
+        "duration_ms": 3803,
+        "log_file": "authorization.log",
+        "passed": 5,
+        "total": 5
+      },
+      {
+        "name": "sessions",
+        "exit_code": 0,
+        "duration_ms": 4744,
+        "log_file": "sessions.log",
+        "passed": 7,
+        "total": 7
+      },
+      {
+        "name": "idempotency",
+        "exit_code": 0,
+        "duration_ms": 1488,
+        "log_file": "idempotency.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "durability",
+        "exit_code": 0,
+        "duration_ms": 8519,
+        "log_file": "durability.log",
+        "passed": 11,
+        "total": 11
+      },
+      {
+        "name": "frontendReliability",
+        "exit_code": 0,
+        "duration_ms": 3700,
+        "log_file": "frontendReliability.log",
+        "passed": 2,
+        "total": 2
+      },
+      {
+        "name": "ipdDrafts",
+        "exit_code": 0,
+        "duration_ms": 1053,
+        "log_file": "ipdDrafts.log",
+        "passed": 3,
+        "total": 3
+      },
+      {
+        "name": "patientIdentity",
+        "exit_code": 0,
+        "duration_ms": 3957,
+        "log_file": "patientIdentity.log",
+        "passed": 9,
+        "total": 9
+      },
+      {
+        "name": "patientMerge",
+        "exit_code": 0,
+        "duration_ms": 3706,
+        "log_file": "patientMerge.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "practitioners",
+        "exit_code": 0,
+        "duration_ms": 4101,
+        "log_file": "practitioners.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "scheduling",
+        "exit_code": 0,
+        "duration_ms": 1445,
+        "log_file": "scheduling.log",
+        "passed": 6,
+        "total": 6
+      },
+      {
+        "name": "careTeam",
+        "exit_code": 0,
+        "duration_ms": 2539,
+        "log_file": "careTeam.log",
+        "passed": 10,
+        "total": 10
+      },
+      {
+        "name": "triage",
+        "exit_code": 0,
+        "duration_ms": 1615,
+        "log_file": "triage.log",
+        "passed": 7,
+        "total": 7
+      },
+      {
+        "name": "clinicalDocuments",
+        "exit_code": 0,
+        "duration_ms": 1329,
+        "log_file": "clinicalDocuments.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "adt",
+        "exit_code": 0,
+        "duration_ms": 1661,
+        "log_file": "adt.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "referrals",
+        "exit_code": 0,
+        "duration_ms": 1874,
+        "log_file": "referrals.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "finance",
+        "exit_code": 0,
+        "duration_ms": 4225,
+        "log_file": "finance.log",
+        "passed": 15,
+        "total": 15
+      },
+      {
+        "name": "phase45",
+        "exit_code": 0,
+        "duration_ms": 2304,
+        "log_file": "phase45.log",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "name": "audit",
+        "database": "hms_p4_p5_audit_final",
+        "started_at": "2026-10-14T05:57:53.167860+00:00",
+        "finished_at": "2026-10-14T05:57:55.730092+00:00",
+        "duration_ms": 2562,
+        "exit_code": 0,
+        "log_file": "audit-recheck.log",
+        "passed": 7,
+        "total": 7
+      }
+    ],
+    "finished_at": "2026-10-14T05:57:55.730092+00:00",
+    "passed": true
+  },
+  "audit_recheck": {
+    "name": "audit",
+    "database": "hms_p4_p5_audit_final",
+    "started_at": "2026-10-14T05:57:53.167860+00:00",
+    "finished_at": "2026-10-14T05:57:55.730092+00:00",
+    "duration_ms": 2562,
+    "exit_code": 0,
+    "log_file": "audit-recheck.log"
+  },
+  "application_regression_commit": "247b8a2",
+  "backend_unit": {
+    "pass": 10,
+    "fail": 0,
+    "skipped_database_suite": 1,
+    "note": "Database failure scenarios exercised separately by foundation suite"
+  },
+  "foundation": {
+    "pass": 16,
+    "fail": 0
+  },
+  "migration_verification": {
+    "postgresql16": {
+      "pass": true,
+      "schema_facts": 4092
+    },
+    "postgresql18": {
+      "pass": true,
+      "schema_facts": 4092
+    },
+    "through": "0076"
+  },
+  "upgrade_paths": {
+    "phase4_to_combined": "PASS; clinical identity preserved and existing lab sources captured once",
+    "phase5_to_combined": "PASS; clinical identity and pre-existing charge records preserved; legacy items quarantined"
+  },
+  "frontend_build": "PASS",
+  "syntax_whitespace_and_source_ancestry": "PASS",
+  "initial_full_regression": {
+    "pass": false,
+    "passed_suites": 31,
+    "total_suites": 32,
+    "failure": "ipdDrafts: 2/3; exact count included a charge left by an earlier suite",
+    "resolution": "New throwaway-only patients, beds and admissions isolate the fixture; final full regression rerun on a fresh restored database copy"
+  },
+  "fixture_length_rerun": {
+    "pass": false,
+    "passed_suites": 30,
+    "total_suites": 32,
+    "failure": "New IPD fixture identifier exceeded varchar(20); audit checkpoints from the previous copy also failed verification",
+    "resolution": "Shortened synthetic identifiers; isolated suite passes 3/3, then reran the full suite on another fresh copy"
+  },
+  "checkpoint_directory_failure": {
+    "full_run_passed_suites": 31,
+    "total_suites": 32,
+    "failure": "Audit verification correctly rejected checkpoints belonging to previous test copies",
+    "resolution": "Original audit suite passes 7/7 on a fresh copy with a new database-specific checkpoint directory; verifier now refuses a directory not named after DB_NAME"
+  },
+  "log_hashes": [
+    {
+      "file": "final/backend-unit.log",
+      "sha256": "4a43519f6a89fc801ceb714e1dc4afb9f1fe31d5f86ea79c94fb81d6e140f40f"
+    },
+    {
+      "file": "final/phase1-foundation.log",
+      "sha256": "6cd6bf9e4e9976c3fc6463993a0bd7d4848edc7c03f870f57b01a2248bfcc3ab"
+    },
+    {
+      "file": "final/laboratory.log",
+      "sha256": "0f5e7ad6515bc4eeecca887e33f4fdafc96a3923dce6c7deef742f97065ad224"
+    },
+    {
+      "file": "final/laboratoryGuards.log",
+      "sha256": "7bdc5d34f72b29d9a5ba772bbba6ca7dda6498f3bcd6f60a4766b19ed08feca7"
+    },
+    {
+      "file": "final/laboratoryWorker.log",
+      "sha256": "8115bec6e6c04c943fd784e7d0afaba697ef0480a456a9e12e6c6e861c9fc5b4"
+    },
+    {
+      "file": "final/laboratoryFrontend.log",
+      "sha256": "464544dab6e9cebb0f971038f91e32b1ffeb217a5e4a92f1adfb378ab23be680"
+    },
+    {
+      "file": "final/medication.log",
+      "sha256": "10c609f3369df4b094729e358142bc7eec6392c88bb03c059be7825ae7022ff9"
+    },
+    {
+      "file": "final/medicationGuards.log",
+      "sha256": "e7e55fc66182ca7c77491ea00e706f2e90eb47075dc0c9b42d879ab65cd85548"
+    },
+    {
+      "file": "final/medicationFrontend.log",
+      "sha256": "a607ea82d883a15f5bf5da4cf5606125edf2fb2b2a93c03d1c152ae72a6fcc1a"
+    },
+    {
+      "file": "final/pharmacy.log",
+      "sha256": "d5db0cdb7c39a360752f3a7f0486a8ad72d755e30d420586d174b2621a118abd"
+    },
+    {
+      "file": "final/opd.log",
+      "sha256": "591bd3be6983b0a16b94295ce86ade4c98b15518ad27d709d10242f69fdc25f9"
+    },
+    {
+      "file": "final/lab.log",
+      "sha256": "efaf1ffcf81ac20b2811e69b417c2cc974c94c48f7816f8240fb96dfd3dbbb46"
+    },
+    {
+      "file": "final/ipd.log",
+      "sha256": "5b73240159d346b86c3347639ed3d3efdd6ff07e2108b250977c6cbe7445dfd6"
+    },
+    {
+      "file": "final/admin.log",
+      "sha256": "815bba18c4e0dfee420ea5215d009d1cf7a0bd7c97e0cc3311319aee3ea086cc"
+    },
+    {
+      "file": "final/authorization.log",
+      "sha256": "d4764c54d0bb2e4fabcdb5e024543563a2b54005077f37c7162a6011f9e6d40b"
+    },
+    {
+      "file": "final/sessions.log",
+      "sha256": "a600af13903bc4a971ff860084f047d4bbf967c6a100ef9eed2219505af25b7a"
+    },
+    {
+      "file": "final/idempotency.log",
+      "sha256": "3fbfb5b73bd8ff1b2badffdb48c7f2bc2bb8fafa34b8c26591ff82268be7032c"
+    },
+    {
+      "file": "final/durability.log",
+      "sha256": "0344ad6039d5e7b55cde612bc9e6557950b8d95a36b3cc5c25b0f9216dc554fb"
+    },
+    {
+      "file": "final/frontendReliability.log",
+      "sha256": "7f838a34bc030770955cfd66fbcc6ac794a94f1130e89f5c54dab374a4e49a86"
+    },
+    {
+      "file": "final/ipdDrafts.log",
+      "sha256": "f5d2545dc61f542c559fe85693c951b8c786e13c876fcf241bc8236d107ca28e"
+    },
+    {
+      "file": "final/patientIdentity.log",
+      "sha256": "b29762f4ebbc8ee4b25b06e7287a7f1cfe6229300a0483b339391ca70e204d3b"
+    },
+    {
+      "file": "final/patientMerge.log",
+      "sha256": "57c14c5ab1ea94da9b5f1654b1bb9c39464afac518837b42bfcd4149da167147"
+    },
+    {
+      "file": "final/practitioners.log",
+      "sha256": "6c2bb27335fead306018d9bcf6a3e2f742f13379895a924c33b1597206cabae0"
+    },
+    {
+      "file": "final/scheduling.log",
+      "sha256": "1b50df594d69db5677472e44411064f13cd49d6a84f0f507eef9a5ad1f8f4ea0"
+    },
+    {
+      "file": "final/careTeam.log",
+      "sha256": "711c1f200bb1675ae34d434d9029b493d50e208087f1226cc165274b13079e9d"
+    },
+    {
+      "file": "final/triage.log",
+      "sha256": "6cdc601f222250108c07a74920d54169bcdac38f8e8c342b80965a163dfa2d2b"
+    },
+    {
+      "file": "final/clinicalDocuments.log",
+      "sha256": "020fae2b7e07ded438464fb76565a5b5355864b600b9f89e2f83108cf51ed0b0"
+    },
+    {
+      "file": "final/adt.log",
+      "sha256": "628afedf128da07623efd40f8ce1f5b9f333bda719d8765e27cd440785a0f175"
+    },
+    {
+      "file": "final/referrals.log",
+      "sha256": "2251b328050a8c4d1b72c474aadbdbd7ad1c3ff02da9263394bf6cac6e645723"
+    },
+    {
+      "file": "final/finance.log",
+      "sha256": "df4e9cde7d0bd09cfa7b5132a141811a6855b264ef5cad69a4449dcd2b8a47e4"
+    },
+    {
+      "file": "final/phase45.log",
+      "sha256": "f4fcee29e9b89d53e0b30ee273a2611199e3bf5b1e66289b652eb9660ac43b08"
+    },
+    {
+      "file": "final/audit.log",
+      "sha256": "d5b1fefc15d45e745c9cb08b5c65ed568c39ab38035e10dce3f5f2dccf3449f3"
+    },
+    {
+      "file": "final/summary.json",
+      "sha256": "0126a1c3c9f33ae035772c4c59385bdd2127d2e557b9b8d5d3be3f50b1425ac6"
+    },
+    {
+      "file": "regression-final.log",
+      "sha256": "26c1b1b9a581c0f23434b3be6c9b1af43c807421f5c792531aa289f156938b32"
+    },
+    {
+      "file": "regression.log",
+      "sha256": "d4702f1063d63231f8b3f0d4b842f06dc073dd6aa4bb780a8f47ccca54aac6c2"
+    },
+    {
+      "file": "regression-fixturelengthfailure.log",
+      "sha256": "6ed840991972f4253214073cd3611fa18844afd659fda0f769ee06ba3e641015"
+    },
+    {
+      "file": "ipd-fixture-recheck.log",
+      "sha256": "f5d2545dc61f542c559fe85693c951b8c786e13c876fcf241bc8236d107ca28e"
+    },
+    {
+      "file": "upgrade-paths.log",
+      "sha256": "262f4a56b602e0d54c251e09644c75fb756887567a615fcba765827eda22f645"
+    },
+    {
+      "file": "migrations16.log",
+      "sha256": "eaf4d7eb2f3e0bbc34743d494a106cf1b0e04f6cbc40755e6fcd51408c75ba57"
+    },
+    {
+      "file": "migrations18.log",
+      "sha256": "305cb82ae1003677816b2b8930f762e758cb793908b9abab3d47422adc5e5579"
+    },
+    {
+      "file": "build.log",
+      "sha256": "653f47be5d3a3d891a2c5626aa3349eea0320b23df384880f4b4281b2adc4f73"
+    },
+    {
+      "file": "phase45-pilot.log",
+      "sha256": "f4fcee29e9b89d53e0b30ee273a2611199e3bf5b1e66289b652eb9660ac43b08"
+    },
+    {
+      "file": "finance-pilot.log",
+      "sha256": "df4e9cde7d0bd09cfa7b5132a141811a6855b264ef5cad69a4449dcd2b8a47e4"
+    },
+    {
+      "file": "laboratory-screen.png",
+      "sha256": "7bc9af38a4d6b090767008df789503f7d6489b3609808b832afb2f5cd7514040"
+    },
+    {
+      "file": "audit-recheck.log",
+      "sha256": "f2334f500a88e8aafa40b75bac54d2472ff63f39c93793d6c72c3a5a6049f7c7"
+    },
+    {
+      "file": "audit-recheck.json",
+      "sha256": "29c1a3be4ffaf970c55a9deb30f6320e1a0ba49c221f1cac6087b9d83f59856a"
+    },
+    {
+      "file": "checkpoint-guard.log",
+      "sha256": "20164bd85edab1f72c198c93ef9c3408080eede4f80b8043dddcd200002fa150"
+    },
+    {
+      "file": "initial/summary.json",
+      "sha256": "319b6951d9dd8189bb127fcb0f0a7e1aafd212bddf083093fe7f68877ad0aeb0"
+    },
+    {
+      "file": "initial/ipdDrafts.log",
+      "sha256": "be772e023706e4554f44789ae0a99a1a0db16849899a6e25849a6c4355d81953"
+    },
+    {
+      "file": "fixture-length-failure/summary.json",
+      "sha256": "e1fc0be7d888242795e0fe91605ec8f02aaa9a3424101c1ec77ee5d65aad2d9f"
+    },
+    {
+      "file": "fixture-length-failure/ipdDrafts.log",
+      "sha256": "6b8bb21cd4539cb633831fa3a69df13f1e97803d386ff0f9c776adcceca25ca8"
+    }
+  ],
+  "full_regression_log_directory": "/home/kalmaf/hms-verification/phase45-20261014T055852Z-7f9c2eb/final"
+}
