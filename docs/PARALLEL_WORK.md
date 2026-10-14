@@ -34,6 +34,8 @@ Each worktree needs its own `npm ci` in `backend/`, `frontend/` and `e2e/`.
 | 3 | `0030`–`0049` |
 | 4 | `0050`–`0069` |
 | 5 | `0070`–`0089` |
+| 6 (Claude) | `0090`–`0109` |
+| 7 / Phase 6 adapters (Codex) | `0110`–`0119` |
 
 - Never edit a migration that is already committed.
 - Every new `hms_` table needs foreign keys, CHECK constraints, and an audit
@@ -82,6 +84,8 @@ throwaway databases and ports. Never test against the database called `hms`.
 | 3 | `hms_p3_*` | 5012 | 5184 |
 | 4 | `hms_p4_*` | 5022 | 5194 |
 | 5 | `hms_p5_*` | 5032 | 5204 |
+| 4+5 integration | `hms_p4_p5_*` | 5042 | 5214 |
+| 6 | `hms_p6_*` | 5052 | 5224 |
 
 Copy test data from the newest `~/hms-backups/<timestamp>/hms.dump`, then run
 `node migrate.js up` in your own worktree.

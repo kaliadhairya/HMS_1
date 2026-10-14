@@ -109,3 +109,12 @@ Integration completed in `HMS_1-phase4-phase5` on
   dedicated `hms_p4_p5_*` copies, API 5042 and Vite 5214.
 
 - 2026-10-14: completed both merges and reviewed the combined workflows; all 32 suites have passing latest results (full private application regression plus a clean audit recheck with isolated checkpoints), PG16/18 schemas match through 0076 (4092 facts), both source-branch upgrade paths and frontend build pass. Remaining gaps reserved for the owner; no shared deployment. See docs/INTEGRATION_PHASE4_PHASE5.md and docs/integration-phase45/verification.json.
+
+## Phase 6 (Claude)
+
+STOP: Phase 6 (interoperability and operations) is owned by Claude in
+`HMS_1-phase6` on `phase6/interop-ops`, based on `integration/phase4-phase5`
+(2a07ca8). Plan: `docs/phase6/PLAN.md`. Other agents leave this worktree
+unchanged; Codex (Phase 7) asks through `docs/requests/`.
+- 2026-10-14: started 6A (terminology releases). Migrations 0090–0109, test
+  databases `hms_p6_*`, API 5052, Vite 5224. No shared deployment.
