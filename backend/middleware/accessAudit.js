@@ -11,10 +11,12 @@ const PATIENT_DATA_PREFIXES = [
   '/api/patients', '/api/hms/encounters', '/api/hms/prescriptions', '/api/hms/investigation-orders',
   '/api/hms/vitals', '/api/hms/rest-forms', '/api/hms/appointments', '/api/reports', '/api/pdf', '/api/ipd',
   '/api/lab', '/api/billing', '/api/doctor', '/api/receptionist', '/api/pharmacy/dispense',
-  '/api/pharmacy/prescriptions',
+  '/api/pharmacy/prescriptions', '/api/fhir',
 ];
 
-function patientIdOf(req) {
+// A route that resolves the patient itself (FHIR) names it in res.locals.
+function patientIdOf(req, res) {
+  if (res.locals?.auditPatientId) return Number(res.locals.auditPatientId);
   const p = req.params || {};
   const candidate = p.patient_id ?? p.patientId ?? (req.originalUrl.startsWith('/api/patients') ? p.id : undefined) ?? req.query?.patient_id;
   const id = Number(candidate);
@@ -46,9 +48,9 @@ module.exports = function accessAudit(req, res, next) {
           path: req.originalUrl.split('?')[0].slice(0, 500),
           status: res.statusCode,
           outcome,
-          patientId: patientIdOf(req),
+          patientId: patientIdOf(req, res),
           ip: req.ip || null,
-          detail: outcome === 'read' ? null : String(res.statusMessage || '').slice(0, 200) || null,
+          detail: outcome === 'read' ? (res.locals?.auditDetail || null) : String(res.statusMessage || '').slice(0, 200) || null,
         },
       }
     ));
