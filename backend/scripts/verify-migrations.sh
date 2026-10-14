@@ -34,11 +34,13 @@ DB_NAME="$LEGACY" node "$LEGACY_SCRIPT" > /dev/null
 DB_NAME="$LEGACY" node migrate.js up
 
 # Every application table must be audited (migration 0006), except the ones
-# whose rows are not clinical, financial or security events.
+# whose rows are not clinical, financial or security events. Terminology
+# concepts are reference content: their audited release row records the
+# loaded file's checksum and count, and a trigger forbids any change (0090).
 UNAUDITED=$(psql -d "$FRESH" -Atc "
   SELECT string_agg(c.relname, ', ') FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
    WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname LIKE 'hms\\_%'
-     AND c.relname NOT IN ('hms_audit_logs', 'hms_sessions', 'hms_idempotency_keys', 'hms_outbox', 'hms_inbox')
+     AND c.relname NOT IN ('hms_audit_logs', 'hms_sessions', 'hms_idempotency_keys', 'hms_outbox', 'hms_inbox', 'hms_term_concepts')
      AND NOT EXISTS (SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid
                       WHERE t.tgrelid = c.oid AND p.proname = 'capture_change')")
 if [ -n "$UNAUDITED" ]; then

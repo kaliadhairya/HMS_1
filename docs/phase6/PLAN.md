@@ -137,8 +137,8 @@ Vite 5224 (5042/5214 are taken by the Phase 4+5 integration).
   worklist and HL7 v2 (PACS), plus blood bank, theatre and bedside devices,
   **only for the devices listed in O5**.
 - The Phase 4 analyzer endpoint keeps working; it becomes one contract inside
-  the framework. **Codex owns the lab parts, so this package should be
-  agreed with Codex (see Ownership).**
+  the framework. Claude builds it; Codex (who wrote the Phase 4 analyzer
+  contract) reviews compatibility before merge.
 - The blueprint is explicit: a basic interface does not replace the safety
   functions of a real PACS, blood bank or theatre system.
 
@@ -217,11 +217,13 @@ Every existing suite plus `verify-migrations.sh` must still pass.
 | Package | Suggested owner | Why |
 |---|---|---|
 | 6A, 6B, 6C, 6D, 6E | Claude | Patient identity (Phase 2) is Claude's; FHIR reads every domain |
-| 6F adapters | Codex | Codex built the Phase 4 analyzer contract and owns the lab files |
+| 6F adapters | Claude (agreed 2026-10-14) | Codex reviews compatibility with its Phase 4 analyzer contract |
 | 6G, 6H, 6I | Claude, or split with Codex if both are free | No clinical file overlap |
 
-Same rules as before: separate worktree per agent, own migration numbers
-(suggest Claude `0090`–`0109`, Codex `0110`–`0119`), requests in
+Codex works on Phase 7 (hazard log, acceptance checks, training and
+rollout gates) in its own worktree. Same rules as before: separate worktree
+per agent, own migration numbers (Claude `0090`–`0109`, Codex `0110`–`0119`
+only if needed), requests in
 `docs/requests/`, STOP notice in AGENTS.md while building.
 
 ## Not in Phase 6
