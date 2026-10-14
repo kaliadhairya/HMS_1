@@ -59,6 +59,15 @@ const RULES = [
   ['DELETE', '/doctor/prescriptions/999999', [D]],
   ['GET', '/doctor/clinical-notes', [D, SA]],
   ['GET', '/doctor/list-doctors', CHART],
+  // Phase 6A terminology: reading for clinical roles, mapping for those who
+  // own local codes, loading and activating releases for administrators.
+  ['GET', '/terminology/systems', [SA, A, D, N, P, L]],
+  ['GET', '/terminology/search?system=ICD10&q=ab', [SA, A, D, N, P, L]],
+  ['GET', '/terminology/mappings', [SA, A, D, N, P, L]],
+  ['POST', '/terminology/mappings', [SA, A, D, P, L]],
+  ['POST', '/terminology/mappings/00000000-0000-0000-0000-000000000000/review', [SA, A, D, P, L]],
+  ['POST', '/terminology/releases', [SA, A]],
+  ['POST', '/terminology/releases/00000000-0000-0000-0000-000000000000/activate', [SA, A]],
 ];
 
 (async () => {

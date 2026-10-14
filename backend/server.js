@@ -201,6 +201,7 @@ app.use('/api/receptionist', require('./middleware/auth').protect, require('./ro
 // LIMS / Lab Tech API
 app.use('/api/lab', require('./middleware/auth').protect, require('./routes/lab'));
 app.use('/api/laboratory', require('./routes/laboratory'));
+app.use('/api/terminology', require('./routes/terminology'));
 
 // Legacy pharmacist namespace retained for frontend compatibility
 app.use(
