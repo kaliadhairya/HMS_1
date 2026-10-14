@@ -5,16 +5,18 @@ pause or final completion has been requested. Checklist:
 `docs/CLINICAL_COMPLETION.md`; source is the Industrial HIS clinical blueprint.
 Mission Control remains excluded. No shared deployment/pilot is authorized.
 
-Current branch `completion/clinical-final`, code increment **584e169** and
-evidence/coordinator increment **e5b8ebf**. See PROGRESS.md for actual test
-results and open A2/A3 integrations. New applied migrations 0113–0122 must
-not be edited; continue in 0123–0149.
+Current branch `completion/clinical-final`, latest code increment **92765a8**
+and evidence increment **5a98dcd**. Initial foundations remain 584e169.
+See PROGRESS.md/DEVICES.md for actual tests. Applied migrations 0113–0126
+must not be edited; continue in 0127–0149.
 
 Private environment file: `/tmp/hms-clinical-final.env` (do not print secrets).
 Assigned PG16 database `hms_p4_final_20261014a` at 5434, API 5064, Vite 5236.
 Assigned PG18 database `hms_verify_final_backup18_20261015` at 55464. Both are
-through 0122. The API was restarted after receipt version 2; current exec
-session 96224. Do not use the shared database `hms` or another agent's ports.
+through 0126. Current API exec session 54703 was restarted for machine
+provenance/one-time secrets; a later analyzer message-type guard was added
+after that start. Restart only this private API before testing further changes.
+Do not use the shared database `hms` or another agent's ports.
 
 Most recent checks: facility/grant isolation 19/19 on each engine, scoped
 receipt HTTP 4/4, financial idempotency 8/8, Phase 1 failure acceptance 16/16
@@ -25,15 +27,14 @@ fixtures are synthetic; no hospital credential or approval is established.
 
 Continue with complete A2/B4 operational ownership and clinical gates:
 
-- Remaining lab approval/reconciliation/run/review and financial child tables
-  still need reviewed facility ownership; do not blindly scope genuinely
-  shared patient identity/safety facts or hospital terminology identities.
-- LaboratoryCommon now checks professional LAB_PROCESS/LAB_RELEASE; analyzer
-  service accounts need a separate approved ANALYZER facility capability.
-  Do not invent professional credentials for a machine. Device intake must
-  bind the contract's explicit service actor/facility for the entire message
-  transaction, not only the result savepoint. Preserve AE/AR, stable group IDs
-  and the exact analyzer contract v1 adapter.
+- Operational lab/financial/integration children now have facility ownership
+  through 0123, with compound FKs in 0124. Patient identity/safety facts and
+  hospital terminology identities remain governed shared facts.
+- Analyzer service capability and whole-message context/provenance are done
+  in 92765a8. B3 is DONE (ENGINEERING): HL7/ASTM clinical bridge 12/12 and
+  restricted-role scope/rollback/batch/revocation tests 9/9 on each engine.
+  Machines have no fabricated qualifications; they cannot release results.
+  B4 remains open for full departmental delivery, named owners and suppression.
 - Nursing, dispensing, generic note/sign and remaining legacy clinical
   writers need the facility privilege boundary. Configure facility switching
   and membership administration with current-session validation and drafts.
