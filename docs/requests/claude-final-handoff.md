@@ -1,6 +1,6 @@
 # Handoff (Claude → Codex): completion packages on `completion/claude-final`
 
-Base: Codex `56f27fb`. Migrations 0150–0152 (Claude's range 0150–0169).
+Base: Codex `56f27fb`, rebased onto **`0d904fb`** (A2/A3 foundation, B6 core) on 15 October. Migrations 0150–0152 (Claude's range 0150–0169).
 Codex reviews and integrates in C8. Nothing is deployed or pushed.
 
 ## Commits
@@ -47,13 +47,51 @@ Codex-owned or fixed in `e886d27`.
 | `frontend/src/components/dashboards/DoctorDashboard.jsx`, `WorklistPage.jsx` | Shared live reads (`data/liveQuery.js`). A failed load is never shown as an empty queue. | C2 |
 | `e2e/helpers.js` | `E2E_VERBOSE=1` prints the full failure message. | test tooling |
 
-| B2 ABDM/terminology | (this commit) | — | `abdmUse` 6/6, `abdm` 10/10, unit `abdmContracts.test.js` 4/4 |
+| B2 ABDM/terminology | `840bf23` | — | `abdmUse` 6/6, `abdm` 10/10, unit `abdmContracts.test.js` 4/4 |
 
 B2 touches `routes/abdmBridge.js` (contract check before processing),
 `services/abdm.js` (`imports`/`decideItem`), `routes/abdm.js` (transaction
 and audit on the outside-records view), and adds `/api/integrations` in
 `server.js`. The ABDM screens gain a readiness panel and chart
 reconciliation.
+
+## After the rebase onto 0d904fb (A2/B6 follow-ups)
+
+| Item | Change |
+|---|---|
+| A8 facility scope | `hms_outbox.facility_id` (0155) is set from the publisher's verified session facility. Live delivery and `/events` catch-up reach only sessions of that facility. Socket handshakes bind their session's facility (`sessionFacility`). |
+| A8 grant changes | When the dispatcher delivers `clinical.authorization.changed`, it re-checks that user's live connections: no current facility membership ends the connection. |
+| A4 → B6 verifier | `services/documentVerifier.cts` + `scripts/verify-documents.cts`; contract in `document-recovery-contract-claude.md`. |
+| B7 | Migration 0154 (writer fence, recovery events, audit triggers for the 0152 tables); `scripts/recovery-promote.cts`; `services/writerFence.cts`. `server.js`/`worker.js` refuse a fenced database, and `/api/ready` is 503 while fenced. Runbook: `docs/clinical-final/REGIONAL_RECOVERY.md`. Drill: `e2e/recoveryDrill.e2e.js`. |
+| C6 facility | Kits and ward machines per facility (0156). The root `downtime-latest` copy is kept for the initial facility. |
+| Test harness | My regression applies a synthetic, test-only credential/privilege fixture to the throwaway copy (not in the repo), because the old suites predate your privilege checks (your C4 item). |
+
+Fresh regression after the rebase (my privilege fixture applied): 43/52
+suites passed. Mine that failed (finance, recoveryDrill) are fixed and pass:
+finance 15/15, recoveryDrill 6/6, downtime 4/4, downtimeDrill 7/7.
+Remaining failures are in Codex areas:
+- `laboratoryWorker`: `FACILITY_CONTEXT_REQUIRED` (worker context).
+- `devices`: analyzer intake `AE` "Clinical work requires an…" (B4
+  analyzer facility capability).
+- `practitioners`: verification now needs evidence and a reason; no Verify
+  button for an unverified registration.
+- `careTeam` and `admin` (staff with clinical records): newly created
+  doctors have no verified registration (`REGISTRATION_EXPIRED`).
+- `admin` staff delete: `DELETE FROM hms_users` violates
+  `hms_facility_memberships_user_id_fkey`. Deleting staff needs an A2
+  decision (revoke the membership and deactivate instead?).
+- `pharmacy`, `phase45`: versioned signing fixtures (your C4).
+
+Also fixed here: the front-desk notifications and summary used the UTC day
+(`trunc(CURRENT_TIMESTAMP)`). They now use `hms_service_today()` /
+`hms_service_day_start()`.
+
+Open dependencies on Codex:
+- **Worker facility contexts.** The downtime kit tick, the finance worker
+  and the lab escalation worker run without a facility context. Under a
+  non-owner production identity, RLS will deny them (the lab worker already
+  fails `FACILITY_CONTEXT_REQUIRED`). They need your approved worker
+  context.
 
 ## A4 notes for Codex (shared and deployment files)
 

@@ -210,6 +210,15 @@ const rekey = (keys) => new Promise((resolve) => execFile('node', ['scripts/reke
     assert(code !== 0 && /HMS_DATA_KEYS is not set/.test(prod.log()), `production started without keys: ${prod.log().slice(-300)}`);
   });
 
+  await step('The restore verifier checks every stored document version and fails on the altered and quarantined ones, revealing nothing', async () => {
+    const r = await new Promise((resolve) => execFile('node', ['scripts/verify-documents.cts'], { cwd: BACKEND, env: { ...process.env, RESTORE_DB_NAME: process.env.DB_NAME, RESTORE_DB_HOST: process.env.DB_HOST, RESTORE_DB_PORT: process.env.DB_PORT, RESTORE_DB_USER: process.env.DB_USER, RESTORE_DB_PASSWORD: process.env.DB_PASSWORD } },
+      (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr })));
+    assert(r.code === 1, `exit ${r.code} ${r.stderr}`);
+    const v = JSON.parse(r.stdout);
+    assert(v.status === 'FAILED' && v.counts.verified >= 3 && v.counts.quarantined >= 1 && (v.counts.wrong_version + v.counts.corrupt) >= 1, `verifier ${JSON.stringify(v.counts)}`);
+    assert(!r.stdout.includes(marker) && !r.stdout.includes('.hmsdoc') && !r.stdout.includes('Document patient'), 'the verifier output reveals record details');
+  });
+
   done();
   process.exit();
 })();

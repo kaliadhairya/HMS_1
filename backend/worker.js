@@ -15,6 +15,7 @@ async function main() {
   await sequelize.authenticate();
   const problems = await schemaProblems();
   if (problems.length) throw new Error(`the database schema is not current. Run "node migrate.js up".\n  ${problems.join('\n  ')}`);
+  await require('./services/writerFence.cts').assertPrimary();
   await settings.loadSettings();
   settings.startSettingsRefresh();
   const { failed } = startBackgroundWorkers(sequelize);

@@ -232,10 +232,12 @@ app.get('/api/health', (req, res) => {
 app.get('/api/ready', async (req, res) => {
   let timer;
   try {
-    await Promise.race([
-      sequelize.query('SELECT 1'),
+    const fence = await Promise.race([
+      require('./services/writerFence.cts').fenceState(),
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('database did not answer within 2 s')), 2000); }),
     ]);
+    // A fenced database (B7) is not ready: a load balancer must stop sending work here.
+    if (!fence || fence.role !== 'primary') return res.status(503).json({ status: 'not_ready', reason: 'this database was fenced by a recovery; HMS runs against the current primary' });
     res.json({ status: 'ready', timestamp: new Date().toISOString() });
   } catch (err) {
     res.status(503).json({ status: 'not_ready', reason: err.message });
@@ -280,6 +282,9 @@ io.use(async (socket, next) => {
       ? await validateToken(token, socket.handshake.headers['x-request-id'])
       : await resolveTokenUser(token);
     if (!context) return next(new Error('Invalid or inactive session'));
+    // The connection carries its session's verified facility (A2), which scopes its events (A8).
+    try { Object.assign(context, await require('./services/facilities.cts').sessionFacility(context)); }
+    catch (err) { return next(new Error(err.message || 'No active facility membership')); }
     socket.user = context;
     socket.hmsAccessToken = token;
     return next();
@@ -323,6 +328,9 @@ async function start() {
     console.error(`❌ Refusing to start: the database schema is not current. Run "node migrate.js up".\n  ${problems.join('\n  ')}`);
     process.exit(1);
   }
+  // B7: never write to a database a recovery has fenced.
+  try { await require('./services/writerFence.cts').assertPrimary(); }
+  catch (err) { console.error(`❌ Refusing to start: ${err.message}`); process.exit(1); }
   console.log('✅ PostgreSQL DB connected; schema is current');
   if (process.env.NODE_ENV === 'production') {
     try { await require('./services/databaseRuntime.cts').verifyRuntime(sequelize); }

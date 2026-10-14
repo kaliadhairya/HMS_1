@@ -15,7 +15,7 @@ const { sequelize } = require('../models/db');
 const W = require('./worklist');
 
 type Actor = { id: number; role: string };
-type Station = { id: string; name: string; location: string; revoked_at: string | null };
+type Station = { id: string; name: string; location: string; revoked_at: string | null; facility_id: string };
 type Snapshot = { id: string; file_name: string; sha256: string; generated_at: string; stale_after: string };
 const rows = (sql: string, replacements: Record<string, unknown>, transaction?: Transaction): Promise<any[]> =>
   sequelize.query(sql, { replacements, transaction, type: 'SELECT' });
@@ -31,15 +31,17 @@ function text(v: unknown, label: string): string {
   return s;
 }
 
-async function register(body: { name?: unknown; location?: unknown }, actor: Actor, t: Transaction) {
+async function register(body: { name?: unknown; location?: unknown }, actor: Actor & { facilityId?: string }, t: Transaction) {
   const name = text(body.name, 'name');
   const location = text(body.location, 'ward or department');
-  if (await one('SELECT 1 FROM hms_downtime_stations WHERE lower(btrim(name)) = lower(:name) AND revoked_at IS NULL', { name }, t)) {
+  // A machine belongs to the registering administrator's facility and receives only its kit.
+  const facility = actor.facilityId || (await one('SELECT hms_initial_facility() AS id', {}, t)).id;
+  if (await one('SELECT 1 FROM hms_downtime_stations WHERE facility_id = CAST(:f AS uuid) AND lower(btrim(name)) = lower(:name) AND revoked_at IS NULL', { name, f: facility }, t)) {
     fail(409, `A machine named "${name}" is already registered. Revoke it first, or use another name.`, 'DUPLICATE');
   }
   const token = `hdk_${crypto.randomBytes(32).toString('base64url')}`;
-  const station = await one(`INSERT INTO hms_downtime_stations (name, location, token_sha256, registered_by)
-    VALUES (:name, :location, :hash, :u) RETURNING id, name, location, registered_at`, { name, location, hash: sha256(token), u: actor.id }, t);
+  const station = await one(`INSERT INTO hms_downtime_stations (facility_id, name, location, token_sha256, registered_by)
+    VALUES (CAST(:f AS uuid), :name, :location, :hash, :u) RETURNING id, name, location, registered_at`, { f: facility, name, location, hash: sha256(token), u: actor.id }, t);
   // The token is shown this once; HMS cannot show it again.
   return { station, token };
 }
@@ -57,7 +59,7 @@ async function revoke(id: string, body: { reason?: unknown }, actor: Actor, t: T
 
 // Current: holds a kit that is not stale. Waiting: newly registered, inside
 // its first two refresh periods. Behind: anything else that is not revoked.
-async function list(t?: Transaction) {
+async function list(t?: Transaction, facilityId?: string | null) {
   return rows(`SELECT s.id, s.name, s.location, s.registered_at, s.revoked_at, s.revoked_reason, s.last_pull_at,
       r.stored_at AS last_stored_at, r.opened AS last_opened, k.generated_at AS kit_generated_at, k.stale_after AS kit_stale_after,
       CASE WHEN s.revoked_at IS NOT NULL THEN 'Revoked'
@@ -67,7 +69,8 @@ async function list(t?: Transaction) {
     FROM hms_downtime_stations s
     LEFT JOIN LATERAL (SELECT * FROM hms_downtime_station_receipts x WHERE x.station_id = s.id ORDER BY x.stored_at DESC LIMIT 1) r ON true
     LEFT JOIN hms_downtime_snapshots k ON k.id = r.snapshot_id
-    ORDER BY s.revoked_at IS NOT NULL, s.location, s.name`, { refresh: refreshMinutes() }, t);
+    WHERE CAST(:f AS uuid) IS NULL OR s.facility_id = CAST(:f AS uuid)
+    ORDER BY s.revoked_at IS NOT NULL, s.location, s.name`, { refresh: refreshMinutes(), f: facilityId || null }, t);
 }
 
 // Opens or resolves the worklist item for each machine; returns the behind ones.
@@ -93,12 +96,12 @@ async function markCaughtUp(ids: string[], t?: Transaction) {
 async function authenticate(header: unknown): Promise<Station | null> {
   const m = /^Station (hdk_[A-Za-z0-9_-]{43})$/.exec(String(header || ''));
   if (!m) return null;
-  return one('SELECT id, name, location, revoked_at FROM hms_downtime_stations WHERE token_sha256 = :h AND revoked_at IS NULL', { h: sha256(m[1]) });
+  return one('SELECT id, name, location, revoked_at, facility_id FROM hms_downtime_stations WHERE token_sha256 = :h AND revoked_at IS NULL', { h: sha256(m[1]) });
 }
 
 // The newest kit, checked against the fingerprint recorded when it was made.
 async function latestKit(station: Station) {
-  const snap: Snapshot | null = await one('SELECT id, file_name, sha256, generated_at, stale_after FROM hms_downtime_snapshots ORDER BY generated_at DESC LIMIT 1', {});
+  const snap: Snapshot | null = await one('SELECT id, file_name, sha256, generated_at, stale_after FROM hms_downtime_snapshots WHERE facility_id = CAST(:f AS uuid) ORDER BY generated_at DESC LIMIT 1', { f: station.facility_id });
   await rows('UPDATE hms_downtime_stations SET last_pull_at = now() WHERE id = :id', { id: station.id });
   if (!snap) fail(404, 'No downtime kit has been made yet.', 'NO_KIT');
   const dir = process.env.DOWNTIME_KIT_DIR;
@@ -110,7 +113,7 @@ async function latestKit(station: Station) {
 }
 
 async function acknowledge(station: Station, body: { snapshot_id?: unknown; sha256?: unknown; opened?: unknown }, t: Transaction) {
-  const snap = await one('SELECT id, sha256, stale_after FROM hms_downtime_snapshots WHERE id::text = :id', { id: String(body.snapshot_id ?? '') }, t);
+  const snap = await one('SELECT id, sha256, stale_after FROM hms_downtime_snapshots WHERE id::text = :id AND facility_id = CAST(:f AS uuid)', { id: String(body.snapshot_id ?? ''), f: station.facility_id }, t);
   if (!snap) fail(404, 'Unknown kit.', 'NO_KIT');
   if (body.sha256 !== snap.sha256) fail(409, 'The stored kit does not match the kit HMS made.', 'KIT_MISMATCH');
   await rows(`INSERT INTO hms_downtime_station_receipts (station_id, snapshot_id, sha256, opened)

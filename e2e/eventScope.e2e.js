@@ -120,7 +120,37 @@ async function waitForLog(child, text, ms = 20000) {
       await sql("UPDATE hms_ipd_requests SET status = 'Cancelled' WHERE id = $1", [alert.data.request_id]);
     });
 
+    await step('An event of another facility reaches no one here, live or on catch-up; this facility\'s events do', async () => {
+      const [{ id: here }] = await sql('SELECT hms_initial_facility() AS id');
+      const [{ id: other }] = await sql("INSERT INTO hms_facilities (code, name, timezone) VALUES ($1, 'Synthetic second facility', 'Asia/Kolkata') RETURNING id", [`B-${tag}`]);
+      const [{ sequence }] = await sql('SELECT COALESCE(max(delivery_sequence), 0)::bigint AS sequence FROM hms_outbox');
+      const insert = (facility) => sql(`INSERT INTO hms_outbox (event_type, audience, payload, facility_id) VALUES ($1, 'nurse', CAST($2 AS jsonb), $3) RETURNING id`,
+        [PROBE, JSON.stringify({ probe: tag }), facility]).then(([r]) => Number(r.id));
+      const away = await insert(other);
+      const home = await insert(here);
+      await settle([nur], [[nur, home]]);
+      assert(ids(nur).includes(home) && !ids(nur).includes(away), `facility scope live: ${ids(nur)} (home ${home}, other ${away})`);
+      const replayed = await replay(nurse, sequence);
+      assert(replayed.includes(home) && !replayed.includes(away), `facility scope on catch-up ${replayed}`);
+    });
+
+    await step('When a grant changes, that user\'s connections are re-checked at once: no facility membership, no connection', async () => {
+      const [nurseUser] = await sql("SELECT id FROM hms_users WHERE username = 'nurse'");
+      const second = await connect(nurse); sockets.push(second);
+      const gone = new Promise((resolve) => second.on('disconnect', () => resolve(true)));
+      const [m] = await sql("SELECT id FROM hms_facility_memberships WHERE user_id = $1 AND facility_id = hms_initial_facility() AND revoked_at IS NULL", [nurseUser.id]);
+      const [admin] = await sql("SELECT id FROM hms_users WHERE username = 'superadmin'");
+      await sql('UPDATE hms_facility_memberships SET revoked_at = now(), revoked_by_user_id = $2 WHERE id = $1', [m.id, admin.id]);
+      try {
+        await sql("INSERT INTO hms_outbox (event_type, audience, payload) VALUES ('clinical.authorization.changed', $1, '{}'::jsonb)", [`user:${nurseUser.id}`]);
+        assert(await Promise.race([gone, sleep(6000).then(() => false)]), 'a user without membership kept a live connection');
+      } finally {
+        await sql("INSERT INTO hms_facility_memberships (facility_id, user_id, reason, granted_by_user_id) VALUES (hms_initial_facility(), $1, 'Restored after the event scope test (synthetic)', $2)", [nurseUser.id, admin.id]);
+      }
+    });
+
     await step('A revoked session is disconnected and receives nothing more', async () => {
+      if (!nur.connected) { nur = await connect(nurse); sockets.push(nur); }
       const admin = await apiLogin('super_admin');
       const [nurseUser] = await sql("SELECT id FROM hms_users WHERE username = 'nurse'");
       const gone = new Promise((resolve) => nur.on('disconnect', () => resolve(true)));

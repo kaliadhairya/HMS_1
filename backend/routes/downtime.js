@@ -39,7 +39,7 @@ const station = async (req, res, next) => {
 router.get('/station/kit', station, async (req, res) => {
   try {
     const { snapshot, content } = await ST.latestKit(req.station);
-    res.set({ 'Cache-Control': 'no-store', 'Content-Type': 'application/json', 'X-Kit-Sha256': snapshot.sha256, 'X-Kit-Snapshot': snapshot.id, 'X-Kit-File': snapshot.file_name });
+    res.set({ 'Cache-Control': 'no-store', 'Content-Type': 'application/json', 'X-Kit-Sha256': snapshot.sha256, 'X-Kit-Snapshot': snapshot.id, 'X-Kit-File': path.basename(snapshot.file_name) });
     return res.send(content);
   } catch (err) {
     if (err.status) return res.status(err.status).json({ success: false, message: err.message, code: err.code });
@@ -50,10 +50,10 @@ router.get('/station/kit', station, async (req, res) => {
 router.post('/station/ack', station, handle('Could not record the stored kit', (req, t) => ST.acknowledge(req.station, req.body || {}, t)));
 
 router.use(protect, restrictTo(...STAFF));
-router.get('/status', handle('Could not load downtime status', (req, t) => DT.status(t)));
+router.get('/status', handle('Could not load downtime status', (req, t) => DT.status(t, req.user.facilityId)));
 router.post('/snapshots', restrictTo(...ADMIN), async (req, res) => {
   try {
-    const made = await DT.snapshot(req.user);
+    const made = await DT.snapshot(req.user, req.user.facilityId);
     await ST.checkBehind().catch((err) => console.error('Ward machine check failed:', err.message));
     res.status(201).json({ success: true, data: made });
   } catch (err) {
@@ -68,7 +68,7 @@ router.get('/kit/latest', restrictTo(...ADMIN), (req, res) => {
   if (!fs.existsSync(file)) return res.status(404).json({ success: false, message: 'No downtime kit has been made yet.' });
   res.set('Cache-Control', 'no-store').download(file);
 });
-router.get('/stations', restrictTo(...ADMIN), handle('Could not list ward machines', (req, t) => ST.list(t)));
+router.get('/stations', restrictTo(...ADMIN), handle('Could not list ward machines', (req, t) => ST.list(t, req.user.facilityId)));
 router.post('/stations', restrictTo(...ADMIN), handle('Could not register the machine', (req, t) => ST.register(req.body || {}, req.user, t), 201));
 router.post('/stations/:id/revoke', restrictTo(...ADMIN), handle('Could not revoke the machine', (req, t) => ST.revoke(req.params.id, req.body || {}, req.user, t)));
 router.get('/episodes', handle('Could not load downtimes', (req, t) => DT.episodes(t)));

@@ -60,7 +60,7 @@ const latestLocal = () => fs.readFileSync(path.join(machineDir, 'downtime-latest
       const r = await sync(station.token);
       assert(r.code === 0 && r.text.includes('Stored the kit made'), `sync ${r.code}: ${r.text}`);
       assert(sha(latestLocal()) === snapshot.sha256, 'the stored kit is not the kit HMS made');
-      assert(fs.existsSync(path.join(machineDir, snapshot.file_name)) && fs.existsSync(path.join(machineDir, 'downtime-opener.html')), 'kit file or opener missing');
+      assert(fs.existsSync(path.join(machineDir, path.basename(snapshot.file_name))) && fs.existsSync(path.join(machineDir, 'downtime-opener.html')), 'kit file or opener missing');
       const [receipt] = await sql('SELECT opened FROM hms_downtime_station_receipts WHERE station_id = $1 AND snapshot_id = $2', [station.id, snapshot.id]);
       assert(receipt && receipt.opened === true, 'no receipt for the stored kit');
       const mine = (await api('GET', '/downtime/stations', { token: admin })).data.data.find((s) => s.id === station.id);

@@ -95,8 +95,8 @@ async function journalBalanced() {
     // Cancel one test through the lab queue: its charge is reversed, not deleted.
     const [order] = await sql(`SELECT o.id,o.lab_revision FROM hms_investigation_orders o JOIN hms_investigation_order_items i ON i.order_id = o.id
       WHERE o.encounter_id = $1 AND i.item_name = 'Lipid profile'`, [ctx.encounter]);
-    const lab = await apiLogin('lab_technician');
-    const cancel = await call('PATCH', `/lab/queue/ORD-${order.id}`, lab, { status: 'Cancelled' }, undefined, { 'if-match': String(order.lab_revision) });
+    // Cancelling an ordered test is the ordering clinician's decision (PRESCRIBE, Codex A2).
+    const cancel = await call('POST', `/laboratory/orders/${order.id}/cancel`, doctor, {}, undefined, { 'if-match': String(order.lab_revision) });
     assert(cancel.status === 200, `cancel ${short(cancel)}`);
     await finalize(ctx.encounter);
     acc = await account(`encounterId=${ctx.encounter}`);
