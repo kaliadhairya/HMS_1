@@ -1,7 +1,9 @@
 const express=require('express'),router=express.Router();
 const {protect,restrictTo}=require('../middleware/auth'),{idempotencyGuard}=require('../utils/idempotency');
 const {sequelize}=require('../models/db'),V=require('../services/clinicalV2.cts');
+const Medications=require('../services/medicationV2.cts');
 router.use(protect);
+router.use((req,res,next)=>Medications.authorizeRequest(req.path,req.method,req.user).then(()=>next()).catch(error=>{const failure=require('../services/clinicalApiErrors.cts').response(error);res.status(failure.status).json(failure.body);}));
 router.use((req,res,next)=>idempotencyGuard(req,res,next).catch(next));
 const handle=(fn,{command=false,status=200}={})=>async(req,res)=>{
  try{
@@ -26,4 +28,18 @@ router.get('/clinical-documents/:id',restrictTo('doctor','nurse'),handle(async(r
 router.post('/clinical-documents',restrictTo('doctor','nurse'),handle((r,res,t)=>Documents.create(r.body,r.user,t),{command:true,status:201}));
 for(const [method,action] of [['put','draft'],['post','sign'],['post','amend'],['post','sign-amendment']])
  router[method](`/clinical-documents/:id/${action}`,restrictTo('doctor','nurse'),handle((r,res,t)=>Documents.change(r.params.id,r.user,action,r.body||{},r.get('if-match'),t),{command:true}));
+const medicationRead=(fn)=>handle((r,res)=>sequelize.transaction({isolationLevel:'REPEATABLE READ'},async t=>{
+ const data=await fn(r,t);const I=require('../services/identities.cts');res.locals.auditPatientId=I.legacyNumber(await I.locate('patient',data.patient_id,r.user,t));return data;
+}));
+router.get('/medication-orders/:id',restrictTo('doctor','nurse','pharmacist'),medicationRead((r,t)=>Medications.read(r.params.id,r.user,t)));
+router.post('/medication-orders',restrictTo('doctor'),handle((r,res,t)=>Medications.create(r.body,r.user,t),{command:true,status:201}));
+for(const action of ['sign','hold','resume','discontinue','amend'])router.post(`/medication-orders/:id/${action}`,restrictTo('doctor'),handle((r,res,t)=>Medications.transition(r.params.id,action,r.body||{},r.user,r.get('if-match'),t),{command:true}));
+router.post('/medication-orders/:id/verify',restrictTo('pharmacist'),handle((r,res,t)=>Medications.verify(r.params.id,r.body||{},r.user,r.get('if-match'),t),{command:true}));
+router.post('/dispenses',restrictTo('pharmacist'),handle((r,res,t)=>Medications.dispense(r.body,r.user,r.get('if-match'),t),{command:true,status:201}));
+router.get('/dispenses/:id',restrictTo('doctor','nurse','pharmacist'),medicationRead((r,t)=>Medications.readDispense(r.params.id,r.user,t)));
+router.post('/medication-orders/:id/schedules',restrictTo('nurse','pharmacist'),handle((r,res,t)=>Medications.schedule(r.params.id,r.body,r.user,r.get('if-match'),t),{command:true,status:201}));
+router.get('/medication-schedules/:id',restrictTo('doctor','nurse','pharmacist'),medicationRead((r,t)=>Medications.readSchedule(r.params.id,r.user,t)));
+router.post('/medication-schedules/:id/prepare',restrictTo('nurse'),handle((r,res,t)=>Medications.prepare(r.params.id,r.body,r.user,r.get('if-match'),t),{command:true,status:201}));
+router.post('/administrations',restrictTo('nurse'),handle((r,res,t)=>Medications.administer(r.body,r.user,r.get('if-match'),t),{command:true,status:201}));
+router.get('/administrations/:id',restrictTo('doctor','nurse','pharmacist'),medicationRead((r,t)=>Medications.readAdministration(r.params.id,r.user,t)));
 module.exports=router;

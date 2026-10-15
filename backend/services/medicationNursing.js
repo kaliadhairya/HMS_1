@@ -16,6 +16,7 @@ const {
 } = C;
 const I = require("./medicationInventory");
 async function schedule(oid, b, u, header, tx) {
+  await require('./medicationAccess.cts').authorize(u,u.role==='pharmacist'?'DISPENSE':'NURSING_DOCUMENT',tx);
   const { o, v } = await order(oid, tx);
   expected(header, o.revision);
   await active(o, v, tx);
@@ -76,6 +77,7 @@ async function schedule(oid, b, u, header, tx) {
   return occurrences;
 }
 async function prn(oid, b, u, header, tx) {
+  await require('./medicationAccess.cts').authorize(u,'NURSING_DOCUMENT',tx);
   const { o, v } = await order(oid, tx);
   expected(header, o.revision);
   await active(o, v, tx);
@@ -100,22 +102,23 @@ async function prn(oid, b, u, header, tx) {
   );
 }
 async function occurrence(sid, tx, historical = false) {
+  const facility=require('./medicationAccess.cts').facility();
   const hint = await one(
-    "SELECT v.order_id FROM hms_med_schedules s JOIN hms_med_order_versions v ON v.id=s.version_id WHERE s.id=:id",
-    { id: id(sid, "Occurrence") },
+    "SELECT v.order_id FROM hms_med_schedules s JOIN hms_med_order_versions v ON v.id=s.version_id AND v.facility_id=s.facility_id WHERE s.id=:id AND s.facility_id=:facility",
+    { id: id(sid, "Occurrence"),facility },
     tx,
   );
   check(hint, "NOT_FOUND", "Occurrence not found.", 404);
   const { o, v: currentVersion } = await order(hint.order_id, tx);
   const s = await one(
-    "SELECT * FROM hms_med_schedules WHERE id=:id FOR UPDATE",
-    { id: sid },
+    "SELECT * FROM hms_med_schedules WHERE id=:id AND facility_id=:facility FOR UPDATE",
+    { id: sid,facility },
     tx,
   );
   const v = historical
     ? await one(
-        "SELECT * FROM hms_med_order_versions WHERE id=:id",
-        { id: s.version_id },
+        "SELECT * FROM hms_med_order_versions WHERE id=:id AND facility_id=:facility",
+        { id: s.version_id,facility },
         tx,
       )
     : currentVersion;
@@ -316,6 +319,7 @@ async function doseAvailability(o, v, p, b, at, tx, historical = false) {
   return { line, baseQuantity: quantity.quantity };
 }
 async function prepare(sid, b, u, tx) {
+  await require('./medicationAccess.cts').authorize(u,'NURSING_DOCUMENT',tx);
   const { o, v, s } = await occurrence(sid, tx);
   await active(o, v, tx);
   check(
@@ -384,6 +388,7 @@ async function prepare(sid, b, u, tx) {
   return intent;
 }
 async function administer(sid, b, u, tx) {
+  await require('./medicationAccess.cts').authorize(u,'NURSING_DOCUMENT',tx);
   const historical = Boolean(b.late_review_id);
   const { o, v, s } = await occurrence(sid, tx, historical);
   if (!historical) await active(o, v, tx);
@@ -551,6 +556,7 @@ function documentationHash(b) {
   );
 }
 async function requestLate(sid, b, u, tx) {
+  await require('./medicationAccess.cts').authorize(u,'NURSING_DOCUMENT',tx);
   const { o, v, s } = await occurrence(sid, tx, true);
   const intent = await one(
     "SELECT * FROM hms_med_documentation_intents WHERE schedule_id=:id",
@@ -596,6 +602,7 @@ async function requestLate(sid, b, u, tx) {
   return request;
 }
 async function reviewLate(rid, b, u, tx) {
+  await require('./medicationAccess.cts').authorize(u,'CLINICAL_SIGN',tx);
   const request = await one(
     "SELECT * FROM hms_med_late_documentation_requests WHERE id=:id",
     { id: id(rid) },
@@ -678,6 +685,7 @@ async function reviewLate(rid, b, u, tx) {
   return review;
 }
 async function correct(aid, b, u, tx) {
+  await require('./medicationAccess.cts').authorize(u,u.role==='doctor'?'CLINICAL_SIGN':u.role==='pharmacist'?'DISPENSE':'NURSING_DOCUMENT',tx);
   const a = await one(
     "SELECT * FROM hms_med_administrations WHERE id=:id",
     { id: id(aid, "Administration") },
@@ -732,6 +740,7 @@ async function correct(aid, b, u, tx) {
   return c;
 }
 async function handover(b, u, tx) {
+  await require('./medicationAccess.cts').authorize(u,'NURSING_DOCUMENT',tx);
   const pid = integer(b.patient_id, "Patient");
   await q("SELECT pg_advisory_xact_lock(727287,:pid)", { pid }, tx);
   const receiver = await userRole(b.receiver_user_id, ["nurse"], tx);
@@ -820,6 +829,7 @@ async function handover(b, u, tx) {
   return h;
 }
 async function acknowledgeHandover(hid, b, u, header, tx) {
+  await require('./medicationAccess.cts').authorize(u,'NURSING_DOCUMENT',tx);
   const hint = await one(
     "SELECT patient_id FROM hms_med_handovers WHERE id=:id",
     { id: id(hid) },
@@ -876,6 +886,7 @@ async function acknowledgeHandover(hid, b, u, header, tx) {
   );
 }
 async function taskAction(tid, b, u, tx) {
+  await require('./medicationAccess.cts').authorize(u,u.role==='doctor'?'CLINICAL_SIGN':u.role==='pharmacist'?'DISPENSE':'NURSING_DOCUMENT',tx);
   const t = await one(
     "SELECT * FROM hms_med_tasks WHERE id=:id FOR UPDATE",
     { id: id(tid) },

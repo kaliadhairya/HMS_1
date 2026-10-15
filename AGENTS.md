@@ -182,3 +182,7 @@ go through `docs/requests/clinical-final-coordination.md`.
   remain in progress; all remaining Codex packages stay in scope. Current own
   disposable PG16 copy hms_p4_final_v2_20261015b; persistent private runtime
   configuration path is recorded in docs/clinical-final/RESUME.md.
+- 2026-10-15: native medication/order/dispense/bedside commands and shared clinical
+  privilege guards added (0131–0133). Native medication 9/9, legacy safety 20/20,
+  strict types/generated contracts pass on disposable PG16. Details:
+  docs/clinical-final/MEDICATION_V2.md. Full A2/A3/A6 closure remains pending.

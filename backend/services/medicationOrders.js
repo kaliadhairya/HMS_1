@@ -618,13 +618,15 @@ async function insertVersion(orderId, version, b, u, reason, tx) {
   );
 }
 async function createOrder(b, u, tx) {
-  await require('./facilities.cts').requirePrivilege(u, 'PRESCRIBE', tx);
   const pid = integer(b.patient_id, "Patient"),
     eid = integer(b.encounter_id, "Encounter");
+  await require('./medicationAccess.cts').authorize(u,'PRESCRIBE',tx,pid);
+  const patient=await one('SELECT id,is_active,identity_status FROM hms_patients WHERE id=:pid FOR SHARE',{pid},tx);
+  check(patient&&patient.is_active===1&&patient.identity_status!=='merged','PATIENT_IDENTITY_REVIEW_REQUIRED','New prescribing requires the current active patient identity.',409);
   check(
     await one(
-      "SELECT id FROM hms_encounters WHERE id=:eid AND patient_id=:pid",
-      { eid, pid },
+      "SELECT id FROM hms_encounters WHERE id=:eid AND patient_id=:pid AND facility_id=:facility",
+      { eid, pid,facility:u.facilityId },
       tx,
     ),
     "PATIENT_ENCOUNTER_MISMATCH",
@@ -633,8 +635,8 @@ async function createOrder(b, u, tx) {
   if (b.admission_id)
     check(
       await one(
-        "SELECT id FROM hms_admissions WHERE id=:aid AND patient_id=:pid AND status='Active'",
-        { aid: integer(b.admission_id, "Admission"), pid },
+        "SELECT id FROM hms_admissions WHERE id=:aid AND patient_id=:pid AND facility_id=:facility AND status='Active'",
+        { aid: integer(b.admission_id, "Admission"), pid,facility:u.facilityId },
         tx,
       ),
       "PATIENT_ADMISSION_MISMATCH",
@@ -921,8 +923,8 @@ async function assess(o, v, b, u, tx) {
   return assessment;
 }
 async function transition(oid, action, b, u, header, tx) {
-  await require('./facilities.cts').requirePrivilege(u, 'PRESCRIBE', tx);
   const { o, v } = await order(oid, tx);
+  await require('./medicationAccess.cts').authorize(u,'PRESCRIBE',tx,o.patient_id);
   expected(header, o.revision);
   check(
     u.id === o.prescriber_user_id,
@@ -1032,6 +1034,7 @@ async function transition(oid, action, b, u, header, tx) {
   return { order: updated, version: next };
 }
 async function verify(oid, b, u, header, tx) {
+  await require('./medicationAccess.cts').authorize(u,'DISPENSE',tx);
   const { o, v } = await order(oid, tx);
   expected(header, o.revision);
   check(

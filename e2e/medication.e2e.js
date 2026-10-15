@@ -2,6 +2,7 @@
 // test fixtures only; no production clinical rule pack is seeded.
 const { api, apiLogin, sql, runner, assert, requireThrowawayDb } = require("./helpers");
 const crypto = require("crypto");
+const {clinicalFixture}=require("./clinicalFixtures");
 requireThrowawayDb();
 const { step, done } = runner("Phase 3 medication safety");
 const tag = crypto.randomUUID().slice(0, 8);
@@ -172,6 +173,9 @@ const witness = async (action, subject, performer, details, token = nurse) =>
       doctor = await apiLogin("doctor");
       pharmacist = await apiLogin("pharmacist");
       nurse = await apiLogin("nurse");
+      await clinicalFixture('doctor',['CHART_READ','PRESCRIBE','CLINICAL_SIGN']);
+      await clinicalFixture('pharmacist',['CHART_READ','DISPENSE']);
+      await clinicalFixture('nurse',['CHART_READ','NURSING_DOCUMENT']);
       const password = await require("../backend/node_modules/bcryptjs").hash(
         "SyntheticNurse@123",
         10,
@@ -194,6 +198,7 @@ const witness = async (action, subject, performer, details, token = nurse) =>
           ).data.token,
         },
       });
+      await clinicalFixture('nurse',['CHART_READ','NURSING_DOCUMENT'],{username:'p3-nurse-'+tag});
       const [p] = await sql(
         "INSERT INTO hms_patients(name,uhid,patienttype,age,gender,opdindoor,testdate) VALUES('Synthetic medication patient',$1,'other',30,'Other','OPD',CURRENT_DATE) RETURNING id",
         ["P3-" + tag],

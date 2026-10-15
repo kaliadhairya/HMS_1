@@ -217,8 +217,8 @@ async function product(pid, tx) {
 }
 async function location(lid, tx, allowTransit = false) {
   const l = await one(
-    "SELECT * FROM hms_med_locations WHERE id=:id",
-    { id: id(lid, "Location") },
+    "SELECT * FROM hms_med_locations WHERE id=:id AND facility_id=:facility",
+    { id: id(lid, "Location"),facility:require('./medicationAccess.cts').facility() },
     tx,
   );
   check(
@@ -505,6 +505,7 @@ async function pick(p, loc, quantity, tx) {
   return selected;
 }
 async function dispense(oid, b, u, header, tx) {
+  await require('./medicationAccess.cts').authorize(u,'DISPENSE',tx);
   const { o, v } = await order(oid, tx);
   expected(header, o.revision);
   await active(o, v, tx);
@@ -616,6 +617,7 @@ async function dispense(oid, b, u, header, tx) {
     );
     lines.push(line);
   }
+  await q('UPDATE hms_med_orders SET fulfillment_revision=fulfillment_revision+1 WHERE id=:id',{id:o.id},tx);
   const balance = await one(
     "SELECT (CAST(:limit AS numeric)-coalesce(sum(quantity),0))::text AS remaining FROM hms_med_dispense_lines WHERE version_id=:v",
     { limit: v.supply_quantity, v: v.id },
@@ -630,6 +632,7 @@ async function dispense(oid, b, u, header, tx) {
 }
 async function authorizeSubstitution(oid, b, u, header, tx) {
   const { o, v } = await order(oid, tx);
+  await require('./medicationAccess.cts').authorize(u,'PRESCRIBE',tx,o.patient_id);
   expected(header, o.revision);
   check(
     o.prescriber_user_id === u.id,
@@ -662,6 +665,7 @@ async function authorizeSubstitution(oid, b, u, header, tx) {
   return a;
 }
 async function returnSupply(lineId, b, u, tx) {
+  await require('./medicationAccess.cts').authorize(u,'DISPENSE',tx);
   const hint = await one(
     "SELECT v.order_id FROM hms_med_dispense_lines l JOIN hms_med_order_versions v ON v.id=l.version_id WHERE l.id=:id",
     { id: id(lineId) },
@@ -687,6 +691,7 @@ async function returnSupply(lineId, b, u, tx) {
   );
   const qty = decimal(b.quantity, "Return quantity", p.quantity_precision);
   const reason = text(b.reason, "Return reason");
+  await q('UPDATE hms_med_orders SET fulfillment_revision=fulfillment_revision+1 WHERE id=:id',{id:hint.order_id},tx);
   const allowance = await one(
     `SELECT CAST(:supplied AS numeric)-coalesce((SELECT sum(quantity) FROM hms_med_returns WHERE dispense_line_id=:id),0)
  -coalesce((SELECT sum(base_quantity) FROM hms_med_administrations WHERE dispense_line_id=:id AND outcome='GIVEN'),0) AS available`,

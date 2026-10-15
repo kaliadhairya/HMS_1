@@ -8,6 +8,7 @@ const N = require("../services/medicationNursing");
 const { beforeSend } = require("../utils/responseGate");
 const { storage } = require("../utils/auditContext");
 const { patientInCare, NOT_IN_CARE } = require("../utils/careTeam");
+const Access=require('../services/medicationAccess.cts');
 const readers = ["doctor", "nurse", "pharmacist"];
 // Patient scope (Phase 2, migration 0014): a doctor works only with patients in
 // their care, as on the patient record routes. Other roles are not limited here.
@@ -34,6 +35,10 @@ const careFilter = (column) =>
   `(:careDoctor::int IS NULL OR patient_in_care(:careDoctor, ${column}))`;
 const careDoctor = (r) => (r.user.role === "doctor" ? r.user.id : null);
 router.use(protect);
+router.use((req,res,next)=>{
+ const action=req.method==='GET'?'CHART_READ':req.user.role==='doctor'?'PRESCRIBE':req.user.role==='nurse'?'NURSING_DOCUMENT':'DISPENSE';
+ Access.authorize(req.user,action).then(()=>next()).catch(error=>{const failure=require('../services/clinicalApiErrors.cts').response(error);res.status(failure.status).json(failure.body);});
+});
 router.use((req, res, next) => {
   res.set("Cache-Control", "no-store");
   // Extend Phase 1's before-first-byte protection without editing its shared middleware.
@@ -211,9 +216,9 @@ read("/orders", readers, async (r) => {
  (v.supply_quantity-coalesce((SELECT sum(l.quantity) FROM hms_med_dispense_lines l WHERE l.version_id=v.id),0))::text AS remaining
  FROM hms_med_orders o JOIN hms_med_order_versions v ON v.order_id=o.id AND v.version=o.current_version
  JOIN hms_patients p ON p.id=o.patient_id LEFT JOIN hms_med_verifications z ON z.version_id=v.id LEFT JOIN hms_med_assessments a ON a.id=z.assessment_id
- WHERE (:patient IS NULL OR o.patient_id=:patient) AND (:encounter IS NULL OR o.encounter_id=:encounter) AND ${careFilter("o.patient_id")}
+ WHERE o.facility_id=:facility AND (:patient IS NULL OR o.patient_id=:patient) AND (:encounter IS NULL OR o.encounter_id=:encounter) AND ${careFilter("o.patient_id")}
  ORDER BY o.created_at DESC LIMIT 200`,
-    { patient, encounter, careDoctor: careDoctor(r) },
+    { patient, encounter, careDoctor: careDoctor(r),facility:Access.facility() },
   );
 });
 read("/orders/:id", readers, async (r) => {
@@ -290,7 +295,7 @@ post(
   201,
 );
 read("/locations", readers, () =>
-  C.q("SELECT * FROM hms_med_locations ORDER BY code"),
+  C.q("SELECT * FROM hms_med_locations WHERE facility_id=:facility ORDER BY code",{facility:Access.facility()}),
 );
 post(
   "/locations",
@@ -352,7 +357,7 @@ for (const action of ["approve", "pick", "receive"])
 read("/witness-requests", readers, (r) =>
   C.q(
     "SELECT r.*,p.name AS performer_name,w.name AS witness_name FROM hms_med_witness_requests r JOIN hms_users p ON p.id=r.performer_user_id JOIN hms_users w ON w.id=r.requested_witness_user_id WHERE r.performer_user_id=:user OR r.requested_witness_user_id=:user ORDER BY r.requested_at DESC LIMIT 200",
-    { user: r.user.id },
+    { user: r.user.id,facility:Access.facility() },
   ),
 );
 post(
@@ -404,8 +409,8 @@ post(
 );
 read("/late-documentation-requests", ["doctor", "nurse"], (r) =>
   C.q(
-    `SELECT r.*,o.patient_id,o.prescriber_user_id,p.name AS patient_name,p.uhid,v.product_snapshot FROM hms_med_late_documentation_requests r JOIN hms_med_schedules s ON s.id=r.schedule_id JOIN hms_med_order_versions v ON v.id=s.version_id JOIN hms_med_orders o ON o.id=v.order_id JOIN hms_patients p ON p.id=o.patient_id WHERE r.performer_user_id=:user OR o.prescriber_user_id=:user ORDER BY r.requested_at DESC LIMIT 200`,
-    { user: r.user.id },
+    `SELECT r.*,o.patient_id,o.prescriber_user_id,p.name AS patient_name,p.uhid,v.product_snapshot FROM hms_med_late_documentation_requests r JOIN hms_med_schedules s ON s.id=r.schedule_id JOIN hms_med_order_versions v ON v.id=s.version_id JOIN hms_med_orders o ON o.id=v.order_id JOIN hms_patients p ON p.id=o.patient_id WHERE r.facility_id=:facility AND (r.performer_user_id=:user OR o.prescriber_user_id=:user) ORDER BY r.requested_at DESC LIMIT 200`,
+    { user: r.user.id,facility:Access.facility() },
   ),
 );
 post(
@@ -425,9 +430,10 @@ read("/emar", readers, (r) =>
  coalesce((SELECT jsonb_agg(c) FROM hms_med_corrections c WHERE c.administration_id=a.id),'[]') AS corrections
  FROM hms_med_schedules s JOIN hms_med_order_versions v ON v.id=s.version_id JOIN hms_med_orders o ON o.id=v.order_id JOIN hms_patients p ON p.id=s.patient_id
  LEFT JOIN hms_med_administrations a ON a.schedule_id=s.id LEFT JOIN hms_med_documentation_intents i ON i.schedule_id=s.id
- WHERE (:patient IS NULL OR s.patient_id=:patient) AND ${careFilter("s.patient_id")} ORDER BY s.scheduled_at DESC LIMIT 200`,
+ WHERE s.facility_id=:facility AND (:patient IS NULL OR s.patient_id=:patient) AND ${careFilter("s.patient_id")} ORDER BY s.scheduled_at DESC LIMIT 200`,
     {
       careDoctor: careDoctor(r),
+      facility:Access.facility(),
       patient: r.query.patient_id
         ? C.integer(r.query.patient_id, "Patient")
         : null,
@@ -454,8 +460,8 @@ post(
 );
 read("/tasks", readers, (r) =>
   C.q(
-    "SELECT * FROM hms_med_tasks WHERE assigned_user_id=:user AND state<>'CLOSED' ORDER BY created_at",
-    { user: r.user.id },
+    "SELECT * FROM hms_med_tasks WHERE facility_id=:facility AND assigned_user_id=:user AND state<>'CLOSED' ORDER BY created_at",
+    { user: r.user.id,facility:Access.facility() },
   ),
 );
 post("/tasks/:id", ["doctor", "nurse", "pharmacist"], (r, t) =>
@@ -463,8 +469,8 @@ post("/tasks/:id", ["doctor", "nurse", "pharmacist"], (r, t) =>
 );
 read("/handovers", ["nurse"], (r) =>
   C.q(
-    "SELECT * FROM hms_med_handovers WHERE sender_user_id=:user OR receiver_user_id=:user ORDER BY sent_at DESC LIMIT 200",
-    { user: r.user.id },
+    "SELECT * FROM hms_med_handovers WHERE facility_id=:facility AND (sender_user_id=:user OR receiver_user_id=:user) ORDER BY sent_at DESC LIMIT 200",
+    { user: r.user.id,facility:Access.facility() },
   ),
 );
 post("/handovers", ["nurse"], (r, t) => N.handover(r.body, r.user, t), 201);

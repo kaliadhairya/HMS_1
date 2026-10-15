@@ -144,10 +144,11 @@ const digest = (v) =>
     .update(JSON.stringify(canonical(v)))
     .digest("hex");
 async function order(idValue, tx, lock = true) {
+  const facility=require('./medicationAccess.cts').facility();
   if (lock) {
     const hint = await one(
-      "SELECT admission_id,patient_id FROM hms_med_orders WHERE id=:id",
-      { id: id(idValue, "Order") },
+      "SELECT admission_id,patient_id FROM hms_med_orders WHERE id=:id AND facility_id=:facility",
+      { id: id(idValue, "Order"),facility },
       tx,
     );
     if (hint?.admission_id)
@@ -159,8 +160,8 @@ async function order(idValue, tx, lock = true) {
   }
   if (lock) {
     const hint = await one(
-      "SELECT patient_id FROM hms_med_orders WHERE id=:id",
-      { id: id(idValue) },
+      "SELECT patient_id FROM hms_med_orders WHERE id=:id AND facility_id=:facility",
+      { id: id(idValue),facility },
       tx,
     );
     if (hint)
@@ -171,16 +172,17 @@ async function order(idValue, tx, lock = true) {
       );
   }
   const o = await one(
-    `SELECT * FROM hms_med_orders WHERE id=:id ${lock ? "FOR UPDATE" : ""}`,
-    { id: id(idValue, "Order") },
+    `SELECT * FROM hms_med_orders WHERE id=:id AND facility_id=:facility ${lock ? "FOR UPDATE" : ""}`,
+    { id: id(idValue, "Order"),facility },
     tx,
   );
   check(o, "NOT_FOUND", "Medication order not found.", 404);
   const v = await one(
-    "SELECT * FROM hms_med_order_versions WHERE order_id=:id AND version=:version",
-    { id: o.id, version: o.current_version },
+    "SELECT * FROM hms_med_order_versions WHERE order_id=:id AND version=:version AND facility_id=:facility",
+    { id: o.id, version: o.current_version,facility },
     tx,
   );
+  check(v,"ORDER_VERSION_UNAVAILABLE","The current order version is unavailable.",503);
   return { o, v };
 }
 async function active(o, v, tx) {

@@ -17,6 +17,15 @@ The complete A3 package remains in progress.
   Consultation, Quick Consult and the clinical note page use UUID commands.
   Transitional screens retain explicitly mapped numeric associations for
   medication, laboratory and billing panels pending their adapters.
+- Native medication creation/read, sign/hold/resume/discontinue/amend, independent
+  pharmacy review, exact-version partial dispensing, schedules, bedside preparation
+  and immutable dose documentation now call the shared medication authorities.
+  Medication browser consumers and the remaining domain adapters are still pending.
+  Exact decimal quantities use strings. Dispensing reviews the order's public
+  version; preparation and administration review the occurrence's public version.
+  Fulfillment and bedside claims advance these versions even for legacy callers.
+  A recorded administration is immutable at version 1; corrections remain linked
+  records. Revoked professional privileges also deny completed receipt replay.
 
 The published specification is `backend/contracts/v2.openapi.json`.
 `npm run contracts:generate` in backend generates it and the browser types /
@@ -85,8 +94,8 @@ copy and explicitly choosing a version; it never silently advances If-Match.
 
 ## Remaining A2/A3 work
 
-- Complete scheduling, ADT, medication, dispensing/e-MAR, laboratory, finance
-  and event adapters from blueprint 3.10 and consume their generated contracts.
+- Complete scheduling, ADT, laboratory, finance and event adapters from blueprint
+  3.10, remaining medication operations, and consume their generated contracts.
 - Complete facility/membership administration, explicit facility switching,
   remaining clinical action/care boundaries and restricted-runtime deployment.
 - Strengthen coherent multi-query clinical read snapshots and the final complete

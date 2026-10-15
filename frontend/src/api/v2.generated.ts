@@ -216,5 +216,268 @@ export type ClinicalDocument = {
   "signatures": Array<Signature>;
 };
 
+export type MedicationCreate = {
+  "patient_id": string;
+  "encounter_id": string;
+  "admission_id"?: string | null;
+  "product_id"?: string | null;
+  "ingredient_id"?: string | null;
+  "dose": string;
+  "dose_unit": string;
+  "route": string;
+  "frequency": {
+  "type": string;
+  "interval_minutes"?: number;
+};
+  "starts_at": string;
+  "ends_at": string;
+  "prn"?: boolean;
+  "indication"?: string | null;
+  "max_dose"?: string | null;
+  "max_period_hours"?: string | null;
+  "min_interval_minutes"?: number | null;
+  "supply_quantity": string;
+  "supply_unit": string;
+};
+
+export type MedicationOverride = {
+  "finding_code": string;
+  "reason": string;
+};
+
+export type MedicationSign = {
+  "reason"?: string;
+  "override_requests"?: Array<MedicationOverride>;
+};
+
+export type MedicationReason = {
+  "reason": string;
+};
+
+export type MedicationAmend = {
+  "product_id"?: string | null;
+  "ingredient_id"?: string | null;
+  "dose"?: string;
+  "dose_unit"?: string;
+  "route"?: string;
+  "frequency"?: {
+  "type": string;
+  "interval_minutes"?: number;
+};
+  "starts_at"?: string;
+  "ends_at"?: string;
+  "prn"?: boolean;
+  "indication"?: string | null;
+  "max_dose"?: string | null;
+  "max_period_hours"?: string | null;
+  "min_interval_minutes"?: number | null;
+  "supply_quantity"?: string;
+  "supply_unit"?: string;
+  "reason": string;
+};
+
+export type MedicationVerify = {
+  "state": "VERIFIED" | "CLARIFICATION";
+  "reason": string;
+  "coverage_acknowledged"?: boolean;
+  "overrides"?: Array<MedicationOverride>;
+};
+
+export type MedicationOrder = {
+  "id": string;
+  "version": number;
+  "patient_id": string;
+  "encounter_id": string;
+  "admission_id": string | null;
+  "prescriber_id": string;
+  "facility_id": string;
+  "state": string;
+  "order_version_id": string;
+  "content_version": number;
+  "product_id": string | null;
+  "ingredient_id": string | null;
+  "dose": string;
+  "dose_unit": string;
+  "route": string;
+  "frequency": {
+  "type": string;
+  "interval_minutes"?: number;
+};
+  "starts_at": string;
+  "ends_at": string;
+  "prn": boolean;
+  "indication": string | null;
+  "max_dose": string | null;
+  "max_period_hours": string | null;
+  "min_interval_minutes": number | null;
+  "supply_quantity": string;
+  "supply_unit": string;
+  "product_snapshot": Record<string, unknown> | null;
+  "remaining_quantity": string;
+  "signed_at": string | null;
+  "verification": {
+  "state": string;
+  "reviewer_id": string | null;
+  "reviewed_at": string | null;
+  "reason": string | null;
+} | null;
+};
+
+export type DispenseCreate = {
+  "order_id": string;
+  "order_version_id": string;
+  "product_id": string;
+  "location_id": string;
+  "quantity": string;
+  "witness_id"?: string;
+  "reason"?: string;
+};
+
+export type DispenseLine = {
+  "id": string;
+  "order_version_id": string;
+  "product_id": string;
+  "batch_id": string;
+  "location_id": string;
+  "substitution_id": string | null;
+  "quantity": string;
+  "unit": string;
+  "rate": string;
+  "amount": string;
+};
+
+export type Dispense = {
+  "id": string;
+  "version": number;
+  "patient_id": string;
+  "order_id": string;
+  "order_version_id": string;
+  "dispenser_id": string;
+  "facility_id": string;
+  "created_at": string;
+  "order_version": number;
+  "lines": Array<DispenseLine>;
+};
+
+export type MedicationSchedule = {
+  "id": string;
+  "version": number;
+  "order_id": string;
+  "order_version_id": string;
+  "patient_id": string;
+  "facility_id": string;
+  "scheduled_at": string;
+  "state": string;
+  "prn": boolean;
+  "indication": string | null;
+  "bedside_claim": {
+  "id": string;
+  "state": string;
+  "performer_id": string;
+  "created_at": string;
+  "documented_at": string | null;
+} | null;
+};
+
+export type MedicationScheduleCreate = {
+  "from_at"?: string;
+  "through_at": string;
+};
+
+export type MedicationSchedules = {
+  "id": string;
+  "version": number;
+  "patient_id": string;
+  "occurrences": Array<MedicationSchedule>;
+};
+
+export type MedicationPrepare = {
+  "order_version_id": string;
+  "patient_id": string;
+  "product_id": string;
+  "dispense_line_id": string;
+  "dose": string;
+  "dose_unit": string;
+  "route": string;
+  "scan_evidence": {
+  "mode": "BARCODE" | "MANUAL";
+  "patient_identifier": string;
+  "product_id"?: string;
+  "product_barcode"?: string;
+  "reason"?: string;
+  "identity_confirmed"?: boolean;
+  "dose_checked": boolean;
+  "route_checked": boolean;
+  "time_checked": boolean;
+};
+  "outcome"?: "GIVEN" | "HELD" | "REFUSED" | "OMITTED";
+  "actual_at"?: string;
+  "reason"?: string;
+  "witness_id"?: string;
+  "late_review_id"?: string;
+};
+
+export type AdministrationCreate = {
+  "schedule_id": string;
+  "order_version_id": string;
+  "patient_id": string;
+  "product_id": string;
+  "dispense_line_id"?: string;
+  "dose": string;
+  "dose_unit": string;
+  "route": string;
+  "scan_evidence": {
+  "mode": "BARCODE" | "MANUAL";
+  "patient_identifier": string;
+  "product_id"?: string;
+  "product_barcode"?: string;
+  "reason"?: string;
+  "identity_confirmed"?: boolean;
+  "dose_checked": boolean;
+  "route_checked": boolean;
+  "time_checked": boolean;
+};
+  "outcome": "GIVEN" | "HELD" | "REFUSED" | "OMITTED";
+  "actual_at": string;
+  "reason"?: string;
+  "witness_id"?: string;
+  "late_review_id"?: string;
+};
+
+export type Administration = {
+  "id": string;
+  "version": number;
+  "schedule_id": string;
+  "schedule_version": number;
+  "order_id": string;
+  "order_version_id": string;
+  "patient_id": string;
+  "facility_id": string;
+  "product_id": string;
+  "dispense_line_id": string | null;
+  "outcome": string;
+  "dose": string;
+  "dose_unit": string;
+  "route": string;
+  "actual_at": string;
+  "recorded_at": string;
+  "performer_id": string;
+  "scan_evidence": {
+  "mode": "BARCODE" | "MANUAL";
+  "patient_identifier": string;
+  "product_id"?: string;
+  "product_barcode"?: string;
+  "reason"?: string;
+  "identity_confirmed"?: boolean;
+  "dose_checked": boolean;
+  "route_checked": boolean;
+  "time_checked": boolean;
+};
+  "reason": string | null;
+  "witness_id": string | null;
+  "base_quantity": string;
+  "late_review_id": string | null;
+};
+
 export type CommandResponse<T extends {version:number}> = {success:true;data:T;version:number;operation_id:string};
 export type ReadResponse<T> = {success:true;data:T};
