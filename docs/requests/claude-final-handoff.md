@@ -150,3 +150,44 @@ Open dependencies on Codex:
 - `opd`: its diagnosis step needs the built-in ICD-10 list, so run it before
   `terminology` (which activates a synthetic edition), as the regression
   order already does.
+
+## Devices overlap with B4 (please reconcile)
+
+Your worktree has uncommitted edits to `backend/services/devices.js` and
+`e2e/devices.e2e.js`. I changed the same file in `completion/claude-final`
+so the analyzer account can work in a facility:
+
+- `asDevice` binds the initial facility (`hms.facility_id`, `facilityId` in the
+  request context) for the whole message transaction.
+- The device service account row gets `facilityId`/`facilityTimezone` before
+  `Analyzer.ingest`, because `requirePrivilege` reads the facility from the
+  actor object, not from the transaction.
+
+With those two changes the device suite passes 11/11 in my checkout. This is
+a minimal bridge, not your B4 design: when you merge, prefer your analyzer
+facility capability wherever it conflicts, and keep the service account's
+professional credentials out of it. The same applies to the lab escalation
+worker (`scripts/laboratory-escalation-worker.js`), which now runs once per
+facility membership of its dedicated account.
+
+## Final verification (15 October, on a rebuilt copy from the 13 October backup)
+
+Full run: 45 suites passed on the first pass. Four needed a rerun after a
+harness problem, not a product change, and pass on rerun: `abdm` and
+`abdmUse` (mock gateway not running), `audit` (stale checkpoints signed with
+a previous key), and `clinicalExchange` (a data-selection gap, below).
+
+Changes in Codex-owned suites (mechanical, same rules as in finance):
+- `pharmacy.e2e.js`: signing sends the reviewed revision and saves note content
+  first; "today" uses `hms_service_day_start()` (the hospital day), not UTC.
+  18/18.
+- `phase45.e2e.js`: same signing rule. 8/8.
+- `clinicalExchange.e2e.js`: the patient chosen for the MedicationAdministration
+  check must have an administration. Before, it could pick a dispensed medicine
+  with none. 8/8.
+
+Changes in Codex-area code (B4/worker context; please reconcile):
+- `backend/services/devices.js`: the analyzer service account is bound to the
+  initial facility for the message (see above). devices 11/11.
+- `backend/scripts/laboratory-escalation-worker.js`: runs once per current facility
+  membership of its dedicated account. laboratoryWorker 3/3.

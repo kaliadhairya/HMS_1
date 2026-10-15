@@ -22,6 +22,7 @@ const get=async(url,token)=>{const r=await fetch(API+'/fhir/'+url,{headers:{auth
  await step('Immutable medication versions, dispenses and administrations preserve source identities and quantities',async()=>{
   const [r]=await sql(`SELECT o.patient_id,v.id,v.dose,v.dose_unit,o.encounter_id FROM hms_med_order_versions v JOIN hms_med_orders o ON o.id=v.order_id
     WHERE v.signed_at IS NOT NULL AND EXISTS(SELECT 1 FROM hms_med_dispense_lines l WHERE l.version_id=v.id)
+      AND EXISTS(SELECT 1 FROM hms_med_administrations a JOIN hms_med_order_versions av ON av.id=a.version_id WHERE av.order_id=o.id)
     ORDER BY v.signed_at DESC LIMIT 1`);
   assert(r,'Run medication.e2e.js first');rx=r;
   for(const type of ['MedicationRequest','MedicationDispense','MedicationAdministration']){

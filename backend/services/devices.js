@@ -25,8 +25,11 @@ async function asDevice(t, userId, fn) {
   const previous = await one("SELECT current_setting('hms.actor_user_id', true) AS actor, current_setting('hms.session_id', true) AS session, current_setting('hms.request_id', true) AS request", {}, t);
   const setActor = (actor, session, request) => rows("SELECT set_config('hms.actor_user_id', :actor, true), set_config('hms.session_id', :session, true), set_config('hms.request_id', :request, true)", { actor: actor == null ? '' : String(actor), session: session || '', request: request || '' }, t);
   await setActor(userId, '', requestId);
+  // The device's service account works in its facility for the whole message (A2 rule).
+  const facility = await one("SELECT hms_initial_facility()::text AS id, (SELECT timezone FROM hms_facilities WHERE id = hms_initial_facility()) AS tz", {}, t);
+  await rows("SELECT set_config('hms.facility_id', :f, true), set_config('hms.facility_tz', :tz, true)", { f: facility.id, tz: facility.tz || 'Asia/Kolkata' }, t);
   try {
-    return await storage.run({ ...store, requestId, userId, sessionId: null, command }, fn);
+    return await storage.run({ ...store, requestId, userId, sessionId: null, facilityId: facility.id, facilityTimezone: facility.tz || 'Asia/Kolkata', command }, fn);
   } finally {
     command.active = false;
     // These are transaction-local settings; rollback also resets them. A failed
@@ -132,8 +135,11 @@ async function receive(system, raw, auth, t) {
   if (c.kind !== 'analyzer') {
     problems.push(`${c.kind} messages are kept for a person to act on`);
   } else {
-    const svc = await one('SELECT * FROM hms_users WHERE id = :id', { id: c.service_user_id }, t);
-    if (!svc || Number(svc.is_active) !== 1) fail(403, 'The device account is not active.', 'DEVICE_ACCOUNT_INACTIVE');
+    const account = await one('SELECT * FROM hms_users WHERE id = :id', { id: c.service_user_id }, t);
+    if (!account || Number(account.is_active) !== 1) fail(403, 'The device account is not active.', 'DEVICE_ACCOUNT_INACTIVE');
+    // The account acts in the device's facility; the clinical privilege check reads it from the actor.
+    const home = await one("SELECT hms_initial_facility()::text AS id, (SELECT timezone FROM hms_facilities WHERE id = hms_initial_facility()) AS tz", {}, t);
+    const svc = { ...account, facilityId: home.id, facilityTimezone: home.tz || 'Asia/Kolkata' };
     await asDevice(t, svc.id, async () => {
       for (const r of results) {
         const { body, problem } = await toAnalyzerBody(c, msgId, r, t);
