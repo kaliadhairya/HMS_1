@@ -208,3 +208,9 @@ Every suite in the repository was run on final code (`87d4fc6`), on a database
 rebuilt from the 13 October backup: all suites pass. The audit suite failed
 once on a checkpoint timing race and passed on rerun alone. Output is in
 `docs/clinical-final/evidence/claude-final-full-run-20261015.txt`.
+
+## Single uninterrupted run (final)
+
+One pass, all 55 suites, on final code `c0589d6`, database rebuilt from the
+13 October backup and migrated to 0156: **55 of 55 passed, no reruns.**
+Output: `docs/clinical-final/evidence/claude-final-single-run-20261015.txt`.
