@@ -5,7 +5,7 @@ const {publish}=require('../utils/outbox');
 const crypto=require('node:crypto');
 type Actor={id:number;role:string;facilityId?:string};
 type NoteContent=Record<string,string|null>;
-const FIELDS=['chief_complaint','hopi','past_medical_history','surgical_history','family_history','social_history','current_medications','general_examination','cvs_findings','rs_findings','abdomen_findings','cns_findings'] as const;
+const FIELDS:readonly string[]=require('../domain/clinicalDocumentSchema.cts').encounterFields;
 const rows=(sql:string,replacements:Record<string,unknown>,transaction:Transaction):Promise<any[]>=>sequelize.query(sql,{replacements,transaction,type:'SELECT'});
 function fail(status:number,message:string,code:string,current?:number):never{throw Object.assign(new Error(message),{status,code,current});}
 function expected(raw:unknown):number{
@@ -17,7 +17,7 @@ async function load(id:number,actor:Actor,raw:unknown,t:Transaction){
  const [e]=await rows('SELECT * FROM hms_encounters WHERE id=:id AND facility_id=:facility FOR UPDATE',{id,facility:actor.facilityId},t);
  if(!e)fail(404,'Encounter not found.','NOT_FOUND');
  if(actor.role!=='doctor'||Number(e.doctor_id)!==actor.id||!(await patientInCare(actor.id,e.patient_id,t)))fail(403,'Only the responsible doctor in care may save or sign this encounter.','PATIENT_NOT_IN_CARE');
- if(e.status==='Finalized')fail(400,'Cannot change a finalized encounter; use a linked amendment.','ENCOUNTER_FINALIZED');
+ if(e.status==='Finalized')fail(409,'Cannot change a finalized encounter; use a linked amendment.','ENCOUNTER_FINALIZED');
  const revision=expected(raw);if(Number(e.record_revision)!==revision)fail(412,'The encounter changed. Compare the latest record before saving your preserved draft.','VERSION_STALE',Number(e.record_revision));return e;
 }
 const contentOf=(e:any):NoteContent=>Object.fromEntries(FIELDS.map(k=>[k,e[k]??null]));
@@ -28,7 +28,7 @@ async function ensureDocument(e:any,t:Transaction){
  await rows('UPDATE hms_encounters SET notes_document_id=:doc WHERE id=:id',{doc:doc.id,id:e.id},t);return doc.id;
 }
 async function save(id:number,actor:Actor,input:Record<string,unknown>,raw:unknown,t:Transaction){
- await require('./facilities.cts').requirePrivilege(actor,'CLINICAL_SIGN',t);
+ await require('./facilities.cts').requirePrivilege(actor,'CHART_READ',t);await require('./facilities.cts').requirePrivilege(actor,'CLINICAL_SIGN',t);
  const e=await load(id,actor,raw,t);const changes:NoteContent={};
  for(const k of FIELDS){if(!(k in input))continue;const v=input[k];if(v!==null&&typeof v!=='string')fail(422,`${k} must be text.`,'INVALID_NOTE');if(typeof v==='string'&&v.length>5000)fail(422,`${k} is too long.`,'INVALID_NOTE');changes[k]=v as string|null;}
  const content={...contentOf(e),...changes};if(JSON.stringify(content).length>30000)fail(422,'The consultation note is too long.','INVALID_NOTE');
@@ -39,7 +39,7 @@ async function save(id:number,actor:Actor,input:Record<string,unknown>,raw:unkno
  return {id,revision:Number(updated.record_revision),notes_document_id:Number(doc)};
 }
 async function sign(id:number,actor:Actor,raw:unknown,t:Transaction){
- await require('./facilities.cts').requirePrivilege(actor,'CLINICAL_SIGN',t);
+ await require('./facilities.cts').requirePrivilege(actor,'CHART_READ',t);await require('./facilities.cts').requirePrivilege(actor,'CLINICAL_SIGN',t);
  const e=await load(id,actor,raw,t);const content=contentOf(e);
  if(!Object.values(content).some(v=>v?.trim()))fail(422,'Review and save clinical content before signing.','EMPTY_CLINICAL_NOTE');
  const doc=await ensureDocument(e,t);

@@ -38,3 +38,19 @@ Codex will update the pharmacy/phase45 versioned signing fixtures and review
 your staged C2 OPD walkthrough during final regression. The licensed content,
 registered exchange, regional protection and hospital approval gates remain
 explicitly separate from these local engineering tests.
+
+
+## Clinical identity/document v2 increment (2026-10-15)
+
+Codex has added migrations 0127–0130 in the clinical completion checkout;
+these are applied on disposable verification databases and must not be edited.
+The exact contract and remaining adapters are in
+`docs/clinical-final/API_V2.md`. ClinicalNotes/Consultation/QuickConsult now use
+UUID note commands and public aggregate versions. Keep these semantics during
+C2 integration: no silent If-Match rebase, retain original pending key/body,
+ignore superseded loads, bind recovery to actor/facility/record, and preserve
+canonical signed JSON separately from snake_case presentation. Generic note
+administration access is now denied without clinical authority. Shared
+`useGovernedCommand` remains compatible with prior POST callers and additionally
+supports a method, scoped replay and structured failures. Review this shared
+increment when rebasing; do not reconnect legacy free-text writers.

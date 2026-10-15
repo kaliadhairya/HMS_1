@@ -4,6 +4,7 @@
 // digest-bound version; signed content cannot change; a change is a linked,
 // reasoned amendment that leaves the original version intact.
 const crypto = require('crypto');
+const {clinicalFixture}=require('./clinicalFixtures');
 const { API, apiLogin, sql, runner, assert, stamp } = require('./helpers');
 
 async function call(method, url, token, body, headers = {}) {
@@ -23,6 +24,7 @@ async function call(method, url, token, body, headers = {}) {
   const desk = await apiLogin('receptionist');
   const doctor = await apiLogin('doctor');
   const admin = await apiLogin('admin');
+  await clinicalFixture('doctor',['CHART_READ','CLINICAL_SIGN']);
   const tag = stamp();
   const ctx = {};
 
@@ -100,9 +102,9 @@ async function call(method, url, token, body, headers = {}) {
     assert(versions[0].digest !== versions[1].digest, 'amendment has the same digest as the original');
   });
 
-  await step('Only the author writes; administrators can read the note but cannot change it', async () => {
+  await step('Only the author writes; administration does not grant clinical chart access', async () => {
     assert((await call('POST', `/clinical-documents/${ctx.doc}/amend`, admin, { reason: 'An admin trying to amend' }, { 'if-match': '"4"' })).status === 403, 'admin amended');
-    assert((await call('GET', `/clinical-documents/${ctx.doc}`, admin)).status === 200, 'admin cannot read');
+    assert((await call('GET', `/clinical-documents/${ctx.doc}`, admin)).status === 403, 'admin acquired implicit clinical read access');
     assert((await call('POST', '/clinical-documents', desk, { patientId: ctx.patient, content: {} })).status === 403, 'desk created a note');
   });
 

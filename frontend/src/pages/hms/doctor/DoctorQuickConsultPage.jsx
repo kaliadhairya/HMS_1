@@ -85,7 +85,7 @@ export default function DoctorQuickConsultPage() {
       };
       const res = await api.post('/hms/encounters', payload);
       setActiveEncounterId(res.data.id);
-      encounterRevision.current=Number(res.data.record_revision||1);
+      encounterRevision.current=Number(res.data.api_version);encounterPublicId.current=res.data.public_id;
       
       // Load patient context (Vitals, Lab Reports). The vitals API answers { success, data }.
       const vp = await api.get(`/hms/vitals/latest/${patient.id || patient.ID}`);
@@ -156,19 +156,19 @@ export default function DoctorQuickConsultPage() {
   // ─── Prescription Handlers ───
   // ─── Finalize ───
   const [finalizing,setFinalizing]=useState(false),[uncertainFinalize,setUncertainFinalize]=useState(false);
-  const finalizeRequest=useRef(null),finalizeRunning=useRef(false),encounterRevision=useRef(1);
+  const finalizeRequest=useRef(null),finalizeRunning=useRef(false),encounterRevision=useRef(1),encounterPublicId=useRef(null);
   const finalizeEncounter = async (reconcile=false) => {
     if(finalizeRunning.current||(!reconcile&&finalizeRequest.current))return;
     if (!activeEncounterId || hasPendingMedication) return toast.error('Confirm and sign medication orders before finalizing.');
-    const r=reconcile?finalizeRequest.current:{id:activeEncounterId,content:JSON.parse(JSON.stringify(formData)),revision:encounterRevision.current,stage:'SAVE',saveKey:crypto.randomUUID(),signKey:crypto.randomUUID()};
+    const r=reconcile?finalizeRequest.current:{id:encounterPublicId.current,content:JSON.parse(JSON.stringify(formData)),revision:encounterRevision.current,stage:'SAVE',saveKey:crypto.randomUUID(),signKey:crypto.randomUUID()};
     if(!r)return;
     finalizeRequest.current=r;finalizeRunning.current=true;setFinalizing(true);
     try {
       if(r.stage==='SAVE'){
-        const saved=await api.put(`/hms/encounters/${r.id}`,r.content,{headers:{'If-Match':String(r.revision),'Idempotency-Key':r.saveKey}});
-        r.revision=saved.data.revision;encounterRevision.current=r.revision;r.stage='SIGN';
+        const saved=await api.put(`/v2/encounters/${r.id}/draft`,r.content,{headers:{'If-Match':String(r.revision),'Idempotency-Key':r.saveKey}});
+        r.revision=saved.data.version;encounterRevision.current=r.revision;r.stage='SIGN';
       }
-      await api.patch(`/hms/encounters/${r.id}/finalize`, {},{headers:{'If-Match':String(r.revision),'Idempotency-Key':r.signKey}});
+      await api.post(`/v2/encounters/${r.id}/sign`, {},{headers:{'If-Match':String(r.revision),'Idempotency-Key':r.signKey}});
       finalizeRequest.current=null;setUncertainFinalize(false);
       toast.success('Consultation finalized');
       clearPatient();

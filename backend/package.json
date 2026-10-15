@@ -11,7 +11,9 @@
     "migrate": "node migrate.js up",
     "migrate:status": "node migrate.js status",
     "seed:demo": "node seed_demo_data.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --project ../frontend/tsconfig.contracts.json",
+    "contracts:generate": "node scripts/generateClinicalContracts.cts",
+    "contracts:check": "node scripts/generateClinicalContracts.cts --check"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1143.0",

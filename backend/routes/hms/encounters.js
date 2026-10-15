@@ -9,108 +9,18 @@ const { logAction } = require('../../utils/auditLogger');
 const { clobToString } = require('../../utils/clobToString');
 const { Op } = require('sequelize');
 
-// Today's open OPD token / appointment for this patient with this doctor (both store the doctor's user ID).
-async function findOpenVisit(patientId, userId, transaction) {
-  const [doctorRows] = await sequelize.query(
-    'SELECT ID, DEPARTMENT_ID FROM HMS_DOCTORS WHERE USER_ID = :userId ORDER BY ID LIMIT 1',
-    { replacements: { userId }, transaction }
-  );
-  const doctorRow = doctorRows[0] || null;
-  const doctorIds = [Number(userId)];
-
-  const [tokenRows] = await sequelize.query(`
-    SELECT ID, DEPARTMENT_ID FROM HMS_TOKENS
-     WHERE PATIENT_ID = :patientId AND DOCTOR_ID IN (:doctorIds)
-       AND TRUNC(TOKEN_DATE) = hms_service_today()
-       AND STATUS = 'Waiting'
-     ORDER BY TOKEN_NUMBER ASC LIMIT 1
-  `, { replacements: { patientId, doctorIds }, transaction });
-
-  const [appointmentRows] = await sequelize.query(`
-    SELECT ID, DEPARTMENT_ID FROM HMS_APPOINTMENTS
-     WHERE PATIENT_ID = :patientId AND DOCTOR_ID IN (:doctorIds)
-       AND TRUNC(APPOINTMENT_DATE) = hms_service_today()
-       AND STATUS IN ('Scheduled', 'Checked-in')
-     ORDER BY CASE WHEN STATUS = 'Checked-in' THEN 0 ELSE 1 END, SLOT_START ASC LIMIT 1
-  `, { replacements: { patientId, doctorIds }, transaction });
-
-  return {
-    token: tokenRows[0] || null,
-    appointment: appointmentRows[0] || null,
-    doctorDepartmentId: doctorRow ? doctorRow.DEPARTMENT_ID : null,
-  };
-}
-
-// Create a new encounter (Start Consultation)
-router.post('/', protect, checkPermission('consultation', 'write'), requireCurrentPractitioner, async (req, res) => {
+// Both public API versions call the same typed encounter command.
+const EncounterCommands = require('../../services/clinicalEncounters.cts');
+router.post('/', protect, checkPermission('consultation','write'), requireCurrentPractitioner, async (req,res) => {
   try {
-    const { patient_id, token_id, appointment_id, department_id, chief_complaint, encounter_type } = req.body;
-    const patientId = Number(patient_id);
-    if (!Number.isInteger(patientId) || patientId <= 0) {
-      return res.status(400).json({ error: 'patient_id is required' });
-    }
-    const patient = await Patient.findByPk(patientId, { attributes: ['id'] });
-    if (!patient) return res.status(404).json({ error: 'Patient not found' });
-    if (req.user.role === 'doctor' && !(await patientInCare(req.user.id, patientId))) {
-      return res.status(403).json({ success: false, code: 'PATIENT_NOT_IN_CARE', message: NOT_IN_CARE });
-    }
-
-    const encounterId = await sequelize.transaction(async (transaction) => {
-      // Link the visit the front desk opened today (token and/or appointment), so the queue
-      // status, the department and later the appointment completion follow this consultation.
-      const open = await findOpenVisit(patientId, Number(req.user.id), transaction);
-      const normalizedTokenId = token_id ? Number(token_id) : (open.token ? Number(open.token.ID) : null);
-      const normalizedAppointmentId = appointment_id ? Number(appointment_id) : (open.appointment ? Number(open.appointment.ID) : null);
-      const resolvedDepartmentId = department_id
-        ? Number(department_id)
-        : (open.token?.DEPARTMENT_ID ?? open.appointment?.DEPARTMENT_ID ?? open.doctorDepartmentId ?? null);
-
-      const [[{ NEXTVAL: nextId }]] = await sequelize.query(
-        "SELECT nextval('hms_encounters_seq') AS \"NEXTVAL\"",
-        { transaction }
-      );
-
-      await sequelize.query(`
-        INSERT INTO HMS_ENCOUNTERS (
-          ID, PATIENT_ID, DOCTOR_ID, DEPARTMENT_ID, TOKEN_ID, APPOINTMENT_ID,
-          CHIEF_COMPLAINT, ENCOUNTER_DATE, ENCOUNTER_TYPE, STATUS
-        ) VALUES (
-          :id, :patientId, :doctorId, :departmentId, :tokenId, :appointmentId,
-          :chiefComplaint, CURRENT_TIMESTAMP, :encounterType, 'Draft'
-        )
-      `, {
-        replacements: {
-          id: nextId,
-          patientId,
-          doctorId: Number(req.user.id),
-          departmentId: resolvedDepartmentId ? Number(resolvedDepartmentId) : null,
-          tokenId: normalizedTokenId,
-          appointmentId: normalizedAppointmentId,
-          chiefComplaint: chief_complaint || null,
-          encounterType: encounter_type || 'OPD',
-        },
-        transaction,
-      });
-
-      if (normalizedTokenId) {
-        await Token.update(
-          { status: 'In Consultation' },
-          { where: { id: normalizedTokenId }, transaction }
-        );
-      }
-
-      return nextId;
-    });
-
-    const encounter = await Encounter.findByPk(encounterId);
-
-    // Log Action
-    await logAction(req.user.id, 'CREATE', 'encounter', encounter.id, null, encounter.toJSON(), req.ip);
-    
-    res.status(201).json(encounter);
-  } catch (error) {
-    console.error('Error creating encounter:', error);
-    res.status(500).json({ error: 'Failed to create encounter' });
+    const created=await sequelize.transaction(t=>EncounterCommands.create(req.body,req.user,t));
+    const encounter=await Encounter.findByPk(created.id);
+    await logAction(req.user.id,'CREATE','encounter',created.id,null,{patient_id:created.patient_id,encounter_id:created.id},req.ip);
+    res.status(201).json({...encounter.toJSON(),public_id:created.public_id,api_version:created.api_version});
+  } catch(error) {
+    if(error.status)return res.status(error.status).json({success:false,code:error.code,message:error.message});
+    console.error('Encounter creation failed:',error.original?.code||error.code||error.name);
+    res.status(500).json({success:false,code:'ENCOUNTER_CREATE_FAILED',message:'The consultation could not be confirmed.'});
   }
 });
 
@@ -133,7 +43,10 @@ router.patch('/:id/finalize',protect,checkPermission('consultation','write'),req
 // Get Encounter with full details (Diagnoses, Prescriptions, Orders)
 router.get('/:id', protect, checkPermission('consultation', 'read'), async (req, res) => {
   try {
-    const encounter = await Encounter.findByPk(req.params.id, {
+    const I=require('../../services/identities.cts');
+    const identity=await I.locate('encounter',req.params.id,req.user,undefined,true);
+    const approved=await require('../../services/clinicalV2.cts').readEncounter(identity.public_id,req.user);
+    const encounter = await Encounter.findByPk(identity.id, {
       include: [
         { model: Patient, as: 'patient' },
         { model: User, as: 'doctor', attributes: ['id', 'name', 'role'] },
@@ -153,11 +66,12 @@ router.get('/:id', protect, checkPermission('consultation', 'read'), async (req,
     
     if (!encounter) return res.status(404).json({ error: 'Encounter not found' });
     if(req.user.role==='doctor'&&!(await patientInCare(req.user.id,encounter.patient_id)))return res.status(403).json({success:false,code:'PATIENT_NOT_IN_CARE',message:NOT_IN_CARE});
+    res.locals.auditPatientId=Number(encounter.patient_id);
     res.set('ETag',`"${encounter.record_revision}"`);
-    const data = encounter.toJSON();
+    const data = {...encounter.toJSON(),public_id:approved.id,api_version:approved.version};
     if(data.notes_document_id){
-      const [signed]=await sequelize.query('SELECT s.content,s.version FROM hms_document_signatures s WHERE s.document_id=:id ORDER BY s.version DESC LIMIT 1',{replacements:{id:data.notes_document_id},type:'SELECT'});
-      if(signed){Object.assign(data,signed.content);data.signed_note_version=Number(signed.version);}
+      const [signed]=await sequelize.query('SELECT s.content,s.version,s.digest FROM hms_document_signatures s WHERE s.document_id=:id ORDER BY s.version DESC LIMIT 1',{replacements:{id:data.notes_document_id},type:'SELECT'});
+      if(signed){if(require('../../services/clinicalDocuments.cts').digestOf(signed.content)!==signed.digest)throw Object.assign(new Error('Signed record integrity failed.'),{status:503,code:'SIGNED_RECORD_INTEGRITY_FAILED'});for(const field of Notes.fields)if(field in signed.content)data[field]=signed.content[field];data.signed_note_version=Number(signed.version);}
     }
     const clobFields = ['chief_complaint', 'hopi', 'past_medical_history', 'surgical_history', 'family_history', 'social_history', 'current_medications', 'general_examination', 'cvs_findings', 'rs_findings', 'abdomen_findings', 'cns_findings'];
     for (const f of clobFields) {
@@ -175,7 +89,8 @@ router.get('/:id', protect, checkPermission('consultation', 'read'), async (req,
     }
     res.json(data);
   } catch (error) {
-    console.error('Error fetching encounter:', error);
+    if(error.status)return res.status(error.status).json({success:false,code:error.code,message:error.message});
+    console.error('Error fetching encounter:', error.original?.code||error.name);
     res.status(500).json({ error: 'Failed to fetch encounter' });
   }
 });
@@ -183,8 +98,14 @@ router.get('/:id', protect, checkPermission('consultation', 'read'), async (req,
 // Get Patient Encounter History
 router.get('/patient/:patient_id', protect, checkPermission('consultation', 'read'), async (req, res) => {
   try {
+    const I=require('../../services/identities.cts');
+    const identity=await I.locate('patient',req.params.patient_id,req.user,undefined,true);
+    await require('../../services/clinicalV2.cts').patient(identity.public_id,req.user);
+    await require('../../services/facilities.cts').requirePrivilege(req.user,'CHART_READ');
+    res.locals.auditPatientId=Number(identity.id);
+    const ids=await sequelize.query('SELECT id FROM hms_encounters WHERE patient_id=:patient AND facility_id=:facility',{replacements:{patient:identity.id,facility:req.user.facilityId},type:'SELECT'});
     const encounters = await Encounter.findAll({
-      where: { patient_id: req.params.patient_id },
+      where: { id:ids.map(r=>r.id) },
       order: [['encounter_date', 'DESC']],
       include: [
         { model: User, as: 'doctor', attributes: ['id', 'name'] },
@@ -202,7 +123,8 @@ router.get('/patient/:patient_id', protect, checkPermission('consultation', 'rea
     
     res.json(parsed);
   } catch (error) {
-    console.error('Error fetching patient encounters:', error);
+    if(error.status)return res.status(error.status).json({success:false,code:error.code,message:error.message});
+    console.error('Error fetching patient encounters:', error.original?.code||error.name);
     res.status(500).json({ error: 'Failed to fetch encounters' });
   }
 });

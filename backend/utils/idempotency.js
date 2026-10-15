@@ -5,6 +5,7 @@ const { storage } = require('./auditContext');
 const { beforeSend } = require('./responseGate');
 
 const REQUIRED = [
+  /^\/api\/v2(?:\/.*)?$/,
   /^\/api\/facilities(?:\/.*)?$/,
   /^\/api\/practitioners(?:\/.*)?$/,
   /^\/api\/laboratory(?:\/.*)?$/,

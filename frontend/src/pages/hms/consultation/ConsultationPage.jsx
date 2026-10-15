@@ -88,7 +88,7 @@ export default function ConsultationPage() {
     try {
       const res = await api.get(`/hms/encounters/${id}`);
       const enc = res.data;
-      noteRevision.current=Number(enc.record_revision||1);
+      noteRevision.current=Number(enc.api_version);
       notePending.current=null;setNotesUncertain(false);setNotesConflict(null);setNotesDirty(false);
       setEncounter(enc);
       setPatient(enc.patient);
@@ -149,19 +149,19 @@ export default function ConsultationPage() {
   const noteCommand=async(method,body,reconcile=false)=>{
     if(noteRunning.current||notesConflict||(!reconcile&&notePending.current))return false;
     if(!reconcile&&method==='put'&&!notesDirty)return true;
-    const request=reconcile?notePending.current:{method,path:`/hms/encounters/${id}${method==='patch'?'/finalize':''}`,body:JSON.parse(JSON.stringify(body)),revision:noteRevision.current,key:crypto.randomUUID()};
+    const request=reconcile?notePending.current:{method:method==='patch'?'post':'put',action:method==='patch'?'sign':'draft',path:`/v2/encounters/${encounter.public_id}/${method==='patch'?'sign':'draft'}`,body:JSON.parse(JSON.stringify(body)),revision:noteRevision.current,key:crypto.randomUUID()};
     if(!request)return false;
     notePending.current=request;noteRunning.current=true;setNotesBusy(true);
     try{
       const r=await api[request.method](request.path,request.body,{headers:{'If-Match':String(request.revision),'Idempotency-Key':request.key}});
-      noteRevision.current=r.data.revision;notePending.current=null;setNotesUncertain(false);setNotesMessage('Notes saved and confirmed.');
-      if(request.method==='patch'){setEncounter(e=>({...e,status:'Finalized',notes_document_id:r.data.notes_document_id}));setConfirmFinalize(false);}
+      noteRevision.current=r.data.version;notePending.current=null;setNotesUncertain(false);setNotesMessage('Notes saved and confirmed.');
+      if(request.action==='sign'){setEncounter(e=>({...e,status:'Finalized',notes_document_id:r.data.data.notes_document_id}));setConfirmFinalize(false);}
       else if(JSON.stringify(latestForm.current)===JSON.stringify(request.body))setNotesDirty(false);
       return true;
     }catch(err){
       const unknown=!err.response||err.response.status>=500;setNotesUncertain(unknown);
       if(!unknown)notePending.current=null;
-      if(err.response?.status===412)setNotesConflict({revision:err.response.data.current,remote:null});
+      if(err.response?.status===412)setNotesConflict({revision:err.response.data.current_version,remote:null});
       setNotesMessage(unknown?'Save outcome uncertain. Keep this chart open and reconcile the original note request.':err.response?.data?.message||'Notes could not be saved. Your draft is preserved.');
       return false;
     }finally{noteRunning.current=false;setNotesBusy(false);}
@@ -288,7 +288,7 @@ export default function ConsultationPage() {
       {notesUncertain&&<button className="btn btn-secondary btn-md" disabled={notesBusy} onClick={()=>noteCommand(null,null,true)}>Reconcile original note request</button>}
       {notesConflict&&<section className="panel panel-pad stack" aria-label="Consultation note conflict">
         <p role="alert">Another writer changed this chart. Your draft is preserved. Review the current server record before choosing a version.</p>
-        {!notesConflict.remote&&<button className="btn btn-secondary btn-md" onClick={async()=>{try{const r=await api.get(`/hms/encounters/${id}`);setNotesConflict({revision:r.data.record_revision,remote:r.data});}catch{setNotesMessage('Could not load the server copy. Your draft is preserved.');}}}>Compare server copy</button>}
+        {!notesConflict.remote&&<button className="btn btn-secondary btn-md" onClick={async()=>{try{const r=await api.get(`/hms/encounters/${id}`);setNotesConflict({revision:r.data.api_version,remote:r.data});}catch{setNotesMessage('Could not load the server copy. Your draft is preserved.');}}}>Compare server copy</button>}
         {notesConflict.remote&&<>
           <dl>{Object.keys(formData).filter(k=>String(formData[k]||'')!==String(notesConflict.remote[k]||'')).map(k=><div key={k}><dt>{k.replaceAll('_',' ')}</dt><dd>Server: {notesConflict.remote[k]||'Empty'}<br/>Your draft: {formData[k]||'Empty'}</dd></div>)}</dl>
           <button className="btn btn-secondary btn-md" onClick={()=>{setFormData(Object.fromEntries(Object.keys(formData).map(k=>[k,notesConflict.remote[k]||''])));noteRevision.current=notesConflict.revision;setEncounter(notesConflict.remote);setNotesConflict(null);setNotesDirty(false);}}>Use server version</button>

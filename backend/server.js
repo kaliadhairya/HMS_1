@@ -136,6 +136,7 @@ app.use(require('./middleware/accessAudit'));
 
 // ── Routes ──────────────────────────────────────────────────────
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/v2', require('./routes/v2'));
 app.use('/api/events', require('./routes/events'));
 app.use('/api/medication', require('./routes/medication'));
 app.use('/api/users', require('./routes/users'));

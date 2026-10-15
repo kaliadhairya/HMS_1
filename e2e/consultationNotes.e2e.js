@@ -2,10 +2,11 @@
 const crypto=require('crypto');
 const {API,BASE,api,apiLogin,sql,inCare,runner,assert,requireThrowawayDb,chromium,browserAs}=require('./helpers');
 requireThrowawayDb();
+const {clinicalFixture}=require('./clinicalFixtures');
 const tag=crypto.randomUUID().slice(0,8);
 (async()=>{
  const {step,done}=runner('Versioned consultation notes');
- const doctor=await apiLogin('doctor'),admin=await apiLogin('admin');let pid,eid,document,original;
+ const doctor=await apiLogin('doctor'),admin=await apiLogin('admin');await clinicalFixture('doctor',['CHART_READ','CLINICAL_SIGN']);let pid,eid,document,original;
  const call=(method,url,body,revision,key,token=doctor)=>api(method,url,{token,body,headers:{...(revision===undefined?{}:{'if-match':String(revision)}),...(key?{'idempotency-key':key}:{})}});
  const view=()=>call('GET','/hms/encounters/'+eid);
  await step('Prepare a synthetic encounter and prove missing revisions and wrong authors cannot mutate it',async()=>{
@@ -30,7 +31,7 @@ const tag=crypto.randomUUID().slice(0,8);
   if(e.status!=='Finalized')assert((await call('PATCH',`/hms/encounters/${eid}/finalize`,{},e.record_revision)).status===200,'Finalize current revision failed');
   [original]=await sql('SELECT content,digest FROM hms_document_signatures WHERE document_id=$1',[document]);assert(original,'Missing signature');
   let refused=false;try{await sql("UPDATE hms_encounters SET hopi='Unauthorized overwrite' WHERE id=$1",[eid]);}catch(e){refused=/immutable/.test(e.message);}assert(refused,'Database accepted finalized clinical overwrite');
-  assert((await call('PUT','/hms/encounters/'+eid,{hopi:'Stale copy'},2)).status===400,'Finalized record modified');
+  assert((await call('PUT','/hms/encounters/'+eid,{hopi:'Stale copy'},2)).status===409,'Finalized record modified');
  });
  await step('Finalizing response replay commits one signature and one outbox event',async()=>{
   const [u]=await sql("SELECT id FROM hms_users WHERE username='doctor'");
@@ -52,13 +53,13 @@ const tag=crypto.randomUUID().slice(0,8);
  });
  await step('A committed note save whose response is lost reconciles once and preserves the browser draft',async()=>{
   const [u]=await sql("SELECT id FROM hms_users WHERE username='doctor'");
-  const [e]=await sql("INSERT INTO hms_encounters(patient_id,doctor_id,status) VALUES($1,$2,'Draft') RETURNING id",[pid,u.id]);
+  const [e]=await sql("INSERT INTO hms_encounters(patient_id,doctor_id,status) VALUES($1,$2,'Draft') RETURNING id,public_id",[pid,u.id]);
   const browser=await chromium.launch();let ui;
   try{
    ui=await browserAs(browser,'doctor');await ui.page.goto(`${BASE}/hms/consultation/${e.id}`,{waitUntil:'domcontentloaded'});
    await ui.page.getByLabel('Chief complaint',{exact:true}).fill('Synthetic uncertain note retained');
    let receive=false;
-   await ui.page.route(`**/api/hms/encounters/${e.id}`,async route=>{
+   await ui.page.route(`**/api/v2/encounters/${e.public_id}/draft`,async route=>{
     if(route.request().method()==='PUT'&&!receive){const r=await route.fetch();assert(r.status()===200,'Save did not commit');await route.abort('failed');}else await route.continue();
    });
    await ui.page.getByRole('button',{name:'Save draft',exact:true}).click();

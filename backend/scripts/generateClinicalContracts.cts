@@ -1,0 +1,91 @@
+// One source for the implemented public clinical API schemas and client types.
+// Planned adapters are documented separately; this does not advertise absent endpoints.
+const fs=require('node:fs'),path=require('node:path');
+type Schema={type?:string|string[];format?:string;enum?:unknown[];properties?:Record<string,Schema>;required?:string[];additionalProperties?:boolean|Schema;$ref?:string;items?:Schema;anyOf?:Schema[];minimum?:number};
+const ref=(name:string):Schema=>({$ref:`#/components/schemas/${name}`});
+const uuid:Schema={type:'string',format:'uuid'},integer:Schema={type:'integer',minimum:1},text:Schema={type:'string'},nullable=(s:Schema):Schema=>({anyOf:[s,{type:'null'}]});
+const object=(properties:Record<string,Schema>,required=Object.keys(properties)):Schema=>({type:'object',properties,required,additionalProperties:false});
+const DocumentSchema=require('../domain/clinicalDocumentSchema.cts');
+const noteKeys:string[]=DocumentSchema.encounterFields;
+const sectionNames=(type:string):string[]=>DocumentSchema.fields[type].map((k:string)=>Object.entries(DocumentSchema.publicSectionKeys).find(([,v])=>v===k)?.[0]||k);
+const noteProps=Object.fromEntries(noteKeys.map(k=>[k,nullable(text)]));
+const resourceKinds=['principal','patient','practitioner','department','doctor_record','encounter','admission','ward','bed','appointment','token','clinical_document','diagnosis','lab_order','lab_item','vital','patient_document','medicine_legacy','batch','supplier','prescription_legacy','prescription_item_legacy','bill_legacy','bill_item_legacy','payment_legacy'];
+const schemas:Record<string,Schema>={
+ Error:object({success:{type:'boolean',enum:[false]},code:text,message:text,current_version:integer},['success','message']),
+ Identity:object({resource_type:{type:'string',enum:resourceKinds},id:uuid}),
+ Patient:object({id:uuid,uhid:nullable(text),name:text,gender:nullable(text),dob:nullable({type:'string',format:'date'}),age:nullable({type:['integer','number','string']}),identity_status:text,merged_into_patient_id:nullable(uuid),version:integer}),
+ EncounterDraft:object(noteProps,[]),
+ EncounterCreate:object({patient_id:uuid,token_id:nullable(uuid),appointment_id:nullable(uuid),department_id:nullable(uuid),chief_complaint:nullable(text),encounter_type:{type:'string',enum:['OPD','IPD','Emergency']}},['patient_id']),
+ Encounter:object({id:uuid,patient_id:uuid,doctor_id:uuid,facility_id:uuid,status:text,encounter_type:nullable(text),occurred_at:nullable({type:'string',format:'date-time'}),version:integer,note_version:integer,token_id:nullable(uuid),appointment_id:nullable(uuid),department_id:nullable(uuid),notes_document_id:nullable(uuid),...noteProps,signed_note_version:integer,signature_digest:text},['id','patient_id','doctor_id','facility_id','status','version','note_version',...noteKeys]),
+ Empty:object({}),
+ DocumentType:{type:'string',enum:['clinical_note','discharge_summary','nursing_assessment','care_plan','encounter_note']},
+ DocumentContent:{anyOf:Object.keys(DocumentSchema.fields).map(type=>object(Object.fromEntries(sectionNames(type).map(k=>[k,nullable(text)])),[]))},
+ DocumentCreate:{anyOf:Object.keys(DocumentSchema.fields).filter(type=>type!=='encounter_note').map(type=>object({patient_id:uuid,encounter_id:nullable(uuid),admission_id:nullable(uuid),
+  doc_type:{type:'string',enum:[type]},content:object(Object.fromEntries(sectionNames(type).map(k=>[k,nullable(text)])),[])},['patient_id',...(type==='clinical_note'?[]:['doc_type']),...(type==='discharge_summary'?['admission_id']:[])]))},
+ DocumentDraft:object({content:ref('DocumentContent')}),
+ Amendment:object({reason:text}),
+ Signature:object({version:integer,canonical_signed_content:{type:'object',additionalProperties:nullable(text)},canonicalization:{type:'string',enum:['hms-json-v1']},digest:text,meaning:text,amends_version:nullable(integer),amendment_reason:nullable(text),signed_at:{type:'string',format:'date-time'},signed_by:uuid,signed_by_name:text}),
+ ClinicalDocument:object({id:uuid,patient_id:uuid,encounter_id:nullable(uuid),admission_id:nullable(uuid),author_user_id:uuid,facility_id:uuid,doc_type:ref('DocumentType'),state:{type:'string',enum:['draft','signed']},version:integer,draft_version:integer,signed_version:nullable(integer),amendment_reason:nullable(text),content:ref('DocumentContent'),signatures:{type:'array',items:ref('Signature')}}),
+};
+type Operation={method:string;path:string;name:string;input?:string;output:string;status?:number;version?:boolean};
+const operations:Operation[]=[
+ {method:'get',path:'/legacy-identities/{kind}/{id}',name:'resolveLegacyIdentity',output:'Identity'},
+ {method:'get',path:'/patients/{id}',name:'readPatient',output:'Patient'},
+ {method:'get',path:'/encounters/{id}',name:'readEncounter',output:'Encounter'},
+ {method:'post',path:'/encounters',name:'createEncounter',input:'EncounterCreate',output:'Encounter',status:201},
+ {method:'put',path:'/encounters/{id}/draft',name:'saveEncounterDraft',input:'EncounterDraft',output:'Encounter',version:true},
+ {method:'post',path:'/encounters/{id}/sign',name:'signEncounter',input:'Empty',output:'Encounter',version:true},
+ {method:'get',path:'/clinical-documents/{id}',name:'readClinicalDocument',output:'ClinicalDocument'},
+ {method:'post',path:'/clinical-documents',name:'createClinicalDocument',input:'DocumentCreate',output:'ClinicalDocument',status:201},
+ ...(['draft','sign','amend','sign-amendment'] as const).map(action=>({method:action==='draft'?'put':'post',path:`/clinical-documents/{id}/${action}`,name:{draft:'saveDocumentDraft',sign:'signDocument',amend:'startDocumentAmendment','sign-amendment':'signDocumentAmendment'}[action],input:action==='draft'?'DocumentDraft':action==='sign'?'Empty':'Amendment',output:'ClinicalDocument',version:true})),
+];
+const paths:Record<string,Record<string,unknown>>={};
+for(const op of operations){
+ const command=op.method!=='get',parameters:any[]=[];
+ for(const name of [...op.path.matchAll(/\{([^}]+)\}/g)].map(m=>m[1]))parameters.push({name,in:'path',required:true,schema:op.path.startsWith('/legacy-identities')?(name==='kind'?{type:'string',enum:resourceKinds}:{type:'string',pattern:'^[1-9][0-9]*$'}):uuid});
+ if(command)parameters.push({name:'Idempotency-Key',in:'header',required:true,schema:{type:'string',minLength:8,maxLength:200,pattern:'^[A-Za-z0-9._:-]+$'}});
+ if(op.version)parameters.push({name:'If-Match',in:'header',required:true,schema:{type:'string',pattern:'^("[1-9][0-9]*"|[1-9][0-9]*)$'},description:'The public aggregate version returned by this API. Never substitute a legacy draft or content revision.'});
+ const envelope=object({success:{type:'boolean',enum:[true]},data:ref(op.output),...(command?{version:integer,operation_id:uuid}:{})});
+ const responses:any={[op.status||200]:{description:'Committed response; an exact idempotent replay retains the original operation_id.',headers:{ETag:{schema:text,description:'Public aggregate version'}},content:{'application/json':{schema:envelope}}}};
+ for(const code of [400,401,403,404,409,412,422,428,500,503])responses[code]={description:({400:'Malformed transport header',500:'Operation cannot be confirmed; reconcile its original idempotency key',401:'Invalid session',403:'Scope or clinical privilege denied',404:'Resource unavailable in this facility',409:'Invalid state or idempotency conflict',412:'Reviewed version is stale',422:'Invalid clinical fields or identity',428:'Required precondition missing',503:'Integrity or operational state cannot be confirmed'} as Record<number,string>)[code],content:{'application/json':{schema:ref('Error')}}};
+ (paths[op.path]||={})[op.method]={operationId:op.name,parameters,responses,...(op.input?{requestBody:{required:true,content:{'application/json':{schema:ref(op.input)}}}}:{})};
+}
+const spec={openapi:'3.1.0',info:{title:'HMS clinical API v2',version:'2.0.0',description:'Implemented patient, encounter and clinical document commands. Clinical document fields depend on doc_type. Signatures expose the original canonical_signed_content; digest does not cover the snake_case presentation. Full clinical adapter coverage remains in the clinical completion checklist.'},servers:[{url:'/api/v2'}],security:[{session:[]},{bearer:[]}],paths,components:{securitySchemes:{session:{type:'apiKey',in:'cookie',name:'hms_session'},bearer:{type:'http',scheme:'bearer',bearerFormat:'purpose-bound access assertion'}},schemas}};
+function ts(schema:Schema):string{
+ if(schema.$ref)return schema.$ref.split('/').pop()!;
+ if(schema.enum)return schema.enum.map(v=>JSON.stringify(v)).join(' | ');
+ if(schema.anyOf)return schema.anyOf.map(ts).join(' | ');
+ if(Array.isArray(schema.type))return schema.type.map(t=>ts({...schema,type:t})).join(' | ');
+ if(schema.type==='null')return 'null';if(schema.type==='integer'||schema.type==='number')return 'number';
+ if(schema.type==='string')return 'string';if(schema.type==='boolean')return 'boolean';
+ if(schema.type==='array')return `Array<${ts(schema.items!)}>`;
+ if(schema.type==='object'){
+  if(!schema.properties)return `Record<string, ${typeof schema.additionalProperties==='object'?ts(schema.additionalProperties):'unknown'}>`;
+  return '{\n'+Object.entries(schema.properties).map(([k,v])=>`  ${JSON.stringify(k)}${schema.required?.includes(k)?'':'?'}: ${ts(v)};`).join('\n')+'\n}';
+ }throw new Error('Unsupported contract schema');
+}
+const types='// Generated by backend/scripts/generateClinicalContracts.cts. Do not edit.\n'+Object.entries(schemas).map(([name,schema])=>`export type ${name} = ${ts(schema)};`).join('\n\n')+'\n\nexport type CommandResponse<T extends {version:number}> = {success:true;data:T;version:number;operation_id:string};\nexport type ReadResponse<T> = {success:true;data:T};\n';
+const client='// Generated by backend/scripts/generateClinicalContracts.cts. Do not edit.\n'+
+ `import type {${Object.keys(schemas).join(', ')}, CommandResponse, ReadResponse} from './v2.generated';\n`+
+ `export type ClinicalTransport = {request<T>(config:{method:string;url:string;data?:unknown;headers?:Record<string,string>}):Promise<{data:T}>};\n`+
+ operations.map(op=>{
+  const command=op.method!=='get',params=[...op.path.matchAll(/\{([^}]+)\}/g)].map(m=>m[1]),args=['transport:ClinicalTransport',...params.map(name=>`${name}:string`)];
+  if(op.input)args.push(`body:${op.input}`);
+  if(command)args.push(`options:{idempotencyKey:string${op.version?';expectedVersion:number':''}}`);
+  const response=`${command?'CommandResponse':'ReadResponse'}<${op.output}>`;
+  const url='/v2'+op.path.replace(/\{([^}]+)\}/g,(_,name)=>'${encodeURIComponent('+name+')}');
+  return `export async function ${op.name}(${args.join(', ')}):Promise<${response}>{\n`+
+   ` return (await transport.request<${response}>({method:${JSON.stringify(op.method)},url:\`${url}\`${op.input?',data:body':''}${command?",headers:{'Idempotency-Key':options.idempotencyKey"+(op.version?",'If-Match':String(options.expectedVersion)":"")+"}":''}})).data;\n}\n`;
+ }).join('\n');
+const root=path.resolve(__dirname,'../..'),outputs=new Map<string,string>([
+ [path.join(root,'backend/contracts/v2.openapi.json'),JSON.stringify(spec,null,2)+'\n'],
+ [path.join(root,'frontend/src/api/v2.generated.ts'),types],
+ [path.join(root,'frontend/src/api/v2.client.ts'),client],
+]);
+let failed=false;
+for(const [file,contents] of outputs){
+ if(process.argv.includes('--check')){if(!fs.existsSync(file)||fs.readFileSync(file,'utf8')!==contents){console.error('Clinical contract is stale: '+path.relative(root,file));failed=true;}}
+ else fs.writeFileSync(file,contents);
+}
+if(failed)process.exitCode=1;
+module.exports={spec,operations};
