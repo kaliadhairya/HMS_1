@@ -64,6 +64,9 @@ function activeContent(bytes: Buffer, media: string): string | null {
 function clamav(bytes: Buffer): Promise<Scan> {
   const host = process.env.CLAMAV_HOST;
   const at = new Date().toISOString();
+  // Without a scanner, a document is only as checked as its type and active content;
+  // where a scanner is required (HMS_REQUIRE_SCANNER=true; production sets it) it stays quarantined.
+  if (!host && process.env.HMS_REQUIRE_SCANNER === 'true') return Promise.resolve({ engine: 'none', result: 'unavailable', detail: 'No virus scanner is configured (CLAMAV_HOST), and this installation requires one.', at });
   if (!host) return Promise.resolve({ engine: 'basic', result: 'clean', detail: 'File type and active-content checks only; no antivirus is configured (CLAMAV_HOST).', at });
   return new Promise((resolve) => {
     const socket = net.connect({ host, port: Number(process.env.CLAMAV_PORT || 3310) });
@@ -183,4 +186,4 @@ const report = (t?: Transaction) => one(`SELECT
     COALESCE(jsonb_object_agg(key_id, n) FILTER (WHERE key_id IS NOT NULL), '{}'::jsonb) AS by_key
   FROM (SELECT d.*, count(*) OVER (PARTITION BY key_id) AS n FROM hms_patient_documents d WHERE storage_key IS NOT NULL) x`, {}, t);
 
-module.exports = { upload, list, download, withdraw, legalHold, report, TYPES, sniff, activeContent };
+module.exports = { upload, list, download, withdraw, legalHold, report, TYPES, sniff, activeContent, clamav };

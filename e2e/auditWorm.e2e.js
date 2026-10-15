@@ -79,8 +79,9 @@ function check(laterMs = 0) {
     const items = await sql("SELECT kind, owner_role, occurrences FROM hms_worklist_items WHERE status = 'Open' AND kind IN ('audit.checkpoint_invalid', 'audit.chain_mismatch', 'audit.checkpoint_missing')");
     assert(items.length >= 3 && items.every((i) => i.owner_role === 'super_admin'), `worklist ${JSON.stringify(items)}`);
     check();
-    const [again] = await sql("SELECT count(*)::int AS n, max(occurrences) AS most FROM hms_worklist_items WHERE status = 'Open' AND kind = 'audit.chain_mismatch'");
-    assert(again.n === 1 && again.most >= 2, 'a repeated problem opened a duplicate item');
+    // One open item per broken chain, counting repeats (the key is the chain, not the entry).
+    const [again] = await sql("SELECT count(*) FILTER (WHERE dup)::int AS duplicates, max(most) AS most FROM (SELECT dedupe_key, count(*) > 1 AS dup, max(occurrences) AS most FROM hms_worklist_items WHERE status = 'Open' AND kind = 'audit.chain_mismatch' GROUP BY dedupe_key) x");
+    assert(again.duplicates === 0 && again.most >= 2, 'a repeated problem opened a duplicate item');
   });
 
   await step('A checkpoint that never ships, and silence from the store, are reported as gaps', async () => {

@@ -81,6 +81,8 @@ services:
       # Data keyring (A4): new values use the first key; older keys stay listed until rekeyed.
       HMS_DATA_KEYS: ${HMS_DATA_KEYS:?Set HMS_DATA_KEYS in .env (id:64-hex keys) - personal data is not encrypted with a development key}
       HMS_DOCUMENT_DIR: /app/private-documents
+      # Documents are not available without a virus scanner (A4): set CLAMAV_HOST to the scanner.
+      HMS_REQUIRE_SCANNER: "true"
       UPLOAD_DIR: ./uploads
       MAX_FILE_SIZE_MB: 5
       RATE_LIMIT_WINDOW_MS: 900000
