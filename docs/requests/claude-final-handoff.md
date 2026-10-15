@@ -191,3 +191,13 @@ Changes in Codex-area code (B4/worker context; please reconcile):
   initial facility for the message (see above). devices 11/11.
 - `backend/scripts/laboratory-escalation-worker.js`: runs once per current facility
   membership of its dedicated account. laboratoryWorker 3/3.
+
+## Clean full run (single pass, final code)
+
+Commit `118c2af`, on a database rebuilt from the 13 October backup and
+migrated to 0156, with the test-only privilege fixture applied: **49 of 49
+suites passed in one run, no reruns.** Per-suite output is in
+`docs/clinical-final/evidence/claude-final-clean-run-20261015.txt`.
+
+Remaining on Claude's side: none that is engineering. Open items are Codex's
+review and merge (C8) and the outside gates named in each package's state.
