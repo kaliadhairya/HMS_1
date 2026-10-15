@@ -174,3 +174,11 @@ go through `docs/requests/clinical-final-coordination.md`.
   bridge 12/12, restricted-runtime custody/limits/rollback/revocation 9/9 on
   PG16 and PG18, schema equality through 0126 (5663 facts). B4 now in progress;
   remaining clinical/facility/v2/release integration continues. No shared deployment.
+
+- 2026-10-15: canonical identity / clinical v2 increment committed at 9408731,
+  migrations 0127–0130. Shared encounter/document commands, immutable linked
+  signatures, generated contracts/client and scoped draft recovery verified:
+  focused API/browser 34/34, strict types/build/generation pass. A2/A3/A5/A6
+  remain in progress; all remaining Codex packages stay in scope. Current own
+  disposable PG16 copy hms_p4_final_v2_20261015b; persistent private runtime
+  configuration path is recorded in docs/clinical-final/RESUME.md.

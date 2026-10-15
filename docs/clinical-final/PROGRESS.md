@@ -182,3 +182,41 @@ substitute for hospital qualifications. B4 is now IN_PROGRESS; named worklist
 ownership, complete version/delivery policy and recovery suppression remain.
 A2 still needs remaining clinical action guards, facility configuration/switch
 and safe runtime provisioning; A3 v2 adapters and final C4 regression remain.
+
+
+## Increment 6 — canonical clinical API and signed document authority (9408731)
+
+- Migrations 0127–0130 preserve exact numeric/UUID identity mappings, immutable
+  public and legacy identities, aggregate versions, visit patient/doctor/facility
+  relationships and signed-document projection integrity.
+- Typed shared encounter/document commands now serve both API versions. Public
+  patient/encounter/document contracts and generated browser types/client are
+  reproducible. Consultation, Quick Consult and clinical notes use v2 note
+  commands with their exact public versions.
+- Current clinical privileges and patient care/responsibility are checked;
+  administration alone grants no clinical chart access. Amendment signatures
+  cannot be misrepresented as initial signatures.
+- Fixed a browser failure found during review: repeated mount/read responses
+  could replace newly edited text before the request was sent. Superseded loads
+  are ignored, route changes load the correct document, and pending commands
+  retain actor/facility/record context and the original key/body.
+- Final focused verification on `hms_p4_final_v2_20261015b`: v2 core **8/8**,
+  v2 documents **7/7**, legacy documents **8/8**, consultation/API/browser **7/7**,
+  document recovery/delayed-read browser **4/4** (**34/34**). Strict server/browser
+  typecheck, generated-contract check, frontend build and patch check pass.
+- Before the temporary verification runtime was cleared, identity registry
+  integration **5/5** and signed projection/amendment guards **7/7** passed on
+  each PG16/PG18 engine; the legacy fingerprint matched **5,900 facts** through
+  0130. That fingerprint does not prove all function bodies, policies or grants.
+  Final C4 remains required. Applied SQL files were not modified.
+- Temporary processes/configuration disappeared during an environment reset.
+  Recreated only private test resources from the existing own PG16 test source.
+  Current private configuration is in the owner-only persistent state directory;
+  no private key is stored in this repository. The previous PG18 runtime is no
+  longer asserted live. Historical audit proofs are not re-signed by the new
+  local test key.
+
+A2/A3/A5/A6 remain in progress. `API_V2.md` lists the remaining complete
+scheduling/ADT/medication/laboratory/finance/event adapter scope. Broader
+facility/runtime, clinical, exchange, recovery, release and final consolidation
+packages remain on the authoritative checklist. No shared app was deployed.
