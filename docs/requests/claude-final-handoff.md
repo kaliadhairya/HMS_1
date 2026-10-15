@@ -201,3 +201,10 @@ suites passed in one run, no reruns.** Per-suite output is in
 
 Remaining on Claude's side: none that is engineering. Open items are Codex's
 review and merge (C8) and the outside gates named in each package's state.
+
+## Full run, all suites (final)
+
+Every suite in the repository was run on final code (`87d4fc6`), on a database
+rebuilt from the 13 October backup: all suites pass. The audit suite failed
+once on a checkpoint timing race and passed on rerun alone. Output is in
+`docs/clinical-final/evidence/claude-final-full-run-20261015.txt`.
