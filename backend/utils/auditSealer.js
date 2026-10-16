@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { QueryTypes } = require('sequelize');
+const { loadKeyMaterial, signManifest, scopeForDatabase } = require('../services/auditKeys.cts');
+const { validateCheckpoint } = require('./auditCheckpoint');
 
 // Seals committed audit entries into their hash chains (audit.seal, migration
 // 0006) every few seconds, and writes a signed checkpoint of every chain head
@@ -40,8 +42,15 @@ function signCheckpoint(heads, key) {
 
 async function writeCheckpoint(sequelize, dir, key) {
   const rows = await sequelize.query("SELECT chain, seq, encode(head_hash, 'hex') AS hash FROM audit.chain_heads ORDER BY chain", { type: QueryTypes.SELECT });
-  const heads = rows.map((r) => ({ chain: r.chain || r.CHAIN, seq: Number(r.seq ?? r.SEQ), hash: r.hash || r.HASH }));
-  const checkpoint = signCheckpoint(heads, key);
+  const heads = rows.map((r) => ({
+    chain: r.chain || r.CHAIN,
+    seq: Number(r.seq ?? r.SEQ),
+    hash: Number(r.seq ?? r.SEQ) === 0 ? '0'.repeat(64) : r.hash || r.HASH,
+  }));
+  const scope = await scopeForDatabase(sequelize);
+  const checkpoint = signManifest(heads, key, new Date(), scope);
+  const invalid = validateCheckpoint(checkpoint, key, CHAINS, new Date(), scope);
+  if (invalid.length) throw new Error(invalid.join('; '));
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const file = path.join(dir, `audit-checkpoint-${checkpoint.created_at.replace(/[:.]/g, '-')}-${crypto.randomUUID()}.json`);
   const temporary = `${file}.tmp`;
@@ -56,7 +65,9 @@ async function writeCheckpoint(sequelize, dir, key) {
 function startAuditSealer(sequelize) {
   if (process.env.AUDIT_SEALER === 'off') return () => {};
   const dir = process.env.AUDIT_CHECKPOINT_DIR;
-  const key = process.env.AUDIT_CHECKPOINT_KEY;
+  // Resolve the keyring again for each checkpoint, so an atomic rotation takes
+  // effect without rewriting historical artifacts or restarting clinical care.
+  const key = loadKeyMaterial();
   if (dir && !key) console.warn('⚠️ AUDIT_CHECKPOINT_DIR is set without AUDIT_CHECKPOINT_KEY; checkpoints are disabled.');
   const sealTimer = setInterval(() => {
     sealOnce(sequelize).catch((err) => console.error('Audit sealing failed:', err.original?.message || err.message, err.original?.where || ''));
@@ -64,7 +75,7 @@ function startAuditSealer(sequelize) {
   const checkpointTimer = dir && key ? setInterval(async () => {
     try {
       await sealOnce(sequelize);
-      const file = await writeCheckpoint(sequelize, dir, key);
+      const file = await writeCheckpoint(sequelize, dir, loadKeyMaterial());
       // Queued for write-once storage (utils/auditShipper.js, Phase 6H).
       await require('./auditShipper').queue(sequelize, file);
     } catch (err) {

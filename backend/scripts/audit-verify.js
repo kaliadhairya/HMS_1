@@ -6,13 +6,14 @@
 //   AUDIT_CHECKPOINT_KEY=... AUDIT_WORM_BUCKET=... node scripts/audit-verify.js --remote
 //       checks the write-once store (Phase 6H) and puts problems on the worklist
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models/db');
+require('../utils/auditContext').bindAuditActor(sequelize);
 const { CHAINS, sealOnce } = require('../utils/auditSealer');
 const { validateCheckpoint } = require('../utils/auditCheckpoint');
+const { loadKeyMaterial, scopeForDatabase } = require('../services/auditKeys.cts');
 
 async function main() {
   const problems = [];
@@ -35,9 +36,11 @@ async function main() {
   }
   const dir = process.argv[2] === '--remote' ? null : process.argv[2];
   if (dir) {
-    const key = process.env.AUDIT_CHECKPOINT_KEY;
-    if (!key) throw new Error('AUDIT_CHECKPOINT_KEY is required to check checkpoints');
+    const key = loadKeyMaterial();
+    const scope = await scopeForDatabase(sequelize);
+    if (!key) throw new Error('An audit verification key or keyring is required to check checkpoints');
     const files = fs.readdirSync(dir).filter((f) => f.startsWith('audit-checkpoint-') && f.endsWith('.json')).sort();
+    if (!files.length) problems.push('No checkpoint exists in the requested directory');
     for (const file of files) {
       let parsed;
       try {
@@ -48,10 +51,8 @@ async function main() {
         problems.push(`${file}: unreadable checkpoint (${err.message})`);
         continue;
       }
-      const { signature, ...body } = parsed;
-      const expected = crypto.createHmac('sha256', key).update(JSON.stringify(body)).digest('hex');
-      if (typeof signature !== 'string' || !/^[a-f0-9]{64}$/.test(signature) || !crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) { problems.push(`${file}: signature does not match`); continue; }
-      const invalid = validateCheckpoint(parsed, key, CHAINS);
+      const body = parsed;
+      const invalid = validateCheckpoint(parsed, key, CHAINS, new Date(), scope);
       if (invalid.length) { problems.push(`${file}: ${invalid.join('; ')}`); continue; }
       for (const head of body.heads) {
         if (!CHAINS.includes(head.chain) || !Number.isSafeInteger(head.seq) || head.seq < 0) { problems.push(`${file}: invalid chain reference`); continue; }

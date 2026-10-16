@@ -1,13 +1,17 @@
 const crypto = require('crypto');
+const { verificationKey } = require('../services/auditKeys.cts');
 
 // Validate the whole manifest before interpreting individual chain heads.
 // Existing checkpoints retain their original signature and immutable hashes.
-function validateCheckpoint(parsed, key, chains, now = new Date()) {
+function validateCheckpoint(parsed, key, chains, now = new Date(), scope = process.env.AUDIT_CHECKPOINT_SCOPE) {
   const problems = [];
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return ['Checkpoint must be an object'];
   const { signature, ...body } = parsed;
   if (!key) return ['Checkpoint verification key is unavailable'];
-  const expected = crypto.createHmac('sha256', key).update(JSON.stringify(body)).digest('hex');
+  let verifiedKey;
+  try { verifiedKey = verificationKey(body, key); } catch (error) { return [error.message]; }
+  if (body.schema_version === 2 && (!scope || body.scope !== scope)) problems.push('Checkpoint scope does not match this database');
+  const expected = crypto.createHmac('sha256', verifiedKey).update(JSON.stringify(body)).digest('hex');
   if (typeof signature !== 'string' || !/^[a-f0-9]{64}$/i.test(signature) ||
       !crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) problems.push('Checkpoint signature does not match');
   const at = new Date(body.created_at);
@@ -26,11 +30,12 @@ function validateCheckpoint(parsed, key, chains, now = new Date()) {
   return problems;
 }
 
-function lockProblems(object, now = new Date()) {
+function lockProblems(object, now = new Date(), expectedUntil = null) {
   const mode = process.env.AUDIT_WORM_LOCK_MODE || 'COMPLIANCE';
   const until = new Date(object.ObjectLockRetainUntilDate);
   if (object.ObjectLockMode !== mode || !Number.isFinite(until.getTime()) || until <= now)
     return ['Object retention is missing, expired, or uses an unapproved lock mode'];
+  if (expectedUntil && (!Number.isFinite(new Date(expectedUntil).getTime()) || until < new Date(expectedUntil))) return ['Object retention is shorter than the recorded protection'];
   return [];
 }
 module.exports = { validateCheckpoint, lockProblems };

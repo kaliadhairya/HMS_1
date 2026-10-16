@@ -10,17 +10,22 @@ const { api, apiLogin, sql, runner, assert, sleep, requireThrowawayDb } = requir
 requireThrowawayDb();
 const backend = path.join(__dirname, '../backend');
 const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectVersionsCommand } = require(path.join(backend, 'node_modules/@aws-sdk/client-s3'));
-for (const k of ['AUDIT_WORM_BUCKET', 'AUDIT_WORM_ENDPOINT', 'AUDIT_WORM_ACCESS_KEY', 'AUDIT_CHECKPOINT_KEY']) assert(process.env[k], `${k} is required for this suite`);
+for (const k of ['AUDIT_WORM_BUCKET', 'AUDIT_WORM_ENDPOINT', 'AUDIT_WORM_ACCESS_KEY', 'HMS_WORKER_USER_ID']) assert(process.env[k], `${k} is required for this suite`);
+const { loadKeyMaterial, signManifest } = require(path.join(backend, 'services/auditKeys.cts'));
+assert(loadKeyMaterial(), 'An audit signing key or keyring is required');
 const s3 = new S3Client({ region: process.env.AUDIT_WORM_REGION || 'us-east-1', endpoint: process.env.AUDIT_WORM_ENDPOINT, forcePathStyle: true,
   credentials: { accessKeyId: process.env.AUDIT_WORM_ACCESS_KEY, secretAccessKey: process.env.AUDIT_WORM_SECRET_KEY } });
 const Bucket = process.env.AUDIT_WORM_BUCKET;
-const prefix = `${process.env.DB_NAME}/`;
-const sign = (body) => ({ ...body, signature: crypto.createHmac('sha256', process.env.AUDIT_CHECKPOINT_KEY).update(JSON.stringify(body)).digest('hex') });
+const prefix = require(path.join(backend, 'utils/auditShipper')).prefix();
+const put = (Key, body) => {
+  const Body = JSON.stringify(body);
+  return s3.send(new PutObjectCommand({ Bucket, Key, Body, Metadata: { sha256: crypto.createHash('sha256').update(Body).digest('hex') } }));
+};
 // Runs the remote check in a separate process, as the periodic job does,
 // optionally as if it ran later (to see what silence looks like).
 function check(laterMs = 0) {
   const r = spawnSync(process.execPath, ['-e', `
-    const { sequelize } = require('./models/db'); const { checkAndReport } = require('./utils/auditShipper');
+    const { sequelize } = require('./models/db'); require('./utils/auditContext').bindAuditActor(sequelize); const { checkAndReport } = require('./utils/auditShipper');
     checkAndReport(sequelize, { now: new Date(Date.now() + ${Number(laterMs)}) }).then((x) => { console.log(JSON.stringify(x.problems.map((p) => p.kind + ' ' + p.key))); }).finally(() => sequelize.close());`],
   { cwd: backend, env: process.env, encoding: 'utf8' });
   assert(r.status === 0, `check failed: ${r.stderr}`);
@@ -30,6 +35,7 @@ function check(laterMs = 0) {
 (async () => {
   const { step, done } = runner('Write-once audit checkpoints');
   let shipped;
+  let mismatchKey;
 
   await step('Signed checkpoints reach write-once storage with a COMPLIANCE lock and the same checksum', async () => {
     for (let i = 0; i < 40 && !shipped; i++) {
@@ -38,7 +44,7 @@ function check(laterMs = 0) {
     }
     assert(shipped, 'no checkpoint was shipped within 40 seconds');
     assert(shipped.lock_mode === 'COMPLIANCE' && new Date(shipped.retain_until) > new Date(), `lock ${shipped.lock_mode} until ${shipped.retain_until}`);
-    const obj = await s3.send(new GetObjectCommand({ Bucket, Key: shipped.remote_key }));
+    const obj = await s3.send(new GetObjectCommand({ Bucket, Key: shipped.remote_key, VersionId: shipped.remote_version }));
     const body = await obj.Body.transformToString();
     assert(crypto.createHash('sha256').update(body).digest('hex') === shipped.sha256, 'remote copy differs from the checkpoint');
   });
@@ -56,7 +62,7 @@ function check(laterMs = 0) {
       assert(rootRefused, 'the storage owner deleted a locked checkpoint version');
     }
     // An overwrite only adds a version; the original stays retrievable.
-    const original = versions.Versions[versions.Versions.length - 1].VersionId;
+    const original = shipped.remote_version;
     await s3.send(new PutObjectCommand({ Bucket, Key: shipped.remote_key, Body: '{"forged":true}' })).catch(() => {});
     const again = await s3.send(new GetObjectCommand({ Bucket, Key: shipped.remote_key, VersionId: original }));
     assert(crypto.createHash('sha256').update(await again.Body.transformToString()).digest('hex') === shipped.sha256, 'the original version was lost');
@@ -67,9 +73,11 @@ function check(laterMs = 0) {
     const rowHead = heads.find((head) => head.chain === 'audit.row_changes');
     assert(rowHead && rowHead.seq > 0, 'row chain is unsealed');
     rowHead.hash = '0'.repeat(64);
+    mismatchKey = `${rowHead.chain}#${rowHead.seq}`;
+    const [{ scope_id: scope }] = await sql('SELECT scope_id FROM audit.checkpoint_identity WHERE singleton');
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    await s3.send(new PutObjectCommand({ Bucket, Key: `${prefix}audit-checkpoint-${stamp}-forged.json`, Body: JSON.stringify({ created_at: new Date().toISOString(), heads: [], signature: 'f'.repeat(64) }) }));
-    await s3.send(new PutObjectCommand({ Bucket, Key: `${prefix}audit-checkpoint-${stamp}-wrong.json`, Body: JSON.stringify(sign({ created_at: new Date().toISOString(), heads })) }));
+    await put(`${prefix}audit-checkpoint-${stamp}-forged.json`, { created_at: new Date().toISOString(), heads: [], signature: 'f'.repeat(64) });
+    await put(`${prefix}audit-checkpoint-${stamp}-wrong.json`, signManifest(heads, loadKeyMaterial(), new Date(), scope));
     const [dbUser] = await sql("SELECT id FROM hms_users WHERE username = 'admin'");
     await sql(`INSERT INTO hms_audit_checkpoint_shipments (file_name, checkpoint_at, sha256, shipped_at, remote_key, lock_mode, retain_until)
       VALUES ($1, now(), $2, now(), $3, 'COMPLIANCE', now() + interval '1 day')`, [`audit-checkpoint-${stamp}-gone.json`, '1'.repeat(64), `${prefix}audit-checkpoint-${stamp}-gone.json`]);
@@ -79,7 +87,7 @@ function check(laterMs = 0) {
     const items = await sql("SELECT kind, owner_role, occurrences FROM hms_worklist_items WHERE status = 'Open' AND kind IN ('audit.checkpoint_invalid', 'audit.chain_mismatch', 'audit.checkpoint_missing')");
     assert(items.length >= 3 && items.every((i) => i.owner_role === 'super_admin'), `worklist ${JSON.stringify(items)}`);
     check();
-    const [again] = await sql("SELECT count(*)::int AS n, max(occurrences) AS most FROM hms_worklist_items WHERE status = 'Open' AND kind = 'audit.chain_mismatch'");
+    const [again] = await sql("SELECT count(*)::int AS n, max(occurrences) AS most FROM hms_worklist_items WHERE status = 'Open' AND kind = 'audit.chain_mismatch' AND dedupe_key=$1 AND facility_id=hms_initial_facility()", [mismatchKey]);
     assert(again.n === 1 && again.most >= 2, 'a repeated problem opened a duplicate item');
   });
 
@@ -95,9 +103,15 @@ function check(laterMs = 0) {
   await step('Worklist items are resolved by their owner with a note and then stay closed', async () => {
     const sa = await apiLogin('super_admin');
     const doctor = await apiLogin('doctor');
-    const list = await api('GET', '/worklist?kind=audit.', { token: sa });
-    assert(list.status === 200 && list.data.data.length >= 4, `list ${list.status}`);
-    const item = list.data.data.find((w) => w.kind === 'audit.chain_mismatch');
+    const firstPage = await api('GET', '/worklist?kind=audit.&limit=1', { token: sa });
+    assert(firstPage.status===200 && firstPage.data.data.length===1 && firstPage.data.pagination.next_offset===1,'Audit backlog was silently truncated');
+    const secondPage = await api('GET','/worklist?kind=audit.&limit=1&offset=1',{token:sa});
+    assert(secondPage.status===200&&secondPage.data.data[0]?.id!==firstPage.data.data[0].id,'Worklist page repeated its first row');
+    assert((await api('GET','/worklist?offset=-1',{token:sa})).status===400,'Invalid page accepted');
+    const list = await api('GET', '/worklist?kind=audit.chain_mismatch', { token: sa });
+    assert(list.status === 200 && list.data.data.length >= 1, `list ${list.status}`);
+    const item = list.data.data.find((w) => w.kind === 'audit.chain_mismatch' && w.dedupe_key === mismatchKey);
+    assert(item, 'Current mismatch was not visible to its facility owner');
     const notMine = await api('POST', `/worklist/${item.id}/resolve`, { token: doctor, body: { resolution: 'not my item' } });
     assert(notMine.status === 403, `doctor resolved a security item: ${notMine.status}`);
     const theirs = await api('GET', '/worklist', { token: doctor });

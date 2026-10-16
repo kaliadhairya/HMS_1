@@ -204,3 +204,7 @@ review) stay open and are named in each package's state.
   consultation 7/7, clinical UX 8/8, v2 core 8/8, v2 documents 7/7; fresh PG16
   91 migrations pass. See docs/clinical-final/INTEGRATION.md. Final C4/C8 and all
   remaining Codex packages continue; owner asked to work alone, subagents stopped.
+- 2026-10-16: owner resumed all 15 open packages. B5 audit protection completed:
+  historical rotation/real restore, pinned Object Lock versions and restricted
+  facility worker reporting pass; fixed unpaged alert visibility. Engineering
+  evidence and external storage/key-custody gates: AUDIT_PROTECTION.md.

@@ -5,6 +5,7 @@ const { QueryTypes } = require('sequelize');
 const { S3Client, PutObjectCommand, HeadObjectCommand, ListObjectsV2Command, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { CHAINS } = require('./auditSealer');
 const { validateCheckpoint, lockProblems } = require('./auditCheckpoint');
+const { loadKeyMaterial, scopeForDatabase } = require('../services/auditKeys.cts');
 const W = require('../services/worklist');
 
 // Ships signed audit checkpoints to write-once object storage (Phase 6H,
@@ -52,8 +53,9 @@ async function queue(sequelize, file) {
 
 // Uploads queued checkpoints, oldest first. Each upload is confirmed with a
 // HEAD that must show the same checksum and an Object Lock retention.
-async function shipPending(sequelize, dir, { limit = 50 } = {}) {
+async function shipPending(sequelize, dir, { limit = 50, transport = s3() } = {}) {
   if (!configured()) return { shipped: 0 };
+  const scope = await scopeForDatabase(sequelize);
   const pending = await sequelize.query('SELECT * FROM hms_audit_checkpoint_shipments WHERE shipped_at IS NULL ORDER BY queued_at LIMIT :limit', { replacements: { limit }, type: QueryTypes.SELECT });
   let shipped = 0;
   for (const p of pending) {
@@ -61,14 +63,20 @@ async function shipPending(sequelize, dir, { limit = 50 } = {}) {
       const file = path.join(dir, p.file_name);
       const body = fs.readFileSync(file);
       if (sha256(body) !== p.sha256) throw new Error('local checkpoint file changed since it was written');
+      const invalid = validateCheckpoint(JSON.parse(body.toString('utf8')), loadKeyMaterial(), CHAINS, new Date(), scope);
+      if (invalid.length) throw new Error(invalid.join('; '));
       const Key = prefix() + p.file_name;
       const checksum = crypto.createHash('sha256').update(body).digest('base64');
-      const stored = await s3().send(new PutObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key, Body: body, ContentType: 'application/json', ChecksumSHA256: checksum, Metadata: { sha256: p.sha256 } }));
-      if (!stored.VersionId) throw new Error('the stored checkpoint has no immutable version identifier');
-      const head = await s3().send(new HeadObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key, VersionId: stored.VersionId }));
+      const stored = await transport.send(new PutObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key, Body: body, ContentType: 'application/json', ChecksumSHA256: checksum, Metadata: { sha256: p.sha256 } }));
+      if (!stored.VersionId || stored.VersionId === 'null') throw new Error('the stored checkpoint has no immutable version identifier');
+      const head = await transport.send(new HeadObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key, VersionId: stored.VersionId }));
+      if (head.VersionId !== stored.VersionId) throw new Error('the store returned a different checkpoint version');
       const retention = lockProblems(head);
       if (retention.length) throw new Error(retention.join('; '));
-      if ((head.Metadata || {}).sha256 !== p.sha256) throw new Error('the stored object does not match the checkpoint');
+      if ((head.Metadata || {}).sha256 !== p.sha256 || Number(head.ContentLength) !== body.length) throw new Error('the stored object does not match the checkpoint');
+      const retrieved = await transport.send(new GetObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key, VersionId: stored.VersionId }));
+      const retrievedBody = Buffer.from(await retrieved.Body.transformToByteArray());
+      if (retrieved.VersionId !== stored.VersionId || sha256(retrievedBody) !== p.sha256 || lockProblems(retrieved, new Date(), head.ObjectLockRetainUntilDate).length) throw new Error('the pinned checkpoint could not be read back intact with retention');
       await sequelize.query(`UPDATE hms_audit_checkpoint_shipments SET shipped_at = now(), remote_key = :key, remote_version = :version,
         lock_mode = :mode, retain_until = :until, attempts = attempts + 1, last_error = NULL WHERE id = :id`,
       { replacements: { id: p.id, key: Key, version: stored.VersionId, mode: head.ObjectLockMode, until: head.ObjectLockRetainUntilDate } });
@@ -81,12 +89,13 @@ async function shipPending(sequelize, dir, { limit = 50 } = {}) {
   return { shipped };
 }
 
-async function remoteList() {
+async function remoteList(transport) {
   const out = [];
   let ContinuationToken;
   do {
-    const page = await s3().send(new ListObjectsV2Command({ Bucket: process.env.AUDIT_WORM_BUCKET, Prefix: prefix(), ContinuationToken }));
+    const page = await transport.send(new ListObjectsV2Command({ Bucket: process.env.AUDIT_WORM_BUCKET, Prefix: prefix(), ContinuationToken }));
     (page.Contents || []).forEach((o) => out.push(o.Key));
+    if (page.IsTruncated && (!page.NextContinuationToken || page.NextContinuationToken === ContinuationToken)) throw new Error('Invalid checkpoint inventory continuation');
     ContinuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
   } while (ContinuationToken);
   return out.sort();
@@ -94,18 +103,23 @@ async function remoteList() {
 
 // Checks the remote record against the key, the database and the clock.
 // Returns problems as { kind, key, title, detail }.
-async function checkRemote(sequelize, { key = process.env.AUDIT_CHECKPOINT_KEY, now = new Date() } = {}) {
+async function checkRemote(sequelize, { key = loadKeyMaterial(), now = new Date(), transport = s3() } = {}) {
   const problems = [];
   const add = (kind, k, title, detail = {}) => problems.push({ kind, key: k, title, detail });
   if (!configured()) return { problems: [{ kind: 'audit.worm_not_configured', key: 'config', title: 'Audit checkpoints are not shipped to write-once storage (AUDIT_WORM_BUCKET is not set).', detail: {} }], checked: 0 };
+  let scope;
+  try { scope = await scopeForDatabase(sequelize); }
+  catch {
+    return { problems: [{ kind: 'audit.scope_unavailable', key: 'scope', title: 'The hospital audit identity could not be verified.', detail: {} }], checked: 0 };
+  }
   let keys;
-  try { keys = await remoteList(); } catch (err) {
+  try { keys = await remoteList(transport); } catch (err) {
     add('audit.worm_unreachable', 'list', 'The write-once audit store could not be read.', { error: err.message });
     return { problems, checked: 0 };
   }
   const times = [];
   if (!keys.length) add('audit.checkpoint_missing', 'initial', 'No checkpoint exists in the protected audit store.');
-  const queued = await sequelize.query(`SELECT file_name, shipped_at, remote_key, remote_version, sha256, queued_at, last_error FROM hms_audit_checkpoint_shipments
+  const queued = await sequelize.query(`SELECT file_name, shipped_at, remote_key, remote_version, sha256, retain_until, queued_at, last_error FROM hms_audit_checkpoint_shipments
     WHERE shipped_at IS NOT NULL OR queued_at < :cutoff`, { replacements: { cutoff: new Date(now - GRACE_MS) }, type: QueryTypes.SELECT });
   const tracked = new Map(queued.filter((q) => q.shipped_at).map((q) => [q.remote_key, q]));
   for (const k of keys) {
@@ -113,13 +127,21 @@ async function checkRemote(sequelize, { key = process.env.AUDIT_CHECKPOINT_KEY, 
     try {
       const known = tracked.get(k);
       if (known && !known.remote_version) { add('audit.checkpoint_unversioned', name, `Checkpoint ${name} has no recorded immutable version.`); continue; }
-      const obj = await s3().send(new GetObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key: k, ...(known ? { VersionId: known.remote_version } : {}) }));
-      const retention = lockProblems(obj, now);
+      // Resolve an immutable version first, including objects whose queue row was
+      // lost in a database restore. Never inspect an unpinned latest body.
+      const head = await transport.send(new HeadObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key: k, ...(known ? { VersionId: known.remote_version } : {}) }));
+      const version = known ? known.remote_version : head.VersionId;
+      if (!version || version === 'null' || head.VersionId !== version) { add('audit.checkpoint_unversioned', name, `Checkpoint ${name} has no verifiable immutable version.`); continue; }
+      const obj = await transport.send(new GetObjectCommand({ Bucket: process.env.AUDIT_WORM_BUCKET, Key: k, VersionId: version }));
+      if (obj.VersionId !== version) { add('audit.checkpoint_invalid', name, `Checkpoint ${name} returned a different immutable version.`); continue; }
+      const retention = [...lockProblems(head, now, known?.retain_until), ...lockProblems(obj, now, head.ObjectLockRetainUntilDate)];
       if (retention.length) { add('audit.checkpoint_unlocked', name, `Checkpoint ${name}: ${retention.join('; ')}.`); continue; }
-      const text = await obj.Body.transformToString();
-      if (known && sha256(Buffer.from(text)) !== known.sha256) { add('audit.checkpoint_invalid', name, `Checkpoint ${name} differs from its recorded checksum.`); continue; }
+      const raw = Buffer.from(await obj.Body.transformToByteArray());
+      const text = raw.toString('utf8');
+      const checksum = sha256(raw);
+      if ((known && checksum !== known.sha256) || head.Metadata?.sha256 !== checksum || Number(head.ContentLength) !== raw.length || (obj.ChecksumSHA256 && obj.ChecksumSHA256 !== crypto.createHash('sha256').update(raw).digest('base64'))) { add('audit.checkpoint_invalid', name, `Checkpoint ${name} differs from its recorded checksum or length.`); continue; }
       const parsed = JSON.parse(text);
-      const invalid = validateCheckpoint(parsed, key, CHAINS, now);
+      const invalid = validateCheckpoint(parsed, key, CHAINS, now, scope);
       if (invalid.length) {
         add('audit.checkpoint_invalid', name, `Checkpoint ${name}: ${invalid.join('; ')}.`);
         continue;
@@ -154,7 +176,11 @@ async function checkRemote(sequelize, { key = process.env.AUDIT_CHECKPOINT_KEY, 
 // Periodic check: every problem goes on the worklist for the security lead.
 async function checkAndReport(sequelize, options = {}) {
   const { problems, checked } = await checkRemote(sequelize, options);
-  for (const p of problems) await W.report({ kind: p.kind, key: p.key, title: p.title, detail: p.detail, ownerRole: 'super_admin' });
+  if (problems.length) {
+    await require('../services/workerContext.cts').forEachFacility('audit-protection', async () => {
+      for (const p of problems) await W.report({ kind: p.kind, key: p.key, title: p.title, detail: p.detail, ownerRole: 'super_admin' });
+    });
+  }
   return { problems, checked };
 }
 

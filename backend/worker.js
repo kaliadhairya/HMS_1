@@ -5,6 +5,7 @@
 require('dotenv').config();
 const { assertSecurityConfig } = require('./utils/authTokens');
 const { sequelize } = require('./models');
+require('./utils/auditContext').bindAuditActor(sequelize);
 const { schemaProblems } = require('./migrate');
 const settings = require('./utils/settings');
 const { startBackgroundWorkers } = require('./workers');

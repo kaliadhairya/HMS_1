@@ -1,0 +1,60 @@
+{
+  "candidate": "9a6a58968c69e860ba320948d17cd7cef18038db",
+  "tracked_diff_sha256": "92404d84781c21eb48cf235a4092bb5d1c4c02414c768933e74672e38abc2c28",
+  "source_database": "hms_p4_final_v2_20261015b",
+  "postgres_restore": "pg_dump/pg_restore",
+  "fixture": "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+  "synthetic": true,
+  "results": [
+    {
+      "title": "an empty protected inventory fails closed",
+      "ok": true,
+      "duration_ms": 14
+    },
+    {
+      "title": "complete checkpoints are read back by immutable version with checksum and retention",
+      "ok": true,
+      "duration_ms": 416
+    },
+    {
+      "title": "restricted shipper cannot delete versions, change retention or write outside its hospital prefix",
+      "ok": true,
+      "duration_ms": 15
+    },
+    {
+      "title": "storage owner cannot remove a retained version and an overwrite preserves the pinned proof",
+      "ok": true,
+      "duration_ms": 34
+    },
+    {
+      "title": "rotation accepts original historical bytes together with the newly active key",
+      "ok": true,
+      "duration_ms": 57
+    },
+    {
+      "title": "a real dump and isolated restore retain hospital identity and verify old proofs without re-signing",
+      "ok": true,
+      "duration_ms": 12217
+    },
+    {
+      "title": "the API worklist enforces ownership, resolution notes and immutable history",
+      "ok": true,
+      "duration_ms": 3853
+    },
+    {
+      "title": "unknown keys, missing chain heads and authentic mismatching heads are rejected",
+      "ok": true,
+      "duration_ms": 89
+    },
+    {
+      "title": "unshipped records, missing pinned objects and stale delivery produce explicit problems",
+      "ok": true,
+      "duration_ms": 67
+    },
+    {
+      "title": "a restricted worker reports once per approved facility and stops after membership revocation",
+      "ok": true,
+      "duration_ms": 1884
+    }
+  ]
+}
