@@ -71,3 +71,20 @@ their complete C8 review; these focused checks do not close the entire handoff.
 Actual clinical approvals/content, external sandbox/device validation, operational
 contacts/training, target hosting/regional recovery and monitored pilots retain
 their explicit external evidence gates. No shared application was deployed.
+# Later handoff review — 17 October 2026
+
+Reviewed the four commits after f7f73c2 on completion/claude-final. Kept the
+newer fail-closed scanner in every environment instead of restoring the old
+development-only basic-scanner success path. Adapted the added scanner test
+accordingly. Audit mismatch deduplication now groups by chain within facility;
+the exact affected item remains tested. Hospital-date fixtures change and
+restore the stored facility timezone rather than assuming an environment
+variable overrides facility configuration.
+
+Observed on the integrated private stack: hospital day 2/2, documents 11/11,
+key/scanner/audit unit tests 25/25; actual Object Lock/dump/restore harness
+10/10 integrated scenarios plus worklist HTTP 5/5. Latest protected runs:
+`runs/2026-10-16T19-51-35-110Z/result.json` and
+`audit/1792180262392/verification.json` under the private verification state.
+Claude's historical full-run reports remain historical evidence for its own
+candidate, not a replacement for this branch's final C4 run.

@@ -73,7 +73,7 @@ function check(laterMs = 0) {
     const rowHead = heads.find((head) => head.chain === 'audit.row_changes');
     assert(rowHead && rowHead.seq > 0, 'row chain is unsealed');
     rowHead.hash = '0'.repeat(64);
-    mismatchKey = `${rowHead.chain}#${rowHead.seq}`;
+    mismatchKey = rowHead.chain;
     const [{ scope_id: scope }] = await sql('SELECT scope_id FROM audit.checkpoint_identity WHERE singleton');
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     await put(`${prefix}audit-checkpoint-${stamp}-forged.json`, { created_at: new Date().toISOString(), heads: [], signature: 'f'.repeat(64) });

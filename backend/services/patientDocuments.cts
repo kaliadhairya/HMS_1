@@ -158,4 +158,4 @@ const report = (t?: Transaction) => one(`SELECT
     COALESCE(jsonb_object_agg(key_id, n) FILTER (WHERE key_id IS NOT NULL), '{}'::jsonb) AS by_key
   FROM (SELECT d.*, count(*) OVER (PARTITION BY key_id) AS n FROM hms_patient_documents d WHERE storage_key IS NOT NULL AND d.facility_id=:facility) x`, {}, t);
 
-module.exports = { upload, list, download, withdraw, legalHold, report, TYPES, sniff, activeContent };
+module.exports = { upload, list, download, withdraw, legalHold, report, TYPES, sniff, activeContent, clamav };

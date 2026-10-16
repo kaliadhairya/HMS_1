@@ -15,6 +15,15 @@ const BASE = `http://127.0.0.1:${PORT}/api`;
 // A zone whose calendar date differs from UTC's at this moment.
 const hour = new Date().getUTCHours();
 const ZONE = hour >= 10 ? 'Pacific/Kiritimati' : 'Pacific/Pago_Pago';
+// The facility's timezone is stored on the facility (A2); the test sets it on the throwaway copy and restores it.
+
+const { sql: dbSql } = require('./helpers');
+let savedTz = null;
+async function setFacilityZone(zone) {
+  if (savedTz === null) [{ tz: savedTz }] = await dbSql("SELECT timezone AS tz FROM hms_facilities WHERE id = hms_initial_facility()");
+  await dbSql('UPDATE hms_facilities SET timezone = $1 WHERE id = hms_initial_facility()', [zone]);
+}
+async function restoreFacilityZone() { if (savedTz !== null) await dbSql('UPDATE hms_facilities SET timezone = $1 WHERE id = hms_initial_facility()', [savedTz]); }
 const facilityDay = new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const utcDay = new Date().toISOString().slice(0, 10);
 
@@ -40,6 +49,7 @@ async function login(role) {
 
     await step(`A token issued on the hospital's day (${ZONE}: ${facilityDay}, UTC: ${utcDay}) is the one the doctor's visit picks up`, async () => {
       assert(facilityDay !== utcDay, 'the chosen zone must differ from UTC now');
+      await setFacilityZone(ZONE);
       child = spawn('node', ['server.js'], { cwd: BACKEND, stdio: 'ignore',
         env: { ...process.env, PORT, FACILITY_TZ: ZONE, AUDIT_SEALER: 'off', AUDIT_CHECKPOINT_DIR: '', AUDIT_WORM_BUCKET: '', DOWNTIME_KIT_DIR: '', DEVICE_MLLP: 'off', INTERFACE_WORKER: 'off', TZ: 'UTC' } });
       for (let i = 0; i < 60; i++) { try { if ((await fetch(`${BASE}/ready`)).ok) break; } catch { /* starting */ } await sleep(500); }
@@ -62,6 +72,7 @@ async function login(role) {
     });
   } finally {
     if (child) child.kill();
+    await restoreFacilityZone();
   }
   done();
   process.exit();

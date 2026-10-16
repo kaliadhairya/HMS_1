@@ -62,3 +62,18 @@ test('production refuses to run without keys; bad key lists are refused', () => 
   withEnv({ HMS_DATA_KEYS: `k1:${K1}`, HMS_DATA_KEY_ACTIVE: 'k9' }, () => assert.throws(() => keys.assertDataKeys(), /not in HMS_DATA_KEYS/));
   withEnv({ HMS_DATA_KEYS: undefined, NODE_ENV: undefined, HMS_REQUIRE_DATA_KEYS: undefined }, () => assert.doesNotThrow(() => keys.assertDataKeys()));
 });
+
+test('a document with no scanner stays quarantined in every environment', async () => {
+  const saved = { h: process.env.CLAMAV_HOST, r: process.env.HMS_REQUIRE_SCANNER };
+  delete process.env.CLAMAV_HOST;
+  try {
+    const { scan } = require('../services/documentScan.cts');
+    process.env.HMS_REQUIRE_SCANNER = 'true';
+    assert.equal((await scan(Buffer.from('x'))).result, 'unavailable');
+    delete process.env.HMS_REQUIRE_SCANNER;
+    assert.equal((await scan(Buffer.from('x'))).result, 'unavailable');
+  } finally {
+    if (saved.h !== undefined) process.env.CLAMAV_HOST = saved.h;
+    if (saved.r !== undefined) process.env.HMS_REQUIRE_SCANNER = saved.r; else delete process.env.HMS_REQUIRE_SCANNER;
+  }
+});

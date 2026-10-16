@@ -151,7 +151,7 @@ async function checkRemote(sequelize, { key = loadKeyMaterial(), now = new Date(
       for (const head of body.heads) {
         if (!head.seq) continue;
         const [row] = await sequelize.query(`SELECT encode(row_hash, 'hex') AS hash FROM ${head.chain} WHERE chain_seq = :seq`, { replacements: { seq: head.seq }, type: QueryTypes.SELECT });
-        if (row?.hash !== head.hash) add('audit.chain_mismatch', `${head.chain}#${head.seq}`, `Audit ${head.chain} entry ${head.seq} ${row ? 'differs from' : 'is missing since'} remote checkpoint ${name}.`, { checkpoint: name });
+        if (row?.hash !== head.hash) add('audit.chain_mismatch', head.chain, `Audit ${head.chain} entry ${head.seq} ${row ? 'differs from' : 'is missing since'} remote checkpoint ${name}.`, { checkpoint: name });
       }
     } catch (err) {
       add('audit.checkpoint_invalid', name, `Checkpoint ${name} could not be read or parsed.`, { error: err.message });
