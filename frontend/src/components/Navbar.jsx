@@ -4,7 +4,7 @@ import { toast } from 'react-hot-toast';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
-  Search, Menu, PanelLeftClose, PanelLeftOpen, ChevronDown, KeyRound, Info, LogOut, Command as CommandIcon,
+  Route, Search, Menu, PanelLeftClose, PanelLeftOpen, ChevronDown, KeyRound, Info, LogOut, Command as CommandIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from './ThemeToggle';
@@ -211,6 +211,9 @@ export default function Navbar() {
                   <span>{user?.username} · {ROLE_LABEL[role] || role}</span>
                 </div>
                 <DropdownMenu.Separator className="menu-sep" />
+                <DropdownMenu.Item className="menu-item" onSelect={()=>navigate('/hms/facility')}>
+                  <Route size={16} aria-hidden="true" /> Current facility
+                </DropdownMenu.Item>
                 <DropdownMenu.Item className="menu-item" onSelect={() => navigate('/hms/change-password')}>
                   <KeyRound size={16} aria-hidden="true" /> Change password
                 </DropdownMenu.Item>

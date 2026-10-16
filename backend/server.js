@@ -2,6 +2,7 @@ require('dotenv').config();
 const { assertSecurityConfig } = require('./utils/authTokens');
 try {
   assertSecurityConfig();
+  require('./services/dataKeys.cts').assertDataKeys();
 } catch (err) {
   console.error(`❌ Refusing to start: ${err.message}`);
   process.exit(1);
@@ -14,10 +15,8 @@ const path = require('path');
 const { sequelize } = require('./models');
 const { schemaProblems } = require('./migrate');
 const { requestContext, bindAuditActor } = require('./utils/auditContext');
-const { startAuditSealer } = require('./utils/auditSealer');
-const { startAuditShipper } = require('./utils/auditShipper');
 const { startOutboxDispatcher } = require('./utils/outbox');
-const { startFinanceWorker } = require('./services/reconciliation');
+const { processRole, startBackgroundWorkers } = require('./workers');
 const { startSocketSessionGuard } = require('./utils/socketSessions');
 const securitySettings = require('./utils/settings');
 const { validateToken } = require('./utils/identityClient');
@@ -154,6 +153,8 @@ app.use('/api/hms/vitals/history/:id', require('./middleware/auth').protect, req
 app.use('/api/hms/prescriptions/patient/:id', require('./middleware/auth').protect, requirePatientInCare);
 app.use('/api/patients', require('./routes/patientIdentity').router);
 app.use('/api/patients', require('./routes/patientMerge').router);
+// Private documents (A4): after the care-team check above, before the older patient routes.
+app.use('/api/patients', require('./routes/patientDocuments'));
 app.use('/api/practitioners', require('./routes/practitioners'));
 app.use('/api/facilities', require('./routes/facilities'));
 app.use('/api/triage', require('./routes/triage'));
@@ -211,6 +212,7 @@ app.use('/api/abdm', require('./routes/abdm'));
 app.use('/api/devices', require('./routes/devices').contracts);
 app.use('/api/device-messages', require('./routes/devices').inbound);
 app.use('/api/downtime', require('./routes/downtime'));
+app.use('/api/integrations', require('./routes/integrations'));
 // Calls from the ABDM gateway (and data pushes from other facilities).
 app.use('/abdm', require('./routes/abdmBridge'));
 
@@ -231,10 +233,12 @@ app.get('/api/health', (req, res) => {
 app.get('/api/ready', async (req, res) => {
   let timer;
   try {
-    await Promise.race([
-      sequelize.query('SELECT 1'),
+    const fence = await Promise.race([
+      require('./services/writerFence.cts').fenceState(),
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('database did not answer within 2 s')), 2000); }),
     ]);
+    // A fenced database (B7) is not ready: a load balancer must stop sending work here.
+    if (!fence || fence.role !== 'primary') return res.status(503).json({ status: 'not_ready', reason: 'this database was fenced by a recovery; HMS runs against the current primary' });
     res.json({ status: 'ready', timestamp: new Date().toISOString() });
   } catch (err) {
     res.status(503).json({ status: 'not_ready', reason: err.message });
@@ -279,6 +283,9 @@ io.use(async (socket, next) => {
       ? await validateToken(token, socket.handshake.headers['x-request-id'])
       : await resolveTokenUser(token);
     if (!context) return next(new Error('Invalid or inactive session'));
+    // The connection carries its session's verified facility (A2), which scopes its events (A8).
+    try { Object.assign(context, await require('./services/facilities.cts').sessionFacility(context)); }
+    catch (err) { return next(new Error(err.message || 'No active facility membership')); }
     socket.user = context;
     socket.hmsAccessToken = token;
     return next();
@@ -308,6 +315,9 @@ io.on('connection', (socket) => {
 // Start only against a reachable database whose schema matches migrations/.
 // The schema itself is changed by "node migrate.js up", never by the server.
 async function start() {
+  let role;
+  try { role = processRole(); } catch (err) { console.error(`❌ Refusing to start: ${err.message}`); process.exit(1); }
+  if (role === 'worker') { console.error('❌ Refusing to start: run the worker role with "node worker.js".'); process.exit(1); }
   try {
     await sequelize.authenticate();
   } catch (err) {
@@ -319,6 +329,9 @@ async function start() {
     console.error(`❌ Refusing to start: the database schema is not current. Run "node migrate.js up".\n  ${problems.join('\n  ')}`);
     process.exit(1);
   }
+  // B7: never write to a database a recovery has fenced.
+  try { await require('./services/writerFence.cts').assertPrimary(); }
+  catch (err) { console.error(`❌ Refusing to start: ${err.message}`); process.exit(1); }
   console.log('✅ PostgreSQL DB connected; schema is current');
   if (process.env.NODE_ENV === 'production') {
     try { await require('./services/databaseRuntime.cts').verifyRuntime(sequelize); }
@@ -330,15 +343,11 @@ async function start() {
   server.listen(PORT, process.env.BACKEND_HOST || '0.0.0.0', () => {
     console.log(`🚀 Server running on http://${process.env.BACKEND_HOST || '0.0.0.0'}:${PORT}`);
   });
-  startAuditSealer(sequelize);
-  startAuditShipper(sequelize);
-  require('./services/interfaces').startInterfaceWorker();
-  require('./services/abdm').startAbdmWorker();
-  require('./services/devices').startMllp().catch((err) => console.error('Device listeners failed:', err.message));
-  require('./services/downtime').startDowntimeKit();
+  // Sockets live in this process, so their delivery and session checks run here.
   startOutboxDispatcher(io);
-  startFinanceWorker();
   startSocketSessionGuard(io);
+  if (role === 'all') startBackgroundWorkers(sequelize);
+  else console.log('⚙️  Background workers run in a separate "node worker.js" process (HMS_PROCESS_ROLE=api)');
 }
 
 start();

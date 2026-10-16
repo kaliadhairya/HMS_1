@@ -41,8 +41,13 @@ export const SocketProvider = ({ children }) => {
       });
 
       // Advanced notification for IPD admission requests (for nurses/admins)
-      newSocket.on('new_ipd_request', (data) => {
+      newSocket.on('new_ipd_request', async (event) => {
         if (user.role === 'nurse' || user.role === 'super_admin' || user.role === 'admin') {
+          // The event names the request; its details come from the API, which checks access.
+          const found = await api.get('/ipd/requests', { params: { status: 'Pending' } })
+            .then((r) => (r.data?.data || []).find((x) => Number(x.ID ?? x.id) === Number(event.request_id)))
+            .catch(() => null);
+          const data = { ...(found || { PATIENT_NAME: 'Admission request', UHID: '—' }), URGENCY_LEVEL: found?.URGENCY_LEVEL || event.urgency };
           // Play a "cling" sound using Web Audio API
           try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -149,7 +154,7 @@ export const SocketProvider = ({ children }) => {
         console.log('🔌 Disconnected from real-time server');
       };
     }
-  }, [user?.id, user?.role]);
+  }, [user?.id, user?.role, user?.facilityId]);
 
   return (
     <SocketContext.Provider value={socket}>

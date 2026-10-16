@@ -7,6 +7,8 @@ import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
 import MedicationOrderPanel from '../consultation/MedicationOrderPanel';
 import MedicationAllergyPanel from '../consultation/MedicationAllergyPanel';
+import { useAuth } from '../../../context/AuthContext';
+import useRecoverableDraft from '../../../hooks/useRecoverableDraft';
 
 // NUMERIC columns arrive as strings ("38.20"); show them as numbers (38.2).
 const shown = (v, unit = '') => {
@@ -17,6 +19,7 @@ const shown = (v, unit = '') => {
 
 export default function DoctorQuickConsultPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -114,7 +117,9 @@ export default function DoctorQuickConsultPage() {
 
   const handleInputChange = (e) => {
     if(finalizing||uncertainFinalize)return;
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const next={ ...formData, [e.target.name]: e.target.value };
+    setFormData(next);
+    qcDraft.keep(next,encounterRevision.current);
   };
 
   // ─── Diagnosis Handlers ───
@@ -157,24 +162,34 @@ export default function DoctorQuickConsultPage() {
   // ─── Finalize ───
   const [finalizing,setFinalizing]=useState(false),[uncertainFinalize,setUncertainFinalize]=useState(false);
   const finalizeRequest=useRef(null),finalizeRunning=useRef(false),encounterRevision=useRef(1),encounterPublicId=useRef(null);
+  // Unsaved notes and an unanswered save/sign survive a reload (C2); they come
+  // back when the same consultation is opened again in this tab.
+  const qcDraft=useRecoverableDraft({userId:user?.id,facilityId:user?.facility_id||user?.facilityId,scope:'quick-consult',id:activeEncounterId});
+  const [qcRecovery,setQcRecovery]=useState(null);
+  useEffect(()=>{
+    const kept=qcDraft.recovered;
+    if(!kept||!activeEncounterId)return;
+    if(kept.pending){finalizeRequest.current=kept.pending;setUncertainFinalize(true);setFormData(f=>({...f,...(kept.pending.content||{})}));qcDraft.dismiss();return;}
+    if(kept.value)setQcRecovery(kept);
+  },[qcDraft.recovered,activeEncounterId]); // eslint-disable-line react-hooks/exhaustive-deps
   const finalizeEncounter = async (reconcile=false) => {
     if(finalizeRunning.current||(!reconcile&&finalizeRequest.current))return;
     if (!activeEncounterId || hasPendingMedication) return toast.error('Confirm and sign medication orders before finalizing.');
     const r=reconcile?finalizeRequest.current:{id:encounterPublicId.current,content:JSON.parse(JSON.stringify(formData)),revision:encounterRevision.current,stage:'SAVE',saveKey:crypto.randomUUID(),signKey:crypto.randomUUID()};
     if(!r)return;
-    finalizeRequest.current=r;finalizeRunning.current=true;setFinalizing(true);
+    finalizeRequest.current=r;qcDraft.setPending(r);finalizeRunning.current=true;setFinalizing(true);
     try {
       if(r.stage==='SAVE'){
         const saved=await api.put(`/v2/encounters/${r.id}/draft`,r.content,{headers:{'If-Match':String(r.revision),'Idempotency-Key':r.saveKey}});
-        r.revision=saved.data.version;encounterRevision.current=r.revision;r.stage='SIGN';
+        r.revision=saved.data.version;encounterRevision.current=r.revision;r.stage='SIGN';qcDraft.setPending(r);
       }
       await api.post(`/v2/encounters/${r.id}/sign`, {},{headers:{'If-Match':String(r.revision),'Idempotency-Key':r.signKey}});
-      finalizeRequest.current=null;setUncertainFinalize(false);
+      finalizeRequest.current=null;setUncertainFinalize(false);qcDraft.clear();
       toast.success('Consultation finalized');
       clearPatient();
     } catch (err) { 
       const unknown=!err.response||err.response.status>=500;setUncertainFinalize(unknown);
-      if(!unknown)finalizeRequest.current=null;
+      if(!unknown){finalizeRequest.current=null;qcDraft.setPending(null);}
       toast.error(unknown?'Outcome uncertain. Keep this patient open and reconcile the original request.':err.response?.data?.message||err.response?.data?.error||'Failed to finalize encounter. Your draft is preserved.');
     }finally{finalizeRunning.current=false;setFinalizing(false);}
   };
@@ -201,6 +216,14 @@ export default function DoctorQuickConsultPage() {
           </button>
         )}
       />
+      {qcRecovery&&<section className="alert-strip alert-warning" role="alert" aria-label="Unsaved notes recovered" style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+        <span>Unsaved notes for this consultation from {new Date(qcRecovery.savedAt).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})} were kept when this page last closed.</span>
+        <button type="button" className="btn btn-primary btn-sm" onClick={()=>{setFormData(f=>({...f,...qcRecovery.value}));
+          // Written against an older revision: signing compares against that revision (412) instead of overwriting.
+          if(Number(qcRecovery.revision)<encounterRevision.current)encounterRevision.current=Number(qcRecovery.revision);
+          setQcRecovery(null);}}>Restore them</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={()=>{qcDraft.clear();setQcRecovery(null);}}>Discard</button>
+      </section>}
       {uncertainFinalize&&<div className="alert-strip alert-info" role="alert">The save/sign outcome is uncertain. Keep this chart open. <button className="btn btn-secondary btn-sm" disabled={finalizing} onClick={()=>finalizeEncounter(true)}>Reconcile original consultation</button></div>}
 
       {!activePatient ? (

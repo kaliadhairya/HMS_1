@@ -443,10 +443,16 @@ async function until(fn, message, timeout = 10000) {
           "Legacy text was guessed into a coded identity",
         );
         ctx.lineMed = saved.data[0];
+        // Signing sends the reviewed record revision (If-Match), and the note
+        // must have saved content first (A5/A6 rules).
+        const [{ record_revision: rev }] = await sql("SELECT record_revision FROM hms_encounters WHERE id = $1", [ctx.encounterId]);
+        const noted = await api("PUT", `/hms/encounters/${ctx.encounterId}`, { token: doc, body: { chief_complaint: "Synthetic pharmacy visit" }, headers: { "If-Match": String(rev) } });
+        assert(noted.status === 200, `note before signing: ${noted.status}`);
         assert(
           (
             await api("PATCH", `/hms/encounters/${ctx.encounterId}/finalize`, {
               token: doc,
+              headers: { "If-Match": String(noted.data.data?.revision ?? Number(rev) + 1) },
             })
           ).status === 200,
           "Finalize failed",
@@ -1029,8 +1035,8 @@ async function until(fn, message, timeout = 10000) {
             await api("GET", "/pharmacist_lms/reports?days=1", { token: ph })
           ).data.data;
           const [t] = await sql(`SELECT
-          (SELECT COALESCE(SUM(total_amount), 0) FROM hms_dispensing_records WHERE dispensed_at >= CURRENT_DATE) AS disp,
-          (SELECT COALESCE(SUM(total_amount), 0) FROM hms_otc_sales WHERE sold_at >= CURRENT_DATE) AS otc`);
+          (SELECT COALESCE(SUM(total_amount), 0) FROM hms_dispensing_records WHERE dispensed_at >= hms_service_day_start()) AS disp,
+          (SELECT COALESCE(SUM(total_amount), 0) FROM hms_otc_sales WHERE sold_at >= hms_service_day_start()) AS otc`);
           assert(
             today.today.dispensedAmount === num(t.disp) &&
               today.today.otcAmount === num(t.otc),
@@ -1167,8 +1173,8 @@ async function until(fn, message, timeout = 10000) {
             `dashboard tile "${label}" vs ${n} low-stock medicines in the database`,
           );
           const [t] = await sql(`SELECT
-          (SELECT COALESCE(SUM(total_amount), 0) FROM hms_dispensing_records WHERE dispensed_at >= CURRENT_DATE)
-        + (SELECT COALESCE(SUM(total_amount), 0) FROM hms_otc_sales WHERE sold_at >= CURRENT_DATE) AS billed`);
+          (SELECT COALESCE(SUM(total_amount), 0) FROM hms_dispensing_records WHERE dispensed_at >= hms_service_day_start())
+        + (SELECT COALESCE(SUM(total_amount), 0) FROM hms_otc_sales WHERE sold_at >= hms_service_day_start()) AS billed`);
           const expected = `₹${num(t.billed).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
           const sales = page
             .locator(".kpi", { hasText: "Sales today" })

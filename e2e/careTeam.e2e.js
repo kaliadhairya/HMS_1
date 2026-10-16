@@ -4,7 +4,7 @@
 // break-glass for one hour with a reason, reviewed later. Desk staff and
 // administrators are not limited by care teams.
 const crypto = require('crypto');
-const { API, apiLogin, sql, runner, assert, stamp } = require('./helpers');
+const { API, apiLogin, sql, runner, assert, stamp, syntheticClinician } = require('./helpers');
 
 async function call(method, url, token, body) {
   const res = await fetch(API + url, {
@@ -40,6 +40,7 @@ async function loginAs(username, password) {
       const username = `e2e.care.${k}.${tag}`;
       const created = await call('POST', '/users', admin, { username, password: 'Doctor#Care2026', name: `Dr Care ${k} ${tag}`, role: 'doctor', isActive: 1 });
       assert(created.status === 201, `doctor ${created.status}`);
+      await syntheticClinician(created.data.data.id, 'doctor'); // verified registration + privileges (test-only)
       ctx[k] = { id: created.data.data.id, token: await loginAs(username, 'Doctor#Care2026') };
     }
   });

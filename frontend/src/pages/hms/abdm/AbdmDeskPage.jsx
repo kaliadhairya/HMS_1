@@ -4,7 +4,9 @@ import { BadgeCheck, Link2, QrCode } from 'lucide-react';
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
+import IntegrationReadinessPanel from './IntegrationReadinessPanel';
 import PatientPicker from './PatientPicker';
+import { useAuth } from '../../../context/AuthContext';
 
 const when = (v) => (v ? new Date(v).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '');
 const STATUS = { Verified: 'status-success', Linked: 'status-success', Mismatch: 'status-warning', Conflict: 'status-warning', Linking: 'status-info', OtpSent: 'status-info', Failed: 'status-danger', Expired: 'status-neutral', NotLinked: 'status-neutral' };
@@ -14,6 +16,7 @@ const err = (e, fallback) => toast.error(e.response?.data?.message || fallback, 
 // with ABDM, take profiles patients share from their ABHA app, and make
 // finished visits available to the patient's ABHA.
 export default function AbdmDeskPage() {
+  const { user } = useAuth();
   const [patient, setPatient] = useState(null);
   const [abha, setAbha] = useState(null);
   const [visits, setVisits] = useState([]);
@@ -75,6 +78,7 @@ export default function AbdmDeskPage() {
       <Navbar />
       <main className="app-page">
         <PageHeader title="ABDM" description="Verify ABHA with ABDM, take profiles shared at the counter, and make finished visits available to the patient's ABHA." />
+        {['super_admin', 'admin'].includes(user?.role) && <IntegrationReadinessPanel />}
 
         <section className="panel" aria-label="Shared at the counter">
           <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}><QrCode size={16} aria-hidden="true" /> Shared at the counter</h2></div>

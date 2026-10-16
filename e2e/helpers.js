@@ -96,7 +96,11 @@ function runner(name) {
   async function step(title, fn) {
     const t0 = Date.now();
     try { await fn(); results.push({ title, ok: true, ms: Date.now() - t0 }); console.log(`  ✓ ${title}`); }
-    catch (e) { results.push({ title, ok: false, err: e.message }); console.log(`  ✗ ${title}\n      ${String(e.message).split('\n')[0]}`); }
+    catch (e) {
+      results.push({ title, ok: false, err: e.message });
+      // E2E_VERBOSE=1 prints the whole message (Playwright names the element it waited for).
+      console.log(`  ✗ ${title}\n      ${process.env.E2E_VERBOSE ? String(e.message).split('\n').slice(0, 8).join('\n      ') : String(e.message).split('\n')[0]}`);
+    }
   }
   function done() {
     const failed = results.filter((r) => !r.ok);
@@ -127,4 +131,34 @@ function requireThrowawayDb() {
   assert(THROWAWAY_DB.test(process.env.DB_NAME || ''), `Use a throwaway database (hms_e2e, hms_p<N>_*, hms_test*, hms_verify*), not "${process.env.DB_NAME || 'hms'}"`);
 }
 
-module.exports = { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, creds, inCare, requireThrowawayDb };
+// Throwaway copies only: a clinician created by a test gets a synthetic,
+// clearly labelled facility role and privileges (and, unless the test checks
+// registrations itself, a synthetic independently verified registration), so
+// suites written before the A2 privilege checks can still do clinical work.
+// Never a real approval.
+async function syntheticClinician(userId, role = 'doctor', { credential = true } = {}) {
+  requireThrowawayDb();
+  const kind = { doctor: 'medical_registration', nurse: 'nursing_registration', pharmacist: 'pharmacy_registration', lab_technician: 'laboratory_qualification' }[role];
+  await sql(`DO $$ DECLARE pr bigint; r uuid; a text; sa int; ad int; BEGIN
+    SELECT id INTO sa FROM hms_users WHERE username = 'superadmin'; SELECT id INTO ad FROM hms_users WHERE username = 'admin';
+    INSERT INTO hms_practitioners (user_id, display_name) SELECT ${Number(userId)}, coalesce(nullif(btrim(name), ''), username) FROM hms_users WHERE id = ${Number(userId)} ON CONFLICT (user_id) DO NOTHING;
+    SELECT id INTO pr FROM hms_practitioners WHERE user_id = ${Number(userId)};
+    IF ${credential ? 'true' : 'false'} AND NOT hms_current_professional_credential(${Number(userId)}, '${role}') THEN
+      INSERT INTO hms_practitioner_credentials (practitioner_id, kind, identifier, issuing_body, valid_from, verified_by, verified_at, created_by, verification_evidence)
+      VALUES (pr, '${kind}', 'SYNTHETIC-E2E-' || ${Number(userId)}, 'Synthetic e2e fixture, not a real registration', current_date - 1, sa, now(), ad,
+        jsonb_build_object('reference', 'E2E-SYNTHETIC', 'reason', 'Synthetic throwaway-test credential; not a real approval'));
+    END IF;
+    INSERT INTO hms_facility_memberships (facility_id, user_id, reason) SELECT hms_initial_facility(), ${Number(userId)}, 'Synthetic throwaway e2e fixture membership'
+      WHERE NOT EXISTS (SELECT 1 FROM hms_facility_memberships WHERE user_id = ${Number(userId)} AND facility_id = hms_initial_facility() AND revoked_at IS NULL);
+    INSERT INTO hms_practitioner_roles (practitioner_id, facility_id, role, valid_from, valid_until, granted_by_user_id, reason)
+      VALUES (pr, hms_initial_facility(), '${role}', now() - interval '1 minute', now() + interval '30 days', sa, 'Synthetic throwaway e2e fixture role') RETURNING id INTO r;
+    FOREACH a IN ARRAY ARRAY['CHART_READ', 'PRESCRIBE', 'CLINICAL_SIGN', 'NURSING_DOCUMENT', 'DISPENSE', 'LAB_PROCESS', 'LAB_RELEASE'] LOOP
+      IF hms_role_permits_action('${role}', a) THEN
+        INSERT INTO hms_clinical_privileges (practitioner_role_id, action, valid_from, valid_until, granted_by_user_id, reason)
+        VALUES (r, a, now() - interval '1 minute', now() + interval '30 days', sa, 'Synthetic throwaway e2e fixture privilege');
+      END IF;
+    END LOOP;
+  END $$`);
+}
+
+module.exports = { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, creds, inCare, requireThrowawayDb, syntheticClinician };

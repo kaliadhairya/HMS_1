@@ -1,0 +1,41 @@
+{
+  "candidate": "17209d2b2585bd03f21a149794c5a6d7e578eda7",
+  "tracked_diff_sha256": "fb0f2c8ff2da18af9347a85fdfde58eb33fca9e47ee7319b0c723b0b121515c7",
+  "untracked_files": [
+    "backend/migrations/0134_integrated_downtime_scope.sql",
+    "backend/migrations/0135_facility_membership_lifecycle.sql",
+    "backend/migrations/compat/0123_remaining_operational_ownership.sql",
+    "backend/migrations/compat/0156_downtime_facility.sql",
+    "backend/migrations/compat/replacements.json",
+    "backend/services/auditKeys.cts",
+    "backend/services/documentScan.cts",
+    "backend/services/facilityMemberships.cts",
+    "backend/tests/documentScan.test.js",
+    "e2e/criticalFixture.js",
+    "e2e/facilityLifecycle.e2e.js",
+    "e2e/fixtures/clamavFixture.js",
+    "frontend/src/pages/hms/FacilityPage.jsx",
+    "scripts/verify-clinical-final.cjs"
+  ],
+  "database": "hms_p4_final_v2_20261015b",
+  "api_port": 5064,
+  "frontend_port": 5236,
+  "scanner": "SYNTHETIC_PROTOCOL_FIXTURE_ONLY",
+  "results": [
+    {
+      "suite": "v2Medication",
+      "exit_code": 0,
+      "seconds": 4.366
+    },
+    {
+      "suite": "medication",
+      "exit_code": 0,
+      "seconds": 67.762
+    },
+    {
+      "suite": "devices",
+      "exit_code": 1,
+      "seconds": 3.379
+    }
+  ]
+}

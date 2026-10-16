@@ -115,7 +115,7 @@ const receivedOn = (p, pred = () => true) => until(async () => (await mock(`/_mo
     const ref = onInit.body.link.referenceNumber;
     const [sms] = await sql("SELECT payload FROM hms_interface_messages WHERE system = 'sms' AND patient_id = $1 ORDER BY created_at DESC LIMIT 1", [P.id]);
     assert(sms && !JSON.stringify(sms.payload).match(/\b\d{6}\b/), 'the OTP is readable in the message log');
-    const otp = decrypt(sms.payload.text_enc).match(/\b(\d{6})\b/)[1];
+    const otp = decrypt(sms.payload.text_enc, 'abdm.sms-text').match(/\b(\d{6})\b/)[1];
     await call('/api/v3/hip/link/care-context/confirm', { confirmation: { linkRefNumber: ref, token: otp === '000000' ? '111111' : '000000' } });
     assert((await sql("SELECT link_status FROM hms_abdm_care_contexts WHERE encounter_id = $1", [enc2.id]))[0].link_status !== 'Linked', 'a wrong OTP linked the visit');
     await call('/api/v3/hip/link/care-context/confirm', { confirmation: { linkRefNumber: ref, token: otp } });

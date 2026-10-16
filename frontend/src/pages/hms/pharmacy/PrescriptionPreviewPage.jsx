@@ -5,12 +5,20 @@ import { Download, FileText, Printer, X } from 'lucide-react';
 import api from '../../../api/axios';
 import EmptyState from '../../../components/ui/EmptyState';
 import { openAuthenticatedBlob } from '../../../utils/authenticatedDownload';
+import { PRINT_LANGUAGES, explainFrequency } from '../../../print/printLanguages';
+
+const PRINT_FONTS = "Arial, 'Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Gujarati', 'Noto Sans Bengali', 'Noto Sans Gurmukhi', 'Noto Sans Oriya', 'Noto Sans Tamil', 'Noto Sans Telugu', 'Noto Sans Kannada', 'Noto Sans Malayalam', 'Nirmala UI', Mangal, sans-serif";
 
 export default function PrescriptionPreviewPage() {
   const { id } = useParams(); // Prescription ID
   const [prescription, setPrescription] = useState(null);
   const [hosp, setHosp] = useState({});
   const [loading, setLoading] = useState(true);
+  // A second language printed beside English for the patient (C2); remembered on this computer.
+  const [printLang, setPrintLang] = useState(() => { try { return localStorage.getItem('hms.printLang') || ''; } catch { return ''; } });
+  const L2 = PRINT_LANGUAGES[printLang];
+  const chooseLang = (v) => { setPrintLang(v); try { localStorage.setItem('hms.printLang', v); } catch { /* convenience only */ } };
+  const bi = (key, english) => (L2 ? <>{english}<span lang={L2.lang} className="slip-l2"> / {L2.labels[key]}</span></> : english);
 
   useEffect(() => {
     fetchPrescription();
@@ -63,6 +71,13 @@ export default function PrescriptionPreviewPage() {
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <span className="toolbar-caption"><FileText size={16} aria-hidden="true" /> Prescription preview</span>
         <div className="inline-actions">
+          <label className="form-label" htmlFor="rx-lang" style={{ display: 'flex', gap: 8, alignItems: 'center', margin: 0 }}>
+            Second language
+            <select id="rx-lang" className="form-select" style={{ width: 'auto' }} value={printLang} onChange={(e) => chooseLang(e.target.value)}>
+              <option value="">None (English only)</option>
+              {Object.entries(PRINT_LANGUAGES).map(([k, l]) => <option key={k} value={k}>{l.name}</option>)}
+            </select>
+          </label>
           <button type="button" className="btn btn-ghost btn-md" onClick={() => window.close()}>
             <X size={16} aria-hidden="true" /> Close
           </button>
@@ -80,9 +95,10 @@ export default function PrescriptionPreviewPage() {
           </button>
         </div>
       </div>
+      {L2 && !L2.reviewed && <p className="alert-strip alert-warning" role="status" style={{ maxWidth: 800, margin: '0 auto 8px' }}>The {L2.name} wording has not yet had the hospital's language review. English on the prescription remains the reference.</p>}
     </div>
 
-    <div className="prescription-preview-page" style={{ background: '#fff', minHeight: '100vh', padding: '40px 0', fontFamily: 'Arial, sans-serif', color: '#000' }}>
+    <div className="prescription-preview-page" style={{ background: '#fff', minHeight: '100vh', padding: '40px 0', fontFamily: PRINT_FONTS, color: '#000' }}>
       
       <div className="prescription-preview-sheet" style={{ maxWidth: 800, margin: '0 auto', border: '1px solid #ccc', padding: 40, position: 'relative', color: '#000', background: '#fff' }}>
 
@@ -109,12 +125,12 @@ export default function PrescriptionPreviewPage() {
 
         <div style={{ borderTop: '1px solid #ddd', borderBottom: '1px solid #ddd', padding: '10px 0', display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: 20, color: '#000' }}>
           <div>
-            <strong>Patient Name:</strong> {patient?.name} <br />
-            <strong>Age/Sex:</strong> {patient?.age} / {patient?.gender}
+            <strong>{bi('patientName', 'Patient Name')}:</strong> {patient?.name} <br />
+            <strong>{bi('ageGender', 'Age/Sex')}:</strong> {patient?.age} / {patient?.gender}
           </div>
           <div style={{ textAlign: 'right' }}>
             <strong>UHID:</strong> {patient?.uhid || patient?.id} <br />
-            <strong>Date:</strong> {new Date(prescription.created_at || prescription.createdAt || Date.now()).toLocaleDateString('en-IN')}
+            <strong>{bi('date', 'Date')}:</strong> {new Date(prescription.created_at || prescription.createdAt || Date.now()).toLocaleDateString('en-IN')}
           </div>
         </div>
 
@@ -143,12 +159,12 @@ export default function PrescriptionPreviewPage() {
           <thead>
             <tr style={{ background: '#f5f5f5', textAlign: 'left' }}>
               <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>S.No</th>
-              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>Medicine</th>
-              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>Dose</th>
-              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>Route</th>
-              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>Frequency</th>
-              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>Duration</th>
-              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>Instructions</th>
+              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>{bi('medicine', 'Medicine')}</th>
+              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>{bi('dose', 'Dose')}</th>
+              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>{bi('route', 'Route')}</th>
+              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>{bi('frequency', 'Frequency')}</th>
+              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>{bi('days', 'Duration')}</th>
+              <th style={{ padding: 8, borderBottom: '1px solid #ddd' }}>{bi('instructions', 'Instructions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -158,8 +174,8 @@ export default function PrescriptionPreviewPage() {
                 <td style={{ padding: 8, borderBottom: '1px dashed #eee', fontWeight: 'bold' }}>{item.medicine_name}</td>
                 <td style={{ padding: 8, borderBottom: '1px dashed #eee' }}>{item.dose} {item.dose_unit}</td>
                 <td style={{ padding: 8, borderBottom: '1px dashed #eee' }}>{item.route}</td>
-                <td style={{ padding: 8, borderBottom: '1px dashed #eee' }}>{item.frequency}</td>
-                <td style={{ padding: 8, borderBottom: '1px dashed #eee' }}>{item.duration_days} Days</td>
+                <td style={{ padding: 8, borderBottom: '1px dashed #eee' }}>{item.frequency}{L2 && explainFrequency(item.frequency, printLang) && <div lang={L2.lang} className="slip-l2">{explainFrequency(item.frequency, printLang)}</div>}</td>
+                <td style={{ padding: 8, borderBottom: '1px dashed #eee' }}>{item.duration_days} Days{L2 && item.duration_days && <div lang={L2.lang} className="slip-l2">{L2.days(item.duration_days)}</div>}</td>
                 <td style={{ padding: 8, borderBottom: '1px dashed #eee' }}>{item.instructions}</td>
               </tr>
             ))}

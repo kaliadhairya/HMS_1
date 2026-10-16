@@ -1134,7 +1134,7 @@ async function verify(oid, b, u, header, tx) {
   );
   await event(
     "medication_verification_changed",
-    { order_id: o.id, state: b.state },
+    { order_id: o.id, patient_id: o.patient_id, state: b.state },
     tx,
   );
   return result;

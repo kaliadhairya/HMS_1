@@ -30,6 +30,7 @@ function dbConfig() {
 }
 
 function loadMigrations() {
+  const replacements = JSON.parse(fs.readFileSync(path.join(MIGRATIONS_DIR, 'compat/replacements.json'), 'utf8'));
   const files = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort();
   const seen = new Set();
   return files.map((file) => {
@@ -38,11 +39,19 @@ function loadMigrations() {
     if (seen.has(match[1])) throw new Error(`Two migrations share version ${match[1]}`);
     seen.add(match[1]);
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+    const checksum = crypto.createHash('sha256').update(sql).digest('hex');
+    const replacement = replacements[match[1]];
+    let executionFile=file, executionSql=sql, executionChecksum=checksum;
+    if(replacement){
+      if(replacement.original_file!==file||replacement.original_checksum!==checksum||!/^compat\/[0-9]{4}_[a-z0-9_]+\.sql$/.test(replacement.execution_file))throw new Error(`Invalid pinned migration replacement for ${file}`);
+      executionFile=replacement.execution_file;executionSql=fs.readFileSync(path.join(MIGRATIONS_DIR,executionFile),'utf8');executionChecksum=crypto.createHash('sha256').update(executionSql).digest('hex');
+      if(executionChecksum!==replacement.execution_checksum)throw new Error(`Replacement artifact changed for ${file}; add a new migration instead`);
+    }
     return {
       version: match[1],
       file,
       sql,
-      checksum: crypto.createHash('sha256').update(sql).digest('hex'),
+      checksum,executionFile,executionSql,executionChecksum,
       transactional: !sql.startsWith('-- migrate:no-transaction'),
     };
   });
@@ -57,14 +66,17 @@ async function ensureTable(client) {
       applied_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
       duration_ms INTEGER NOT NULL
     )`);
+  // Migration history retains the original branch artifact and the exact
+  // reviewed compatibility artifact actually executed. Startup never adds this.
+  await client.query('ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS execution_file text, ADD COLUMN IF NOT EXISTS execution_checksum char(64)');
 }
 
 // Compares the files on disk with what the database has recorded.
 async function plan(client) {
   const migrations = loadMigrations();
-  const { rows } = await client.query('SELECT version, file, checksum FROM schema_migrations ORDER BY version');
+  const { rows } = await client.query("SELECT version,file,checksum,to_jsonb(m)->>'execution_file' execution_file,to_jsonb(m)->>'execution_checksum' execution_checksum FROM schema_migrations m ORDER BY version");
   const applied = new Map(rows.map((r) => [r.version, r]));
-  const edited = migrations.filter((m) => applied.has(m.version) && applied.get(m.version).checksum !== m.checksum);
+  const edited = migrations.filter((m) => {const row=applied.get(m.version);return row&&(row.checksum!==m.checksum||(row.execution_checksum&&(row.execution_checksum!==m.executionChecksum||row.execution_file!==m.executionFile)));});
   const unknown = rows.filter((r) => !migrations.some((m) => m.version === r.version));
   const pending = migrations.filter((m) => !applied.has(m.version));
   return { migrations, applied, edited, unknown, pending };
@@ -92,10 +104,10 @@ async function up(client) {
       const started = Date.now();
       try {
         if (m.transactional) await client.query('BEGIN');
-        await client.query(m.sql);
+        await client.query(m.executionSql);
         await client.query(
-          'INSERT INTO schema_migrations (version, file, checksum, duration_ms) VALUES ($1, $2, $3, $4)',
-          [m.version, m.file, m.checksum, Date.now() - started]
+          'INSERT INTO schema_migrations (version,file,checksum,duration_ms,execution_file,execution_checksum) VALUES ($1,$2,$3,$4,$5,$6)',
+          [m.version,m.file,m.checksum,Date.now()-started,m.executionFile,m.executionChecksum]
         );
         if (m.transactional) await client.query('COMMIT');
       } catch (err) {

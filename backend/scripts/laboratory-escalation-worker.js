@@ -35,14 +35,26 @@ process.on("SIGINT", () => {
         "INVALID_WORKER_IDENTITY",
         "An active dedicated laboratory account is required.",
       );
-      await storage.run(
-        { userId, requestId: crypto.randomUUID(), sessionId: null },
-        () =>
-          C.sequelize.transaction(async (tx) => {
-            await C.privilege(user, "TECHNICAL_REVIEW", tx);
-            await F.advance(user, tx);
-          }),
+      // Once per facility where this dedicated account is a current member,
+      // with that facility bound (A2: workers need an explicit facility context).
+      const facilities = await C.q(
+        `SELECT f.id, f.timezone FROM hms_facility_memberships m JOIN hms_facilities f ON f.id = m.facility_id
+          WHERE m.user_id = :id AND f.status = 'ACTIVE' AND m.revoked_at IS NULL AND m.valid_from <= now()
+            AND (m.valid_until IS NULL OR m.valid_until > now()) ORDER BY f.id`,
+        { id: userId },
       );
+      C.check(facilities.length, "FACILITY_MEMBERSHIP_REQUIRED", "The worker account has no current facility membership.");
+      for (const f of facilities) {
+        const actor = { ...user, facilityId: f.id, facilityTimezone: f.timezone };
+        await storage.run(
+          { userId, requestId: crypto.randomUUID(), sessionId: null, facilityId: f.id, facilityTimezone: f.timezone },
+          () =>
+            C.sequelize.transaction(async (tx) => {
+              await C.privilege(actor, "TECHNICAL_REVIEW", tx);
+              await F.advance(actor, tx);
+            }),
+        );
+      }
       if (process.env.LAB_ESCALATION_ONCE === "true") break;
       if (!stopped)
         await new Promise((resolve) => setTimeout(resolve, interval));

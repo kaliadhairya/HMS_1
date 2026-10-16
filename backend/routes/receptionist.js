@@ -69,7 +69,7 @@ async function buildNotifications() {
     FROM HMS_APPOINTMENTS a
     JOIN HMS_PATIENTS p ON p.ID = a.PATIENT_ID
     JOIN HMS_USERS u ON u.ID = a.DOCTOR_ID
-    WHERE trunc(a.APPOINTMENT_DATE) = trunc(CURRENT_TIMESTAMP)
+    WHERE a.APPOINTMENT_DATE::date = hms_service_today()
       AND a.STATUS IN ('Scheduled', 'Confirmed')
     ORDER BY a.APPOINTMENT_DATE ASC
     LIMIT 10
@@ -93,7 +93,7 @@ async function buildNotifications() {
                         THEN b.NET_PAYABLE - COALESCE((SELECT SUM(pm.AMOUNT) FROM HMS_PAYMENTS pm WHERE pm.BILL_ID = b.ID), 0) ELSE 0 END) AS DUE
           FROM HMS_BILLS b WHERE b.ENCOUNTER_ID = e.ID AND COALESCE(b.STATUS, '') <> 'Cancelled'
       ) bills ON true
-    WHERE trunc(e.ENCOUNTER_DATE) = trunc(CURRENT_TIMESTAMP)
+    WHERE e.ENCOUNTER_DATE >= hms_service_day_start()
       AND e.STATUS = 'Finalized'
       AND (bills.BILLS = 0 OR bills.DUE > 0)
     ORDER BY e.ENCOUNTER_DATE DESC
@@ -274,7 +274,7 @@ router.get('/billing-summary', async (req, res) => {
                         THEN b.NET_PAYABLE - COALESCE((SELECT SUM(pm.AMOUNT) FROM HMS_PAYMENTS pm WHERE pm.BILL_ID = b.ID), 0) ELSE 0 END) AS DUE
           FROM HMS_BILLS b WHERE b.ENCOUNTER_ID = e.ID AND COALESCE(b.STATUS, '') <> 'Cancelled'
       ) bills ON true
-      WHERE trunc(e.ENCOUNTER_DATE) = trunc(CURRENT_TIMESTAMP)
+      WHERE e.ENCOUNTER_DATE >= hms_service_day_start()
         AND e.STATUS = 'Finalized'
         AND (bills.BILLS = 0 OR bills.DUE > 0)
       ORDER BY e.ENCOUNTER_DATE DESC
@@ -290,7 +290,7 @@ router.get('/billing-summary', async (req, res) => {
         pm.PAYMENT_DATE AS PAYMENT_DATE
       FROM HMS_PAYMENTS pm
       JOIN HMS_PATIENTS p ON p.ID = pm.PATIENT_ID
-      WHERE trunc(pm.PAYMENT_DATE) >= trunc(CURRENT_TIMESTAMP) - 2
+      WHERE pm.PAYMENT_DATE >= hms_service_day_start() - interval '2 days'
       ORDER BY pm.PAYMENT_DATE DESC
       LIMIT 20
     `);
@@ -298,7 +298,7 @@ router.get('/billing-summary', async (req, res) => {
     const [collectionRows] = await sequelize.query(`
       SELECT COALESCE(SUM(AMOUNT), 0) AS TOTAL
       FROM HMS_PAYMENTS
-      WHERE trunc(PAYMENT_DATE) = trunc(CURRENT_TIMESTAMP)
+      WHERE PAYMENT_DATE >= hms_service_day_start()
     `);
 
     const [pendingRows] = await sequelize.query(`

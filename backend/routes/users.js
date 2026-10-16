@@ -404,10 +404,21 @@ router.delete('/:id(\\d+)', async (req, res) => {
       });
     }
 
+    // Professional credentials and clinical roles are governance history (A2): such an account is deactivated, never deleted.
+    const [[governed]] = await sequelize.query(`SELECT
+        (SELECT count(*) FROM hms_practitioner_credentials c JOIN hms_practitioners p ON p.id = c.practitioner_id WHERE p.user_id = :u)
+      + (SELECT count(*) FROM hms_practitioner_roles r JOIN hms_practitioners p ON p.id = r.practitioner_id WHERE p.user_id = :u) AS n`, { replacements: { u: user.id } });
+    if (Number(governed.n ?? governed.N) > 0) {
+      return res.status(409).json({ success: false, message: `${user.name || user.username} has professional credential or clinical role history, which is kept. Deactivate the account instead.` });
+    }
+
     const ip = req.ip || req.connection?.remoteAddress || null;
     await sequelize.transaction(async (transaction) => {
-      // The doctor profile goes with the account, in the same transaction.
+      // The doctor profile, the automatic facility membership and the unused
+      // practitioner identity go with the account, in the same transaction.
       await Doctor.destroy({ where: { user_id: user.id }, transaction });
+      await sequelize.query('DELETE FROM hms_facility_memberships WHERE user_id = :u', { replacements: { u: user.id }, transaction });
+      await sequelize.query('DELETE FROM hms_practitioners WHERE user_id = :u', { replacements: { u: user.id }, transaction });
       await user.destroy({ transaction });
     });
     await logAction(req.user.id, 'DELETE', 'admin', user.id, { username: user.username, role: user.role }, null, ip);

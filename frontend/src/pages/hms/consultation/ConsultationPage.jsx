@@ -11,6 +11,8 @@ import PageHeader from '../../../components/ui/PageHeader';
 import EmptyState from '../../../components/ui/EmptyState';
 import Modal from '../../../components/ui/Modal';
 import { useAuth } from '../../../context/AuthContext';
+import useRecoverableDraft from '../../../hooks/useRecoverableDraft';
+import { tabProps } from '../../../components/ui/tabs';
 
 const TABS = [
   ['history', 'History'],
@@ -53,6 +55,10 @@ export default function ConsultationPage() {
   const [notesBusy,setNotesBusy]=useState(false),[notesMessage,setNotesMessage]=useState(''),[notesUncertain,setNotesUncertain]=useState(false),[notesConflict,setNotesConflict]=useState(null);
   const [notesDirty,setNotesDirty]=useState(false);
   const latestForm=useRef(null);
+  // Unsaved notes and an unanswered save survive a reload or crashed tab (C2).
+  const draft=useRecoverableDraft({userId:user?.id,facilityId:user?.facility_id||user?.facilityId,scope:'encounter-note',id});
+  const [recovery,setRecovery]=useState(null);const recoveryChecked=useRef(false);const restoredPending=useRef(null);
+  const contextKey=`${user?.id}:${user?.facilityId||user?.facility_id}:${id}`,currentContext=useRef(contextKey),loadGeneration=useRef(0);currentContext.current=contextKey;
 
   // Form State
   const [formData, setFormData] = useState({
@@ -81,15 +87,21 @@ export default function ConsultationPage() {
   const readOnly = encounter?.status === 'Finalized';
 
   useEffect(() => {
-    fetchEncounterData();
-  }, [id]);
+    const generation=++loadGeneration.current;
+    recoveryChecked.current=false;restoredPending.current=null;notePending.current=null;
+    setRecovery(null);setLoading(true);setEncounter(null);setPatient(null);setNotesDirty(false);setNotesConflict(null);setNotesUncertain(false);
+    fetchEncounterData(generation);
+    return()=>{++loadGeneration.current;};
+  }, [contextKey]);
 
-  const fetchEncounterData = async () => {
+  const fetchEncounterData = async (generation) => {
     try {
       const res = await api.get(`/hms/encounters/${id}`);
+      if(generation!==loadGeneration.current)return;
       const enc = res.data;
       noteRevision.current=Number(enc.api_version);
-      notePending.current=null;setNotesUncertain(false);setNotesConflict(null);setNotesDirty(false);
+      // A save recovered from before a reload stays pending until it is reconciled.
+      notePending.current=restoredPending.current;setNotesUncertain(Boolean(restoredPending.current));setNotesConflict(null);setNotesDirty(Boolean(restoredPending.current));
       setEncounter(enc);
       setPatient(enc.patient);
       setDiagnoses(enc.diagnoses || []);
@@ -111,13 +123,16 @@ export default function ConsultationPage() {
         cvs_findings: enc.cvs_findings || '',
         rs_findings: enc.rs_findings || '',
         abdomen_findings: enc.abdomen_findings || '',
-        cns_findings: enc.cns_findings || ''
+        cns_findings: enc.cns_findings || '',
+        // The text a recovered, still-unanswered save was sending stays on screen.
+        ...(restoredPending.current?.body || {})
       });
 
       // Latest vitals (the API answers { success, data })
       if (enc.patient_id) {
         try {
           const vitRes = await api.get(`/hms/vitals/latest/${enc.patient_id}`);
+          if(generation!==loadGeneration.current)return;
           if (vitRes.data.success) setVitals(vitRes.data.data || null);
         } catch { setVitals(null); }
       }
@@ -126,7 +141,7 @@ export default function ConsultationPage() {
       console.error(err);
       toast.error('Failed to load consultation data');
     } finally {
-      setLoading(false);
+      if(generation===loadGeneration.current)setLoading(false);
     }
   };
 
@@ -139,6 +154,38 @@ export default function ConsultationPage() {
     return () => clearTimeout(timeout);
   }, [formData,notesDirty,notesConflict,notesUncertain]);
   latestForm.current=formData;
+  const tabs=tabProps('consult',TABS.map(([k])=>k),activeTab,setActiveTab);
+  // Ctrl+S / Cmd+S saves the notes draft from anywhere on the chart (C2 keyboard access).
+  useEffect(()=>{
+    const onKey=(e)=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();if(!readOnly&&!notesBusy&&!notesUncertain&&!notesConflict)saveDraftRef.current?.();}};
+    window.addEventListener('keydown',onKey);return()=>window.removeEventListener('keydown',onKey);
+  },[readOnly,notesBusy,notesUncertain,notesConflict]);
+  const saveDraftRef=useRef(null);
+  useEffect(()=>{if(notesDirty&&encounter&&encounter.status!=='Finalized')draft.keep(formData,noteRevision.current);},[formData,notesDirty]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // After the chart loads: offer what this tab kept when it last closed.
+  useEffect(()=>{
+    if(!encounter||String(encounter.id)!==String(id)||recoveryChecked.current||!draft.recovered)return;
+    recoveryChecked.current=true;
+    const kept=draft.recovered;
+    if(encounter.status==='Finalized'){draft.clear();setNotesMessage('Unsaved text kept from before this note was signed was discarded: signed notes change only by a linked amendment.');return;}
+    if(kept.pending){
+      notePending.current=kept.pending;restoredPending.current=kept.pending;setNotesUncertain(true);
+      setFormData(f=>({...f,...(kept.value||kept.pending.body||{})}));setNotesDirty(true);
+      setNotesMessage('A save was still in progress when this page closed, and its outcome is unknown. Reconcile the original note request before continuing.');
+      return;
+    }
+    const differs=Object.keys(kept.value||{}).some(k=>String(kept.value[k]||'')!==String(latestForm.current[k]||''));
+    if(differs)setRecovery(kept);else draft.clear();
+  },[encounter,draft.recovered]); // eslint-disable-line react-hooks/exhaustive-deps
+  const restoreRecovery=()=>{
+    setFormData(f=>({...f,...recovery.value}));setNotesDirty(true);
+    // A draft written against an older revision is saved against that revision,
+    // so the server's change is compared explicitly (412) rather than overwritten.
+    if(Number(recovery.revision)<noteRevision.current){noteRevision.current=Number(recovery.revision);setNotesMessage('The saved note changed after this text was kept. Saving will show both versions to compare first.');}
+    else setNotesMessage('Unsaved notes restored. Save them to keep them.');
+    setRecovery(null);
+  };
 
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -147,20 +194,24 @@ export default function ConsultationPage() {
 
   // Notes and prescription are saved together; errors propagate so callers can stop.
   const noteCommand=async(method,body,reconcile=false)=>{
+    if(contextKey!==currentContext.current)return false;
     if(noteRunning.current||notesConflict||(!reconcile&&notePending.current))return false;
     if(!reconcile&&method==='put'&&!notesDirty)return true;
-    const request=reconcile?notePending.current:{method:method==='patch'?'post':'put',action:method==='patch'?'sign':'draft',path:`/v2/encounters/${encounter.public_id}/${method==='patch'?'sign':'draft'}`,body:JSON.parse(JSON.stringify(body)),revision:noteRevision.current,key:crypto.randomUUID()};
+    const request=reconcile?notePending.current:{context:contextKey,method:method==='patch'?'post':'put',action:method==='patch'?'sign':'draft',path:`/v2/encounters/${encounter.public_id}/${method==='patch'?'sign':'draft'}`,body:JSON.parse(JSON.stringify(body)),revision:noteRevision.current,key:crypto.randomUUID()};
     if(!request)return false;
-    notePending.current=request;noteRunning.current=true;setNotesBusy(true);
+    if(request.context!==contextKey){setNotesMessage('This pending request belongs to a different clinical context. Open its original chart to reconcile it.');return false;}
+    notePending.current=request;draft.setPending(request);noteRunning.current=true;setNotesBusy(true);
     try{
       const r=await api[request.method](request.path,request.body,{headers:{'If-Match':String(request.revision),'Idempotency-Key':request.key}});
-      noteRevision.current=r.data.version;notePending.current=null;setNotesUncertain(false);setNotesMessage('Notes saved and confirmed.');
-      if(request.action==='sign'){setEncounter(e=>({...e,status:'Finalized',notes_document_id:r.data.data.notes_document_id}));setConfirmFinalize(false);}
-      else if(JSON.stringify(latestForm.current)===JSON.stringify(request.body))setNotesDirty(false);
+      if(contextKey!==currentContext.current)return true;
+      noteRevision.current=r.data.version;notePending.current=null;restoredPending.current=null;draft.setPending(null);setNotesUncertain(false);setNotesMessage('Notes saved and confirmed.');
+      if(request.action==='sign'){setEncounter(e=>({...e,status:'Finalized',notes_document_id:r.data.data.notes_document_id}));setConfirmFinalize(false);draft.clear();}
+      else if(JSON.stringify(latestForm.current)===JSON.stringify(request.body)){setNotesDirty(false);draft.clear();}
       return true;
     }catch(err){
+      if(contextKey!==currentContext.current)return false;
       const unknown=!err.response||err.response.status>=500;setNotesUncertain(unknown);
-      if(!unknown)notePending.current=null;
+      if(!unknown){notePending.current=null;restoredPending.current=null;draft.setPending(null);}
       if(err.response?.status===412)setNotesConflict({revision:err.response.data.current_version,remote:null});
       setNotesMessage(unknown?'Save outcome uncertain. Keep this chart open and reconcile the original note request.':err.response?.data?.message||'Notes could not be saved. Your draft is preserved.');
       return false;
@@ -175,6 +226,8 @@ export default function ConsultationPage() {
       if (hasPendingLabs) toast('Selected laboratory tests have not been confirmed yet.');
     } catch (err) { toast.error(err.response?.data?.message || err.response?.data?.error || 'Notes could not be saved. Your draft is preserved.'); }
   };
+
+  saveDraftRef.current=saveDraft;
 
   // ─── Diagnosis Handlers ───
   const searchIcd = async (q) => {
@@ -284,6 +337,11 @@ export default function ConsultationPage() {
       <div className="panel panel-pad" style={{ marginBottom: 16 }}>
         <MedicationAllergyPanel key={`${patient?.id}:${id}`} patientId={patient?.id} />
       </div>
+      {recovery&&<section className="alert-strip alert-warning" role="alert" aria-label="Unsaved notes recovered" style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+        <span>Unsaved notes from {new Date(recovery.savedAt).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})} were kept when this page last closed.</span>
+        <button type="button" className="btn btn-primary btn-sm" onClick={restoreRecovery}>Restore them</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={()=>{draft.clear();setRecovery(null);}}>Discard</button>
+      </section>}
       {notesMessage&&<div className="alert-strip alert-info" role="status">{notesMessage}</div>}
       {notesUncertain&&<button className="btn btn-secondary btn-md" disabled={notesBusy} onClick={()=>noteCommand(null,null,true)}>Reconcile original note request</button>}
       {notesConflict&&<section className="panel panel-pad stack" aria-label="Consultation note conflict">
@@ -345,15 +403,13 @@ export default function ConsultationPage() {
 
         {/* Documentation */}
         <section className="panel" style={{ flex: '3 1 560px', minWidth: 0 }}>
-          <div className="tabs" role="tablist" aria-label="Consultation sections">
+          <div className="tabs" aria-label="Consultation sections" {...tabs.list}>
             {TABS.map(([tab, label]) => (
               <button
                 key={tab}
                 type="button"
-                role="tab"
-                aria-selected={activeTab === tab}
+                {...tabs.tab(tab)}
                 className={`tab${activeTab === tab ? ' is-active' : ''}`}
-                onClick={() => setActiveTab(tab)}
               >
                 {label}
               </button>
@@ -362,7 +418,7 @@ export default function ConsultationPage() {
 
           <fieldset className="panel-pad" disabled={readOnly} style={{ border: 0, margin: 0, minWidth: 0 }}>
             {activeTab === 'history' && (
-              <div className="stack">
+              <div className="stack" {...tabs.panel('history')}>
                 <div className="form-group">
                   <label className="form-label" htmlFor="cn-chief-complaint">Chief complaint</label>
                   <textarea id="cn-chief-complaint" name="chief_complaint" className="form-textarea" value={formData.chief_complaint} onChange={handleInputChange} />
@@ -385,7 +441,7 @@ export default function ConsultationPage() {
             )}
 
             {activeTab === 'examination' && (
-              <div className="stack">
+              <div className="stack" {...tabs.panel('examination')}>
                 <div className="form-group">
                   <label className="form-label" htmlFor="cn-general-exam">General examination</label>
                   <textarea id="cn-general-exam" name="general_examination" className="form-textarea" value={formData.general_examination} onChange={handleInputChange} />
@@ -412,7 +468,7 @@ export default function ConsultationPage() {
             )}
 
             {activeTab === 'diagnosis' && (
-              <div className="stack">
+              <div className="stack" {...tabs.panel('diagnosis')}>
                 <div className="form-group">
                   <label className="form-label" htmlFor="cn-icd-search">Search ICD-10</label>
                   <div style={{ position: 'relative' }}>
@@ -454,7 +510,7 @@ export default function ConsultationPage() {
               </div>
             )}
 
-            <div hidden={activeTab !== 'prescription'} className="stack" style={{ display: activeTab === 'prescription' ? undefined : 'none' }}>
+            <div hidden={activeTab !== 'prescription'} {...tabs.panel('prescription')} className="stack" style={{ display: activeTab === 'prescription' ? undefined : 'none' }}>
               <MedicationOrderPanel key={`${patient?.id}:${id}`} patientId={patient?.id} encounterId={id} onPendingChange={setHasPendingMedication} />
               {prescriptionItems.length > 0 && <section aria-label="Historical prescription documentation">
                 <h3>Historical prescription documentation</h3>
@@ -464,7 +520,7 @@ export default function ConsultationPage() {
                 </tbody></table>
               </section>}
             </div>
-            <div hidden={activeTab !== 'investigations'} style={{ display: activeTab === 'investigations' ? undefined : 'none' }}>
+            <div hidden={activeTab !== 'investigations'} {...tabs.panel('investigations')} style={{ display: activeTab === 'investigations' ? undefined : 'none' }}>
               <CodedLabOrderPanel ref={labPanel} key={`${patient?.id}:${id}`} patientId={patient?.id} encounterId={id} onPendingChange={setHasPendingLabs} />
             </div>
           </fieldset>
@@ -477,7 +533,7 @@ export default function ConsultationPage() {
               </button>
               {!readOnly && (
                 <>
-                  <button type="button" className="btn btn-ghost btn-md" disabled={notesBusy||notesUncertain||Boolean(notesConflict)} onClick={saveDraft}>
+                  <button type="button" className="btn btn-ghost btn-md" disabled={notesBusy||notesUncertain||Boolean(notesConflict)} onClick={saveDraft} aria-keyshortcuts="Control+S" title="Save draft (Ctrl+S)">
                     <Save size={16} aria-hidden="true" /> Save draft
                   </button>
                   <button type="button" className="btn btn-primary btn-md" disabled={notesBusy||notesUncertain||Boolean(notesConflict)} onClick={() => setConfirmFinalize(true)}>

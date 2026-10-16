@@ -1,0 +1,21 @@
+scale 3, 10 min, 200 users, 157.2 req/s, visits 119 (119 signed)
+command  doctor: open consultation        n=  119 err=  0 p50=15.8 p95=22.9 p99=27.4 max=28.7
+command  doctor: request admission        n=   16 err=  0 p50=11.9 p95=19.1 p99=19.1 max=19.1
+command  doctor: save note                n=  119 err=  0 p50=18.8 p95=32.5 p99=43.1 max=44.2
+command  doctor: sign consultation        n=  119 err=  0 p50=17.5 p95=28.3 p99=33.1 max=41.4
+command  front desk: issue token          n=  119 err=  0 p50=13.5 p95=23.1 p99=24.9 max=29.9
+command  front desk: register patient     n=  119 err=  0 p50=107.9 p95=145.9 p99=151 max=155.7
+command  nurse: inpatient vitals          n=   22 err=  0 p50=14.1 p95=27.2 p99=34.2 max=34.2
+command  nurse: record vitals             n=  119 err=  0 p50=14.8 p95=30.8 p99=39 max=40
+read     admin: worklist                  n=  595 err=  0 p50=16.8 p95=26 p99=30.3 max=34.6
+read     doctor: latest vitals            n=  119 err=  0 p50=6.9 p95=12.7 p99=16.6 max=17.7
+read     doctor: OPD queue                n= 5982 err=  0 p50=7.6 p95=13.8 p99=17.3 max=45
+read     doctor: patient chart            n=  119 err=  0 p50=12.6 p95=18.1 p99=22.3 max=22.6
+read     every page: event catch-up       n=71667 err=  0 p50=6.3 p95=12.5 p99=16.3 max=72
+read     front desk: patient search       n= 2718 err=  0 p50=17 p95=28.3 p99=35 max=44.2
+read     lab: work queue                  n= 1795 err=  0 p50=12.3 p95=21.3 p99=27.2 max=37.6
+read     nurse: inpatients                n= 4842 err=  0 p50=10.1 p95=19.2 p99=25.4 max=41.1
+read     nurse: worklist                  n= 4796 err=  0 p50=7.1 p95=14 p99=17.9 max=51.8
+read     pharmacy: dashboard              n=  905 err=  0 p50=9.3 p95=17.7 p99=22.7 max=72.9
+event freshness ms: {"n":135,"p50":300,"p95":510,"p99":523,"max":535}
+backlog: {"max_undelivered":1,"max_oldest_undelivered_s":0.3,"max_db_active":3,"max_db_connections":27,"api_cpu_pct_p95":50.8,"api_rss_mb_max":406.5}

@@ -14,6 +14,7 @@ const LIMITS = {
   refundUnconfirmedDays: Number(process.env.FINANCE_REFUND_UNCONFIRMED_DAYS || 3),
   uninvoicedHours: Number(process.env.FINANCE_UNINVOICED_HOURS || 24),
   claimUnpaidDays: Number(process.env.FINANCE_CLAIM_UNPAID_DAYS || 30),
+  returnCreditDays: Number(process.env.FINANCE_RETURN_CREDIT_DAYS || 2),
 };
 
 async function openException(kind, subjectKey, details, t) {
@@ -170,6 +171,28 @@ async function runChecks(t) {
     await add('claim_unpaid', c.id, { claim: c.claim_number, approved: c.approved_amount, adjudicated: c.adjudicated_at });
   }
 
+  // Stock and medicine charges (completion A7).
+  for (const r of await rows(`SELECT r.id, r.quantity, r.recorded_at, c.account_id FROM hms_med_returns r
+      JOIN hms_charge_events c ON c.source_type = 'medicine_dispense_line' AND c.source_key = r.dispense_line_id::text
+      WHERE r.recorded_at < now() - make_interval(days => :d)
+        AND NOT EXISTS (SELECT 1 FROM hms_charge_events x WHERE x.source_type = 'medicine_return' AND x.source_key = r.id::text)
+        AND NOT EXISTS (SELECT 1 FROM hms_invoice_notes n WHERE n.source_type = 'medicine_return' AND n.source_key = r.id::text)`, { d: LIMITS.returnCreditDays }, t)) {
+    await add('return_uncredited', r.id, { quantity: r.quantity, returned: r.recorded_at, account: r.account_id });
+  }
+  for (const m of await rows(`SELECT mc.id, mc.dispense_line_id, mc.amount, mc.created_at FROM hms_med_charges mc
+      WHERE NOT EXISTS (SELECT 1 FROM hms_charge_events c WHERE c.source_type = 'medicine_dispense_line' AND c.source_key = mc.dispense_line_id::text)`, {}, t)) {
+    await add('dispense_uncharged', m.dispense_line_id, { amount: m.amount, dispensed: m.created_at });
+  }
+  for (const c of await rows(`SELECT c.id, c.source_key, c.amount FROM hms_charge_events c
+      WHERE c.source_type = 'medicine_dispense_line' AND NOT EXISTS (SELECT 1 FROM hms_med_dispense_lines dl WHERE dl.id::text = c.source_key)`, {}, t)) {
+    await add('charge_without_dispense', c.id, { dispense_line: c.source_key, amount: c.amount });
+  }
+  for (const b of await rows(`SELECT b.batch_id, b.location_id, b.quantity, COALESCE(m.total, 0) AS journal FROM hms_med_balances b
+      LEFT JOIN (SELECT batch_id, location_id, sum(delta) AS total FROM hms_med_movements GROUP BY 1, 2) m ON m.batch_id = b.batch_id AND m.location_id = b.location_id
+      WHERE b.quantity <> COALESCE(m.total, 0)`, {}, t)) {
+    await add('stock_mismatch', `${b.batch_id}:${b.location_id}`, { batch: b.batch_id, location: b.location_id, balance: b.quantity, journal: b.journal });
+  }
+
   // Journal against subledgers.
   const gl = Object.fromEntries((await rows(`SELECT gl_code, sum(debit) - sum(credit) AS balance FROM hms_journal_lines GROUP BY gl_code`, {}, t))
     .map((r) => [r.gl_code, money(r.balance)]));
@@ -234,10 +257,13 @@ function startFinanceWorker() {
   const every = Number(process.env.FINANCE_WORKER_INTERVAL_MS || 15 * 60 * 1000);
   const tick = async () => {
     try {
-      await sequelize.transaction(async (t) => {
+      // Per facility, in that facility's context (services/workerContext.cts).
+      await require('./workerContext.cts').forEachFacility('finance', () => sequelize.transaction(async (t) => {
+        // One run at a time across processes (API and worker roles, completion A8).
+        if (!(await one('SELECT pg_try_advisory_xact_lock(727290) AS locked', {}, t)).locked) return;
         await run("SELECT billing_accrue_ward_days(id) FROM hms_admissions WHERE status = 'Active' AND admission_date IS NOT NULL", {}, t);
         await runChecks(t);
-      });
+      }));
     } catch (err) {
       console.error('Finance worker failed:', err.original?.message || err.message);
     }

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
+import CriticalResultAlerts from './components/CriticalResultAlerts';
 import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
@@ -30,6 +31,7 @@ const PatientSearchPage = lazy(() => import('./pages/hms/patients/PatientSearchP
 const DuplicateReviewPage = lazy(() => import('./pages/hms/patients/DuplicateReviewPage'));
 const PractitionersPage = lazy(() => import('./pages/hms/patients/PractitionersPage'));
 const ClinicalPrivilegesPage = lazy(() => import('./pages/hms/admin/ClinicalPrivilegesPage'));
+const FacilityPage=lazy(()=>import('./pages/hms/FacilityPage'));
 const TriagePage = lazy(() => import('./pages/hms/clinical/TriagePage'));
 const ReferralsPage = lazy(() => import('./pages/hms/clinical/ReferralsPage'));
 const ClinicalNotePage = lazy(() => import('./pages/hms/clinical/ClinicalNotePage'));
@@ -178,6 +180,7 @@ export default function App() {
               error: { iconTheme: { primary: 'var(--red)', secondary: '#fff' } },
             }}
           />
+          <CriticalResultAlerts />
           <ErrorBoundary>
             <Suspense fallback={<PageLoader />}>
             <Routes>
@@ -276,6 +279,7 @@ export default function App() {
               </HMSProtectedRoute>
             } />
             <Route path="/hms/admin/clinical-privileges" element={<HMSProtectedRoute allowedRoles={['super_admin','admin']}><ClinicalPrivilegesPage /></HMSProtectedRoute>} />
+            <Route path="/hms/facility" element={<HMSProtectedRoute allowedRoles={['super_admin','admin','doctor','nurse','pharmacist','lab_technician','receptionist']}><FacilityPage/></HMSProtectedRoute>} />
             <Route path="/hms/patients/duplicates" element={
               <HMSProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}>
                 <DuplicateReviewPage />

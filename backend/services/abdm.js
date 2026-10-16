@@ -257,7 +257,7 @@ async function linkInit(body, t) {
     VALUES (:tx, :ref, :p, :a, CAST(:ids AS uuid[]), :h, :exp)`, { tx: body.transactionId, ref, p: patient.id, a: body.abhaAddress, ids: `{${ccs.map((c) => c.id).join(',')}}`, h: otpHash(ref, otp), exp: expires }, t);
   // The OTP goes to the patient's registered mobile through the SMS provider.
   // The message text is stored encrypted: nobody reading the log sees the OTP.
-  await I.enqueue({ system: 'sms', type: 'abdm-link-otp', version: '1', payload: { to: patient.phonenumber, text_enc: encrypt(`Your OTP to link records at this hospital to your ABHA is ${otp}. Valid 10 minutes.`) }, patientId: patient.id, maxAttempts: 3 }, t);
+  await I.enqueue({ system: 'sms', type: 'abdm-link-otp', version: '1', payload: { to: patient.phonenumber, text_enc: encrypt(`Your OTP to link records at this hospital to your ABHA is ${otp}. Valid 10 minutes.`, 'abdm.sms-text') }, patientId: patient.id, maxAttempts: 3 }, t);
   const mobile = String(patient.phonenumber || '');
   await G.send('linkOnInit', { transactionId: body.transactionId, link: { referenceNumber: ref, authenticationType: 'DIRECT', meta: { communicationMedium: 'MOBILE', communicationHint: mobile ? `******${mobile.slice(-4)}` : 'registered mobile', communicationExpiry: expires.toISOString() } }, response: { requestId: body.requestId } }, {}, t);
   return ref;
@@ -371,7 +371,7 @@ async function hiRequest(body, t) {
 I.register('sms', async (m) => {
   if (!process.env.SMS_PROVIDER_URL) throw Object.assign(new Error('No SMS provider is configured (SMS_PROVIDER_URL).'), { permanent: false });
   const r = await fetch(process.env.SMS_PROVIDER_URL, { method: 'POST', headers: { 'content-type': 'application/json', ...(process.env.SMS_PROVIDER_TOKEN ? { authorization: `Bearer ${process.env.SMS_PROVIDER_TOKEN}` } : {}) },
-    body: JSON.stringify({ to: m.payload.to, text: decrypt(m.payload.text_enc) }), signal: AbortSignal.timeout(15000) });
+    body: JSON.stringify({ to: m.payload.to, text: decrypt(m.payload.text_enc, 'abdm.sms-text') }), signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw Object.assign(new Error(`SMS provider ${r.status}`), { permanent: r.status >= 400 && r.status < 500 && r.status !== 429 });
   return { status: r.status };
 }, { ownerRole: 'receptionist' });
@@ -439,7 +439,7 @@ async function onConsentFetch(body, t) {
   if (!consent) return null; // already stored: nothing more to ask for
   const km = AC.keyMaterial(new Date(detail.permission.dataEraseAt));
   const requestId = crypto.randomUUID();
-  await rows('INSERT INTO hms_abdm_hiu_keys (transaction_id, consent_id, private_key_enc, nonce) VALUES (:tx, :c, :k, :n)', { tx: `req:${requestId}`, c: detail.consentId, k: encrypt(km.privateKeyPem), n: km.material.nonce }, t);
+  await rows('INSERT INTO hms_abdm_hiu_keys (transaction_id, consent_id, private_key_enc, nonce) VALUES (:tx, :c, :k, :n)', { tx: `req:${requestId}`, c: detail.consentId, k: encrypt(km.privateKeyPem, 'abdm.hiu-private-key'), n: km.material.nonce }, t);
   await G.send('hiRequest', { hiRequest: { consent: { id: detail.consentId }, dateRange: detail.permission.dateRange, dataPushUrl: bridgeUrl(G.CALLBACKS.dataPush), keyMaterial: km.material } }, { requestId, correlationId: detail.consentId, patientId: req.patient_id }, t);
   return consent;
 }
@@ -462,7 +462,7 @@ async function receiveData(body, t) {
   if (!key) fail(404, 'Unknown transaction.');
   const { consent, error } = await usableConsent('HIU', key.consent_id, t);
   if (error) fail(403, `Not accepted: ${error}`);
-  const pem = decrypt(key.private_key_enc);
+  const pem = decrypt(key.private_key_enc, 'abdm.hiu-private-key');
   let stored = 0;
   for (const [i, e] of (body.entries || []).entries()) {
     const text = AC.decryptFrom(pem, key.nonce, body.keyMaterial, e.content, i);
@@ -487,21 +487,80 @@ async function receiveData(body, t) {
   return { stored };
 }
 
-const imports = (patientId, t) => rows(`SELECT i.id, i.consent_id, i.source_hip, i.care_context_ref, i.status, i.received_at, i.withdrawn_at,
+// Outside records are shown only while their consent allows it: the consent
+// is checked at each use (completion B2), not only when the records arrived,
+// so a consent that expired or was revoked a moment ago already hides them.
+async function consentAtUse(patientId, t) {
+  const consents = await rows("SELECT DISTINCT consent_id FROM hms_abdm_imports WHERE patient_id = :p AND status = 'Available'", { p: patientId }, t);
+  for (const c of consents) {
+    const u = await usableConsent('HIU', c.consent_id, t);
+    if (!u.error) continue;
+    // Ended (expired just now, revoked, or unknown here): its records are erased before anyone sees them.
+    await rows(`UPDATE hms_abdm_imports SET status = 'Withdrawn', withdrawn_at = now(), document = '{"erased": true}'::jsonb
+      WHERE consent_id = :id AND status = 'Available'`, { id: c.consent_id }, t);
+  }
+}
+
+// What the patient's own chart already holds, to set beside outside records.
+async function chartTerms(patientId, t) {
+  const norm = (v) => String(v || '').trim().toLowerCase();
+  const allergies = (await rows(`SELECT COALESCE(a.clinical_text, i.name) AS term FROM hms_med_allergies a LEFT JOIN hms_med_ingredients i ON i.id = a.ingredient_id
+      WHERE a.patient_id = :p AND a.clinical_status = 'ACTIVE' AND a.verification_status NOT IN ('REFUTED', 'ENTERED_IN_ERROR')
+    UNION ALL SELECT allergen FROM hms_allergies WHERE patient_id = :p`, { p: patientId }, t)).map((r) => norm(r.term)).filter(Boolean);
+  const medicines = (await rows(`SELECT v.product_snapshot->>'name' AS term FROM hms_med_orders o JOIN hms_med_order_versions v ON v.order_id = o.id AND v.version = o.current_version
+      WHERE o.patient_id = :p AND o.state IN ('SIGNED', 'HELD')`, { p: patientId }, t)).map((r) => norm(r.term)).filter(Boolean);
+  const conditions = (await rows(`SELECT DISTINCT d.icd10_description AS term, d.icd10_code AS code FROM hms_diagnoses d JOIN hms_encounters e ON e.id = d.encounter_id WHERE e.patient_id = :p`, { p: patientId }, t))
+    .flatMap((r) => [norm(r.term), norm(r.code)]).filter(Boolean);
+  return { AllergyIntolerance: allergies, MedicationStatement: medicines, MedicationRequest: medicines, Condition: conditions };
+}
+const itemText = (summary) => String(summary || '').replace(/^[A-Za-z]+:\s*/, '').trim().toLowerCase();
+function reconcile(item, terms) {
+  const list = terms[item.resource_type];
+  if (!list) return null;
+  const text = itemText(item.summary);
+  if (text.length < 3) return 'Cannot compare (no name)';
+  return list.some((term) => term.length >= 3 && (term.includes(text) || text.includes(term))) ? 'Already in chart' : 'Not in chart';
+}
+
+async function imports(patientId, t) {
+  await consentAtUse(patientId, t);
+  const list = await rows(`SELECT i.id, i.consent_id, i.source_hip, i.care_context_ref, i.status, i.received_at, i.withdrawn_at,
     CASE WHEN i.status = 'Available' THEN i.document END AS document,
     COALESCE(json_agg(json_build_object('id', it.id, 'resource_type', it.resource_type, 'summary', it.summary, 'needs_review', it.needs_review, 'decision', it.decision, 'decision_note', it.decision_note) ORDER BY it.needs_review DESC, it.resource_type) FILTER (WHERE it.id IS NOT NULL), '[]') AS items
   FROM hms_abdm_imports i LEFT JOIN hms_abdm_import_items it ON it.import_id = i.id WHERE i.patient_id = :p GROUP BY i.id ORDER BY i.received_at DESC`, { p: patientId }, t);
+  const terms = await chartTerms(patientId, t);
+  for (const imp of list) for (const it of imp.items || []) it.chart = reconcile(it, terms);
+  return list;
+}
 
 // A clinician's decision on outside information. Accepting records that it
-// was reviewed and is relevant; it does not create a local order or allergy.
-async function decideItem(id, { decision, note }, user, t) {
+// was reviewed and is relevant. An accepted outside allergy can also be added
+// to the patient's allergy record (unconfirmed, with its source); nothing
+// else is copied into the chart.
+async function decideItem(id, { decision, note, addToChart, reaction }, user, t) {
   if (!['Accepted', 'Rejected', 'Seen'].includes(decision)) fail(400, 'decision must be Accepted, Rejected or Seen.');
-  const it = await one(`SELECT it.*, i.status AS import_status FROM hms_abdm_import_items it JOIN hms_abdm_imports i ON i.id = it.import_id WHERE it.id = :id FOR UPDATE OF it`, { id }, t);
+  const it = await one(`SELECT it.*, i.status AS import_status, i.consent_id, i.patient_id, i.source_hip FROM hms_abdm_import_items it JOIN hms_abdm_imports i ON i.id = it.import_id WHERE it.id = :id FOR UPDATE OF it`, { id }, t);
   if (!it) fail(404, 'Item not found.');
+  if (it.import_status === 'Available') {
+    const { error } = await usableConsent('HIU', it.consent_id, t);
+    if (error) fail(409, `These records can no longer be used: ${error}`, 'CONSENT_NOT_VALID');
+  }
   if (it.import_status !== 'Available') fail(409, 'These records were withdrawn when the patient\'s consent ended.', 'WITHDRAWN');
   if (it.decision) fail(409, `Already ${it.decision.toLowerCase()}.`, 'DECIDED');
   if (decision !== 'Seen' && (!note || String(note).trim().length < 3)) fail(400, 'Add a short note to accept or reject.');
-  return one('UPDATE hms_abdm_import_items SET decision = :d, decided_by = :u, decided_at = now(), decision_note = :n WHERE id = :id RETURNING *', { id, d: decision, u: user.id, n: note || null }, t);
+  let added = null;
+  if (addToChart) {
+    if (decision !== 'Accepted' || it.resource_type !== 'AllergyIntolerance') fail(400, 'Only an accepted outside allergy can be added to the chart.', 'NOT_ADDABLE');
+    const text = String(it.summary || '').replace(/^AllergyIntolerance:\s*/, '').trim();
+    if (text.length < 2) fail(422, 'The outside record does not name the substance; record the allergy by hand.', 'NO_SUBSTANCE');
+    added = await require('./medicationOrders').addAllergy(it.patient_id, {
+      clinical_text: `${text} (reported by ${it.source_hip || 'another facility'} via ABDM)`.slice(0, 500),
+      reaction: String(reaction || '').trim() || 'Not stated by the other facility',
+      verification_status: 'UNCONFIRMED',
+    }, user, t);
+  }
+  return one('UPDATE hms_abdm_import_items SET decision = :d, decided_by = :u, decided_at = now(), decision_note = :n WHERE id = :id RETURNING *',
+    { id, d: decision, u: user.id, n: [note, added ? `Added to the allergy record (${added.id}), unconfirmed.` : null].filter(Boolean).join(' ') || null }, t);
 }
 
 // Consents past their erase time end; their imported records are erased.

@@ -186,3 +186,21 @@ go through `docs/requests/clinical-final-coordination.md`.
   privilege guards added (0131–0133). Native medication 9/9, legacy safety 20/20,
   strict types/generated contracts pass on disposable PG16. Details:
   docs/clinical-final/MEDICATION_V2.md. Full A2/A3/A6 closure remains pending.
+
+### Claude completion packages (2026-10-15)
+
+All eight Claude packages are engineering-complete on `completion/claude-final`
+(rebased onto Codex `0d904fb`), handed to Codex for C8 review/integration;
+nothing deployed or pushed. A7 `981bf9c`, A8 `fab333a`, C6 `9f27b04`,
+C3 `794b33a`, C2 `aad6508`, A4 `ab978b8`, B2 `a954678`, then B7 + A8
+facility scope + A4 restore verifier + C6 per facility `d10b0e9`.
+Migrations 0150–0156. Handoff, shared-file list and remaining Codex-area
+failures: `docs/requests/claude-final-handoff.md`. External gates (sandbox,
+licensed content, ClamAV, target-region drills, owner review, language
+review) stay open and are named in each package's state.
+- 2026-10-16: integrated completion handoff and corrected native/persistent draft
+  conflicts, explicit facility/session lifecycle, antivirus quarantine and private
+  facility-scoped files. Focused verification: facility 6/6, documents 11/11,
+  consultation 7/7, clinical UX 8/8, v2 core 8/8, v2 documents 7/7; fresh PG16
+  91 migrations pass. See docs/clinical-final/INTEGRATION.md. Final C4/C8 and all
+  remaining Codex packages continue; owner asked to work alone, subagents stopped.

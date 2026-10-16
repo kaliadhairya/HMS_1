@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ShieldAlert, ShieldCheck } from "lucide-react";
 import {
   Field,
   Select,
@@ -6,6 +7,13 @@ import {
   useCommand,
   useRows,
 } from "../pharmacy/MedicationUI";
+// Review states in words (C2): the codes stay in the data, people read sentences.
+const REVIEW = {
+  UNKNOWN: { text: "Allergy status unknown", warn: true },
+  NOT_REVIEWED: { text: "Allergies not reviewed yet", warn: true },
+  NONE_KNOWN: { text: "Reviewed: no known allergies", warn: false },
+  ALLERGIES_RECORDED: { text: "Allergies recorded", warn: true },
+};
 export default function MedicationAllergyPanel({ patientId }) {
   const record = useRows("/allergies/" + patientId),
     ingredients = useRows("/ingredients");
@@ -34,11 +42,34 @@ export default function MedicationAllergyPanel({ patientId }) {
       <h2>Allergy review</h2>
       <SaveStatus value={record.state} />
       <SaveStatus value={command.status} />
-      <p>
-        <strong>{data?.review_state || "Unknown / not reviewed"}</strong>. An
-        empty list never establishes none known. A new review can invalidate
-        prior medication verification.
-      </p>
+      {record.state.kind === "stale" && (
+        <p className="alert-strip alert-danger" role="alert" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <ShieldAlert size={16} aria-hidden="true" />
+          <span>
+            <strong>Allergies not checked:</strong> the allergy record could not be loaded
+            {data ? " (showing what was last loaded)" : ""}. Treat the allergy status as unknown until it loads.
+          </span>
+        </p>
+      )}
+      {(() => {
+        const review = REVIEW[data?.review_state] || REVIEW.UNKNOWN;
+        const Icon = review.warn ? ShieldAlert : ShieldCheck;
+        return (
+          <p
+            className={`alert-strip ${review.warn ? "alert-warning" : "alert-info"}`}
+            style={{ display: "flex", gap: 8, alignItems: "center" }}
+          >
+            <Icon size={16} aria-hidden="true" />
+            <span>
+              <strong>{review.text}</strong>
+              {data?.review_state === "NONE_KNOWN"
+                ? "."
+                : ". An empty list does not mean the patient has no allergies."}{" "}
+              A new review can require medicines to be verified again.
+            </span>
+          </p>
+        );
+      })()}
       <ul>
         {[
           ...(data?.allergies || []).map((a) => ({
@@ -68,13 +99,15 @@ export default function MedicationAllergyPanel({ patientId }) {
         }}
       >
         <Select
-          label="Explicit allergy review state"
+          label="Allergy review result"
           value={state}
           onChange={(e) => setState(e.target.value)}
         >
           {["UNKNOWN", "NOT_REVIEWED", "NONE_KNOWN", "ALLERGIES_RECORDED"].map(
             (s) => (
-              <option key={s}>{s}</option>
+              <option key={s} value={s}>
+                {REVIEW[s].text}
+              </option>
             ),
           )}
         </Select>

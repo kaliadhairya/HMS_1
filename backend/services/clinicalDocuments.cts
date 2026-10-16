@@ -124,4 +124,4 @@ async function versions(docId:number,actor:Actor,t?:Transaction){
  FROM hms_document_signatures s JOIN hms_users u ON u.id=s.signed_by WHERE s.document_id=:id AND s.facility_id=:facility ORDER BY s.version`,{id:docId,facility:actor.facilityId},t);
  if(signatures.some(s=>digestOf(s.content)!==s.digest))fail(503,'A signed version failed its integrity check.','SIGNED_RECORD_INTEGRITY_FAILED');return signatures;
 }
-module.exports={create,read,change,versions,view,fields,canonical,digestOf,care};
+module.exports={create,read,change,versions,view,fields,canonical,digestOf,care,authorize};

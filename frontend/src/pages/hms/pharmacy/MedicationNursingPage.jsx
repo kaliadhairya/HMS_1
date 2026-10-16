@@ -28,7 +28,7 @@ export default function MedicationNursingPage() {
     await tasks.refresh();
     await handovers.refresh();
   });
-  const storageKey = "hms:medication-documentation:" + user.id;
+  const storageKey = "hms:medication-documentation:" + user.id + ":" + user.facilityId;
   const [pending, setPending] = useState(() => {
     try {
       return JSON.parse(sessionStorage.getItem(storageKey) || "null");

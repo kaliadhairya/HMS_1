@@ -46,7 +46,10 @@ async function verify(r,i,rule){const qc=ok(await req('POST','/laboratory/qc','l
   for(const c of originals)assert(reversals.filter(r=>r.reverses_id===c.id&&Number(r.amount)===-Number(c.amount)).length===1,'Reversal changed source amount');
  });
  await step('One issued episode invoice includes consultation and active lab charges, omits cancelled tests and posts a balanced journal',async()=>{
-  const f=await req('PATCH','/hms/encounters/'+eid+'/finalize','doctor',{});assert(f.status===200,'Finalization failed');
+  // Signing needs saved note content and the reviewed revision (A5/A6 rules).
+const [{record_revision:r0}]=await sql('SELECT record_revision FROM hms_encounters WHERE id=$1',[eid]);
+const noted=await req('PUT','/hms/encounters/'+eid,'doctor',{chief_complaint:'Synthetic integration visit'},Number(r0));assert(noted.status===200,'Note before signing: '+noted.status);
+const f=await req('PATCH','/hms/encounters/'+eid+'/finalize','doctor',{},Number(noted.data.revision??noted.data.data?.revision??Number(r0)+1));assert(f.status===200,'Finalization failed '+f.status+' '+JSON.stringify(f.data).slice(0,200));
   const r=await req('POST','/billing/opd','receptionist',{encounterId:eid});assert(r.status===200,'Invoice projection failed');
   [invoice]=await sql('SELECT i.* FROM hms_invoices i JOIN hms_billing_accounts a ON a.id=i.account_id WHERE a.encounter_id=$1 AND i.status<>\'Draft\'',[eid]);
   const lines=await sql('SELECT * FROM hms_invoice_lines WHERE invoice_id=$1',[invoice.id]);assert(lines.filter(l=>l.category==='Lab').length===2&&lines.filter(l=>l.category==='Consultation').length===1,'Invoice lost clinical sources or billed cancelled tests');

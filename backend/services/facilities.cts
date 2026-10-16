@@ -3,6 +3,7 @@ const {sequelize}=require('../models/db');
 type Actor={id:number;role:string;sessionId?:string;facilityId?:string;facilityTimezone?:string};
 const rows=(sql:string,replacements:Record<string,unknown>,transaction?:Transaction):Promise<any[]>=>sequelize.query(sql,{replacements,transaction,type:'SELECT'});
 const uuid=(value:unknown)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value));
+function currentFacilityId():string{const id=require('../utils/auditContext').storage.getStore()?.facilityId;if(!uuid(id))fail(403,'An authenticated facility context is required.','FACILITY_CONTEXT_REQUIRED');return id;}
 function fail(status:number,message:string,code:string):never{throw Object.assign(new Error(message),{status,code});}
 const membership=(userId:number,facilityId:string,t?:Transaction)=>rows(`SELECT f.id,f.name,f.timezone FROM hms_facility_memberships m JOIN hms_facilities f ON f.id=m.facility_id
  JOIN hms_users u ON u.id=m.user_id WHERE m.user_id=:user AND m.facility_id=:facility AND u.is_active=1 AND f.status='ACTIVE'
@@ -33,4 +34,4 @@ async function requirePrivilege(actor:Actor,action:string,t?:Transaction){
  AND x.revoked_at IS NULL AND x.valid_from<=now() AND x.valid_until>now()${t?' FOR SHARE OF x,r,p,u,c':''}`,{user:actor.id,facility:actor.facilityId,action},t);
  if(!approved.length)fail(403,'A current facility-specific clinical privilege is required.','CLINICAL_PRIVILEGE_REQUIRED');
 }
-module.exports={membership,initialForUser,sessionFacility,requirePrivilege};
+module.exports={membership,initialForUser,sessionFacility,requirePrivilege,currentFacilityId};

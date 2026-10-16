@@ -492,7 +492,9 @@ router.post('/requests', protect, checkPermission('ipd', 'write'), async (req, r
         },
         transaction,
       });
-      await publish('new_ipd_request', 'nurse', requestData, { transaction });
+      // Nurses' screens re-read the request through the API (completion A8).
+      await publish('new_ipd_request', 'nurse', { request_id: newId, patient_id: patientId, urgency: urgencyLevel || null },
+        { transaction, aggregate: { type: 'ipd.request', id: newId } });
     });
 
     return res.status(201).json({ success: true, data: requestData });

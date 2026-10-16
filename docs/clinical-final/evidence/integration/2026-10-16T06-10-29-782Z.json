@@ -1,0 +1,18 @@
+{
+  "candidate": "17209d2b2585bd03f21a149794c5a6d7e578eda7",
+  "tracked_diff_sha256": "f4380e0120ce3ed5b8034ca88689d091bc2e526b247e5e2f23edf74a41165661",
+  "untracked_files": [
+    "backend/services/auditKeys.cts"
+  ],
+  "database": "hms_p4_final_v2_20261015b",
+  "api_port": 5064,
+  "frontend_port": 5236,
+  "scanner": "SYNTHETIC_PROTOCOL_FIXTURE_ONLY",
+  "results": [
+    {
+      "suite": "devices",
+      "exit_code": 0,
+      "seconds": 3.659
+    }
+  ]
+}

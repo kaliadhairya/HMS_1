@@ -3,6 +3,7 @@ const { sequelize } = require('../models/db');
 const G = require('../services/abdmGateway');
 const A = require('../services/abdm');
 const I = require('../services/interfaces');
+const contracts = require('../domain/abdmContracts.cts');
 
 // What the ABDM gateway calls on this hospital (Phase 6C-6E), mounted at
 // /abdm (ABDM_BRIDGE_PUBLIC_URL is that address as ABDM sees it). Every call
@@ -34,6 +35,9 @@ router.post(Object.keys(handlers), async (req, res) => {
   try {
     if (!h.unsigned) await G.verifyGatewayCall(req);
     if (!requestId) return res.status(400).json({ error: { code: 'ABDM-1000', message: 'REQUEST-ID header is required.' } });
+    // The callback's contract (B2): refuse an incomplete body before any processing.
+    const gaps = contracts.missing(h.type, req.body);
+    if (gaps.length) throw Object.assign(new Error(`The ${h.type} callback is missing: ${gaps.join(', ')}.`), { status: 400 });
     const body = { ...req.body, requestId: req.body?.requestId || requestId };
     const outcome = await sequelize.transaction(async (t) => {
       const { message, duplicate } = await I.receive({ system: h.unsigned ? 'abdm-datapush' : 'abdm-gateway', type: h.type, version: 'v3', externalId: requestId, raw: JSON.stringify(req.body), correlationId: body.transactionId || null }, t);

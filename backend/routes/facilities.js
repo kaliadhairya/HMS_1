@@ -2,6 +2,7 @@ const express=require('express'),router=express.Router();
 const {protect,restrictTo}=require('../middleware/auth');
 const {sequelize}=require('../models/db');
 const Admin=require('../services/facilityAdministration.cts');
+const Memberships=require('../services/facilityMemberships.cts');
 router.use(protect,restrictTo('admin','super_admin'));
 const command=fn=>async(req,res)=>{try{const data=await sequelize.transaction(t=>fn(req,t));res.json({success:true,data});}catch(e){if(!e.status)console.error('Facility administration failed:',e.code||e.name);res.status(e.status||500).json({success:false,code:e.status?e.code:'FACILITY_COMMAND_FAILED',message:e.status?e.message:'The facility change was not confirmed.'});}};
 router.get('/current',async(req,res)=>{try{const [f]=await sequelize.query('SELECT * FROM hms_facilities WHERE id=:id',{replacements:{id:req.user.facilityId},type:'SELECT'});res.json({success:true,data:f});}catch(e){res.status(503).json({success:false,code:'FACILITY_OBSERVATION_UNAVAILABLE'});}});
@@ -15,4 +16,10 @@ router.post('/professional-roles',command((r,t)=>Admin.grantRole(r.user,r.body,t
 router.post('/professional-roles/:id/privileges',command((r,t)=>Admin.grantPrivilege(r.user,r.params.id,r.body,r.headers['if-match'],t)));
 router.post('/professional-roles/:id/revoke',command((r,t)=>Admin.revoke(r.user,'role',r.params.id,r.body,r.headers['if-match'],t)));
 router.post('/clinical-privileges/:id/revoke',command((r,t)=>Admin.revoke(r.user,'privilege',r.params.id,r.body,r.headers['if-match'],t)));
+router.post('/',command((r,t)=>Memberships.create(r.body,r.user,t)));
+router.patch('/current',command((r,t)=>Memberships.update(r.body,r.user,r.get('if-match'),t)));
+router.get('/memberships',async(req,res)=>{try{res.json({success:true,data:await Memberships.members(req.user)});}catch(error){res.status(503).json({success:false,code:'FACILITY_MEMBERSHIPS_UNAVAILABLE',message:'Membership observations are unavailable.'});}});
+router.get('/staff',async(req,res)=>{try{const data=await sequelize.query('SELECT public_id principal_id,name,username,role FROM hms_users WHERE is_active=1 ORDER BY name,username',{type:'SELECT'});res.json({success:true,data});}catch(error){res.status(503).json({success:false,code:'STAFF_OBSERVATION_UNAVAILABLE',message:'Staff observations are unavailable.'});}});
+router.post('/memberships',command((r,t)=>Memberships.grant(r.body,r.user,t)));
+router.post('/memberships/:id/revoke',command((r,t)=>Memberships.revoke(r.params.id,r.body,r.user,r.get('if-match'),t)));
 module.exports=router;

@@ -144,6 +144,29 @@ router.get('/me', protect, (req, res) => {
   });
 });
 
+router.get('/facilities',protect,async(req,res)=>{
+  try{res.set('Cache-Control','no-store');res.json({success:true,data:await require('../services/facilityMemberships.cts').available(req.user.id)});}
+  catch(error){res.status(error.status||503).json({success:false,code:error.code||'FACILITY_OBSERVATION_UNAVAILABLE',message:error.status?error.message:'Your facility memberships could not be confirmed.'});}
+});
+// Session credentials never enter command receipts. A switch creates a new
+// facility-bound session and revokes only this device's previous session.
+router.post('/facility-session',protect,async(req,res)=>{
+  try{
+    if(require('../middleware/auth').identityServiceEnabled())return res.status(409).json({success:false,code:'IDENTITY_FACILITY_SWITCH_REQUIRED',message:'Switch the facility through the configured authoritative identity service.'});
+    if(!req.body||Object.keys(req.body).some(k=>k!=='facility_id')||!require('../services/identities.cts').isUuid(req.body.facility_id))return res.status(422).json({success:false,code:'INVALID_FACILITY_ID',message:'Select an exact facility UUID.'});
+    const session=await sequelize.transaction(async transaction=>{
+      const [old]=await sequelize.query('SELECT id FROM hms_sessions WHERE id=:sid AND user_id=:user AND revoked_at IS NULL AND expires_at>now() FOR UPDATE',{replacements:{sid:req.user.sessionId,user:req.user.id},type:'SELECT',transaction});
+      if(!old)throw Object.assign(new Error('This session is no longer active. Sign in again.'),{status:401,code:'SESSION_ENDED'});
+      const created=await createSession(req.user.id,req,req.body.facility_id,transaction);
+      await sequelize.query("UPDATE hms_sessions SET revoked_at=now(),revoked_reason='facility context switched' WHERE id=:sid",{replacements:{sid:old.id},transaction});
+      await sequelize.query("INSERT INTO hms_audit_logs(user_id,action,module,new_value) VALUES(:user,'SWITCH','facility_session',:value)",{replacements:{user:req.user.id,value:JSON.stringify({from:req.user.facilityId,to:created.facilityId,session_id:created.id})},transaction});return created;
+    });
+    const token=signSessionToken(req.user,session.id,session.facilityId);setSessionCookie(req,res,token);
+    req.app.get('io')?.in(`session:${req.user.sessionId}`).disconnectSockets(true);
+    res.set('Cache-Control','no-store');res.json({success:true,...(req.get('X-Auth-Transport')==='bearer'?{token}:{}),user:{...req.user,sessionId:session.id,facilityId:session.facilityId,facilityTimezone:session.facilityTimezone}});
+  }catch(error){res.status(error.status||503).json({success:false,code:error.code||'FACILITY_SWITCH_UNCONFIRMED',message:error.status?error.message:'The facility switch could not be confirmed. Sign in again before continuing.'});}
+});
+
 // ─── POST /api/auth/logout ──────────────────────────────────────
 router.post('/logout', protect, async (req, res) => {
   try {

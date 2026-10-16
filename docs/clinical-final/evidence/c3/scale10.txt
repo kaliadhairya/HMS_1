@@ -1,0 +1,21 @@
+scale 10, 5 min, 200 users, 422.9 req/s, visits 195 (195 signed)
+command  doctor: open consultation        n=  195 err=  0 p50=229.2 p95=362.2 p99=442.8 max=456.2
+command  doctor: request admission        n=   25 err=  0 p50=196.7 p95=531.5 p99=579.9 max=579.9
+command  doctor: save note                n=  195 err=  0 p50=208.5 p95=380.4 p99=455.5 max=663.9
+command  doctor: sign consultation        n=  195 err=  0 p50=223.6 p95=392.8 p99=442.7 max=531.2
+command  front desk: issue token          n=  195 err=  0 p50=287.1 p95=419 p99=526.8 max=658.7
+command  front desk: register patient     n=  195 err=  0 p50=675.5 p95=1039.8 p99=1270.6 max=1334.6
+command  nurse: inpatient vitals          n=   44 err=  0 p50=166.2 p95=352.9 p99=614.5 max=614.5
+command  nurse: record vitals             n=  195 err=  0 p50=198.1 p95=352.5 p99=510.4 max=520
+read     admin: worklist                  n=  953 err=  0 p50=141.1 p95=293.4 p99=367 max=495.6
+read     doctor: latest vitals            n=  195 err=  0 p50=237.9 p95=552 p99=761.4 max=929.7
+read     doctor: OPD queue                n= 9208 err=  0 p50=120.7 p95=275.4 p99=363.5 max=607.9
+read     doctor: patient chart            n=  195 err=  0 p50=448.3 p95=902.6 p99=1218.2 max=1249.5
+read     every page: event catch-up       n=92529 err=  0 p50=135.9 p95=327.2 p99=433.2 max=686.2
+read     front desk: patient search       n= 3842 err=  0 p50=313.6 p95=697.1 p99=915.1 max=1164
+read     lab: work queue                  n= 2730 err=  0 p50=149.8 p95=331 p99=447.1 max=572
+read     nurse: inpatients                n= 7274 err=  0 p50=147.7 p95=340.5 p99=447.9 max=652.2
+read     nurse: worklist                  n= 7319 err=  0 p50=130.1 p95=283.4 p99=371 max=594.3
+read     pharmacy: dashboard              n= 1389 err=  0 p50=227.8 p95=536.2 p99=729 max=892.4
+event freshness ms: {"n":220,"p50":465,"p95":784,"p99":885,"max":1237}
+backlog: {"max_undelivered":2,"max_oldest_undelivered_s":0.6,"max_db_active":8,"max_db_connections":26,"api_cpu_pct_p95":105.4,"api_rss_mb_max":448.7}

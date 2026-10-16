@@ -32,12 +32,12 @@ function kitKey() {
 }
 
 // What a clinician needs when the system is down, for every admitted patient.
-async function summaries(t) {
+async function summaries(t, facilityId) {
   const patients = await rows(`SELECT p.id, p.name, p.uhid, p.age, p.gender, p.dob, p.identity_status, a.id AS admission_id, a.admission_date,
       w.name AS ward, b.bed_number, b.room_number, u.name AS doctor
     FROM hms_admissions a JOIN hms_patients p ON p.id = a.patient_id
     LEFT JOIN hms_beds b ON b.id = a.bed_id LEFT JOIN hms_wards w ON w.id = b.ward_id LEFT JOIN hms_users u ON u.id = a.admitting_doctor_id
-    WHERE a.status = 'Active' ORDER BY w.name NULLS LAST, b.room_number, b.bed_number, p.name`, {}, t);
+    WHERE a.status = 'Active' AND a.facility_id = CAST(:f AS uuid) ORDER BY w.name NULLS LAST, b.room_number, b.bed_number, p.name`, { f: facilityId }, t);
   const out = [];
   for (const p of patients) {
     const review = await one('SELECT state, reviewed_at FROM hms_med_allergy_reviews WHERE patient_id = :p', { p: p.id }, t);
@@ -100,36 +100,47 @@ function decryptKit(file, keyHex) {
   return { meta, html: Buffer.concat([d.update(Buffer.from(ciphertext, 'base64')), d.final()]).toString('utf8') };
 }
 
-async function snapshot(user = null) {
+// One kit per facility (A2): it holds that facility's admitted patients only.
+async function snapshot(user = null, facilityId = null) {
   const dir = process.env.DOWNTIME_KIT_DIR;
   if (!dir) fail(503, 'DOWNTIME_KIT_DIR is not set; the downtime kit is off.', 'KIT_NOT_CONFIGURED');
   const { key, id } = kitKey();
   const generatedAt = new Date();
   const staleAfter = new Date(generatedAt.getTime() + 2 * REFRESH_MIN() * 60000);
-  const list = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' }, (t) => summaries(t));
+  const facility = await one('SELECT id, (id = hms_initial_facility()) AS initial FROM hms_facilities WHERE id = CAST(:f AS uuid) AND status = \'ACTIVE\'', { f: facilityId || user?.facilityId || null })
+    || await one('SELECT id, true AS initial FROM hms_facilities WHERE id = hms_initial_facility()', {});
+  const list = await sequelize.transaction({ isolationLevel: 'REPEATABLE READ' }, (t) => summaries(t, facility.id));
   const sealed = JSON.stringify(encrypt(render(list, generatedAt, staleAfter), key, id, generatedAt, staleAfter));
-  const name = `downtime-${generatedAt.toISOString().replace(/[:.]/g, '-')}.hmskit.json`;
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const base = `downtime-${generatedAt.toISOString().replace(/[:.]/g, '-')}.hmskit.json`;
+  const name = path.join(facility.id, base);
+  fs.mkdirSync(path.join(dir, facility.id), { recursive: true, mode: 0o700 });
   const tmp = path.join(dir, `${name}.tmp`);
   fs.writeFileSync(tmp, sealed, { mode: 0o600 }); fs.renameSync(tmp, path.join(dir, name));
   // A stable name for wards to open: always the newest kit.
-  fs.copyFileSync(path.join(dir, name), path.join(dir, 'downtime-latest.hmskit.json'));
+  fs.copyFileSync(path.join(dir, name), path.join(dir, facility.id, 'downtime-latest.hmskit.json'));
+  // Single-hospital installs and existing tools open the root copy (the initial facility).
+  if (facility.initial) fs.copyFileSync(path.join(dir, name), path.join(dir, 'downtime-latest.hmskit.json'));
   const keep = Number(process.env.DOWNTIME_KEEP || 96);
-  const old = fs.readdirSync(dir).filter((f) => /^downtime-\d.*\.hmskit\.json$/.test(f)).sort().slice(0, -keep);
-  old.forEach((f) => fs.rmSync(path.join(dir, f), { force: true }));
-  return one(`INSERT INTO hms_downtime_snapshots (generated_at, stale_after, patient_count, file_name, sha256, key_id, requested_by)
-    VALUES (:g, :s, :n, :f, :sha, :k, :u) RETURNING *`, { g: generatedAt, s: staleAfter, n: list.length, f: name, sha: crypto.createHash('sha256').update(sealed).digest('hex'), k: id, u: user?.id || null });
+  const old = fs.readdirSync(path.join(dir, facility.id)).filter((f) => /^downtime-\d.*\.hmskit\.json$/.test(f)).sort().slice(0, -keep);
+  old.forEach((f) => fs.rmSync(path.join(dir, facility.id, f), { force: true }));
+  return one(`INSERT INTO hms_downtime_snapshots (facility_id, generated_at, stale_after, patient_count, file_name, sha256, key_id, requested_by)
+    VALUES (:fac, :g, :s, :n, :f, :sha, :k, :u) RETURNING *`, { fac: facility.id, g: generatedAt, s: staleAfter, n: list.length, f: name, sha: crypto.createHash('sha256').update(sealed).digest('hex'), k: id, u: user?.id || null });
 }
 
-async function status(t) {
-  const last = await one('SELECT * FROM hms_downtime_snapshots ORDER BY generated_at DESC LIMIT 1', {}, t);
+async function status(t, facilityId = null) {
+  const last = await one('SELECT * FROM hms_downtime_snapshots WHERE facility_id = COALESCE(CAST(:f AS uuid), hms_initial_facility()) ORDER BY generated_at DESC LIMIT 1', { f: facilityId }, t);
   const episode = await one('SELECT * FROM hms_downtime_episodes WHERE closed_at IS NULL ORDER BY started_at DESC LIMIT 1', {}, t);
   return { configured: Boolean(process.env.DOWNTIME_KIT_DIR && /^[0-9a-f]{64}$/i.test(process.env.DOWNTIME_KIT_KEY || '')), refresh_minutes: REFRESH_MIN(), last, stale: !last || new Date(last.stale_after) < new Date(), episode };
 }
 
 function startDowntimeKit() {
   if (!process.env.DOWNTIME_KIT_DIR || !/^[0-9a-f]{64}$/i.test(process.env.DOWNTIME_KIT_KEY || '')) return () => {};
-  const tick = () => snapshot().catch(async (err) => {
+  // After each kit, ward machines that hold no current kit go on the worklist (C6).
+  // A kit for every active facility, then the ward-machine check.
+  // Each facility's kit is made in that facility's context (services/workerContext.cts).
+  const tick = () => require('./workerContext.cts').forEachFacility('downtime-kit', (facilityId) => snapshot(null, facilityId))
+    .then(() => require('./downtimeStations.cts').checkBehind()
+    .catch((err) => console.error('Ward machine check failed:', err.message)), async (err) => {
     console.error('Downtime kit failed:', err.message);
     await W.report({ kind: 'downtime.kit_failed', key: new Date().toISOString().slice(0, 13), title: `The downtime kit could not be refreshed: ${err.message}`, ownerRole: 'super_admin' }).catch(() => {});
   });

@@ -1,3 +1,38 @@
+# Current checkpoint, 16 October 2026
+
+Read INTEGRATION.md before the older notes below. Work remains active on the
+complete 16 Codex packages. Owner requested one agent only; all three subagents
+were interrupted. The audit agent's unfinished keyring/remote-proof edits remain
+in the working tree and still need completion/tests. Do not discard them.
+
+Integration of completion/claude-final was resolved in the files; preserve the
+shared clinical authorities, native versions, tested devices/context and scoped
+persistent drafts. New compatibility artifacts preserve the original 0123/0156
+SQL checksums and record the actual execution artifact. Migration 0135 adds
+membership lifecycle; do not edit it after application.
+
+Private runtime configuration is still ~/.local/state/hms-clinical-final/verification.env.
+Use scripts/verify-clinical-final.cjs --suites <comma-separated suite names> with
+that protected --env-file to own API/frontend/scanner together. It rejects shared
+ports/databases and writes evidence under the same private state directory.
+Verify live handles before restarting. Last active check was v2Medication,
+medication,devices (exec handle 49827); inspect its actual status.
+
+Recent focused pass: facility 6/6, documents 11/11, consultation 7/7, clinical UX
+8/8, v2 core 8/8, v2 documents 7/7; types/contracts/build pass. Full fresh PG16
+91 migrations succeeded in hms_verify_final_fresh_1792130846922. These are not
+full final-candidate PG16/18/upgrade/regression acceptance.
+
+Continue the complete remaining checklist: A2 clinical/care/runtime boundaries,
+A3 scheduling/ADT/lab/finance/event adapters and consumers, A5 shared observations
+and safe signed continuity, A6 unsafe legacy writing removal, B1 exchange scope,
+B4 workers/interfaces, B5 historical audit rotation/remote proofs, B6 durable
+protection/doc-version restore validation, B8 compatible releases/health/drain,
+A1/C1/C4 requirements and full verification, C5/C7 hazards/staged gates, C8 final
+reviewed consolidation. Claude's eight packages still need complete review.
+
+---
+
 # Active clinical completion checkpoint
 
 Goal remains active: finish all 16 Codex-owned packages in

@@ -1,4 +1,5 @@
 const express = require('express');
+const logAction = require('../utils/auditLogger');
 const { sequelize } = require('../models/db');
 const { protect, restrictTo } = require('../middleware/auth');
 const { patientInCare, NOT_IN_CARE } = require('../utils/careTeam');
@@ -57,7 +58,13 @@ router.get('/transfers', restrictTo('super_admin', 'admin'), handle('Could not l
 // M3
 router.post('/patients/:id/consent-requests', restrictTo(...CLINIC), handle('Could not request consent', async (req) => { await inCare(req); return A.requestConsent({ ...req.body, patientId: Number(req.params.id) }, req.user); }, 201));
 router.get('/patients/:id/consent-requests', restrictTo(...CLINIC), handle('Could not load consent requests', async (req) => { await inCare(req); return A.rows('SELECT * FROM hms_abdm_consent_requests WHERE patient_id = :p ORDER BY requested_at DESC', { p: Number(req.params.id) }); }));
-router.get('/patients/:id/imports', restrictTo(...CLINIC), handle('Could not load outside records', async (req) => { await inCare(req); return A.imports(Number(req.params.id)); }));
+// Consent is checked at each use (B2); every view of outside records is in the audit log.
+router.get('/patients/:id/imports', restrictTo(...CLINIC), handle('Could not load outside records', async (req) => {
+  await inCare(req);
+  const list = await sequelize.transaction((t) => A.imports(Number(req.params.id), t));
+  await logAction(req.user.id, 'READ', 'abdm_import', Number(req.params.id), null, { imports: list.filter((i) => i.status === 'Available').length }, req.ip);
+  return list;
+}));
 router.post('/import-items/:itemId/decision', restrictTo('doctor'), handle('Could not record the decision', tx(async (req, t) => {
   const [item] = await A.rows('SELECT i.patient_id FROM hms_abdm_import_items it JOIN hms_abdm_imports i ON i.id = it.import_id WHERE it.id = :id', { id: req.params.itemId }, t);
   if (!item) A.fail(404, 'Item not found.');

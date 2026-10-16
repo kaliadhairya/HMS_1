@@ -58,10 +58,28 @@ async function note(id:string,actor:Actor,input:unknown,header:unknown,t:Transac
  else await Notes.save(Number(e.id),actor,input as Record<string,unknown>,String(e.record_revision),t);
  const [updated]=await q('SELECT * FROM hms_encounters WHERE id=:id',{id:e.id},t);return encounterView(updated,actor,t);
 }
-async function identity(kind:string,id:string,actor:Actor){const row=await I.locate(kind,id,actor,undefined,true);
- if(kind==='patient')await patientScope(Number(row.id),actor);
- if(kind==='encounter')await patientScope(Number(row.patient_id),actor);
- if(row.patient_id&&kind!=='encounter')await patientScope(Number(row.patient_id),actor);
+async function identity(kind:string,id:string,actor:Actor,t?:Transaction){const row=await I.locate(kind,id,actor,t,true);
+ if(kind==='patient')await patientScope(Number(row.id),actor,t);
+ if(kind==='encounter')await patientScope(Number(row.patient_id),actor,t);
+ if(row.patient_id&&kind!=='encounter')await patientScope(Number(row.patient_id),actor,t);
  return {resource_type:kind,id:row.public_id};
 }
-module.exports={patient,readEncounter,create,note,identity};
+async function authorizeRequest(path:string,method:string,body:any,actor:Actor){
+ if(['GET','HEAD','OPTIONS'].includes(method))return;
+ if(/^\/encounters(?:\/|$)/.test(path)){
+  if(actor.role!=='doctor')fail(403,'A responsible doctor must author this consultation.','RESPONSIBLE_DOCTOR_REQUIRED');
+  await F.requirePrivilege(actor,'CHART_READ');await F.requirePrivilege(actor,'CLINICAL_SIGN');
+  const match=/^\/encounters\/([^/]+)\/(draft|sign)$/.exec(path);
+  if(match){const meta=await I.locate('encounter',match[1],actor);await patientScope(Number(meta.patient_id),actor);const [owner]=await q('SELECT doctor_id FROM hms_encounters WHERE id=:id AND facility_id=:facility',{id:meta.id,facility:actor.facilityId});if(Number(owner?.doctor_id)!==actor.id)fail(403,'Only the responsible doctor authors this consultation.','RESPONSIBLE_DOCTOR_REQUIRED');}
+  else if(path==='/encounters'){const p=await I.locate('patient',body?.patient_id,actor);await patientScope(I.legacyNumber(p),actor);}
+ }
+ if(/^\/clinical-documents(?:\/|$)/.test(path)){
+  const D=require('./clinicalDocuments.cts');
+  if(path==='/clinical-documents'){const p=await I.locate('patient',body?.patient_id,actor);await D.authorize(actor,I.legacyNumber(p),body?.doc_type||'clinical_note',true);}
+  else{const match=/^\/clinical-documents\/([^/]+)\/(draft|sign|amend|sign-amendment)$/.exec(path);if(!match)return;
+   const meta=await I.locate('clinical_document',match[1],actor);const [doc]=await q('SELECT patient_id,doc_type,author_user_id FROM hms_clinical_documents WHERE id=:id AND facility_id=:facility',{id:meta.id,facility:actor.facilityId});if(!doc)fail(404,'Clinical document not found.','RESOURCE_NOT_FOUND');
+   await D.authorize(actor,Number(doc.patient_id),doc.doc_type,true);if(Number(doc.author_user_id)!==actor.id)fail(403,'Only this document’s author may change it.','DOCUMENT_AUTHOR_REQUIRED');
+  }
+ }
+}
+module.exports={patient,readEncounter,create,note,identity,authorizeRequest};

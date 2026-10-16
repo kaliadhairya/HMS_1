@@ -9,7 +9,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, inCare} = require('./helpers');
+const { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, inCare, syntheticClinician } = require('./helpers');
 
 const { step: runStep, done } = runner('Administration, front desk and reports');
 // E2E_ONLY=<regex> runs just the matching steps (for debugging); by default every step runs.
@@ -105,7 +105,8 @@ async function settle(label, readUi, readDb, { tries = 4, reload } = {}) {
   throw new Error(`${label}: screen shows ${ui}, database says ${db}`);
 }
 
-const ymd = (d) => d.toISOString().slice(0, 10);
+// The hospital's calendar date (the screens list days in hospital time, not UTC).
+const ymd = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: process.env.FACILITY_TZ || 'Asia/Kolkata' }).format(d);
 
 // ── test ─────────────────────────────────────────────────────────────────────
 (async () => {
@@ -311,6 +312,7 @@ const ymd = (d) => d.toISOString().slice(0, 10);
       const c = await api('POST', '/users', { token: adTok, body: { username: ctx.clin.username, password: PW1, name: ctx.clin.name, role: 'doctor' } });
       assert(c.status === 201, `create doctor: ${c.status} ${JSON.stringify(c.data)}`);
       ctx.clin.id = c.data.data.id;
+      await syntheticClinician(ctx.clin.id, 'doctor'); // verified registration + privileges (test-only)
       const docTok = (await rawLogin(ctx.clin.username, PW1)).data.token;
       const pt = await api('POST', '/patients/hms', { token: recTok, body: { patientType: 'other', name: ctx.patientName, age: 41, gender: 'Female', opdIndoor: 'OPD', testDate: ymd(new Date()), phoneNumber: `7${S.padStart(9, '0')}` } });
       assert(pt.status === 201 || pt.status === 200, `create patient: ${pt.status} ${JSON.stringify(pt.data).slice(0, 200)}`);

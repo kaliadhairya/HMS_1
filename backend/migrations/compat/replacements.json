@@ -1,0 +1,16 @@
+{
+  "0123": {
+    "original_file": "0123_remaining_operational_ownership.sql",
+    "original_checksum": "fc17e737b5caa50dea19f2b0396dcd81b8e76598a1320723d7374ef0eb920017",
+    "execution_file": "compat/0123_remaining_operational_ownership.sql",
+    "execution_checksum": "1726b09a3c7325b7bfc5f25480b52c6c1543b04ebcb18083060f17f717d4b15f",
+    "reason": "Preserve independently applied facility ownership when integrating the two clinical completion branches; record both immutable source and execution artifacts."
+  },
+  "0156": {
+    "original_file": "0156_downtime_facility.sql",
+    "original_checksum": "027eb2b6888a8787df8ad678d7d0adfcd3a918a4c4bb7d4239194ecb51074d03",
+    "execution_file": "compat/0156_downtime_facility.sql",
+    "execution_checksum": "d05b5230ac0dd491dc281688272443350bf487b44cca2881260626a20796baa8",
+    "reason": "Preserve independently applied facility ownership when integrating the two clinical completion branches; record both immutable source and execution artifacts."
+  }
+}

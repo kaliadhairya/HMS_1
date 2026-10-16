@@ -37,7 +37,8 @@ const tag = crypto.randomUUID().slice(0, 6).toUpperCase();
     assert(bad.status === 422, `unknown catalogue test accepted: ${bad.status}`);
     ok(await req('PUT', `/finance/charge-master/versions/${draft.id}/items/TIED-${tag}`, 'admin', { name: 'Tied price', category: 'Lab', unitPrice: 456, labTestCode: `TEST-PRICE|TIED-${tag}` }));
     ok(await req('PUT', `/finance/charge-master/versions/${draft.id}/items/TARIFF-${tariff.id}`, 'admin', { name: 'Tariff price', category: 'Lab', unitPrice: 345 }));
-    ok(await req('POST', `/finance/charge-master/versions/${draft.id}/activate`, 'admin', {}));
+    assert((await req('POST', `/finance/charge-master/versions/${draft.id}/activate`, 'admin', {})).status === 403, 'the author activated their own price list');
+    ok(await req('POST', `/finance/charge-master/versions/${draft.id}/activate`, 'super_admin', {}));
   });
 
   await step('Ordering the tests charges 456, 345 and the default price; a name never sets a coded test\'s price', async () => {
