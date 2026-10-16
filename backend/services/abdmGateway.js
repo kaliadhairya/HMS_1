@@ -64,7 +64,7 @@ const cfg = () => ({
   cmId: process.env.ABDM_CM_ID || 'sbx', hipId: process.env.ABDM_HIP_ID, hiuId: process.env.ABDM_HIU_ID, jwks: process.env.ABDM_GATEWAY_JWKS_URL,
 });
 const configured = () => Boolean(cfg().gateway && cfg().clientId && cfg().clientSecret);
-const notConfigured = () => Object.assign(new Error('ABDM is not configured for this hospital (ABDM_GATEWAY_URL, ABDM_CLIENT_ID, ABDM_CLIENT_SECRET).'), { status: 503, code: 'ABDM_NOT_CONFIGURED' });
+const notConfigured = () => Object.assign(new Error('ABDM is not configured for this hospital (ABDM_GATEWAY_URL, ABDM_CLIENT_ID, ABDM_CLIENT_SECRET).'), { status: 503, code: 'ABDM_NOT_CONFIGURED', beforeSend: true });
 
 let session = null;
 async function token() {
@@ -87,10 +87,11 @@ const headers = async (requestId, extra = {}) => {
 };
 
 async function post(url, body, requestId, extra) {
+  await I.assertExternalAllowed();
   const r = await fetch(url, { method: 'POST', headers: await headers(requestId, extra), body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
   const text = await r.text();
   let data; try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
-  if (!r.ok) throw Object.assign(new Error(`ABDM ${r.status}: ${text.slice(0, 300)}`), { permanent: r.status >= 400 && r.status < 500 && r.status !== 429, status: r.status, data });
+  if (!r.ok) throw Object.assign(new Error(`ABDM request refused with status ${r.status}`), { permanent: r.status >= 400 && r.status < 500 && r.status !== 429, status: r.status, data });
   return data;
 }
 
@@ -103,10 +104,10 @@ async function abha(pathKey, body, { redacted = {}, patientId = null } = {}) {
   const log = await outside(() => I.enqueue({ system: 'abdm-abha', type: pathKey, version: 'v3', externalId: requestId, payload: { path: PATHS[pathKey], body: { ...body, ...redacted } }, patientId, maxAttempts: 1, sentByCaller: true }));
   try {
     const data = await post(cfg().abha + PATHS[pathKey], body, requestId);
-    await outside(() => I.settle(log.id, 'Delivered', { response: { ok: true } }));
+    await outside(() => I.settle(log.id, 'Delivered', { response: { ok: true }, leaseToken: log.lease_token }));
     return data;
   } catch (err) {
-    await outside(() => I.settle(log.id, 'Failed', { error: err.message }));
+    await outside(() => I.settle(log.id, 'Failed', { error: err.message, leaseToken: log.lease_token }));
     throw Object.assign(new Error(err.status && err.status < 500 ? 'ABDM refused the request. Check the details and try again.' : 'ABDM did not answer. Try again shortly.'), { status: err.status && err.status < 500 ? 422 : 502, code: 'ABDM_ERROR', detail: err.data });
   }
 }
@@ -115,6 +116,7 @@ async function abha(pathKey, body, { redacted = {}, patientId = null } = {}) {
 // public key (RSA-OAEP, SHA-1), fetched once from the ABHA service.
 let abhaKey = null;
 async function abhaEncrypt(value) {
+  await I.assertExternalAllowed();
   if (!configured() || !cfg().abha) throw notConfigured();
   if (!abhaKey) {
     const r = await fetch(cfg().abha + PATHS.abhaPublicKey, { headers: await headers(crypto.randomUUID()), signal: AbortSignal.timeout(15000) });
@@ -132,13 +134,15 @@ const send = (pathKey, body, { requestId = crypto.randomUUID(), correlationId = 
 const push = (url, body, { requestId = crypto.randomUUID(), correlationId, patientId } = {}, t) =>
   I.enqueue({ system: 'abdm-datapush', type: 'data-push', version: 'v3', externalId: requestId, correlationId, endpoint: url, payload: body, patientId }, t);
 
-I.register('abdm-gateway', async (m) => { if (!configured()) throw notConfigured(); return post(cfg().gateway + m.payload.path, m.payload.body, m.external_id.split('#')[0], m.payload.headers); });
+I.register('abdm-gateway', async (m) => { if (!configured()) throw notConfigured(); return post(cfg().gateway + m.payload.path, m.payload.body, m.external_id, m.payload.headers); },
+  { ownerRole:'super_admin',versions:['v3'],messageTypes:Object.keys(PATHS),idempotency:process.env.HMS_ABDM_IDEMPOTENCY_SUPPORTED==='true'?'PROVIDER_KEY':'RECONCILE' });
 async function pushSend(m) {
-  const r = await fetch(m.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(m.payload), signal: AbortSignal.timeout(30000) });
+  await I.assertExternalAllowed();
+  const r = await fetch(m.endpoint, { method: 'POST', headers: { 'content-type': 'application/json','Idempotency-Key':m.delivery_key,'REQUEST-ID':m.external_id }, body: JSON.stringify(m.payload), signal: AbortSignal.timeout(30000) });
   if (!r.ok) throw Object.assign(new Error(`data push ${r.status}`), { permanent: r.status >= 400 && r.status < 500 && r.status !== 429 });
   return { status: r.status };
 }
-I.register('abdm-datapush', pushSend);
+I.register('abdm-datapush', pushSend,{ownerRole:'super_admin',versions:['v3'],messageTypes:['data-push'],idempotency:process.env.HMS_ABDM_IDEMPOTENCY_SUPPORTED==='true'?'PROVIDER_KEY':'RECONCILE'});
 
 // Incoming gateway calls carry a token signed by the gateway (RS256).
 let jwksCache = { at: 0, keys: [] };

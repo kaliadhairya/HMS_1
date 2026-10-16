@@ -140,7 +140,7 @@ async function waitForLog(child, text, ms = 20000) {
       const gone = new Promise((resolve) => second.on('disconnect', () => resolve(true)));
       const [m] = await sql("SELECT id FROM hms_facility_memberships WHERE user_id = $1 AND facility_id = hms_initial_facility() AND revoked_at IS NULL", [nurseUser.id]);
       const [admin] = await sql("SELECT id FROM hms_users WHERE username = 'superadmin'");
-      await sql('UPDATE hms_facility_memberships SET revoked_at = now(), revoked_by_user_id = $2 WHERE id = $1', [m.id, admin.id]);
+      await sql("UPDATE hms_facility_memberships SET revoked_at = now(), revoked_by_user_id = $2, revocation_reason='Synthetic socket membership revocation' WHERE id = $1", [m.id, admin.id]);
       try {
         await sql("INSERT INTO hms_outbox (event_type, audience, payload) VALUES ('clinical.authorization.changed', $1, '{}'::jsonb)", [`user:${nurseUser.id}`]);
         assert(await Promise.race([gone, sleep(6000).then(() => false)]), 'a user without membership kept a live connection');

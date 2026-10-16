@@ -21,6 +21,7 @@ const LAB = [
 
 export const NAV_BY_ROLE = {
   super_admin: [
+    { to: '/admin/interface-messages', label: 'Interface deliveries', icon: Cable, group: 'Administration' },
     { to: '/hms/admin/clinical-privileges', label: 'Clinical privileges', icon: ShieldCheck, group: 'Administration' },
     { to: '/lab/governed', label: 'Laboratory workspace', icon: TestTube, group: 'Laboratory' },
     { to: '/super_admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
@@ -45,6 +46,7 @@ export const NAV_BY_ROLE = {
     { to: '/admin/devices', label: 'Device interfaces', icon: Cable, group: 'Administration' },
   ],
   admin: [
+    { to: '/admin/interface-messages', label: 'Interface deliveries', icon: Cable, group: 'Administration' },
     { to: '/hms/admin/clinical-privileges', label: 'Clinical privileges', icon: ShieldCheck, group: 'Administration' },
     { to: '/lab/governed', label: 'Laboratory workspace', icon: TestTube, group: 'Laboratory' },
     { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },

@@ -1,0 +1,93 @@
+{
+  "candidate": "f828cdeba336e9fd2b347b3b0ff078a2d3b25c2f",
+  "tracked_diff_sha256": "818b7adce7b5781014995f8a7d92fbac1ef7d3d0eda28d089e9783b3983dab07",
+  "untracked_files": [
+    {
+      "path": "backend/domain/interfaceContract.cts",
+      "sha256": "9e26b4669d6466d1ab0dbd59da639372a0b2b28aeb9947af534066fa6c4f5710"
+    },
+    {
+      "path": "backend/migrations/0137_interface_delivery_authority.sql",
+      "sha256": "bea89c7cbb5614956040e665db65d32583a306fd9ae7c36f3c7103e619ae6948"
+    },
+    {
+      "path": "backend/migrations/0138_reviewed_delivery_retries.sql",
+      "sha256": "0e200579ff3f348bb0aebf3de3d3f26423c7896c7d43cdf98272b3cc5e015008"
+    },
+    {
+      "path": "backend/migrations/compat/order.json",
+      "sha256": "7403bc70ca6911c30e1e802eff5c3f7379c8e71e5b1c3d874de3cf90005c5752"
+    },
+    {
+      "path": "backend/services/integrationContext.cts",
+      "sha256": "f87fb406fcdf8289175eb05d3720a397d3c4851c65c63012afa33c13445388d5"
+    },
+    {
+      "path": "backend/services/interfaceMessages.cts",
+      "sha256": "9a1bf5d4da70b036e6eb2dfc24b23b8f90eae8a29485ca46a4506a728243aa77"
+    },
+    {
+      "path": "backend/tests/interfaceMessages.integration.test.js",
+      "sha256": "73007715d7b9a2b4291766aea84c5aca7826a42243c95b71e05a6298f65b0ce7"
+    },
+    {
+      "path": "backend/tests/migrationOrder.test.js",
+      "sha256": "33a8fad5cdcebafc537d04abf6cf4419db4fec148dd6b637d9ba58ac18125a15"
+    },
+    {
+      "path": "backend/tests/verificationNetwork.test.js",
+      "sha256": "4633f30a559be86ef215d7dd55380d6021cc6d20689afb2440159ba0f8bb7e65"
+    },
+    {
+      "path": "backend/utils/migrationOrder.js",
+      "sha256": "bdca20f03f8ca291e0a3be3e7cf1cd5ead3d468a8202edc3c70bcb2379e588d1"
+    },
+    {
+      "path": "docs/clinical-final/CLOSEOUT.md",
+      "sha256": "abd3c0133ca48d33363d23066bd1da15d45bc1e7e0d7625099038f0a38364266"
+    },
+    {
+      "path": "e2e/fixtures/interfaceWorker.cjs",
+      "sha256": "9451c73f9d4014cb3b5cec0e265eb1fcb5cf1f86dfe998bc00ee32058a357593"
+    },
+    {
+      "path": "e2e/fixtures/verificationNetwork.cjs",
+      "sha256": "15284345149c1d1269a6c20044a0bbaae8d05917a91e704f7856258704d4cfc7"
+    },
+    {
+      "path": "e2e/interfaceOps.e2e.js",
+      "sha256": "fd2aa8a6e72318d073c426a5a862a27ada6d11b9794b8498f3db5c09099cb9be"
+    },
+    {
+      "path": "frontend/src/pages/hms/admin/InterfaceMessagesPage.jsx",
+      "sha256": "7982f24741be8d242ee321ecea5128696153b5487f215ee2f476fa6c3b12c168"
+    }
+  ],
+  "database": "hms_p4_final_v2_20261015b",
+  "api_port": 5064,
+  "frontend_port": 5236,
+  "scanner": "SYNTHETIC_PROTOCOL_FIXTURE_ONLY",
+  "gateway": "SYNTHETIC_LOOPBACK_ONLY",
+  "results": [
+    {
+      "suite": "interfaceOps",
+      "exit_code": 0,
+      "seconds": 3.093
+    },
+    {
+      "suite": "abdm",
+      "exit_code": 0,
+      "seconds": 10.43
+    },
+    {
+      "suite": "abdmUse",
+      "exit_code": 0,
+      "seconds": 12.369
+    },
+    {
+      "suite": "devices",
+      "exit_code": 0,
+      "seconds": 5.53
+    }
+  ]
+}

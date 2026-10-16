@@ -94,7 +94,7 @@ async function connect(c: Cfg, timeoutMs = 5000) {
       RETURNING epoch, cluster_id`, [`Promoted: ${reason}`.slice(0, 500)])).rows[0];
     const last = (await db.query('SELECT max(occurred_at) AS at FROM audit.row_changes')).rows[0].at;
     const sessions = (await db.query("UPDATE hms_sessions SET revoked_at = now(), revoked_reason = 'Recovery promotion: sign in again' WHERE revoked_at IS NULL RETURNING id")).rowCount;
-    const held = (await db.query(`UPDATE hms_interface_messages SET next_attempt_at = 'infinity', last_error = 'Held after recovery: whether it was delivered before the recovery point is unknown'
+    const held = (await db.query(`UPDATE hms_interface_messages SET next_attempt_at = 'infinity', delivery_hold=true,lease_token=NULL,lease_until=NULL,last_error = 'Held after recovery: whether it was delivered before the recovery point is unknown'
       WHERE direction = 'out' AND status = 'Pending' RETURNING id`)).rowCount;
     const payments = (await db.query("UPDATE hms_payment_intents SET state = 'Unknown' WHERE state IN ('Initiated', 'Pending') RETURNING id")).rowCount;
     const ev = (await db.query(`INSERT INTO hms_recovery_events (epoch, previous_cluster_id, reason, old_primary, isolation_reference, last_recorded_change, started_at,

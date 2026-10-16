@@ -208,3 +208,12 @@ review) stay open and are named in each package's state.
   historical rotation/real restore, pinned Object Lock versions and restricted
   facility worker reporting pass; fixed unpaged alert visibility. Engineering
   evidence and external storage/key-custody gates: AUDIT_PROTECTION.md.
+- 2026-10-17: owner accepted the full closeout plan and authorized implementation
+  through local main merge and updating the existing Docker app, preserving its
+  data after an isolated upgrade rehearsal. See docs/clinical-final/CLOSEOUT.md.
+  Work is solo. The existing app remains running until release checks pass;
+  no remote publication or hospital pilot. Completing pending B4 first.
+- 2026-10-17: B4 reviewed: PostgreSQL interface 13 scenarios plus parent, operator
+  5/5, ABDM mock 10/10, consent/readiness 6/6, devices 12/12. Harness now enforces
+  loopback-only fetch targets and no redirects. See INTERFACES.md. Continuing
+  remaining clinical/foundation/recovery/release packages, without shared cutover.

@@ -27,7 +27,7 @@ async function asProbe(settings) {
   const [member] = await sql("SELECT u.id FROM hms_users u JOIN hms_facility_memberships m ON m.user_id = u.id WHERE u.username = 'admin' AND m.facility_id = hms_initial_facility() AND m.revoked_at IS NULL");
   const [stranger] = await sql("INSERT INTO hms_users (username, password, name, role, is_active) VALUES ($1, 'NOT-A-LOGIN', 'Synthetic worker without membership', 'admin', 1) RETURNING id", [`nomember_${role}`]);
   // New staff get a membership automatically (0114); this account must not have one.
-  await sql("UPDATE hms_facility_memberships SET revoked_at = now(), revoked_by_user_id = $2 WHERE user_id = $1 AND revoked_at IS NULL", [stranger.id, member.id]);
+  await sql("UPDATE hms_facility_memberships SET revoked_at = now(), revoked_by_user_id = $2, revocation_reason='Synthetic worker without an approved membership' WHERE user_id = $1 AND revoked_at IS NULL", [stranger.id, member.id]);
   await sql(`CREATE ROLE ${role} LOGIN PASSWORD '${password}' NOSUPERUSER NOBYPASSRLS`);
   await sql(`GRANT USAGE ON SCHEMA public TO ${role}; GRANT SELECT ON hms_admissions, hms_facility_memberships, hms_facilities, hms_users TO ${role}`);
   try {

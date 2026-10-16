@@ -34,7 +34,7 @@ requireThrowawayDb();
   });
  }finally{
   if(session)await sql("UPDATE hms_sessions SET revoked_at=now(),revoked_reason='Synthetic scope fixture finished' WHERE id=$1",[session]);
-  if(facility)await sql('UPDATE hms_facility_memberships SET revoked_at=now(),revoked_by_user_id=$1 WHERE facility_id=$2 AND revoked_at IS NULL',[actor.id,facility]);
+  if(facility)await sql("UPDATE hms_facility_memberships SET revoked_at=now(),revoked_by_user_id=$1,revocation_reason='Synthetic receipt scope fixture completed' WHERE facility_id=$2 AND revoked_at IS NULL",[actor.id,facility]);
  }
  done();process.exit();
 })().catch(e=>{console.error(e.message);process.exit(1)});

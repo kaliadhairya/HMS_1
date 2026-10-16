@@ -34,6 +34,7 @@ const REQUIRED = [
   /^\/api\/finance(?:\/.*)?$/,
   /^\/api\/terminology(?:\/.*)?$/,
   /^\/api\/worklist(?:\/.*)?$/,
+  /^\/api\/integrations(?:\/.*)?$/,
   /^\/api\/abdm(?:\/.*)?$/,
   /^\/api\/devices(?:\/.*)?$/,
   /^\/api\/downtime(?:\/.*)?$/,

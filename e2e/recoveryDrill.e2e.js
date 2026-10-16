@@ -68,7 +68,7 @@ const patient = (port, token, n) => call(port, 'POST', '/patients/hms', token, {
       const mig = await sh('node', ['migrate.js', 'up'], { DB_NAME: OLD });
       assert(mig.code === 0, `migrate ${mig.out.slice(-300)}`);
       const [{ id: pid }] = await q(OLD, "INSERT INTO hms_patients (name, uhid, patienttype, age, gender, opdindoor, testdate) VALUES ($1, $2, 'other', 30, 'Other', 'OPD', CURRENT_DATE) RETURNING id", [`Drill payer ${tag}`, `B7-${tag}`]);
-      await q(OLD, "INSERT INTO hms_interface_messages (direction, system, message_type, contract_version, external_id, payload, status) VALUES ('out', 'sms', 'drill', '1', $1, '{}'::jsonb, 'Pending')", [`B7-${tag}`]);
+      await q(OLD, "INSERT INTO hms_interface_messages (direction, system, message_type, contract_version, external_id, payload, status,delivery_epoch,delivery_cluster_id) SELECT 'out', 'sms', 'drill', '1', $1, '{}'::jsonb, 'Pending',epoch,cluster_id FROM hms_writer_fence WHERE singleton", [`B7-${tag}`]);
       await q(OLD, "INSERT INTO hms_payment_intents (patient_id, purpose, amount, method, state, created_by) VALUES ($1, 'deposit', 100, 'Card', 'Pending', (SELECT id FROM hms_users WHERE username = 'receptionist'))", [pid]);
       apiA = startApi(OLD, PORT_A);
       assert(await waitReady(PORT_A, apiA), `API on the primary did not start: ${apiA.log().slice(-400)}`);

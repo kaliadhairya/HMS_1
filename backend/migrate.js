@@ -33,7 +33,7 @@ function loadMigrations() {
   const replacements = JSON.parse(fs.readFileSync(path.join(MIGRATIONS_DIR, 'compat/replacements.json'), 'utf8'));
   const files = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort();
   const seen = new Set();
-  return files.map((file) => {
+  const migrations = files.map((file) => {
     const match = FILE_PATTERN.exec(file);
     if (!match) throw new Error(`Migration file name must look like 0001_short_name.sql: ${file}`);
     if (seen.has(match[1])) throw new Error(`Two migrations share version ${match[1]}`);
@@ -55,6 +55,8 @@ function loadMigrations() {
       transactional: !sql.startsWith('-- migrate:no-transaction'),
     };
   });
+  return require('./utils/migrationOrder').orderMigrations(migrations,
+    JSON.parse(fs.readFileSync(path.join(MIGRATIONS_DIR,'compat/order.json'),'utf8')));
 }
 
 async function ensureTable(client) {

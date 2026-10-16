@@ -25,9 +25,13 @@ const profiles = new Map(); // abha number -> profile
 const txns = new Map(); // txnId -> abha number
 const failures = []; // { prefix, count, status }
 const datapushes = [];
+// The synthetic provider explicitly implements the stable request-ID contract
+// used by the harness. Real providers need their own verified contract.
+const outcomes = new Map();
+const requestIdentity = new WeakMap();
 
 const decryptRsa = (b64) => crypto.privateDecrypt({ key: abhaKeys.privateKey, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha1' }, Buffer.from(b64, 'base64')).toString();
-const send = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(body === undefined ? '' : JSON.stringify(body)); };
+const send = (res, status, body) => { const identity=requestIdentity.get(res);if(identity&&status>=200&&status<300)outcomes.set(identity.key,{hash:identity.hash,status,body});res.writeHead(status, { 'content-type': 'application/json' }); res.end(body === undefined ? '' : JSON.stringify(body)); };
 const token = (claims = {}) => jwt.sign({ iss: 'mock-gateway', ...claims }, signing.privateKey, { algorithm: 'RS256', keyid: kid, expiresIn: '5m' });
 
 async function callHospital(url, body, { requestId = crypto.randomUUID(), auth = 'valid' } = {}) {
@@ -64,6 +68,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (path.startsWith('/_mock/datapush/')) {
       const refused = failNow(path);
+      const key=path+':'+req.headers['request-id'],hash=crypto.createHash('sha256').update(raw).digest('hex'),prior=outcomes.get(key);
+      if(!refused&&prior)return send(res,prior.hash===hash?prior.status:409,prior.hash===hash?prior.body:{message:'Request identity belongs to another payload'});
+      if(!refused)requestIdentity.set(res,{key,hash});
       datapushes.push({ name: path.split('/').pop(), body: refused ? null : body, accepted: !refused, at: new Date().toISOString() });
       return refused || send(res, 202, {});
     }
@@ -71,6 +78,11 @@ const server = http.createServer(async (req, res) => {
     // ── gateway and ABHA ──
     received.push({ path, method: req.method, headers: req.headers, body, at: new Date().toISOString() });
     const forced = failNow(path); if (forced) return forced;
+    if(req.method==='POST'&&req.headers['request-id']){
+      const key=path+':'+req.headers['request-id'],hash=crypto.createHash('sha256').update(raw).digest('hex'),prior=outcomes.get(key);
+      if(prior)return send(res,prior.hash===hash?prior.status:409,prior.hash===hash?prior.body:{message:'Request identity belongs to another payload'});
+      requestIdentity.set(res,{key,hash});
+    }
     if (path === '/gateway/v3/sessions') return send(res, 200, { accessToken: token({ sub: body?.clientId }), expiresIn: 1200 });
     if (path === '/v3/profile/public/certificate') return send(res, 200, { publicKey: abhaKeys.publicKey.export({ format: 'der', type: 'spki' }).toString('base64') });
     if (path === '/v3/profile/login/request/otp') {

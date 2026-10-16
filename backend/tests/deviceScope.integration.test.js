@@ -85,7 +85,7 @@ test('device intake uses its approved facility/service account through a restric
    await q(`SET LOCAL ROLE ${role}`);
   });
   await t.test('current membership revocation prevents all further intake despite a valid device key',async()=>{
-   await q('RESET ROLE');await q('UPDATE hms_facility_memberships SET revoked_at=now(),revoked_by_user_id=:admin WHERE user_id=:user AND facility_id=:facility AND revoked_at IS NULL',{admin:admin.id,user:service.id,facility:facility.id});
+   await q('RESET ROLE');await q("UPDATE hms_facility_memberships SET revoked_at=now(),revoked_by_user_id=:admin,revocation_reason='Synthetic analyzer service membership revocation' WHERE user_id=:user AND facility_id=:facility AND revoked_at IS NULL",{admin:admin.id,user:service.id,facility:facility.id});
    await q(`SET LOCAL ROLE ${role}`);
    await assert.rejects(D.receive(contract.system,'SYNTHETIC SHOULD NOT BE STORED',auth,tx),e=>e.code==='FACILITY_MEMBERSHIP_REQUIRED');
   });

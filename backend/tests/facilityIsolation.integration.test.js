@@ -55,7 +55,7 @@ test('actual PostgreSQL facility policies and verified clinical credential gates
   await c.query('RESET ROLE');
   await t.test('membership revocation takes effect on the next database statement',async()=>{
    await c.query('SAVEPOINT revoked');
-   try{await c.query('UPDATE hms_facility_memberships SET revoked_at=now(),revoked_by_user_id=$1 WHERE user_id=$1 AND facility_id=$2 AND revoked_at IS NULL',[doctor,initial]);await c.query(`SET LOCAL ROLE ${role}`);assert.equal((await c.query('SELECT id FROM hms_wards WHERE id=$1',[wardA])).rows.length,0);}
+   try{await c.query("UPDATE hms_facility_memberships SET revoked_at=now(),revoked_by_user_id=$1,revocation_reason='Synthetic row-policy membership revocation' WHERE user_id=$1 AND facility_id=$2 AND revoked_at IS NULL",[doctor,initial]);await c.query(`SET LOCAL ROLE ${role}`);assert.equal((await c.query('SELECT id FROM hms_wards WHERE id=$1',[wardA])).rows.length,0);}
    finally{await c.query('ROLLBACK TO SAVEPOINT revoked');}
   });
   // All fixtures remain inside this disposable transaction. The values below

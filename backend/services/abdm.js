@@ -369,12 +369,13 @@ async function hiRequest(body, t) {
 // SMS through the hospital's provider (SMS_PROVIDER_URL: POST {to, text}).
 // Without one, messages fail visibly onto the worklist.
 I.register('sms', async (m) => {
-  if (!process.env.SMS_PROVIDER_URL) throw Object.assign(new Error('No SMS provider is configured (SMS_PROVIDER_URL).'), { permanent: false });
-  const r = await fetch(process.env.SMS_PROVIDER_URL, { method: 'POST', headers: { 'content-type': 'application/json', ...(process.env.SMS_PROVIDER_TOKEN ? { authorization: `Bearer ${process.env.SMS_PROVIDER_TOKEN}` } : {}) },
+  if (!process.env.SMS_PROVIDER_URL) throw Object.assign(new Error('No SMS provider is configured (SMS_PROVIDER_URL).'), { permanent: false, beforeSend:true });
+  await I.assertExternalAllowed();
+  const r = await fetch(process.env.SMS_PROVIDER_URL, { method: 'POST', headers: { 'content-type': 'application/json','Idempotency-Key':m.delivery_key, ...(process.env.SMS_PROVIDER_TOKEN ? { authorization: `Bearer ${process.env.SMS_PROVIDER_TOKEN}` } : {}) },
     body: JSON.stringify({ to: m.payload.to, text: decrypt(m.payload.text_enc, 'abdm.sms-text') }), signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw Object.assign(new Error(`SMS provider ${r.status}`), { permanent: r.status >= 400 && r.status < 500 && r.status !== 429 });
   return { status: r.status };
-}, { ownerRole: 'receptionist' });
+}, { ownerRole: 'receptionist', versions:['1'],messageTypes:['abdm-link-otp'],idempotency:process.env.HMS_SMS_IDEMPOTENCY_SUPPORTED==='true'?'PROVIDER_KEY':'RECONCILE' });
 
 // The consent is checked again just before encrypted records leave.
 I.register('abdm-datapush', async (m) => {
@@ -382,7 +383,7 @@ I.register('abdm-datapush', async (m) => {
   const c = await one("SELECT status, data_erase_at FROM hms_abdm_consents WHERE role = 'HIP' AND consent_id = :id", { id: consentId });
   if (!c || c.status !== 'GRANTED' || new Date(c.data_erase_at) <= new Date()) throw Object.assign(new Error(`Not sent: consent ${consentId} is ${c ? c.status.toLowerCase() : 'unknown'}.`), { permanent: true });
   return G.pushSend(m);
-}, { ownerRole: 'super_admin' });
+}, { ownerRole: 'super_admin',versions:['v3'],messageTypes:['data-push'],idempotency:process.env.HMS_ABDM_IDEMPOTENCY_SUPPORTED==='true'?'PROVIDER_KEY':'RECONCILE' });
 
 // ── M3: the hospital as HIU ─────────────────────────────────
 const bridgeUrl = (path) => `${(process.env.ABDM_BRIDGE_PUBLIC_URL || 'https://hms.invalid/abdm').replace(/\/$/, '')}${path}`;
@@ -570,7 +571,7 @@ async function expireConsents() {
   return due.length;
 }
 function startAbdmWorker() {
-  const timer = setInterval(() => expireConsents().catch((err) => console.error('ABDM consent expiry failed:', err.message)), Number(process.env.ABDM_EXPIRY_POLL_MS || 60000));
+  const timer = setInterval(() => require('./workerContext.cts').forEachFacility('abdm-consent-expiry',()=>expireConsents()).catch((err) => console.error('ABDM consent expiry failed:', err.message)), Number(process.env.ABDM_EXPIRY_POLL_MS || 60000));
   timer.unref();
   return () => clearInterval(timer);
 }
