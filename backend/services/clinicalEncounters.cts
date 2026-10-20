@@ -9,6 +9,18 @@ function positive(value:unknown,field:string,optional=false):number|null{
  if(optional&&(value===null||value===undefined||value===''))return null;
  const n=Number(value);if(!Number.isSafeInteger(n)||n<1)fail(422,`${field} must identify a valid resource.`,'INVALID_ID');return n;
 }
+async function available(patientId:number,actor:Actor,t:Transaction){
+ if(actor.role!=='doctor')fail(403,'A responsible doctor must select the visit.','RESPONSIBLE_DOCTOR_REQUIRED');
+ await F.requirePrivilege(actor,'CHART_READ',t);await F.requirePrivilege(actor,'CLINICAL_SIGN',t);
+ const patient=positive(patientId,'Patient');
+ if(!(await patientInCare(actor.id,patient,t)))fail(403,'The patient is not in your care.','PATIENT_NOT_IN_CARE');
+ const context={patient,doctor:actor.id,facility:actor.facilityId};
+ const tokens=await q(`SELECT id,public_id,token_number,status,token_date,department_id FROM hms_tokens WHERE patient_id=:patient AND doctor_id=:doctor AND facility_id=:facility
+  AND trunc(token_date)=hms_service_today() AND status='Waiting' ORDER BY id LIMIT 100`,context,t);
+ const appointments=await q(`SELECT id,public_id,status,appointment_date,slot_start,department_id FROM hms_appointments WHERE patient_id=:patient AND doctor_id=:doctor AND facility_id=:facility
+  AND trunc(appointment_date)=hms_service_today() AND status IN ('Scheduled','Checked-in') ORDER BY slot_start,id LIMIT 100`,context,t);
+ return {tokens,appointments};
+}
 async function create(input:CreateInput,actor:Actor,t:Transaction){
  if(actor.role!=='doctor')fail(403,'A responsible doctor must start the consultation.','RESPONSIBLE_DOCTOR_REQUIRED');
  await F.requirePrivilege(actor,'CHART_READ',t);await F.requirePrivilege(actor,'CLINICAL_SIGN',t);
@@ -55,4 +67,4 @@ async function create(input:CreateInput,actor:Actor,t:Transaction){
  await publish('clinical.encounter.started',`user:${actor.id}`,{patient_id:patient,encounter_id:e.id},{transaction:t});
  return e;
 }
-module.exports={create};
+module.exports={create,available};

@@ -2,9 +2,11 @@ const express=require('express'),router=express.Router();
 const {protect,restrictTo}=require('../middleware/auth'),{idempotencyGuard}=require('../utils/idempotency');
 const {sequelize}=require('../models/db'),V=require('../services/clinicalV2.cts');
 const Medications=require('../services/medicationV2.cts');
+const Observations=require('../services/clinicalObservations.cts');
 router.use(protect);
 router.use((req,res,next)=>V.authorizeRequest(req.path,req.method,req.body,req.user).then(()=>next()).catch(error=>{const failure=require('../services/clinicalApiErrors.cts').response(error);res.status(failure.status).json(failure.body);}));
 router.use((req,res,next)=>Medications.authorizeRequest(req.path,req.method,req.user).then(()=>next()).catch(error=>{const failure=require('../services/clinicalApiErrors.cts').response(error);res.status(failure.status).json(failure.body);}));
+router.use((req,res,next)=>Observations.authorizeRequest(req.path,req.method,req.body,req.user).then(()=>next()).catch(error=>{const failure=require('../services/clinicalApiErrors.cts').response(error);res.status(failure.status).json(failure.body);}));
 router.use((req,res,next)=>idempotencyGuard(req,res,next).catch(next));
 const handle=(fn,{command=false,status=200}={})=>async(req,res)=>{
  try{
@@ -22,6 +24,15 @@ router.get('/patients/:id',restrictTo('doctor','nurse','pharmacist','lab_technic
 router.get('/encounters/:id',restrictTo('doctor','nurse','admin','super_admin'),clinicalRead(async(r,res,t)=>{
  const data=await V.readEncounter(r.params.id,r.user,t);const {locate,legacyNumber}=require('../services/identities.cts');res.locals.auditPatientId=legacyNumber(await locate('patient',data.patient_id,r.user,t));return data;
 }));
+router.get('/observations/patient/:id',restrictTo('doctor','nurse'),clinicalRead(async(r,res,t)=>{
+ const data=await Observations.byPatient(r.params.id,r.user,t);const I=require('../services/identities.cts');
+ res.locals.auditPatientId=I.legacyNumber(await I.locate('patient',r.params.id,r.user,t));return data;
+}));
+router.get('/observations/:id',restrictTo('doctor','nurse'),clinicalRead(async(r,res,t)=>{
+ const data=await Observations.view(r.params.id,r.user,t);const I=require('../services/identities.cts');
+ res.locals.auditPatientId=I.legacyNumber(await I.locate('patient',data.patient_id,r.user,t));return data;
+}));
+router.post('/observations',restrictTo('doctor','nurse'),handle((r,res,t)=>Observations.create(r.body,r.user,t),{command:true,status:201}));
 router.post('/encounters',restrictTo('doctor'),handle((r,res,t)=>V.create(r.body,r.user,t),{command:true,status:201}));
 router.put('/encounters/:id/draft',restrictTo('doctor'),handle((r,res,t)=>V.note(r.params.id,r.user,r.body,r.get('if-match'),t),{command:true}));
 router.post('/encounters/:id/sign',restrictTo('doctor'),handle((r,res,t)=>V.note(r.params.id,r.user,r.body||{},r.get('if-match'),t,true),{command:true}));

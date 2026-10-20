@@ -3,7 +3,8 @@
 const encounterFields=['chief_complaint','hopi','past_medical_history','surgical_history','family_history','social_history','current_medications','general_examination','cvs_findings','rs_findings','abdomen_findings','cns_findings'] as const;
 const fields={
  clinical_note:['chiefComplaint','history','examination','assessment','plan'],
- discharge_summary:['diagnosis','course','condition','instructions','medicationPlan','warningSigns','followUp','pendingResults'],
+ discharge_summary:['diagnosis','course','condition','instructions','medicationPlan','warningSigns','followUp','pendingResults',
+  'chiefComplaint','comorbidities','allergies','historyOfIllness','investigations','dietLifestyle'],
  nursing_assessment:['assessment','observations','risks','actions','escalation'],
  care_plan:['assessment','goals','actions','review','handover'],encounter_note:encounterFields,
 } as const;

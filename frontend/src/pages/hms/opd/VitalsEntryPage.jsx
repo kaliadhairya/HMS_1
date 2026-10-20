@@ -10,7 +10,6 @@ import PatientBanner from '../../../components/patient/PatientBanner';
 // field names the rest of this page uses.
 const normalizePatient = (p) => ({ ...p, name: p.name || p.patient_name, phoneNumber: p.phoneNumber || p.phone_number });
 const ENCOUNTER_TONE = { IPD: 'info', ER: 'danger', OPD: 'neutral' };
-const SEVERE_ALERTS = ['High BP', 'Low BP', 'Fever', 'Low SpO2', 'Tachycardia', 'Bradycardia'];
 
 export default function VitalsEntryPage() {
   const navigate = useNavigate();
@@ -42,7 +41,6 @@ export default function VitalsEntryPage() {
   });
 
   const [bmi, setBmi] = useState(null);
-  const [alerts, setAlerts] = useState([]);
 
   // Auto calculate BMI
   useEffect(() => {
@@ -87,26 +85,6 @@ export default function VitalsEntryPage() {
       setHistoryLoading(false);
     }
   };
-
-  // Live Alert Generation for UI guidance
-  useEffect(() => {
-    const newAlerts = [];
-    const sys = Number(formData.bp_systolic);
-    const dia = Number(formData.bp_diastolic);
-    const temp = Number(formData.temperature);
-    const pulse = Number(formData.pulse);
-    const sp = Number(formData.spo2);
-
-    if (sys > 140 || dia > 90) newAlerts.push('High BP');
-    if ((sys > 0 && sys < 90) || (dia > 0 && dia < 60)) newAlerts.push('Low BP');
-    if ((formData.temp_unit === 'C' && temp > 37.5) || (formData.temp_unit === 'F' && temp > 99.5)) newAlerts.push('Fever');
-    if (sp > 0 && sp < 95) newAlerts.push('Low SpO2');
-    if (pulse > 100) newAlerts.push('Tachycardia');
-    if (pulse > 0 && pulse < 60) newAlerts.push('Bradycardia');
-    if (bmi && Number(bmi) > 25) newAlerts.push('Overweight');
-
-    setAlerts(newAlerts);
-  }, [formData, bmi]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -170,18 +148,6 @@ export default function VitalsEntryPage() {
     if (!dateStr) return '';
     const d = new Date(dateStr);
     return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-  };
-
-  // True when a recorded value is outside the normal range.
-  const isAbnormal = (key, value, unit) => {
-    if (!value && value !== 0) return false;
-    const v = Number(value);
-    if (key === 'bp_systolic' && (v > 140 || v < 90)) return true;
-    if (key === 'bp_diastolic' && (v > 90 || v < 60)) return true;
-    if (key === 'pulse' && (v > 100 || v < 60)) return true;
-    if (key === 'spo2' && v < 95) return true;
-    if (key === 'temperature') return unit === 'C' ? v > 37.5 : v > 99.5;
-    return false;
   };
 
   const changePatient = () => { setPatient(null); setVitalsHistory([]); };
@@ -287,11 +253,6 @@ export default function VitalsEntryPage() {
             <section className="panel">
               <div className="panel-head" style={{ flexWrap: 'wrap' }}>
                 <h2 className="panel-title" style={{ margin: 0 }}><Stethoscope size={16} aria-hidden="true" /> Vital signs</h2>
-                {alerts.length > 0 && (
-                  <div className="chip-row" role="status" aria-label="Vital sign alerts">
-                    {alerts.map((a) => <span key={a} className={`status ${SEVERE_ALERTS.includes(a) ? 'status-danger' : 'status-warning'}`}>{a}</span>)}
-                  </div>
-                )}
               </div>
               <form onSubmit={handleSubmit}>
                 <div className="panel-pad stack">
@@ -359,7 +320,7 @@ export default function VitalsEntryPage() {
                           className="tabular"
                           style={{
                             padding: '9px 13px', background: 'var(--surface-2)', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
-                            fontWeight: 600, color: bmi && Number(bmi) > 25 ? 'var(--amber)' : 'var(--text-primary)',
+                            fontWeight: 600, color: 'var(--text-primary)',
                           }}
                         >
                           {bmi || '—'}
@@ -407,25 +368,16 @@ export default function VitalsEntryPage() {
                     const isLatest = idx === 0;
                     const encType = v.encounter_type || v.ENCOUNTER_TYPE || 'OPD';
                     const tempUnit = v.temp_unit || v.TEMP_UNIT || 'F';
-                    const bmiVal = v.bmi || v.BMI;
                     const sys = v.bp_systolic || v.BP_SYSTOLIC;
                     const dia = v.bp_diastolic || v.BP_DIASTOLIC;
                     const items = [
-                      { label: 'BP', value: sys ? `${sys}/${dia}` : null, unit: 'mmHg', abnormal: isAbnormal('bp_systolic', sys) || isAbnormal('bp_diastolic', dia) },
-                      { label: 'Pulse', value: v.pulse || v.PULSE, unit: 'bpm', abnormal: isAbnormal('pulse', v.pulse || v.PULSE) },
-                      { label: 'SpO2', value: v.spo2 || v.SPO2, unit: '%', abnormal: isAbnormal('spo2', v.spo2 || v.SPO2) },
-                      { label: 'Temp', value: v.temperature || v.TEMPERATURE, unit: `°${tempUnit}`, abnormal: isAbnormal('temperature', v.temperature || v.TEMPERATURE, tempUnit) },
+                      { label: 'BP', value: sys ? `${sys}/${dia}` : null, unit: 'mmHg' },
+                      { label: 'Pulse', value: v.pulse || v.PULSE, unit: 'bpm' },
+                      { label: 'SpO2', value: v.spo2 || v.SPO2, unit: '%' },
+                      { label: 'Temp', value: v.temperature || v.TEMPERATURE, unit: `°${tempUnit}` },
                       { label: 'Resp', value: v.respiratory_rate || v.RESPIRATORY_RATE, unit: '/min' },
                       { label: 'Weight', value: v.weight_kg || v.WEIGHT_KG, unit: 'kg' },
                     ];
-                    let recordAlerts = [];
-                    const rawAlerts = v.alerts || v.ALERTS;
-                    if (rawAlerts) {
-                      try {
-                        const parsed = typeof rawAlerts === 'string' ? JSON.parse(rawAlerts) : rawAlerts;
-                        if (Array.isArray(parsed)) recordAlerts = parsed;
-                      } catch (e) { /* ignore malformed alerts */ }
-                    }
                     return (
                       <li
                         key={v.id || idx}
@@ -450,8 +402,7 @@ export default function VitalsEntryPage() {
                             {items.map((item) => (
                               <div key={item.label}>
                                 <div className="fact-label">{item.label}</div>
-                                <div className="fact-value tabular" style={{ fontWeight: 600, color: !item.value ? 'var(--text-muted)' : item.abnormal ? 'var(--red)' : 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                  {item.value && item.abnormal && <TriangleAlert size={13} aria-hidden="true" />}
+                                <div className="fact-value tabular" style={{ fontWeight: 600, color: !item.value ? 'var(--text-muted)' : 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                   {item.value || '—'}
                                   {item.value && <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)' }}>{item.unit}</span>}
                                   {item.value && item.abnormal && <span className="sr-only">(out of range)</span>}

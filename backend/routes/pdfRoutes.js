@@ -76,7 +76,7 @@ function drawLetterhead(doc, hosp, MARGIN, CONTENT) {
 //  PRESCRIPTION PDF
 // ═══════════════════════════════════════════════════════════════
 
-async function generatePrescriptionPDF(prescriptionId, res) {
+async function generatePrescriptionPDF(prescriptionId, res, transaction) {
   const hosp = await getHospitalProfile();
 
   // Fetch prescription data
@@ -87,8 +87,8 @@ async function generatePrescriptionPDF(prescriptionId, res) {
     JOIN HMS_PATIENTS p ON p.ID = pr.PATIENT_ID
     JOIN HMS_USERS u ON u.ID = pr.DOCTOR_ID
     LEFT JOIN HMS_DEPARTMENTS d ON d.ID = u.DEPARTMENT_ID
-    WHERE pr.ID = :id
-  `, { replacements: { id: prescriptionId } });
+    WHERE pr.ID = :id AND pr.facility_id=:facility
+  `, { replacements: { id: prescriptionId,facility:require('../services/facilities.cts').currentFacilityId() },transaction });
 
   if (prescriptions.length === 0) {
     return res.status(404).json({ success: false, message: 'Prescription not found' });
@@ -97,8 +97,8 @@ async function generatePrescriptionPDF(prescriptionId, res) {
 
   // Fetch items
   let [items] = await sequelize.query(
-    `SELECT * FROM HMS_PRESCRIPTION_ITEMS WHERE PRESCRIPTION_ID = :id ORDER BY ID`,
-    { replacements: { id: prescriptionId } }
+    `SELECT * FROM HMS_PRESCRIPTION_ITEMS WHERE PRESCRIPTION_ID = :id AND facility_id=:facility ORDER BY ID`,
+    { replacements: { id: prescriptionId,facility:require('../services/facilities.cts').currentFacilityId() },transaction }
   );
   items = items.map(uppercaseKeys);
 
@@ -106,7 +106,7 @@ async function generatePrescriptionPDF(prescriptionId, res) {
   let [diagnoses] = await sequelize.query(`
     SELECT ICD10_DESCRIPTION FROM HMS_DIAGNOSES
     WHERE ENCOUNTER_ID = (SELECT ENCOUNTER_ID FROM HMS_PRESCRIPTIONS WHERE ID = :id)
-  `, { replacements: { id: prescriptionId } });
+  `, { replacements: { id: prescriptionId },transaction });
   diagnoses = diagnoses.map(uppercaseKeys);
 
   // ── PDF setup ──────────────────────────────────────────────────
@@ -212,7 +212,7 @@ async function generatePrescriptionPDF(prescriptionId, res) {
 
   // Footer
   doc.fontSize(7).font('Helvetica').fillColor('#aaaaaa')
-    .text('This is a computer-generated prescription', MARGIN, sigY + 30, { align: 'left' });
+    .text('Historical record. Review signed coded medication orders before dispensing.', MARGIN, sigY + 30, { align: 'left' });
 
   doc.end();
 }
@@ -500,11 +500,16 @@ router.get('/lab-report/:orderId', protect, checkPermission('lab', 'read'), asyn
 
 router.get('/prescription/:id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'pharmacist'), async (req, res) => {
   try {
-    await generatePrescriptionPDF(req.params.id, res);
+    await sequelize.transaction({isolationLevel:'REPEATABLE READ'},async transaction=>{
+      res.locals.auditPatientId=await require('../services/clinicalReadAccess.cts').historicalPrescription(req.user,'prescription',Number(req.params.id),transaction);
+      res.set('Cache-Control','no-store');
+      await generatePrescriptionPDF(req.params.id, res,transaction);
+    });
   } catch (err) {
     console.error(err);
     if (!res.headersSent) {
-      res.status(500).json({ success: false, message: err.message });
+      const failure=require('../services/clinicalApiErrors.cts').response(err);
+      res.status(failure.status).json(failure.body);
     }
   }
 });

@@ -33,6 +33,17 @@ git show "$LEGACY_REF:backend/init_database.js" > "$LEGACY_SCRIPT"
 DB_NAME="$LEGACY" node "$LEGACY_SCRIPT" > /dev/null
 DB_NAME="$LEGACY" node migrate.js up
 
+# The new clinical-grant authority begins empty. Schema conversion must never
+# manufacture approval events without a responsible actor and request record.
+UNATTRIBUTED_PRIVILEGES=$(psql -d "$FRESH" -Atc "
+  SELECT count(*) FROM audit.row_changes
+   WHERE table_name = 'hms_clinical_privileges' AND operation = 'INSERT'
+     AND actor_user_id IS NULL AND request_id IS NULL")
+if [ "$UNATTRIBUTED_PRIVILEGES" != "0" ]; then
+  echo "FAIL: migration created $UNATTRIBUTED_PRIVILEGES unattributed clinical privilege grants"
+  exit 1
+fi
+
 # Every application table must be audited (migration 0006), except the ones
 # whose rows are not clinical, financial or security events. Terminology
 # concepts are reference content: their audited release row records the

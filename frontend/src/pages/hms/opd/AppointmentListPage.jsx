@@ -11,18 +11,13 @@ import DataTable from '../../../components/ui/DataTable';
 import EmptyState from '../../../components/ui/EmptyState';
 import Modal from '../../../components/ui/Modal';
 import RowMenu from '../../../components/ui/RowMenu';
+import { localYmd } from '../../../utils/localDate';
 
 const STATUSES = ['Scheduled', 'Checked-in', 'Completed', 'No Show', 'Cancelled'];
 const STATUS_TONE = { Scheduled: 'info', 'Checked-in': 'warning', Completed: 'success', 'No Show': 'neutral', Cancelled: 'danger' };
 
-// Local calendar date (not UTC), so the list matches the hospital's day.
-const localYmd = (d = new Date()) => {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
 const shiftDay = (ymd, days) => {
-  const [y, m, d] = ymd.split('-').map(Number);
-  return localYmd(new Date(y, m - 1, d + days));
+  const day=new Date(ymd+'T12:00:00Z');day.setUTCDate(day.getUTCDate()+days);return day.toISOString().slice(0,10);
 };
 const longDate = (ymd) => {
   const [y, m, d] = ymd.split('-').map(Number);

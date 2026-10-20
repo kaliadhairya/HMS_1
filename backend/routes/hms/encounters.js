@@ -11,6 +11,12 @@ const { Op } = require('sequelize');
 
 // Both public API versions call the same typed encounter command.
 const EncounterCommands = require('../../services/clinicalEncounters.cts');
+router.get('/available-visits',protect,checkPermission('consultation','read'),async(req,res)=>{
+ try{
+  const data=await sequelize.transaction({isolationLevel:'REPEATABLE READ'},t=>EncounterCommands.available(Number(req.query.patient_id),req.user,t));
+  res.locals.auditPatientId=Number(req.query.patient_id);res.set('Cache-Control','no-store').json({success:true,data});
+ }catch(error){const failure=require('../../services/clinicalApiErrors.cts').response(error);res.status(failure.status).json(failure.body);}
+});
 router.post('/', protect, checkPermission('consultation','write'), requireCurrentPractitioner, async (req,res) => {
   try {
     const created=await sequelize.transaction(t=>EncounterCommands.create(req.body,req.user,t));

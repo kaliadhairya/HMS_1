@@ -4,6 +4,7 @@ import {
   ClipboardList, Eye, FileText, FlaskConical, Hospital, LogOut, Pencil, Pill, Plus, Printer, Stethoscope, X,
 } from 'lucide-react';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 import Glyph from './ui/Glyph';
 import Modal from './ui/Modal';
 
@@ -92,6 +93,7 @@ const Field = ({ id, label, required, children }) => (
 );
 
 export default function DischargeSummaryModal({ admission, onClose, onDischargeComplete, viewOnly = false }) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [isPreview, setIsPreview] = useState(viewOnly);
   const [confirming, setConfirming] = useState(false);
@@ -156,7 +158,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
         followUpAppointments: JSON.stringify(followUps.filter(f => f.department || f.date)),
       };
       await api.patch(`/ipd/admissions/${admission.ID}/discharge`, payload);
-      toast.success('Patient discharged and summary saved');
+      toast.success('Signed discharge summary saved and patient discharged');
       setConfirming(false);
       if (onDischargeComplete) onDischargeComplete();
     } catch (err) {
@@ -613,13 +615,13 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
       open={confirming}
       onOpenChange={(open) => { if (!open && !loading) setConfirming(false); }}
       title="Discharge this patient?"
-      description="The admission is closed, the bed is released and this summary is saved. It cannot be edited afterwards."
+      description="Your confirmation signs this exact discharge continuity record. The admission and bed change commit with the signature. Later corrections require a linked amendment."
       size="sm"
       footer={(
         <>
           <button type="button" className="btn btn-ghost btn-md" onClick={() => setConfirming(false)} disabled={loading}>Cancel</button>
-          <button type="button" className="btn btn-primary btn-md" onClick={confirmDischarge} disabled={loading}>
-            <LogOut size={16} aria-hidden="true" /> {loading ? 'Discharging…' : 'Confirm discharge'}
+          <button type="button" className="btn btn-primary btn-md" onClick={confirmDischarge} disabled={loading||user?.role!=='doctor'}>
+            <LogOut size={16} aria-hidden="true" /> {loading ? 'Signing and discharging…' : 'Sign summary and discharge'}
           </button>
         </>
       )}

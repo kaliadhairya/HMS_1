@@ -98,6 +98,12 @@ export type DocumentContent = {
   "warning_signs"?: string | null;
   "follow_up"?: string | null;
   "pending_results"?: string | null;
+  "chief_complaint"?: string | null;
+  "comorbidities"?: string | null;
+  "allergies"?: string | null;
+  "historyOfIllness"?: string | null;
+  "investigations"?: string | null;
+  "dietLifestyle"?: string | null;
 } | {
   "assessment"?: string | null;
   "observations"?: string | null;
@@ -151,6 +157,12 @@ export type DocumentCreate = {
   "warning_signs"?: string | null;
   "follow_up"?: string | null;
   "pending_results"?: string | null;
+  "chief_complaint"?: string | null;
+  "comorbidities"?: string | null;
+  "allergies"?: string | null;
+  "historyOfIllness"?: string | null;
+  "investigations"?: string | null;
+  "dietLifestyle"?: string | null;
 };
 } | {
   "patient_id": string;
@@ -215,6 +227,50 @@ export type ClinicalDocument = {
   "content": DocumentContent;
   "signatures": Array<Signature>;
 };
+
+export type ObservationInput = {
+  "code": string;
+  "value": number;
+  "unit_code": string;
+  "method"?: string | null;
+};
+
+export type ObservationCreate = {
+  "patient_id": string;
+  "encounter_id"?: string | null;
+  "admission_id"?: string | null;
+  "observed_at": string;
+  "observations": Array<ObservationInput>;
+  "correction_of"?: string | null;
+  "correction_reason"?: string | null;
+};
+
+export type Observation = {
+  "id": string;
+  "code": string;
+  "code_system": string;
+  "value": number;
+  "unit_code": string | null;
+  "unit_display": string | null;
+  "method": string | null;
+};
+
+export type ObservationSet = {
+  "id": string;
+  "patient_id": string;
+  "encounter_id": string | null;
+  "admission_id": string | null;
+  "context_kind": "encounter" | "admission";
+  "observed_at": string;
+  "recorded_by": string;
+  "facility_id": string;
+  "source": string;
+  "correction_of": string | null;
+  "correction_reason": string | null;
+  "observations": Array<Observation>;
+};
+
+export type ObservationSetList = Array<ObservationSet>;
 
 export type MedicationCreate = {
   "patient_id": string;
@@ -479,5 +535,5 @@ export type Administration = {
   "late_review_id": string | null;
 };
 
-export type CommandResponse<T extends {version:number}> = {success:true;data:T;version:number;operation_id:string};
+export type CommandResponse<T> = {success:true;data:T;version:number;operation_id:string};
 export type ReadResponse<T> = {success:true;data:T};

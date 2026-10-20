@@ -7,6 +7,7 @@
 // Run: cd e2e && NODE_PATH=$(npm root -g) node ipd.e2e.js
 const fs = require('fs');
 const { chromium, BASE, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, inCare} = require('./helpers');
+const {clinicalFixture}=require('./clinicalFixtures');
 
 const { step: baseStep, done } = runner('Inpatient workflow');
 // IPD_DEBUG=1 prints the whole error (call log included) for a failing step.
@@ -49,7 +50,7 @@ const money = (v) => Math.round(Number(v) * 100) / 100;
 
 // Ward preference (admission form option) -> ward, for a ward that has a free bed. Private first: its
 // name ("Private Ward") used to be auto-matched to the "Semi-Private" ward in the admit dialog.
-const PREFS = [['Private', 'Private'], ['ICU', 'ICU'], ['Semi-Private', 'Semi-Private'], ['General Ward', 'General']];
+const PREFS = [['Private', 'Private'], ['ICU', 'ICU'], ['Semi-Private', 'Semi-Private'], ['General Ward', 'General'], ['Maternity', 'Maternity']];
 async function freeBeds() {
   return sql(`SELECT b.id, b.bed_number, b.room_number, w.id AS ward_id, w.name AS ward_name, w.type AS ward_type
     FROM hms_beds b JOIN hms_wards w ON w.id = b.ward_id
@@ -81,6 +82,7 @@ async function newPatient(name, phonePrefix) {
   const as = async (role) => { if (!sessions[role]) sessions[role] = await browserAs(browser, role); return sessions[role]; };
   try {
     await step('Setup: patient and OPD encounter by the doctor (API)', async () => {
+      await clinicalFixture('doctor',['CHART_READ','CLINICAL_SIGN']);
       const doctor = await apiLogin('doctor');
       if (!ctx.patientId) ctx.patientId = await newPatient(ctx.patientName, '6');
       if (!ctx.encounterId) {
@@ -166,6 +168,10 @@ async function newPatient(name, phonePrefix) {
       assert(a.expected_discharge_date, 'expected discharge date (4 days) not set');
       ctx.admissionId = a.id;
       ctx.admissionNo = a.admission_id_formatted;
+      await sql('INSERT INTO hms_med_nursing_responsibility(patient_id,responsible_user_id) VALUES($1,$2) ON CONFLICT(patient_id) DO UPDATE SET responsible_user_id=EXCLUDED.responsible_user_id,handover_id=NULL,revision=hms_med_nursing_responsibility.revision+1,changed_at=now()', [ctx.patientId,ctx.uid.nurse]);
+      const plan=await api('PUT',`/adt/admissions/${ctx.admissionId}/discharge-plan`,{token:await apiLogin('doctor'),body:{destination:'Home',instructions:'Synthetic discharge plan for the E2E workflow'}});
+      assert(plan.status===200,`discharge plan ${plan.status}`);
+      assert((await api('POST',`/adt/admissions/${ctx.admissionId}/discharge-plan/clinically-ready`,{token:await apiLogin('doctor')})).status===200,'clinical readiness');
       const [bed] = await sql('SELECT status FROM hms_beds WHERE id = $1', [ctx.bed.id]);
       const [r] = await sql('SELECT status, admission_id FROM hms_ipd_requests WHERE id = $1', [ctx.requestId]);
       assert(bed.status === 'Occupied' && r.status === 'Admitted' && r.admission_id === a.id, `bed ${bed.status}, request ${JSON.stringify(r)}`);
@@ -232,7 +238,7 @@ async function newPatient(name, phonePrefix) {
       noErrors(await as('nurse'), 'bed board admission');
     });
 
-    await step('Nurse records vitals and fluid balance; trends chart one vital each and flag out-of-range readings', async () => {
+    await step('Nurse records shared observations and fluid balance; trends show readings without inferred ranges', async () => {
       const nurse = await as('nurse');
       const page = nurse.page;
       await page.goto(`${BASE}/ipd/patient/${ctx.admissionId}`, { waitUntil: 'networkidle' });
@@ -275,17 +281,17 @@ async function newPatient(name, phonePrefix) {
       const log = await page.locator('tbody').innerText();
       assert(log.includes('In 700') && log.includes('Out 350') && log.includes('In 0') && log.includes('In 150') && log.includes('Out 400'), `vitals log: ${log}`);
 
-      // Vital trends: one chart per vital, latest value and status, out-of-range readings circled red.
+      // Trends present the measurement; facility-approved reference protocols are not configured here.
       const charts = page.locator('section.chart-card');
       assert(await charts.count() === 5, `expected 5 trend charts, got ${await charts.count()}`);
-      const expect = { Pulse: ['58', 'Low', 2], 'Blood pressure': ['85/55', 'Low', 4], SpO2: ['94', 'Low', 2], Temperature: ['98.4', 'Normal', 1], 'Respiratory rate': ['16', 'Normal', 1] };
-      for (const [title, [latest, status, red]] of Object.entries(expect)) {
+      const expect = { Pulse: '58', 'Blood pressure': '85/55', SpO2: '94', Temperature: '98.4', 'Respiratory rate': '16' };
+      for (const [title, latest] of Object.entries(expect)) {
         const chart = page.locator(`section[aria-label="${title} trend"]`);
         const head = await chart.locator('div').first().innerText();
-        assert(head.includes(latest) && head.includes(status), `${title} chart header "${head}"`);
+        assert(head.includes(latest), `${title} chart header "${head}"`);
         await chart.locator('.recharts-line').first().waitFor({ timeout: 5000 });
-        const n = await chart.locator('circle[stroke="var(--red)"]').count();
-        assert(n === red, `${title}: ${n} out-of-range markers, expected ${red}`);
+        assert(await chart.locator('circle[stroke="var(--red)"]').count()===0,`${title}: inferred abnormal marker rendered`);
+        assert(!/\b(Normal|High|Low)\b/.test(await chart.innerText()),`${title}: unapproved threshold status rendered`);
       }
       noErrors(nurse, 'vitals');
     });
@@ -333,10 +339,11 @@ async function newPatient(name, phonePrefix) {
       }
       await page.getByText(`Improving pneumonia ${s}`).waitFor({ timeout: 10000 });
       await tab(page, 'Nursing');
-      assert(await page.getByRole('button', { name: 'Save nursing note' }).count() === 0, 'doctor sees the nursing note form');
+      assert(await page.getByRole('button', { name: 'Sign and save assessment' }).count() === 0, 'doctor sees the nursing assessment form');
       noErrors(doc, 'progress note');
 
       const nurse = await as('nurse');
+      await clinicalFixture('nurse',['CHART_READ','NURSING_DOCUMENT']);
       page = nurse.page;
       await page.goto(`${BASE}/ipd/patient/${ctx.admissionId}`, { waitUntil: 'networkidle' });
       await page.getByText(`Improving pneumonia ${s}`).waitFor({ timeout: 10000 });
@@ -347,7 +354,7 @@ async function newPatient(name, phonePrefix) {
       await page.getByLabel('Condition summary').fill(`Comfortable, on 2 L oxygen ${s}`);
       await page.getByLabel('Complaints (if any)').fill('Mild chest pain on coughing');
       await page.getByLabel('Actions and care provided').fill('Positioned upright, chest physiotherapy');
-      await page.getByRole('button', { name: 'Save nursing note' }).click();
+      await page.getByRole('button', { name: 'Sign and save assessment' }).click();
       await toast(page, 'Nursing note saved');
       }
       await page.getByText(`Comfortable, on 2 L oxygen ${s}`).waitFor({ timeout: 10000 });
@@ -355,7 +362,8 @@ async function newPatient(name, phonePrefix) {
       assert(!(await page.getByText(`Comfortable, on 2 L oxygen ${s}`).isVisible()), 'nursing note shown under progress notes');
       const [pn] = await sql('SELECT doctor_id, assessment FROM hms_progress_notes WHERE admission_id = $1', [ctx.admissionId]);
       const [nn] = await sql('SELECT nurse_id, condition_notes, complaints FROM hms_nursing_notes WHERE admission_id = $1', [ctx.admissionId]);
-      assert(pn.doctor_id === ctx.uid.doctor && nn.nurse_id === ctx.uid.nurse && nn.complaints === 'Mild chest pain on coughing', `notes ${JSON.stringify([pn, nn])}`);
+      const [signedNote]=await sql('SELECT d.state,count(s.id)::int signatures FROM hms_nursing_notes n JOIN hms_clinical_documents d ON d.id=n.clinical_document_id JOIN hms_document_signatures s ON s.document_id=d.id AND s.version=d.signed_version WHERE n.admission_id=$1 GROUP BY d.id',[ctx.admissionId]);
+      assert(pn.doctor_id === ctx.uid.doctor && nn.nurse_id === ctx.uid.nurse && nn.complaints === 'Mild chest pain on coughing' && signedNote?.state==='signed'&&signedNote.signatures===1, `notes ${JSON.stringify([pn, nn,signedNote])}`);
       noErrors(nurse, 'nursing note');
     });
 
@@ -394,6 +402,7 @@ async function newPatient(name, phonePrefix) {
       assert(await dialog.getByLabel('Final diagnosis').inputValue() === `Pneumonia E2E ${s}`, 'final diagnosis not prefilled from the request');
       await dialog.getByLabel('Course in hospital').fill(`Treated with IV ceftriaxone and oxygen; improved ${s}`);
       await dialog.getByLabel('Condition at discharge').selectOption('Improved');
+      await dialog.getByLabel('Condition details').fill('Afebrile, breathing comfortably on room air, tolerating oral medicines.');
       await dialog.getByLabel('Drug 1').fill('Tab Amoxicillin-clavulanate');
       await dialog.getByLabel('Dose 1').fill('625 mg');
       await dialog.getByLabel('Frequency 1').fill('Twice daily');
@@ -401,8 +410,8 @@ async function newPatient(name, phonePrefix) {
       await dialog.getByLabel('Warning signs').fill('Fever above 101°F, breathlessness');
       await dialog.getByRole('button', { name: 'Discharge patient' }).click();
       const confirm = page.getByRole('dialog', { name: 'Discharge this patient?' });
-      await confirm.getByRole('button', { name: 'Confirm discharge' }).click();
-      await toast(page, 'Patient discharged');
+      await confirm.getByRole('button', { name: 'Sign summary and discharge' }).click();
+      await toast(page, 'Signed discharge summary saved and patient discharged');
       }
       await page.getByRole('button', { name: 'View discharge summary' }).waitFor({ timeout: 10000 });
 
@@ -411,8 +420,10 @@ async function newPatient(name, phonePrefix) {
       const sums = await sql('SELECT * FROM hms_discharge_summaries WHERE admission_id = $1', [ctx.admissionId]);
       assert(a.status === 'Discharged' && a.discharge_date, `admission ${JSON.stringify(a)}`);
       assert(bed.status === 'Dirty', `bed after discharge ${bed.status}`);
-      assert(sums.length === 1 && sums[0].final_diagnosis === `Pneumonia E2E ${s}` && sums[0].discharge_condition === 'Improved' && sums[0].created_by === ctx.uid.doctor
+      assert(sums.length === 1 && sums[0].clinical_document_id && sums[0].final_diagnosis === `Pneumonia E2E ${s}` && sums[0].discharge_condition === 'Improved' && sums[0].created_by === ctx.uid.doctor
         && JSON.parse(sums[0].discharge_medications)[0].drug === 'Tab Amoxicillin-clavulanate', `summary ${JSON.stringify(sums)}`);
+      const [dischargeSignature]=await sql('SELECT d.state,s.digest,s.signed_by FROM hms_clinical_documents d JOIN hms_document_signatures s ON s.document_id=d.id AND s.version=d.signed_version WHERE d.id=$1',[sums[0].clinical_document_id]);
+      assert(dischargeSignature?.state==='signed'&&dischargeSignature.signed_by===ctx.uid.doctor&&dischargeSignature.digest.length===64,'discharge continuity signature missing');
       const again = await api('PATCH', `/ipd/admissions/${ctx.admissionId}/discharge`, { token: await apiLogin('doctor'), body: { finalDiagnosis: 'x' } });
       assert(again.status === 409, `second discharge ${again.status}`);
 

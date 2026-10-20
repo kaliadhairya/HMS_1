@@ -1,3 +1,4 @@
+import { localYmd } from '../utils/localDate';
 import { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import {
@@ -20,11 +21,6 @@ const TABS = [
   { label: 'Doctor performance', icon: Stethoscope },
 ];
 
-// Local calendar date (not UTC), so default ranges match the hospital's day.
-const localYmd = (d = new Date()) => {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
 const daysAgo = (n) => localYmd(new Date(Date.now() - n * 86400000));
 const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
 // Compact Indian notation for chart axes: ₹950, ₹12k, ₹1.2L, ₹3.4Cr.
@@ -37,7 +33,7 @@ const inrCompact = (v) => {
   if (abs >= 1e3) return `₹${trim(n / 1e3)}k`;
   return `₹${Math.round(n)}`;
 };
-const localKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const localKey = localYmd;
 
 function CollectionTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;

@@ -4,7 +4,7 @@ const { QueryTypes } = require('sequelize');
 const router = express.Router();
 const { sequelize, Ward, Bed, Admission, Patient, User, ProgressNote, NursingNote, IpdVitals, IpdRequest } = require('../models');
 const { publish } = require('../utils/outbox');
-const { protect, checkPermission } = require('../middleware/auth');
+const { protect, checkPermission, restrictTo } = require('../middleware/auth');
 const logAction = require('../utils/auditLogger');
 const { clobToString } = require('../utils/clobToString');
 
@@ -602,6 +602,7 @@ router.get('/admissions/:id', protect, checkPermission('ipd', 'read'), async (re
 // summary insert used to be swallowed inside the transaction (Postgres then rolls the whole thing back
 // while the API still answered "discharged").
 router.patch('/admissions/:id/discharge', protect, checkPermission('ipd', 'write'), async (req, res) => {
+  if (req.user.role !== 'doctor') return fail(res, 403, 'A responsible doctor must author and sign the discharge continuity record.');
   const t = await sequelize.transaction();
   const abort = async (status, message) => { await t.rollback(); return fail(res, status, message); };
   try {
@@ -609,14 +610,32 @@ router.patch('/admissions/:id/discharge', protect, checkPermission('ipd', 'write
             chiefComplaint, comorbidities, allergies, historyOfIllness,
             investigations, dischargeMedications, dietLifestyle, warningSigns,
             followUpAppointments } = req.body;
-    const finalDiagnosis = text(req.body.finalDiagnosis);
     const admission = await findAdmission(req.params.id, t, true);
     if (!admission) return abort(404, 'Admission record not found');
+    if (String(admission.FACILITY_ID).toLowerCase() !== String(req.user.facilityId).toLowerCase()) return abort(404, 'Admission record not found');
     if (admission.STATUS !== 'Active') return abort(409, `This admission is already ${String(admission.STATUS).toLowerCase()}.`);
-    if (!finalDiagnosis) return abort(400, 'Final diagnosis is required to discharge.');
-    // A discharge plan, once started, must be clinically ready (migration 0017).
-    const [plan] = await sequelize.query('SELECT clinical_ready_at FROM hms_discharge_plans WHERE admission_id = :admissionId', { replacements: { admissionId: admission.ID }, type: QueryTypes.SELECT, transaction: t });
-    if (plan && !plan.clinical_ready_at) return abort(409, 'The discharge plan is not clinically ready yet.');
+    const Documents = require('../services/clinicalDocuments.cts');
+    const planRows = await sequelize.query('SELECT clinical_ready_at,pending_results,results_owner_user_id FROM hms_discharge_plans WHERE admission_id=:admissionId AND facility_id=:facility FOR SHARE',
+      { replacements: { admissionId: admission.ID,facility:req.user.facilityId }, type: QueryTypes.SELECT, transaction: t });
+    const plan = planRows[0];
+    if (!plan || !plan.clinical_ready_at) return abort(409, 'A clinically ready discharge plan is required.');
+    if (plan.pending_results && !plan.results_owner_user_id) return abort(409, 'Pending results need a named owner before discharge.');
+
+    // The doctor confirms and signs the exact structured document in the same
+    // transaction that closes the admission and occupancy. No unsigned legacy
+    // summary can authorize a discharge.
+    const content = {
+      diagnosis: text(req.body.finalDiagnosis),course: text(courseInHospital),condition: text(conditionAtDischarge),
+      instructions: text(adviceOnDischarge),medicationPlan: text(dischargeMedications),warningSigns: text(warningSigns),
+      followUp: text(followUpAppointments),pendingResults: plan.pending_results || '',
+      chiefComplaint: text(chiefComplaint),comorbidities: text(comorbidities),allergies: text(allergies),
+      historyOfIllness: text(historyOfIllness),investigations: text(investigations),dietLifestyle: text(dietLifestyle),
+    };
+    const doc = await Documents.create({patientId:Number(admission.PATIENT_ID),admissionId:Number(admission.ID),docType:'discharge_summary',content},req.user,t);
+    const signed = await Documents.change(Number(doc.id),req.user,'sign',{},'1',t);
+    const signedRow = await Documents.read(Number(doc.id),req.user,t);
+    if (String(signedRow.draft_content?.pendingResults || '').trim() && !plan.results_owner_user_id)
+      return abort(409, 'Pending results need a named owner before discharge.');
 
     const [[updated]] = await sequelize.query(`
       UPDATE HMS_ADMISSIONS SET DISCHARGE_DATE = CURRENT_TIMESTAMP, STATUS = 'Discharged'
@@ -637,43 +656,50 @@ router.patch('/admissions/:id/discharge', protect, checkPermission('ipd', 'write
         CHIEF_COMPLAINT, COMORBIDITIES, ALLERGIES, HISTORY_OF_ILLNESS,
         INVESTIGATIONS, DISCHARGE_MEDICATIONS, DIET_LIFESTYLE,
         WARNING_SIGNS, FOLLOW_UP_APPOINTMENTS,
-        CREATED_BY, CREATED_AT
+        CREATED_BY, CREATED_AT, CLINICAL_DOCUMENT_ID, FACILITY_ID
       ) VALUES (
         :id, :admId, :fd, :cih, :dc, :aod,
         :cc, :como, :allg, :hoi,
         :inv, :dm, :dl,
         :ws, :fua,
-        :createdBy, CURRENT_TIMESTAMP
+        :createdBy, CURRENT_TIMESTAMP, :documentId, :facility
       )
     `, {
       replacements: {
         id: summaryId,
         admId: admission.ID,
-        fd: finalDiagnosis,
-        cih: courseInHospital || null,
-        dc: conditionAtDischarge || null,
-        aod: adviceOnDischarge || null,
-        cc: chiefComplaint || null,
-        como: comorbidities || null,
-        allg: allergies || null,
-        hoi: historyOfIllness || null,
-        inv: investigations || null,
-        dm: dischargeMedications || null,
-        dl: dietLifestyle || null,
-        ws: warningSigns || null,
-        fua: followUpAppointments || null,
+        fd: content.diagnosis,
+        cih: content.course || null,
+        dc: content.condition || null,
+        aod: content.instructions || null,
+        cc: content.chiefComplaint || null,
+        como: content.comorbidities || null,
+        allg: content.allergies || null,
+        hoi: content.historyOfIllness || null,
+        inv: content.investigations || null,
+        dm: content.medicationPlan || null,
+        dl: content.dietLifestyle || null,
+        ws: content.warningSigns || null,
+        fua: content.followUp || null,
         createdBy: req.user.id,
+        documentId: doc.id,facility:req.user.facilityId,
       },
       transaction: t,
     });
 
-    await t.commit();
-    await logAction(req.user.id, 'UPDATE', 'ipd', admission.ID, null, { action: 'discharge_patient', summaryId }, req.ip);
+    await publish('adt.admission.discharged',`facility:${req.user.facilityId}`,{
+      admission_id:Number(admission.ID),patient_id:Number(admission.PATIENT_ID),summary_id:summaryId,
+      signed_document_id:doc.public_id,signed_version:signed.row.signed_version,
+    },{transaction:t});
 
-    return res.json({ success: true, message: 'Patient discharged successfully', data: { summaryId, dischargeDate: updated?.DISCHARGE_DATE || new Date() } });
+    await t.commit();
+    await logAction(req.user.id, 'UPDATE', 'ipd', admission.ID, null, { action: 'discharge_patient', summaryId,signedDocumentId:doc.public_id }, req.ip);
+
+    return res.json({ success: true, message: 'Patient discharged with signed continuity record.', data: { summaryId,clinicalDocumentId:doc.public_id,signatureDigest:signed.digest,dischargeDate: updated?.DISCHARGE_DATE || new Date() } });
   } catch (err) {
     await t.rollback().catch(() => {});
     console.error(err);
+    if(err.status)return fail(res,err.status,err.message,err.code);
     return fail(res, 500, 'Failed to discharge patient');
   }
 });
@@ -780,58 +806,63 @@ router.get('/progress-notes/:admissionId', protect, checkPermission('ipd', 'read
   }
 });
 
-router.post('/nursing-notes', protect, checkPermission('ipd', 'write'), async (req, res) => {
+router.post('/nursing-notes', protect, restrictTo('nurse'), checkPermission('ipd', 'write'), async (req, res) => {
+  const transaction=await sequelize.transaction();
   try {
-    if (!['nurse', 'admin', 'super_admin'].includes(req.user.role)) return fail(res, 403, 'Only nursing staff write nursing notes.');
-    const conditionNotes = text(req.body.conditionNotes || req.body.noteText || req.body.note_text);
-    const complaints = text(req.body.complaints);
-    const actionsTaken = text(req.body.actionsTaken || req.body.actions_taken);
-    if (!conditionNotes) return fail(res, 400, 'Condition summary is required.');
-    const admission = await activeAdmissionOr(res, req.body.admissionId || req.body.admission_id);
-    if (!admission) return undefined;
-
-    const note = await NursingNote.create({
-      id: await nextId('hms_nursing_seq', 'HMS_NURSING_NOTES'),
-      admissionId: Number(admission.ID),
-      nurseId: req.user.id,
-      conditionNotes,
-      complaints: complaints || null,
-      actionsTaken: actionsTaken || null,
-      noteDate: new Date(),
-    });
-    return res.status(201).json({ success: true, data: note });
-  } catch (err) {
-    console.error('Failed to save nursing note:', err);
-    return fail(res, 500, 'Failed to save nursing note');
+    const conditionNotes=text(req.body.conditionNotes||req.body.noteText||req.body.note_text),complaints=text(req.body.complaints),actionsTaken=text(req.body.actionsTaken||req.body.actions_taken);
+    if(!conditionNotes){await transaction.rollback();return fail(res,400,'Condition summary is required.');}
+    const admission=await findAdmission(req.body.admissionId||req.body.admission_id,transaction,true);
+    if(!admission||String(admission.FACILITY_ID).toLowerCase()!==String(req.user.facilityId).toLowerCase()){await transaction.rollback();return fail(res,404,'Admission record not found.');}
+    if(admission.STATUS!=='Active'){await transaction.rollback();return fail(res,409,'This patient has been discharged; the chart is read-only.');}
+    const Documents=require('../services/clinicalDocuments.cts');
+    const document=await Documents.create({patientId:Number(admission.PATIENT_ID),admissionId:Number(admission.ID),docType:'nursing_assessment',
+      content:{assessment:conditionNotes,observations:complaints||'',actions:actionsTaken||''}},req.user,transaction);
+    const signature=await Documents.change(Number(document.id),req.user,'sign',{},'1',transaction);
+    const [rows]=await sequelize.query(`INSERT INTO HMS_NURSING_NOTES
+      (ID,ADMISSION_ID,NURSE_ID,NOTE_DATE,CONDITION_NOTES,COMPLAINTS,ACTIONS_TAKEN,CLINICAL_DOCUMENT_ID)
+      VALUES(:id,:admission,:nurse,CURRENT_TIMESTAMP,:condition,:complaints,:actions,:document) RETURNING *`,{
+      replacements:{id:await nextId('hms_nursing_seq','HMS_NURSING_NOTES',transaction),admission:Number(admission.ID),nurse:req.user.id,
+        condition:conditionNotes,complaints:complaints||null,actions:actionsTaken||null,document:Number(document.id)},transaction});
+    await transaction.commit();
+    return res.status(201).json({success:true,data:{...rows[0],is_signed:true,clinical_document_id:document.public_id,signature_digest:signature.digest}});
+  }catch(err){
+    await transaction.rollback().catch(()=>{});console.error('Failed to save nursing note:',err);
+    if(err.status)return fail(res,err.status,err.message,err.code);return fail(res,500,'Failed to save nursing note');
   }
 });
 
 router.get('/nursing-notes/:admissionId', protect, checkPermission('ipd', 'read'), async (req, res) => {
+  const transaction=await sequelize.transaction({isolationLevel:'REPEATABLE READ'});
   try {
-    const [notes] = await sequelize.query(`
-      SELECT n.*, u.NAME as NURSE_NAME
-      FROM HMS_NURSING_NOTES n
-      LEFT JOIN HMS_USERS u ON u.ID = n.NURSE_ID
-      WHERE n.ADMISSION_ID = :admissionId
-      ORDER BY n.NOTE_DATE DESC
-    `, { replacements: { admissionId: req.params.admissionId } });
-
-    for (let note of notes) {
-      if (note.CONDITION_NOTES) {
-        note.CONDITION_NOTES = await clobToString(note.CONDITION_NOTES);
-      }
-      if (note.COMPLAINTS) {
-        note.COMPLAINTS = await clobToString(note.COMPLAINTS);
-      }
-      if (note.ACTIONS_TAKEN) {
-        note.ACTIONS_TAKEN = await clobToString(note.ACTIONS_TAKEN);
-      }
-      note.NOTE_TEXT = note.CONDITION_NOTES || '';
+    const admission=await findAdmission(req.params.admissionId,transaction);
+    if(!admission||String(admission.FACILITY_ID).toLowerCase()!==String(req.user.facilityId).toLowerCase()){
+      await transaction.rollback();return fail(res,404,'Admission record not found.');
     }
-    res.json({ success: true, data: (notes || []).map(normalizeRowKeys) });
-  } catch (err) {
-    console.error('Failed to fetch nursing notes:', err);
-    res.status(500).json({ success: false, message: 'Failed to fetch notes' });
+    const Documents=require('../services/clinicalDocuments.cts');
+    await Documents.authorize(req.user,Number(admission.PATIENT_ID),'nursing_assessment',false,transaction);
+    const [notes]=await sequelize.query(`SELECT n.*,u.NAME AS NURSE_NAME,d.id AS SIGNED_DOCUMENT_INTERNAL_ID,
+      d.public_id AS SIGNED_DOCUMENT_ID FROM HMS_NURSING_NOTES n
+      LEFT JOIN HMS_USERS u ON u.ID=n.NURSE_ID
+      LEFT JOIN hms_clinical_documents d ON d.id=n.clinical_document_id AND d.facility_id=n.facility_id AND d.state='signed'
+      WHERE n.ADMISSION_ID=:admissionId AND n.FACILITY_ID=:facility ORDER BY n.NOTE_DATE DESC,n.ID DESC`,
+      {replacements:{admissionId:req.params.admissionId,facility:req.user.facilityId},transaction});
+    for(const note of notes){
+      if(note.CONDITION_NOTES)note.CONDITION_NOTES=await clobToString(note.CONDITION_NOTES);
+      if(note.COMPLAINTS)note.COMPLAINTS=await clobToString(note.COMPLAINTS);
+      if(note.ACTIONS_TAKEN)note.ACTIONS_TAKEN=await clobToString(note.ACTIONS_TAKEN);
+      note.NOTE_TEXT=note.CONDITION_NOTES||'';note.IS_SIGNED=Boolean(note.SIGNED_DOCUMENT_INTERNAL_ID);note.CLINICAL_DOCUMENT_ID=note.SIGNED_DOCUMENT_ID||null;
+      if(note.SIGNED_DOCUMENT_INTERNAL_ID){
+        const signed=await Documents.read(Number(note.SIGNED_DOCUMENT_INTERNAL_ID),req.user,transaction);
+        const [sig]=await sequelize.query('SELECT digest FROM hms_document_signatures WHERE document_id=:id AND version=:version AND facility_id=:facility',
+          {replacements:{id:note.SIGNED_DOCUMENT_INTERNAL_ID,version:signed.signed_version,facility:req.user.facilityId},transaction,type:QueryTypes.SELECT});
+        note.SIGNATURE_DIGEST=sig?.digest||null;
+      }
+      delete note.SIGNED_DOCUMENT_INTERNAL_ID;delete note.SIGNED_DOCUMENT_ID;
+    }
+    await transaction.commit();res.json({success:true,data:notes.map(normalizeRowKeys)});
+  }catch(err){
+    await transaction.rollback().catch(()=>{});console.error('Failed to fetch nursing notes:',err);
+    if(err.status)return fail(res,err.status,err.message,err.code);res.status(500).json({success:false,message:'Failed to fetch notes'});
   }
 });
 
@@ -892,10 +923,14 @@ router.post('/vitals', protect, checkPermission('ipd', 'write'), async (req, res
 
 router.get('/vitals/:admissionId', protect, checkPermission('ipd', 'read'), async (req, res) => {
   try {
-    const v = await IpdVitals.findAll({
-      where: { admissionId: req.params.admissionId },
-      order: [['recordedAt', 'DESC']]
-    });
+    const [v] = await sequelize.query(`SELECT id,admission_id AS "admissionId",patient_id AS "patientId",
+      recorded_by AS "recordedBy",recorded_at AS "recordedAt",bp_systolic AS "bpSystolic",bp_diastolic AS "bpDiastolic",
+      temperature,spo2,pulse,respiratory_rate AS "respiratoryRate",pain_score AS "painScore",
+      COALESCE(intake_oral_ml,0) AS "intakeOralMl",COALESCE(intake_iv_ml,0) AS "intakeIvMl",
+      COALESCE(output_urine_ml,0) AS "outputUrineMl",COALESCE(output_drain_ml,0) AS "outputDrainMl",
+      source_kind AS "sourceKind",public_id AS "publicId"
+      FROM hms_observation_legacy_vitals WHERE admission_id=:admissionId AND facility_id=:facility
+      ORDER BY recorded_at DESC,id DESC`,{replacements:{admissionId:req.params.admissionId,facility:req.user.facilityId}});
     res.json({ success: true, data: v });
   } catch (err) {
     console.error(err);
@@ -905,10 +940,14 @@ router.get('/vitals/:admissionId', protect, checkPermission('ipd', 'read'), asyn
 
 router.get('/vitals/patient/:patientId', protect, checkPermission('ipd', 'read'), async (req, res) => {
   try {
-    const v = await IpdVitals.findAll({
-      where: { patientId: req.params.patientId },
-      order: [['recordedAt', 'DESC']]
-    });
+    const [v] = await sequelize.query(`SELECT id,admission_id AS "admissionId",patient_id AS "patientId",
+      recorded_by AS "recordedBy",recorded_at AS "recordedAt",bp_systolic AS "bpSystolic",bp_diastolic AS "bpDiastolic",
+      temperature,spo2,pulse,respiratory_rate AS "respiratoryRate",pain_score AS "painScore",
+      COALESCE(intake_oral_ml,0) AS "intakeOralMl",COALESCE(intake_iv_ml,0) AS "intakeIvMl",
+      COALESCE(output_urine_ml,0) AS "outputUrineMl",COALESCE(output_drain_ml,0) AS "outputDrainMl",
+      source_kind AS "sourceKind",public_id AS "publicId"
+      FROM hms_observation_legacy_vitals WHERE patient_id=:patientId AND admission_id IS NOT NULL AND facility_id=:facility
+      ORDER BY recorded_at DESC,id DESC`,{replacements:{patientId:req.params.patientId,facility:req.user.facilityId}});
     res.json({ success: true, data: v });
   } catch (err) {
     console.error(err);

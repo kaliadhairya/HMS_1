@@ -265,7 +265,7 @@ export default function App() {
               </HMSProtectedRoute>
             } />
             <Route path="/hms/notes/:id" element={
-              <HMSProtectedRoute allowedRoles={['doctor']}>
+              <HMSProtectedRoute allowedRoles={['doctor','nurse']}>
                 <ClinicalNotePage />
               </HMSProtectedRoute>
             } />

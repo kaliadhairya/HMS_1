@@ -38,6 +38,14 @@ const app = express();
 // Database audit triggers attribute every row change to the request's user (migration 0006).
 bindAuditActor(sequelize);
 app.use(requestContext);
+// B8: while this instance drains for a release, new requests are refused with a
+// retry hint; health and readiness stay answerable so the balancer sees the drain.
+let draining = false;
+app.use((req, res, next) => {
+  if (!draining || req.path === '/api/health' || req.path === '/api/ready' || req.path === '/metrics') return next();
+  res.set('Retry-After', '5').set('Connection', 'close');
+  return res.status(503).json({ success: false, code: 'SERVICE_DRAINING', message: 'This HMS instance is draining for a release. Retry shortly.' });
+});
 const trustProxy = process.env.TRUST_PROXY || '1';
 const numericTrustProxy = Number(trustProxy);
 app.set('trust proxy', Number.isInteger(numericTrustProxy) && numericTrustProxy >= 0 ? numericTrustProxy : (trustProxy === 'true' ? true : trustProxy));
@@ -231,6 +239,7 @@ app.get('/api/health', (req, res) => {
 
 // Readiness: the database answers within two seconds.
 app.get('/api/ready', async (req, res) => {
+  if (draining) return res.status(503).json({ status: 'draining', reason: 'this instance is draining for a release' });
   let timer;
   try {
     const fence = await Promise.race([
@@ -343,6 +352,29 @@ async function start() {
   server.listen(PORT, process.env.BACKEND_HOST || '0.0.0.0', () => {
     console.log(`🚀 Server running on http://${process.env.BACKEND_HOST || '0.0.0.0'}:${PORT}`);
   });
+  // B8: a release stops this instance cleanly. It refuses new work and reports
+  // not-ready, finishes in-flight requests within HMS_DRAIN_TIMEOUT_MS, then
+  // closes the database. Exit 0 means every request finished; 1 means it was cut off.
+  let stopping = null;
+  const drain = (signal) => {
+    if (stopping) return stopping;
+    draining = true;
+    const timeoutMs = Math.max(1000, Number(process.env.HMS_DRAIN_TIMEOUT_MS) || 25000);
+    console.log(`${signal}: draining. New requests are refused; waiting up to ${timeoutMs} ms for in-flight requests.`);
+    const graceMs = Math.max(0, Number(process.env.HMS_DRAIN_GRACE_MS) || 0);
+    stopping = new Promise((resolve) => setTimeout(resolve, graceMs)).then(() => new Promise((resolve) => {
+      const force = setTimeout(() => { server.closeAllConnections(); resolve(false); }, timeoutMs);
+      server.close(() => { clearTimeout(force); resolve(true); });
+      server.closeIdleConnections();
+    })).then(async (finished) => {
+      await sequelize.close().catch(() => {});
+      console.log(finished ? 'Drain complete.' : 'Drain timeout: remaining connections were closed.');
+      process.exit(finished ? 0 : 1);
+    });
+    return stopping;
+  };
+  process.once('SIGTERM', () => drain('SIGTERM'));
+  process.once('SIGINT', () => drain('SIGINT'));
   // Sockets live in this process, so their delivery and session checks run here.
   startOutboxDispatcher(io);
   startSocketSessionGuard(io);

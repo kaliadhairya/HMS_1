@@ -101,6 +101,7 @@ export default function PrescriptionPreviewPage() {
     <div className="prescription-preview-page" style={{ background: '#fff', minHeight: '100vh', padding: '40px 0', fontFamily: PRINT_FONTS, color: '#000' }}>
       
       <div className="prescription-preview-sheet" style={{ maxWidth: 800, margin: '0 auto', border: '1px solid #ccc', padding: 40, position: 'relative', color: '#000', background: '#fff' }}>
+        <p role="note" style={{border:'1px solid #555',padding:8}}>Historical prescription record. Review signed coded medication orders before dispensing or administering medicines.</p>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0f4c81', paddingBottom: 20, marginBottom: 20 }}>

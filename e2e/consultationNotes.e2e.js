@@ -75,14 +75,15 @@ const tag=crypto.randomUUID().slice(0,8);
   const browser=await chromium.launch();let ui;
   try{
    ui=await browserAs(browser,'doctor');await ui.page.goto(BASE+'/doctor/quick-consult',{waitUntil:'domcontentloaded'});
+   const [existing]=await sql("SELECT id,record_revision FROM hms_encounters WHERE patient_id=$1 AND status='Draft' ORDER BY id DESC LIMIT 1",[pid]);assert(existing,'Expected the previously saved open draft');
    await ui.page.getByPlaceholder('Search patient name, ID or UHID').fill('NOTE-'+tag);
    const loaded=ui.page.waitForResponse(r=>r.url().includes('/api/medication/orders?encounter_id=')&&r.status()===200);
    await ui.page.locator('button.list-row').filter({hasText:'Synthetic note '+tag}).click();await loaded;
    await ui.page.getByLabel('Chief complaint',{exact:true}).fill('Synthetic quick consultation reviewed');
    await ui.page.getByRole('button',{name:'Finalize and close',exact:true}).click();
    await ui.page.getByPlaceholder('Search patient name, ID or UHID').waitFor();
-   const [r]=await sql("SELECT e.status,e.record_revision,count(s.id)::int AS signatures FROM hms_encounters e LEFT JOIN hms_document_signatures s ON s.document_id=e.notes_document_id WHERE e.patient_id=$1 AND e.chief_complaint='Synthetic quick consultation reviewed' GROUP BY e.id",[pid]);
-   assert(r&&r.status==='Finalized'&&r.record_revision===3&&r.signatures===1,'Quick Consult did not save/sign exactly once');
+   const [r]=await sql("SELECT e.id,e.status,e.record_revision,count(s.id)::int AS signatures FROM hms_encounters e LEFT JOIN hms_document_signatures s ON s.document_id=e.notes_document_id WHERE e.patient_id=$1 AND e.chief_complaint='Synthetic quick consultation reviewed' GROUP BY e.id",[pid]);
+   assert(r&&r.id===existing.id&&r.status==='Finalized'&&r.record_revision===existing.record_revision+2&&r.signatures===1,'Quick Consult did not resume/save/sign the exact existing draft once');
    assert(ui.errors.length===0,'Quick Consult errors '+ui.errors.join('; '));
   }finally{if(ui)await ui.ctx.close();await browser.close();}
  });

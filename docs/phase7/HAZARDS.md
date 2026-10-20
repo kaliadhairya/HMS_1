@@ -65,7 +65,7 @@ Acceptance: Integrate Phase 6 and all accepted fixes, then run the complete regr
 
 Required evidence: ENGINEERING_TEST, INDEPENDENT_REVIEW, OWNER_REVIEW.
 
-Tests: [backend/scripts/verify-phase45.js](../../backend/scripts/verify-phase45.js), [backend/scripts/verify-migrations.sh](../../backend/scripts/verify-migrations.sh), [backend/tests/phase1.integration.test.js](../../backend/tests/phase1.integration.test.js)
+Tests: [scripts/verify-clinical-final.cjs](../../scripts/verify-clinical-final.cjs), [backend/scripts/verify-migrations.sh](../../backend/scripts/verify-migrations.sh), [backend/tests/phase1.integration.test.js](../../backend/tests/phase1.integration.test.js)
 
 Procedure: [docs/phase7/ACCEPTANCE.md#engineering-acceptance](../../docs/phase7/ACCEPTANCE.md#engineering-acceptance).
 
@@ -81,7 +81,7 @@ Required evidence: ENGINEERING_TEST, TARGET_VALIDATION, OWNER_REVIEW.
 
 Tests: [e2e/sessions.e2e.js](../../e2e/sessions.e2e.js), [e2e/authorization.e2e.js](../../e2e/authorization.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R01](../../docs/phase7/REHEARSALS.md#R01).
+Procedure: [docs/phase7/REHEARSALS.md#r01](../../docs/phase7/REHEARSALS.md#r01).
 
 ## G04: Patient scope and private documents
 
@@ -93,9 +93,9 @@ Acceptance: Wrong role/facility/patient/credential and unauthorized document/exp
 
 Required evidence: ENGINEERING_TEST, TARGET_VALIDATION, OWNER_REVIEW.
 
-Tests: [e2e/authorization.e2e.js](../../e2e/authorization.e2e.js), [e2e/careTeam.e2e.js](../../e2e/careTeam.e2e.js), [e2e/patientIdentity.e2e.js](../../e2e/patientIdentity.e2e.js), [e2e/practitioners.e2e.js](../../e2e/practitioners.e2e.js), [e2e/clinicalDocuments.e2e.js](../../e2e/clinicalDocuments.e2e.js)
+Tests: [e2e/authorization.e2e.js](../../e2e/authorization.e2e.js), [e2e/careTeam.e2e.js](../../e2e/careTeam.e2e.js), [e2e/patientIdentity.e2e.js](../../e2e/patientIdentity.e2e.js), [e2e/practitioners.e2e.js](../../e2e/practitioners.e2e.js), [e2e/clinicalDocuments.e2e.js](../../e2e/clinicalDocuments.e2e.js), [e2e/historicalPrescriptionSafety.e2e.js](../../e2e/historicalPrescriptionSafety.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R01](../../docs/phase7/REHEARSALS.md#R01).
+Procedure: [docs/phase7/REHEARSALS.md#r01](../../docs/phase7/REHEARSALS.md#r01).
 
 ## G05: Identity, signing and corrections
 
@@ -109,7 +109,7 @@ Required evidence: ENGINEERING_TEST, STAFF_REHEARSAL, OWNER_REVIEW.
 
 Tests: [e2e/patientIdentity.e2e.js](../../e2e/patientIdentity.e2e.js), [e2e/patientMerge.e2e.js](../../e2e/patientMerge.e2e.js), [e2e/clinicalDocuments.e2e.js](../../e2e/clinicalDocuments.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R02](../../docs/phase7/REHEARSALS.md#R02).
+Procedure: [docs/phase7/REHEARSALS.md#r02](../../docs/phase7/REHEARSALS.md#r02).
 
 ## G06: Scheduling and service-day boundaries
 
@@ -123,7 +123,7 @@ Required evidence: ENGINEERING_TEST, STAFF_REHEARSAL, OWNER_REVIEW.
 
 Tests: [e2e/scheduling.e2e.js](../../e2e/scheduling.e2e.js), [e2e/opd.e2e.js](../../e2e/opd.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R03](../../docs/phase7/REHEARSALS.md#R03).
+Procedure: [docs/phase7/REHEARSALS.md#r03](../../docs/phase7/REHEARSALS.md#r03).
 
 ## G07: Coded medication orders and approved CDS
 
@@ -137,7 +137,7 @@ Required evidence: CLINICAL_POLICY, ENGINEERING_TEST, STAFF_REHEARSAL, OWNER_REV
 
 Tests: [e2e/medication.e2e.js](../../e2e/medication.e2e.js), [e2e/medicationGuards.e2e.js](../../e2e/medicationGuards.e2e.js), [e2e/medicationFrontend.e2e.js](../../e2e/medicationFrontend.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R04](../../docs/phase7/REHEARSALS.md#R04).
+Procedure: [docs/phase7/REHEARSALS.md#r04](../../docs/phase7/REHEARSALS.md#r04).
 
 ## G08: Lot provenance and stock reconciliation
 
@@ -151,7 +151,7 @@ Required evidence: ENGINEERING_TEST, RECONCILIATION, OWNER_REVIEW.
 
 Tests: [e2e/pharmacy.e2e.js](../../e2e/pharmacy.e2e.js), [e2e/medicationGuards.e2e.js](../../e2e/medicationGuards.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R04](../../docs/phase7/REHEARSALS.md#R04).
+Procedure: [docs/phase7/REHEARSALS.md#r04](../../docs/phase7/REHEARSALS.md#r04).
 
 ## G09: Governed laboratory loop
 
@@ -165,7 +165,7 @@ Required evidence: CLINICAL_POLICY, ENGINEERING_TEST, STAFF_REHEARSAL, OWNER_REV
 
 Tests: [e2e/laboratory.e2e.js](../../e2e/laboratory.e2e.js), [e2e/laboratoryGuards.e2e.js](../../e2e/laboratoryGuards.e2e.js), [e2e/laboratoryFrontend.e2e.js](../../e2e/laboratoryFrontend.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R05](../../docs/phase7/REHEARSALS.md#R05).
+Procedure: [docs/phase7/REHEARSALS.md#r05](../../docs/phase7/REHEARSALS.md#r05).
 
 ## G10: Critical results and owned handoffs
 
@@ -179,7 +179,7 @@ Required evidence: TARGET_VALIDATION, STAFF_REHEARSAL, OWNER_REVIEW.
 
 Tests: [e2e/laboratoryWorker.e2e.js](../../e2e/laboratoryWorker.e2e.js), [e2e/referrals.e2e.js](../../e2e/referrals.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R06](../../docs/phase7/REHEARSALS.md#R06).
+Procedure: [docs/phase7/REHEARSALS.md#r06](../../docs/phase7/REHEARSALS.md#r06).
 
 ## G11: Approved prices and balanced episode finance
 
@@ -193,7 +193,7 @@ Required evidence: CLINICAL_POLICY, ENGINEERING_TEST, RECONCILIATION, OWNER_REVI
 
 Tests: [e2e/finance.e2e.js](../../e2e/finance.e2e.js), [e2e/phase45.e2e.js](../../e2e/phase45.e2e.js), [e2e/ipdDrafts.e2e.js](../../e2e/ipdDrafts.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R07](../../docs/phase7/REHEARSALS.md#R07).
+Procedure: [docs/phase7/REHEARSALS.md#r07](../../docs/phase7/REHEARSALS.md#r07).
 
 ## G12: Durable outcomes and named failure owners
 
@@ -207,7 +207,7 @@ Required evidence: ENGINEERING_TEST, TARGET_VALIDATION, OWNER_REVIEW.
 
 Tests: [e2e/idempotency.e2e.js](../../e2e/idempotency.e2e.js), [e2e/durability.e2e.js](../../e2e/durability.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R08](../../docs/phase7/REHEARSALS.md#R08).
+Procedure: [docs/phase7/REHEARSALS.md#r08](../../docs/phase7/REHEARSALS.md#r08).
 
 ## G13: Audit integrity and protected checkpoint completeness
 
@@ -219,9 +219,9 @@ Acceptance: Test tampering/deletion, absent/unshipped/late remote records and wr
 
 Required evidence: ENGINEERING_TEST, TARGET_VALIDATION, OWNER_REVIEW.
 
-Tests: [e2e/audit.e2e.js](../../e2e/audit.e2e.js)
+Tests: [e2e/audit.e2e.js](../../e2e/audit.e2e.js), [scripts/verify-audit-protection.cjs](../../scripts/verify-audit-protection.cjs)
 
-Procedure: [docs/phase7/REHEARSALS.md#R09](../../docs/phase7/REHEARSALS.md#R09).
+Procedure: [docs/phase7/REHEARSALS.md#r09](../../docs/phase7/REHEARSALS.md#r09).
 
 ## G14: Verified restore and fenced regional recovery
 
@@ -233,9 +233,9 @@ Acceptance: Validate deployed WAL/base backup protection and actual artifact che
 
 Required evidence: ENGINEERING_TEST, REGIONAL_DRILL, TARGET_VALIDATION, OWNER_REVIEW.
 
-Tests: [scripts/backup-db.sh](../../scripts/backup-db.sh), [scripts/restore-check.sh](../../scripts/restore-check.sh)
+Tests: [scripts/backup-db.sh](../../scripts/backup-db.sh), [scripts/restore-check.sh](../../scripts/restore-check.sh), [e2e/recoveryDrill.e2e.js](../../e2e/recoveryDrill.e2e.js), [backend/tests/logicalBackup.integration.test.js](../../backend/tests/logicalBackup.integration.test.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R10](../../docs/phase7/REHEARSALS.md#R10).
+Procedure: [docs/phase7/REHEARSALS.md#r10](../../docs/phase7/REHEARSALS.md#r10).
 
 ## G15: Usable downtime kit and paper reconciliation
 
@@ -247,9 +247,9 @@ Acceptance: Demonstrate kit/key distribution to actual ward equipment, stale-cop
 
 Required evidence: TARGET_VALIDATION, STAFF_REHEARSAL, OWNER_REVIEW.
 
-Tests: Phase 6/new clinical or operational acceptance; evidence pending.
+Tests: [e2e/downtime.e2e.js](../../e2e/downtime.e2e.js), [e2e/downtimeDrill.e2e.js](../../e2e/downtimeDrill.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R11](../../docs/phase7/REHEARSALS.md#R11).
+Procedure: [docs/phase7/REHEARSALS.md#r11](../../docs/phase7/REHEARSALS.md#r11).
 
 ## G16: Consent, terminology and real exchange
 
@@ -261,9 +261,9 @@ Acceptance: Test FHIR/profile validation, approved mappings, expiry/revocation, 
 
 Required evidence: ENGINEERING_TEST, REAL_EXCHANGE, CLINICAL_POLICY, OWNER_REVIEW.
 
-Tests: Phase 6/new clinical or operational acceptance; evidence pending.
+Tests: [e2e/abdm.e2e.js](../../e2e/abdm.e2e.js), [e2e/abdmUse.e2e.js](../../e2e/abdmUse.e2e.js), [e2e/clinicalExchange.e2e.js](../../e2e/clinicalExchange.e2e.js)
 
-Procedure: [docs/phase7/REHEARSALS.md#R12](../../docs/phase7/REHEARSALS.md#R12).
+Procedure: [docs/phase7/REHEARSALS.md#r12](../../docs/phase7/REHEARSALS.md#r12).
 
 ## G17: 6F analyzer compatibility
 
@@ -275,7 +275,7 @@ Acceptance: Review actual 6F source and tests against Phase 4, including multi-r
 
 Required evidence: ENGINEERING_TEST, INDEPENDENT_REVIEW, OWNER_REVIEW.
 
-Tests: [backend/services/laboratoryAnalyzer.js](../../backend/services/laboratoryAnalyzer.js), [e2e/laboratory.e2e.js](../../e2e/laboratory.e2e.js), [e2e/laboratoryGuards.e2e.js](../../e2e/laboratoryGuards.e2e.js)
+Tests: [backend/services/laboratoryAnalyzer.js](../../backend/services/laboratoryAnalyzer.js), [e2e/devices.e2e.js](../../e2e/devices.e2e.js), [backend/tests/deviceScope.integration.test.js](../../backend/tests/deviceScope.integration.test.js)
 
 Procedure: [docs/phase7/6F_REVIEW.md#review-procedure](../../docs/phase7/6F_REVIEW.md#review-procedure).
 

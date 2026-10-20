@@ -49,7 +49,8 @@ function validate(record) {
     }
   }
   for (const [id, { gate, evidence: e }] of ids) {
-    for (const priorId of e.supersedes || []) {
+    if (!Array.isArray(e.supersedes)) continue; // reported above as an invalid supersession list
+    for (const priorId of e.supersedes) {
       const prior = ids.get(priorId);
       if (!prior || priorId === id || prior.gate.id !== gate.id || prior.evidence.kind !== e.kind || prior.evidence.stage !== e.stage ||
           Date.parse(prior.evidence.observed_at) >= Date.parse(e.observed_at) ||

@@ -418,25 +418,11 @@ async function until(fn, message, timeout = 10000) {
         });
         assert(e.status === 201, `encounter ${e.status}`);
         ctx.encounterId = e.data.id;
-        const pr = await api("POST", "/hms/prescriptions", {
-          token: doc,
-          body: { encounter_id: ctx.encounterId, patient_id: ctx.patientId },
-        });
-        ctx.rxId = pr.data.id;
-        const saved = await api("PUT", `/hms/prescriptions/${ctx.rxId}/items`, {
-          token: doc,
-          body: {
-            items: [
-              {
-                medicine_name: ctx.medName,
-                dose: "4",
-                dose_unit: "mg",
-                frequency: "TDS",
-              },
-              { medicine_name: ctx.freeText },
-            ],
-          },
-        });
+        const [doctorRow]=await sql("SELECT id FROM hms_users WHERE username='doctor'");
+        const pr=await require('./historicalPrescriptionFixture').historicalPrescription({patientId:ctx.patientId,encounterId:ctx.encounterId,doctorId:doctorRow.id,items:[{medicine_name:ctx.medName,dose:'4',dose_unit:'mg',frequency:'TDS'},{medicine_name:ctx.freeText}]});
+        ctx.rxId=pr.id;
+        const historical=await api('GET',`/hms/prescriptions/${ctx.rxId}`,{token:doc});
+        const saved={status:historical.status,data:historical.data.data?.items};
         assert(
           saved.status === 200 &&
             saved.data.every((l) => l.legacy && l.medicine_id === null),

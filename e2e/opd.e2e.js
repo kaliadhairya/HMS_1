@@ -143,7 +143,7 @@ async function pickPatient(page, query, name) {
       await row.first().getByRole('button', { name: 'Check in' }).click();
       const a = await waitFor(async () => {
         // The page books for the browser's local day, which is not the database's UTC day after midnight IST.
-        const [r] = await sql("SELECT id, status, slot_start, department_id FROM hms_appointments WHERE patient_id = $1 AND appointment_date::date = $2::date", [state.patient.id, new Date().toLocaleDateString('en-CA')]);
+        const [r] = await sql("SELECT id, status, slot_start, department_id FROM hms_appointments WHERE patient_id = $1 AND appointment_date::date = hms_service_today()", [state.patient.id]);
         return r && r.status === 'Checked-in' ? r : null;
       }, 'appointment check-in');
       assert(a.slot_start === slotText, `slot ${a.slot_start} != ${slotText}`);
@@ -153,7 +153,7 @@ async function pickPatient(page, query, name) {
 
     // ── 3. Nurse vitals ─────────────────────────────────────────────
     const nurse = await open('nurse');
-    await step('Nurse records vitals: unit mistakes are rejected, abnormal values are flagged', async () => {
+    await step('Nurse records vitals: unit mistakes are rejected and measurements remain uninterpreted', async () => {
       const { page, errors } = fresh(nurse);
       await page.goto(`${BASE}/hms/vitals/entry`);
       await pickPatient(page, state.patient.uhid, GENERAL_NAME);
@@ -171,8 +171,7 @@ async function pickPatient(page, query, name) {
       const before = await sql('SELECT count(*)::int AS n FROM hms_vitals WHERE patient_id = $1', [state.patient.id]);
       assert(before[0].n === 0, '98.6 °C was stored');
       await page.getByLabel('Temperature', { exact: true }).fill('38.2');
-      const chips = page.getByRole('status', { name: 'Vital sign alerts' });
-      for (const a of ['High BP', 'Fever', 'Tachycardia', 'Low SpO2']) await chips.getByText(a, { exact: true }).waitFor();
+      assert(await page.getByRole('status', { name: 'Vital sign alerts' }).count()===0,'unapproved threshold alerts were shown');
       await page.getByRole('button', { name: 'Record vitals' }).click();
       await page.getByText('Vitals recorded.').waitFor();
       const [v] = await sql('SELECT * FROM hms_vitals WHERE patient_id = $1 ORDER BY id DESC LIMIT 1', [state.patient.id]);
@@ -180,9 +179,9 @@ async function pickPatient(page, query, name) {
       assert(v.temp_unit === 'C' && Number(v.temperature) === 38.2, `temperature ${v.temperature} ${v.temp_unit}`);
       assert(Number(v.bp_systolic) === 150 && Number(v.bp_diastolic) === 95 && Number(v.pulse) === 110 && Number(v.spo2) === 93, 'vital values wrong');
       assert(Number(v.bmi) === 24.22, `BMI ${v.bmi}`);
-      const alerts = JSON.parse(v.alerts || '[]');
-      for (const a of ['High BP', 'Fever', 'Tachycardia', 'Low SpO2']) assert(alerts.includes(a), `alert ${a} missing: ${v.alerts}`);
-      assert(!alerts.includes('Low BP') && !alerts.includes('Bradycardia'), `false alerts: ${v.alerts}`);
+      assert(v.alerts===null,'legacy vital writer persisted an unapproved threshold interpretation');
+      const [obs]=await sql("SELECT count(*)::int n FROM hms_observation_sets s JOIN hms_observations o ON o.set_id=s.id WHERE s.source_kind='legacy_opd_vitals' AND s.source_legacy_id=$1",[v.id]);
+      assert(obs.n===7,'OPD row was not projected into the shared observation model');
       state.vital = v;
       noPageErrors(errors.filter((e) => !/status of 400/.test(e)), 'vitals');
     });
@@ -215,6 +214,10 @@ async function pickPatient(page, query, name) {
       await row.waitFor();
       assert((await row.textContent()).includes('Waiting'), 'patient not shown as waiting');
       await row.getByRole('button', { name: 'Start consultation' }).click();
+      const visit=page.getByRole('dialog',{name:'Select consultation visit'});
+      await visit.getByLabel('Visit token').selectOption(String(state.token.id));
+      await visit.getByLabel('Visit appointment').selectOption(String(state.appointment.id));
+      await visit.getByRole('button',{name:'Start selected visit'}).click();
       // Starting opens the row's action menu with the next steps; open the consultation from it.
       await page.getByRole('menuitem', { name: 'Open consultation' }).click();
       await page.waitForURL(/\/hms\/consultation\/\d+/);
@@ -453,9 +456,11 @@ async function pickPatient(page, query, name) {
       assert(grn.status === 200 || grn.status === 201, `GRN ${grn.status} ${JSON.stringify(grn.data).slice(0, 160)}`);
       const [batch] = await sql('SELECT id FROM hms_medicine_batches WHERE medicine_id = $1', [m.id]);
       const enc = (await api('POST', '/hms/encounters', { token: doc, body: { patient_id: pt.data.data.id } })).data;
-      const rx = (await api('POST', '/hms/prescriptions', { token: doc, body: { encounter_id: enc.id, patient_id: pt.data.data.id } })).data;
-      const lines = await api('PUT', `/hms/prescriptions/${rx.id}/items`, { token: doc, body: { items: [{ medicine_name: `E2E OPD Med ${S}`, generic_name: `E2E OPD Med ${S}`, dose: '1', dose_unit: 'Tablet', frequency: 'BD', duration_days: 1 }] } });
-      assert(lines.status === 200, `items ${lines.status}`);
+      const [doctorRow]=await sql("SELECT id FROM hms_users WHERE username='doctor'");
+      const rx=await require('./historicalPrescriptionFixture').historicalPrescription({patientId:pt.data.data.id,encounterId:enc.id,doctorId:doctorRow.id,items:[{medicine_name:`Synthetic historical OPD medicine ${S}`,dose:'1',dose_unit:'Tablet',frequency:'BD',duration_days:1}]});
+      const historical=await api('GET',`/hms/prescriptions/${rx.id}`,{token:doc});
+      const lines={status:historical.status,data:historical.data.data?.items};
+      assert(lines.status===200,'Historical prescription is not readable');
       const [{ record_revision: r0 }] = await sql('SELECT record_revision FROM hms_encounters WHERE id = $1', [enc.id]);
       const noted = await api('PUT', `/hms/encounters/${enc.id}`, { token: doc, body: { chief_complaint: 'Synthetic legacy visit' }, headers: { 'If-Match': String(r0) } });
       assert(noted.status === 200, `note ${noted.status} ${JSON.stringify(noted.data).slice(0, 160)}`);

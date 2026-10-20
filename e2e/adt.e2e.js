@@ -85,8 +85,8 @@ async function call(method, url, token, body) {
   });
 
   await step('Discharge waits for clinical readiness; readiness and financial clearance are recorded separately', async () => {
-    const early = await call('PATCH', '/ipd/admissions/1/discharge', admin, { finalDiagnosis: 'Pneumonia' });
-    assert(early.status === 409 && /not clinically ready/.test(early.data.message), `discharge before ready: ${early.status} ${JSON.stringify(early.data)}`);
+    const early = await call('PATCH', '/ipd/admissions/1/discharge', demoDoctor, { finalDiagnosis: 'Pneumonia' });
+    assert(early.status === 409 && /clinically ready discharge plan/.test(early.data.message), `discharge before ready: ${early.status} ${JSON.stringify(early.data)}`);
     assert((await call('POST', '/adt/admissions/1/discharge-plan/clinically-ready', demoDoctor)).status === 200, 'mark ready');
     assert((await call('POST', '/adt/admissions/1/discharge-plan/cleared', demoDoctor)).status === 403, 'doctor cleared billing');
     assert((await call('POST', '/adt/admissions/1/discharge-plan/cleared', admin)).status === 200, 'billing cleared');
@@ -96,7 +96,11 @@ async function call(method, url, token, body) {
 
   await step('Discharge frees the bed to cleaning and closes the occupancy', async () => {
     const [before] = await sql('SELECT bed_id FROM hms_admissions WHERE id = 1');
-    const r = await call('PATCH', '/ipd/admissions/1/discharge', admin, { finalDiagnosis: 'Pneumonia' });
+    const r = await call('PATCH', '/ipd/admissions/1/discharge', demoDoctor, {
+      finalDiagnosis: 'Pneumonia', courseInHospital: 'Treated and clinically improved.',
+      conditionAtDischarge: 'Improved', adviceOnDischarge: 'Continue prescribed treatment and return for worsening symptoms.',
+      warningSigns: 'Worsening breathing or persistent fever', followUpAppointments: '[]',
+    });
     assert(r.status === 200, `discharge ${r.status} ${JSON.stringify(r.data)}`);
     const [bed] = await sql('SELECT status FROM hms_beds WHERE id = $1', [before.bed_id]);
     assert(bed.status === 'Dirty', `bed after discharge: ${bed.status}`);

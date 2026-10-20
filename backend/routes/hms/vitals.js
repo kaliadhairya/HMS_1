@@ -14,19 +14,6 @@ function computeBMI(weight_kg, height_cm) {
 // as 0 and raised "Low BP", "Low SpO2" and "Bradycardia" for vitals nobody recorded.
 const has = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
 
-function generateAlerts(v) {
-  const alerts = [];
-  const num = (value) => Number(value);
-  if ((has(v.bp_systolic) && num(v.bp_systolic) > 140) || (has(v.bp_diastolic) && num(v.bp_diastolic) > 90)) alerts.push('High BP');
-  if ((has(v.bp_systolic) && num(v.bp_systolic) < 90) || (has(v.bp_diastolic) && num(v.bp_diastolic) < 60)) alerts.push('Low BP');
-  if (has(v.temperature) && ((v.temp_unit === 'C' && num(v.temperature) > 37.5) || (v.temp_unit === 'F' && num(v.temperature) > 99.5))) alerts.push('Fever');
-  if (has(v.spo2) && num(v.spo2) < 95) alerts.push('Low SpO2');
-  if (has(v.pulse) && num(v.pulse) > 100) alerts.push('Tachycardia');
-  if (has(v.pulse) && num(v.pulse) < 60) alerts.push('Bradycardia');
-  if (has(v.bmi) && num(v.bmi) > 25) alerts.push('Overweight');
-  return alerts.length > 0 ? JSON.stringify(alerts) : null;
-}
-
 // Physiologically possible ranges. A value outside them is a typing or unit mistake
 // (e.g. 98.6 entered with the unit set to °C), so it is rejected rather than stored.
 const VITAL_LIMITS = {
@@ -83,7 +70,8 @@ router.post('/', protect, restrictTo('super_admin', 'doctor', 'nurse'), async (r
       recorded_by: req.user.id
     };
 
-    vitalData.alerts = generateAlerts(vitalData);
+    // The hospital has not supplied an approved observation protocol; do not
+    // infer alert labels from universal hard-coded thresholds.
 
     // Generate ID from database sequence
     const [[{ NEXTVAL: nextId }]] = await sequelize.query("SELECT nextval('hms_vitals_seq') AS \"NEXTVAL\"");
@@ -100,18 +88,24 @@ router.post('/', protect, restrictTo('super_admin', 'doctor', 'nurse'), async (r
   }
 });
 
+// The normalized observation tables are canonical. This legacy endpoint keeps
+// the established response shape while projecting the shared chart.
 // GET /api/hms/vitals/latest/:patient_id
 router.get('/latest/:patient_id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse'), async (req, res) => {
   try {
-    const { sequelize } = require('../../models');
     const [rows] = await sequelize.query(`
-      SELECT v.*, u.NAME as RECORDED_BY_NAME, u.ROLE as RECORDED_BY_ROLE
-      FROM HMS_VITALS v
-      LEFT JOIN HMS_USERS u ON u.ID = v.RECORDED_BY
-      WHERE v.PATIENT_ID = :pid
-      ORDER BY v.RECORDED_AT DESC
+      SELECT v.id,v.patient_id,v.encounter_id AS reference_id,'OPD'::text AS encounter_type,
+             v.bp_systolic,v.bp_diastolic,v.temperature,
+             CASE WHEN v.temp_unit='C' THEN 'C' ELSE 'F' END AS temp_unit,
+             v.weight_kg,v.height_cm,v.bmi,v.spo2,v.pulse,v.respiratory_rate,
+             NULL::text AS alerts,v.recorded_by,v.recorded_at,
+             u.name AS recorded_by_name,u.role AS recorded_by_role
+      FROM hms_observation_legacy_vitals v
+      LEFT JOIN hms_users u ON u.id = v.recorded_by
+      WHERE v.patient_id = :pid AND v.facility_id=:facility AND v.admission_id IS NULL
+      ORDER BY v.recorded_at DESC,v.id DESC
       LIMIT 1
-    `, { replacements: { pid: req.params.patient_id } });
+    `, { replacements: { pid: req.params.patient_id,facility:req.user.facilityId } });
 
     res.json({ success: true, data: rows[0] || null });
   } catch (err) {
@@ -123,14 +117,18 @@ router.get('/latest/:patient_id', protect, restrictTo('super_admin', 'admin', 'd
 // GET /api/hms/vitals/history/:patient_id
 router.get('/history/:patient_id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
   try {
-    const { sequelize } = require('../../models');
     const [rows] = await sequelize.query(`
-      SELECT v.*, u.NAME as RECORDED_BY_NAME, u.ROLE as RECORDED_BY_ROLE
-      FROM HMS_VITALS v
-      LEFT JOIN HMS_USERS u ON u.ID = v.RECORDED_BY
-      WHERE v.PATIENT_ID = :pid
-      ORDER BY v.RECORDED_AT DESC
-    `, { replacements: { pid: req.params.patient_id } });
+      SELECT v.id,v.patient_id,v.encounter_id AS reference_id,'OPD'::text AS encounter_type,
+             v.bp_systolic,v.bp_diastolic,v.temperature,
+             CASE WHEN v.temp_unit='C' THEN 'C' ELSE 'F' END AS temp_unit,
+             v.weight_kg,v.height_cm,v.bmi,v.spo2,v.pulse,v.respiratory_rate,
+             NULL::text AS alerts,v.recorded_by,v.recorded_at,
+             u.name AS recorded_by_name,u.role AS recorded_by_role
+      FROM hms_observation_legacy_vitals v
+      LEFT JOIN hms_users u ON u.id = v.recorded_by
+      WHERE v.patient_id = :pid AND v.facility_id=:facility AND v.admission_id IS NULL
+      ORDER BY v.recorded_at DESC,v.id DESC
+    `, { replacements: { pid: req.params.patient_id,facility:req.user.facilityId } });
 
     res.json({ success: true, data: rows });
   } catch (err) {

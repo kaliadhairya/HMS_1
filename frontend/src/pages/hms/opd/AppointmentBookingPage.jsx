@@ -4,12 +4,7 @@ import { CalendarCheck, CalendarDays, CircleAlert, List, Search, Stethoscope, Us
 import api from '../../../api/axios';
 import Navbar from '../../../components/Navbar';
 import PageHeader from '../../../components/ui/PageHeader';
-
-// Local calendar date (not UTC), so "today" matches the hospital's day.
-const localYmd = (d = new Date()) => {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
+import { localYmd } from '../../../utils/localDate';
 
 // /patients/hms/search returns raw SQL aliases (patient_name, phone_number); map them to the
 // field names the rest of this page uses.

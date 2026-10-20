@@ -3,7 +3,8 @@ const {api,apiLogin,sql,runner,assert,requireThrowawayDb}=require('./helpers');
 requireThrowawayDb();
 (async()=>{
  const {step,done}=runner('Facility session boundaries'),tag=crypto.randomUUID().slice(0,8);
- let user,token,facility,original;
+ let user,token,facility,original,unattributedPrivilegeRowsBefore;
+ [{n:unattributedPrivilegeRowsBefore}]=await sql("SELECT count(*)::int n FROM audit.row_changes WHERE table_name='hms_clinical_privileges' AND operation='INSERT' AND actor_user_id IS NULL AND request_id IS NULL");
  await step('Session issuance records one explicit facility and returns its approved timezone',async()=>{
   const t=await apiLogin('doctor');const me=await api('GET','/auth/me',{token:t});assert(me.status===200,'Profile '+me.status);
   const actor=me.data.user||me.data.data||me.data;assert(actor.facilityId&&actor.facilityTimezone==='Asia/Kolkata','Missing facility metadata');
@@ -39,7 +40,7 @@ requireThrowawayDb();
  });
  await step('UUID backfill preserves legacy identities and does not grant clinical privileges',async()=>{
   const [p]=await sql('SELECT public_id,user_id FROM hms_practitioners WHERE user_id=$1',[user]);assert(p?.public_id&&p.user_id===user,'Practitioner mapping');
-  const [grants]=await sql("SELECT count(*)::int AS n FROM audit.row_changes WHERE table_name='hms_clinical_privileges' AND operation='INSERT' AND actor_user_id IS NULL AND request_id IS NULL");assert(grants.n===0,'Conversion invented unattributed clinical approval');
+  const [grants]=await sql("SELECT count(*)::int AS n FROM audit.row_changes WHERE table_name='hms_clinical_privileges' AND operation='INSERT' AND actor_user_id IS NULL AND request_id IS NULL");assert(grants.n===unattributedPrivilegeRowsBefore,'Session lifecycle invented an unattributed clinical approval');
  });
  done();process.exit();
 })().catch(e=>{console.error(e.message);process.exit(1)});

@@ -9,6 +9,9 @@ import MedicationOrderPanel from '../consultation/MedicationOrderPanel';
 import MedicationAllergyPanel from '../consultation/MedicationAllergyPanel';
 import { useAuth } from '../../../context/AuthContext';
 import useRecoverableDraft from '../../../hooks/useRecoverableDraft';
+import Modal from '../../../components/ui/Modal';
+
+const EMPTY_NOTE={chief_complaint:'',hopi:'',past_medical_history:'',general_examination:'',cvs_findings:'',rs_findings:''};
 
 // NUMERIC columns arrive as strings ("38.20"); show them as numbers (38.2).
 const shown = (v, unit = '') => {
@@ -26,6 +29,18 @@ export default function DoctorQuickConsultPage() {
   
   const [activePatient, setActivePatient] = useState(null);
   const [activeEncounterId, setActiveEncounterId] = useState(null);
+  const [initializing,setInitializing]=useState(false),[initializationError,setInitializationError]=useState(''),[startRecovery,setStartRecovery]=useState(null),[openChoices,setOpenChoices]=useState(null),[chosenEncounter,setChosenEncounter]=useState(''),[loadedState,setLoadedState]=useState(null),[contextError,setContextError]=useState('');
+  const initializeGeneration=useRef(0),searchGeneration=useRef(0),initializeLock=useRef(false);
+  const actorScope=String(user?.id)+':'+String(user?.facilityId),currentActorScope=useRef(actorScope);currentActorScope.current=actorScope;
+  const selectionDraft=useRecoverableDraft({userId:user?.id,facilityId:user?.facilityId,scope:'quick-consult-selection',id:'current'});
+  useEffect(()=>()=>{initializeGeneration.current++;searchGeneration.current++;},[]);
+  useEffect(()=>{initializeGeneration.current++;initializeLock.current=false;setActivePatient(null);setActiveEncounterId(null);setOpenChoices(null);setStartRecovery(null);setInitializing(false);},[actorScope]);
+  useEffect(()=>{
+    const saved=selectionDraft.recovered?.pending;if(!saved)return;
+    selectionDraft.dismiss();
+    if(saved.kind==='ACTIVE')initializePatient(saved.patient,saved.encounterId);
+    else if(saved.kind==='CREATE')setStartRecovery(saved);
+  },[selectionDraft.recovered]); // The persisted selection is bound to this actor and facility.
 
   // Tab State
   const [activeTab, setActiveTab] = useState('history');
@@ -48,6 +63,7 @@ export default function DoctorQuickConsultPage() {
 
   // Patient Search Logic
   useEffect(() => {
+    searchGeneration.current++;
     const delayDebounce = setTimeout(() => {
       if (searchQuery.trim().length >= 2) {
         performSearch(searchQuery);
@@ -59,64 +75,81 @@ export default function DoctorQuickConsultPage() {
   }, [searchQuery]);
 
   const performSearch = async (q) => {
+    const generation=++searchGeneration.current,scope=actorScope;
     try {
       setIsSearching(true);
       const res = await api.get(`/patients/search?q=${encodeURIComponent(q)}`);
-      setSearchResults(res.data.data || []);
+      if(generation===searchGeneration.current&&currentActorScope.current===scope)setSearchResults(res.data.data || []);
     } catch (err) {
       console.error(err);
     } finally {
-      setIsSearching(false);
+      if(generation===searchGeneration.current&&currentActorScope.current===scope)setIsSearching(false);
     }
   };
 
-  const selectPatient = async (patient) => {
-    setActiveEncounterId(null);
-    setHasPendingMedication(true);
-    setActivePatient(patient);
-    setSearchQuery('');
-    setSearchResults([]);
-    setActiveTab('history');
-    
-    // Automatically create ad-hoc encounter if none active, or fetch latest
-    try {
-      // No department here: the server takes it from today's token/appointment or the doctor
-      // (it used to be forced to department 1).
-      const payload = {
-        patient_id: patient.id || patient.ID,
-        encounter_type: 'OPD'
-      };
-      const res = await api.post('/hms/encounters', payload);
-      setActiveEncounterId(res.data.id);
-      encounterRevision.current=Number(res.data.api_version);encounterPublicId.current=res.data.public_id;
-      
-      // Load patient context (Vitals, Lab Reports). The vitals API answers { success, data }.
-      const vp = await api.get(`/hms/vitals/latest/${patient.id || patient.ID}`);
-      if (vp.data.success) setVitals(vp.data.data || null);
-      
-      // Fetch historic lab reports for this patient directly into their profile
-      const rpRes = await api.get(`/patients/hms/${patient.id || patient.ID}/visits`);
-      const allVisits = rpRes.data.data || [];
-      const labs = allVisits.filter(v => v.type === 'Lab Test');
-      setLabReports(labs);
-
-    } catch (error) {
-      toast.error('Could not initialize consultation session.');
-    }
+  const initializePatient=async(patient,encounterId=null,pending=null)=>{
+    if(initializeLock.current)return;
+    initializeLock.current=true;const generation=++initializeGeneration.current,scope=actorScope;
+    const current=()=>generation===initializeGeneration.current&&currentActorScope.current===scope;
+    setInitializing(true);setInitializationError('');setOpenChoices(null);setStartRecovery(null);setContextError('');
+    searchGeneration.current++;setVitals(null);setLabReports([]);setDiagnoses([]);setIcdSearch('');setIcdResults([]);setQcRecovery(null);setFormData({...EMPTY_NOTE});setActiveTab('history');
+    try{
+      let id=encounterId;
+      if(!id){
+        const request=pending||{kind:'CREATE',patient:{id:patient.id||patient.ID,name:patient.name,uhid:patient.uhid},key:crypto.randomUUID(),body:{patient_id:patient.id||patient.ID,encounter_type:'OPD'}};
+        selectionDraft.setPending(request);
+        try{const created=await api.post('/hms/encounters',request.body,{headers:{'Idempotency-Key':request.key}});id=created.data.id;}
+        catch(error){if(current()){
+          const unknown=!error.response||error.response.status>=500||['IDEMPOTENCY_IN_PROGRESS','IDEMPOTENCY_OUTCOME_UNKNOWN'].includes(error.response.data?.code);
+          if(unknown)setStartRecovery(request);else selectionDraft.clear();
+        }throw error;}
+      }
+      if(!current())return;
+      selectionDraft.setPending({kind:'ACTIVE',patient:{...patient,id:patient.id||patient.ID},encounterId:id});
+      const response=await api.get('/hms/encounters/'+id),encounter=response.data;
+      if(!current())return;
+      if(Number(encounter.patient_id)!==Number(patient.id||patient.ID)||Number(encounter.doctor_id)!==Number(user.id))throw new Error('The selected consultation belongs to another patient or practitioner.');
+      encounterRevision.current=Number(encounter.api_version);encounterPublicId.current=encounter.public_id;
+      finalizeRequest.current=null;setUncertainFinalize(false);setHasPendingMedication(true);setLoadedState(encounter.status);
+      setFormData(Object.fromEntries(Object.keys(EMPTY_NOTE).map(key=>[key,encounter[key]||''])));setDiagnoses(encounter.diagnoses||[]);
+      setActivePatient({...patient,...encounter.patient});setActiveEncounterId(id);setSearchQuery('');setSearchResults([]);
+      const results=await Promise.allSettled([api.get(`/hms/vitals/latest/${patient.id||patient.ID}`),api.get(`/patients/hms/${patient.id||patient.ID}/visits`)]);
+      if(!current())return;
+      if(results[0].status==='fulfilled')setVitals(results[0].value.data.data||null);
+      if(results[1].status==='fulfilled')setLabReports((results[1].value.data.data||[]).filter(v=>v.type==='Lab Test'));
+      if(results.some(r=>r.status==='rejected'))setContextError('Some chart context could not be loaded. Refresh the chart before making decisions that require it.');
+    }catch(error){if(current()){const message=error.response?.data?.message||error.message||'Could not initialize this consultation.';setInitializationError(message);toast.error(message);}}
+    finally{if(current()){initializeLock.current=false;setInitializing(false);}}
+  };
+  const selectPatient=async patient=>{
+    if(initializeLock.current||startRecovery)return;
+    initializeLock.current=true;const generation=++initializeGeneration.current,scope=actorScope;setInitializing(true);setInitializationError('');
+    try{
+      const response=await api.get(`/hms/encounters/patient/${patient.id||patient.ID}`);
+      if(generation!==initializeGeneration.current||currentActorScope.current!==scope)return;
+      const drafts=(response.data||[]).filter(e=>e.status==='Draft'&&Number(e.doctor_id)===Number(user.id));
+      initializeLock.current=false;setInitializing(false);
+      if(drafts.length>1){setChosenEncounter('');setOpenChoices({patient,drafts});return;}
+      await initializePatient(patient,drafts[0]?.id||null);
+    }catch(error){if(generation===initializeGeneration.current&&currentActorScope.current===scope){initializeLock.current=false;setInitializing(false);setInitializationError(error.response?.data?.message||'Could not check existing consultations.');}}
   };
 
-  const clearPatient = () => {
-    if (activeEncounterId && hasPendingMedication) { toast.error('Save/sign medication orders or reconcile the pending outcome before switching patient.'); return; }
-    setActivePatient(null);
+  const resetPatient = () => {
+    initializeGeneration.current++;searchGeneration.current++;selectionDraft.clear();setQcRecovery(null);setInitializationError('');setLoadedState(null);setActivePatient(null);
     setActiveEncounterId(null);
     setVitals(null);
     setLabReports([]);
     setDiagnoses([]);
     setFormData({ chief_complaint: '', hopi: '', past_medical_history: '', general_examination: '', cvs_findings: '', rs_findings: '' });
   };
+  const clearPatient = () => {
+    if(initializing||finalizing||uncertainFinalize||finalizeRequest.current){toast.error('Reconcile the current request before switching patient.');return;}
+    if(activeEncounterId&&hasPendingMedication&&loadedState!=='Finalized'){toast.error('Save/sign medication orders or reconcile the pending outcome before switching patient.');return;}
+    resetPatient();
+  };
 
   const handleInputChange = (e) => {
-    if(finalizing||uncertainFinalize)return;
+    if(initializing||finalizing||uncertainFinalize||loadedState==='Finalized')return;
     const next={ ...formData, [e.target.name]: e.target.value };
     setFormData(next);
     qcDraft.keep(next,encounterRevision.current);
@@ -124,15 +157,18 @@ export default function DoctorQuickConsultPage() {
 
   // ─── Diagnosis Handlers ───
   const searchIcd = async (q) => {
+    const generation=initializeGeneration.current,scope=actorScope;
     setIcdSearch(q);
     if (q.length < 2) return setIcdResults([]);
     try {
       const res = await api.get(`/hms/icd10/search?q=${q}`);
-      setIcdResults(res.data);
+      if(generation===initializeGeneration.current&&currentActorScope.current===scope)setIcdResults(res.data);
     } catch (err) { console.error(err); }
   };
 
   const addDiagnosis = async (icd) => {
+    if(initializing||finalizing||uncertainFinalize||loadedState==='Finalized')return;
+    const generation=initializeGeneration.current,scope=actorScope;
     try {
       const payload = {
         encounter_id: activeEncounterId,
@@ -142,7 +178,8 @@ export default function DoctorQuickConsultPage() {
         status: 'Provisional'
       };
       const res = await api.post('/hms/diagnoses', payload);
-      setDiagnoses([...diagnoses, res.data]);
+      if(generation!==initializeGeneration.current||currentActorScope.current!==scope)return;
+      setDiagnoses(current=>[...current,res.data]);
       setIcdSearch('');
       setIcdResults([]);
       toast.success('Diagnosis added');
@@ -152,9 +189,11 @@ export default function DoctorQuickConsultPage() {
   };
 
   const removeDiagnosis = async (dxId) => {
+    if(initializing||finalizing||uncertainFinalize||loadedState==='Finalized')return;
+    const generation=initializeGeneration.current,scope=actorScope;
     try {
       await api.delete(`/hms/diagnoses/${dxId}`);
-      setDiagnoses(diagnoses.filter(d => d.id !== dxId));
+      if(generation===initializeGeneration.current&&currentActorScope.current===scope)setDiagnoses(current=>current.filter(d=>d.id!==dxId));
     } catch (err) { toast.error('Failed to remove diagnosis'); }
   };
 
@@ -169,29 +208,36 @@ export default function DoctorQuickConsultPage() {
   useEffect(()=>{
     const kept=qcDraft.recovered;
     if(!kept||!activeEncounterId)return;
-    if(kept.pending){finalizeRequest.current=kept.pending;setUncertainFinalize(true);setFormData(f=>({...f,...(kept.pending.content||{})}));qcDraft.dismiss();return;}
+    if(kept.pending){
+      if(kept.pending.id!==encounterPublicId.current){setInitializationError('The recovered request belongs to another consultation and cannot be applied here.');return;}
+      finalizeRequest.current=kept.pending;setUncertainFinalize(true);setFormData(f=>({...f,...(kept.pending.content||{})}));qcDraft.dismiss();return;
+    }
     if(kept.value)setQcRecovery(kept);
   },[qcDraft.recovered,activeEncounterId]); // eslint-disable-line react-hooks/exhaustive-deps
   const finalizeEncounter = async (reconcile=false) => {
-    if(finalizeRunning.current||(!reconcile&&finalizeRequest.current))return;
+    if(initializing||finalizeRunning.current||(!reconcile&&(finalizeRequest.current||loadedState==='Finalized')))return;
     if (!activeEncounterId || hasPendingMedication) return toast.error('Confirm and sign medication orders before finalizing.');
     const r=reconcile?finalizeRequest.current:{id:encounterPublicId.current,content:JSON.parse(JSON.stringify(formData)),revision:encounterRevision.current,stage:'SAVE',saveKey:crypto.randomUUID(),signKey:crypto.randomUUID()};
-    if(!r)return;
+    if(!r||r.id!==encounterPublicId.current)return;
+    const generation=initializeGeneration.current,scope=actorScope,current=()=>generation===initializeGeneration.current&&currentActorScope.current===scope;
     finalizeRequest.current=r;qcDraft.setPending(r);finalizeRunning.current=true;setFinalizing(true);
     try {
       if(r.stage==='SAVE'){
         const saved=await api.put(`/v2/encounters/${r.id}/draft`,r.content,{headers:{'If-Match':String(r.revision),'Idempotency-Key':r.saveKey}});
+        if(!current())return;
         r.revision=saved.data.version;encounterRevision.current=r.revision;r.stage='SIGN';qcDraft.setPending(r);
       }
       await api.post(`/v2/encounters/${r.id}/sign`, {},{headers:{'If-Match':String(r.revision),'Idempotency-Key':r.signKey}});
+      if(!current())return;
       finalizeRequest.current=null;setUncertainFinalize(false);qcDraft.clear();
       toast.success('Consultation finalized');
-      clearPatient();
+      resetPatient();
     } catch (err) { 
-      const unknown=!err.response||err.response.status>=500;setUncertainFinalize(unknown);
+      if(!current())return;
+      const unknown=!err.response||err.response.status>=500||['IDEMPOTENCY_IN_PROGRESS','IDEMPOTENCY_OUTCOME_UNKNOWN'].includes(err.response.data?.code);setUncertainFinalize(unknown);
       if(!unknown){finalizeRequest.current=null;qcDraft.setPending(null);}
       toast.error(unknown?'Outcome uncertain. Keep this patient open and reconcile the original request.':err.response?.data?.message||err.response?.data?.error||'Failed to finalize encounter. Your draft is preserved.');
-    }finally{finalizeRunning.current=false;setFinalizing(false);}
+    }finally{if(currentActorScope.current===scope){finalizeRunning.current=false;setFinalizing(false);}}
   };
 
   const TABS = [['history', 'History'], ['diagnosis', 'Diagnosis'], ['prescription', 'Prescription']];
@@ -211,11 +257,19 @@ export default function DoctorQuickConsultPage() {
           ? `Consulting ${activePatient.name}. Record history, diagnoses and medicines, then finalize.`
           : "Find a patient to pull up their profile and lab reports and start a consultation."}
         actions={activePatient && (
-          <button type="button" className="btn btn-ghost btn-md" disabled={finalizing||uncertainFinalize} onClick={clearPatient}>
+          <button type="button" className="btn btn-ghost btn-md" disabled={initializing||finalizing||uncertainFinalize} onClick={clearPatient}>
             <ArrowLeft size={16} aria-hidden="true" /> Back to search
           </button>
         )}
       />
+      {initializing&&<p role="status">Loading the exact consultation and patient context…</p>}
+      {initializationError&&<section role="alert" className="alert-strip alert-warning">{initializationError} <button type="button" className="btn btn-secondary" onClick={()=>navigate('/doctor/dashboard')}>Select a visit on dashboard</button></section>}
+      {contextError&&<p role="alert" className="alert-strip alert-warning">{contextError}</p>}
+      {loadedState==='Finalized'&&!uncertainFinalize&&<p role="status">This consultation is finalized. Its signed record is preserved.</p>}
+      {startRecovery&&<section role="alert" aria-label="Unconfirmed Quick Consult start" className="alert-strip alert-warning">The original start for {startRecovery.patient.name} is unconfirmed. <button type="button" className="btn btn-secondary" disabled={initializing} onClick={()=>initializePatient(startRecovery.patient,null,startRecovery)}>Reconcile original Quick Consult start</button></section>}
+      <Modal open={!!openChoices} onOpenChange={open=>{if(!open)setOpenChoices(null);}} title="Select open consultation" description="Several drafts exist for this patient. Select the exact consultation to resume, or explicitly start another.">
+       {openChoices&&<><label className="form-label">Open consultation<select aria-label="Open consultation" className="form-select" value={chosenEncounter} onChange={e=>setChosenEncounter(e.target.value)}><option value="">Select a consultation</option>{openChoices.drafts.map(e=><option key={e.id} value={e.id}>Consultation {e.id} · {e.chief_complaint||'Draft without complaint'}</option>)}</select></label><div className="inline-actions"><button type="button" className="btn btn-primary" disabled={!chosenEncounter} onClick={()=>initializePatient(openChoices.patient,Number(chosenEncounter))}>Open selected consultation</button><button type="button" className="btn btn-secondary" onClick={()=>initializePatient(openChoices.patient)}>Start new consultation</button></div></>}
+      </Modal>
       {qcRecovery&&<section className="alert-strip alert-warning" role="alert" aria-label="Unsaved notes recovered" style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
         <span>Unsaved notes for this consultation from {new Date(qcRecovery.savedAt).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})} were kept when this page last closed.</span>
         <button type="button" className="btn btn-primary btn-sm" onClick={()=>{setFormData(f=>({...f,...qcRecovery.value}));
@@ -224,7 +278,7 @@ export default function DoctorQuickConsultPage() {
           setQcRecovery(null);}}>Restore them</button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={()=>{qcDraft.clear();setQcRecovery(null);}}>Discard</button>
       </section>}
-      {uncertainFinalize&&<div className="alert-strip alert-info" role="alert">The save/sign outcome is uncertain. Keep this chart open. <button className="btn btn-secondary btn-sm" disabled={finalizing} onClick={()=>finalizeEncounter(true)}>Reconcile original consultation</button></div>}
+      {uncertainFinalize&&<div className="alert-strip alert-info" role="alert">The save/sign outcome is uncertain. Keep this chart open. <button className="btn btn-secondary btn-sm" disabled={initializing||finalizing||hasPendingMedication} onClick={()=>finalizeEncounter(true)}>Reconcile original consultation</button></div>}
 
       {!activePatient ? (
         <section className="panel panel-pad" style={{ maxWidth: 720 }}>
@@ -246,7 +300,7 @@ export default function DoctorQuickConsultPage() {
             <ul className="list-rows" style={{ marginTop: 16 }}>
               {searchResults.map(p => (
                 <li key={p.id || p.ID}>
-                  <button type="button" className="list-row" onClick={() => selectPatient(p)}>
+                  <button type="button" className="list-row" disabled={initializing||!!startRecovery} onClick={() => selectPatient(p)}>
                     <span className="cell-person">
                       <span className="cell-avatar" aria-hidden="true">{(p.name || '?').charAt(0).toUpperCase()}</span>
                       <span className="cell-stack">
@@ -340,15 +394,15 @@ export default function DoctorQuickConsultPage() {
                 <div className="stack">
                   <div className="form-group">
                     <label className="form-label" htmlFor="qc-chief-complaint">Chief complaint</label>
-                    <textarea disabled={finalizing||uncertainFinalize} id="qc-chief-complaint" name="chief_complaint" className="form-textarea" value={formData.chief_complaint} onChange={handleInputChange} />
+                    <textarea disabled={initializing||finalizing||uncertainFinalize||loadedState==='Finalized'} id="qc-chief-complaint" name="chief_complaint" className="form-textarea" value={formData.chief_complaint} onChange={handleInputChange} />
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="qc-hopi">History of present illness</label>
-                    <textarea disabled={finalizing||uncertainFinalize} id="qc-hopi" name="hopi" className="form-textarea" value={formData.hopi} onChange={handleInputChange} style={{ minHeight: 120 }} />
+                    <textarea disabled={initializing||finalizing||uncertainFinalize||loadedState==='Finalized'} id="qc-hopi" name="hopi" className="form-textarea" value={formData.hopi} onChange={handleInputChange} style={{ minHeight: 120 }} />
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="qc-general-exam">General examination findings</label>
-                    <textarea disabled={finalizing||uncertainFinalize} id="qc-general-exam" name="general_examination" className="form-textarea" value={formData.general_examination} onChange={handleInputChange} style={{ minHeight: 80 }} />
+                    <textarea disabled={initializing||finalizing||uncertainFinalize||loadedState==='Finalized'} id="qc-general-exam" name="general_examination" className="form-textarea" value={formData.general_examination} onChange={handleInputChange} style={{ minHeight: 80 }} />
                   </div>
                 </div>
               )}
@@ -405,7 +459,7 @@ export default function DoctorQuickConsultPage() {
 
             <div className="panel-pad" style={{ borderTop: '1px solid var(--border)', background: 'var(--surface-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <span className="muted">Consulting <strong>{activePatient?.name}</strong></span>
-              <button type="button" className="btn btn-primary btn-md" disabled={finalizing||uncertainFinalize} onClick={()=>finalizeEncounter()}>
+              <button type="button" className="btn btn-primary btn-md" disabled={initializing||finalizing||uncertainFinalize||loadedState==='Finalized'} onClick={()=>finalizeEncounter()}>
                 <CircleCheck size={16} aria-hidden="true" /> Finalize and close
               </button>
             </div>

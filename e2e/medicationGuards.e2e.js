@@ -168,7 +168,7 @@ const saved = (r, status = 200) => {
     },
   );
   await step(
-    "Legacy note creation cannot spoof supply status or attach a different patient",
+    "Legacy prescription creation and line replacement cannot author clinical supply",
     async () => {
       const created = await api("POST", "/hms/prescriptions", {
         token: doctor,
@@ -179,8 +179,8 @@ const saved = (r, status = 200) => {
         },
       });
       assert(
-        created.status === 200 && created.data.status === "Pending",
-        "Legacy caller spoofed a clinical supply status",
+        created.status === 410 && created.data.code === "LEGACY_PRESCRIPTION_RETIRED",
+        "Legacy authoring remained reachable",
       );
       const [other] = await sql(
         "SELECT id FROM hms_patients WHERE id<>$1 ORDER BY id LIMIT 1",
@@ -191,10 +191,12 @@ const saved = (r, status = 200) => {
         body: { encounter_id: order.encounter_id, patient_id: other.id },
       });
       assert(
-        mismatched.status === 422 &&
-          mismatched.data.code === "PATIENT_ENCOUNTER_MISMATCH",
-        "Legacy note crossed the patient/encounter identity boundary",
+        mismatched.status === 410 &&
+          mismatched.data.code === "LEGACY_PRESCRIPTION_RETIRED",
+        "Legacy authoring accepted a patient/encounter association",
       );
+      const replaced=await api('PUT','/hms/prescriptions/1/items',{token:doctor,body:{items:[{medicine_name:'Unsafe ungoverned text'}]}});
+      assert(replaced.status===410&&replaced.data.code==='LEGACY_PRESCRIPTION_RETIRED','Legacy replacement remained reachable');
     },
   );
   await step(

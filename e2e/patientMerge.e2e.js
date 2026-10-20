@@ -133,7 +133,8 @@ const register = (token, name, phone, extra = {}) => call('POST', '/patients/hms
       const { page } = await browserAs(browser, 'admin');
       page.on('dialog', (d) => d.accept('Confirmed with the patient at the desk'));
       await page.goto(`${BASE}/hms/patients/duplicates`);
-      const keep = page.getByRole('button', { name: `Keep ${p1.data.data.uhid}` });
+      const reviewCase = page.locator('article[aria-label^="Case"]').filter({ hasText: p2.data.data.uhid });
+      const keep = reviewCase.getByRole('button', { name: `Keep ${p1.data.data.uhid}`, exact: true });
       await keep.waitFor({ timeout: 15000 });
       await keep.click();
       await page.getByText(/Merged\. \d+ record/).waitFor({ timeout: 15000 });

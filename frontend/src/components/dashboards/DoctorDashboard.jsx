@@ -15,6 +15,9 @@ import { useSocket } from '../../context/SocketContext';
 import api from '../../api/axios';
 import { useLiveQuery } from '../../data/liveQuery';
 import Freshness from '../ui/Freshness';
+import Modal from '../ui/Modal';
+import useRecoverableDraft from '../../hooks/useRecoverableDraft';
+import { localYmd } from '../../utils/localDate';
 
 const COMPLETED_PRESCRIPTION_STATUSES = new Set(['Consulted', 'Finalized', 'Dispensed']);
 const EXPIRES_AFTER_DAYS = 4;
@@ -25,7 +28,7 @@ function isSameLocalDate(value, date = new Date()) {
   if (!value) return false;
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return false;
-  return parsed.getFullYear() === date.getFullYear() && parsed.getMonth() === date.getMonth() && parsed.getDate() === date.getDate();
+  return localYmd(parsed)===localYmd(date);
 }
 
 const categoryOf = (type) => (type === 'corporate_employee' ? { label: 'Corporate', tone: 'info' } : { label: 'General', tone: 'neutral' });
@@ -88,6 +91,12 @@ export default function DoctorDashboard() {
   const [menuFor, setMenuFor] = useState(null);
   const [referralPatient, setReferralPatient] = useState(null);
   const pendingActionId = useRef(null);
+  const [visitChoice,setVisitChoice]=useState(null),[selectedToken,setSelectedToken]=useState(''),[selectedAppointment,setSelectedAppointment]=useState(''),[pendingStart,setPendingStart]=useState(null);
+  const startDraft=useRecoverableDraft({userId:user?.id,facilityId:user?.facilityId,scope:'start-consultation',id:'dashboard'});
+  const startScope=String(user?.id)+':'+String(user?.facilityId),currentStartScope=useRef(startScope);currentStartScope.current=startScope;
+  const startLock=useRef(null);
+  useEffect(()=>{setPendingStart(null);setVisitChoice(null);setStartingId(null);},[startScope]);
+  useEffect(()=>{if(startDraft.recovered?.pending)setPendingStart(startDraft.recovered.pending);},[startDraft.recovered]);
 
   const fetchDoctorData = useCallback(
     () => Promise.all([todayQ.refresh(), pendingQ.refresh(), rxQ.refresh(), labsQ.refresh()]),
@@ -124,20 +133,35 @@ export default function DoctorDashboard() {
     };
   }, [socket, fetchDoctorData]);
 
-  const startConsultation = async (patient) => {
-    setStartingId(patient.id);
-    try {
-      // Start the exact visit this row shows; the server refuses to guess when a patient has more than one open visit.
-      await api.post('/hms/encounters', { patient_id: patient.id, department_id: null, encounter_type: 'OPD', token_id: patient.token_id ?? undefined, appointment_id: patient.appointment_id ?? undefined });
-      toast.success(`Consultation started for ${patient.name}`);
-      pendingActionId.current = patient.id;
-      setStatusFilter('all');
-      await fetchDoctorData();
-    } catch {
-      toast.error('Failed to start the consultation');
-    } finally {
-      setStartingId(null);
+  const sendStart=async(request,ownedLock)=>{
+    if(startLock.current&&startLock.current!==ownedLock)return;
+    const lock=ownedLock||Symbol('consultation-start');startLock.current=lock;
+    const scope=startScope;setStartingId(request.patient.id);setPendingStart(request);startDraft.setPending(request);
+    try{await api.post('/hms/encounters',request.body,{headers:{'Idempotency-Key':request.key}});}
+    catch(error){
+      if(currentStartScope.current!==scope)return;
+      if(error.response&&error.response.status<500&&!['IDEMPOTENCY_IN_PROGRESS','IDEMPOTENCY_OUTCOME_UNKNOWN'].includes(error.response.data?.code)){startDraft.clear();setPendingStart(null);}
+      toast.error(error.response?.data?.message||'Consultation start is unconfirmed. Reconcile the original request before starting another.');setStartingId(null);return;
+    }finally{
+      if(startLock.current===lock)startLock.current=null;
     }
+    if(currentStartScope.current!==scope)return;
+    startDraft.clear();setPendingStart(null);setVisitChoice(null);setStartingId(null);
+    toast.success(`Consultation started for ${request.patient.name}`);pendingActionId.current=request.patient.id;setStatusFilter('all');
+    await fetchDoctorData().catch(()=>{});
+  };
+  const startConsultation = async (patient) => {
+    if(startLock.current)return;
+    if(pendingStart){toast.error('Reconcile the original consultation request first.');return;}
+    const lock=Symbol('visit-read');startLock.current=lock;
+    const scope=startScope;setStartingId(patient.id);
+    try{
+      const response=await api.get('/hms/encounters/available-visits',{params:{patient_id:patient.id}}),visits=response.data.data;
+      if(currentStartScope.current!==scope)return;
+      if(visits.tokens.length+visits.appointments.length>1){setSelectedToken('');setSelectedAppointment('');setVisitChoice({patient,...visits});return;}
+      await sendStart({patient:{id:patient.id,name:patient.name},key:crypto.randomUUID(),body:{patient_id:patient.id,department_id:null,encounter_type:'OPD',token_id:visits.tokens[0]?.id??null,appointment_id:visits.appointments[0]?.id??null}},lock);
+    }catch(error){if(currentStartScope.current===scope)toast.error(error.response?.data?.message||'Could not load the available visits.');}
+    finally{if(startLock.current===lock)startLock.current=null;if(currentStartScope.current===scope)setStartingId(null);}
   };
 
   // After starting a consultation, open that patient's action menu so the doctor can pick the next step.
@@ -417,6 +441,15 @@ export default function DoctorDashboard() {
       </p>
 
       <ReferralTypeModal isOpen={Boolean(referralPatient)} onClose={() => setReferralPatient(null)} patient={referralPatient} />
+      {pendingStart&&<section role="alert" aria-label="Unconfirmed consultation start" className="alert-strip alert-warning"><span>Reconcile the original consultation start for {pendingStart.patient.name}.</span><button type="button" className="btn btn-secondary" disabled={startingId!==null} onClick={()=>sendStart(pendingStart)}>Reconcile original consultation start</button></section>}
+      <Modal open={!!visitChoice} onOpenChange={open=>{if(!open&&!startingId)setVisitChoice(null);}} title="Select consultation visit" description="Select the exact token and/or appointment for this consultation. Attach both only when they belong to this visit.">
+       {visitChoice&&<form onSubmit={e=>{e.preventDefault();if(pendingStart||(!selectedToken&&!selectedAppointment))return;sendStart({patient:{id:visitChoice.patient.id,name:visitChoice.patient.name},key:crypto.randomUUID(),body:{patient_id:visitChoice.patient.id,encounter_type:'OPD',token_id:selectedToken?Number(selectedToken):null,appointment_id:selectedAppointment?Number(selectedAppointment):null}});}}>
+        <p>{visitChoice.patient.name}</p>
+        <label className="form-label">Visit token<select aria-label="Visit token" className="form-select" value={selectedToken} disabled={startingId!==null||!!pendingStart} onChange={e=>setSelectedToken(e.target.value)}><option value="">No token attached</option>{visitChoice.tokens.map(t=><option value={t.id} key={t.id}>Token {t.token_number}</option>)}</select></label>
+        <label className="form-label">Visit appointment<select aria-label="Visit appointment" className="form-select" value={selectedAppointment} disabled={startingId!==null||!!pendingStart} onChange={e=>setSelectedAppointment(e.target.value)}><option value="">No appointment attached</option>{visitChoice.appointments.map(a=><option value={a.id} key={a.id}>Appointment {a.slot_start} · {a.status}</option>)}</select></label>
+        <button type="submit" className="btn btn-primary" disabled={startingId!==null||!!pendingStart||(!selectedToken&&!selectedAppointment)}>Start selected visit</button>
+       </form>}
+      </Modal>
     </>
   );
 }

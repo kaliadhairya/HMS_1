@@ -334,8 +334,9 @@ export default function IPDPatientChartPage() {
           {/* Add form */}
           {canNurse && (
             <section className="panel" style={{ flex: '1 1 300px', position: 'sticky', top: 20 }}>
-              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}>Record observation</h2></div>
+              <div className="panel-head"><h2 className="panel-title" style={{ margin: 0 }}>Record nursing assessment</h2></div>
               <form onSubmit={submitNn} className="panel-pad stack-sm">
+                <p className="form-hint">Submitting signs this assessment and preserves its signed version in the clinical record.</p>
                 <div className="form-group">
                   <label className="form-label" htmlFor="nn-condition">Condition summary</label>
                   <textarea id="nn-condition" className="form-textarea" placeholder="Patient's current status" value={nnForm.conditionNotes} onChange={e => setNnForm({...nnForm, conditionNotes: e.target.value})} required rows="3" />
@@ -348,8 +349,13 @@ export default function IPDPatientChartPage() {
                   <label className="form-label" htmlFor="nn-actions">Actions and care provided</label>
                   <textarea id="nn-actions" className="form-textarea" placeholder="Medications, dressings and so on" value={nnForm.actionsTaken} onChange={e => setNnForm({...nnForm, actionsTaken: e.target.value})} required rows="3" />
                 </div>
-                <button type="submit" className="btn btn-primary btn-md">Save nursing note</button>
+                <button type="submit" className="btn btn-primary btn-md">Sign and save assessment</button>
               </form>
+              <div className="panel-pad" style={{ paddingTop: 0 }}>
+                <Link className="btn btn-secondary btn-md" to={`/hms/notes/new?docType=care_plan&patient=${encodeURIComponent(admission.PATIENT_ID)}&admission=${encodeURIComponent(id)}`}>
+                  Create signed care plan
+                </Link>
+              </div>
             </section>
           )}
         </div>

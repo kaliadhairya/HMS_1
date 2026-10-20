@@ -1,3 +1,4 @@
+import { localYmd } from '../../../utils/localDate';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -15,15 +16,7 @@ import RowMenu from '../../../components/ui/RowMenu';
 const STATUSES = ['Scheduled', 'Checked-in', 'Completed', 'Cancelled', 'No Show'];
 const STATUS_TONE = { Scheduled: 'info', 'Checked-in': 'warning', Completed: 'success', Cancelled: 'danger', 'No Show': 'neutral' };
 
-// Local calendar date (not UTC), so the list matches the hospital's day.
-const localYmd = (d = new Date()) => {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-const shiftDay = (ymd, days) => {
-  const [y, m, d] = ymd.split('-').map(Number);
-  return localYmd(new Date(y, m - 1, d + days));
-};
+const shiftDay = (ymd, days) => { const day=new Date(ymd+'T12:00:00Z');day.setUTCDate(day.getUTCDate()+days);return day.toISOString().slice(0,10); };
 const longDate = (ymd) => {
   const [y, m, d] = ymd.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
