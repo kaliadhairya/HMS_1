@@ -127,7 +127,8 @@ export default function DoctorDashboard() {
   const startConsultation = async (patient) => {
     setStartingId(patient.id);
     try {
-      await api.post('/hms/encounters', { patient_id: patient.id, department_id: null, encounter_type: 'OPD' });
+      // Start the exact visit this row shows; the server refuses to guess when a patient has more than one open visit.
+      await api.post('/hms/encounters', { patient_id: patient.id, department_id: null, encounter_type: 'OPD', token_id: patient.token_id ?? undefined, appointment_id: patient.appointment_id ?? undefined });
       toast.success(`Consultation started for ${patient.name}`);
       pendingActionId.current = patient.id;
       setStatusFilter('all');

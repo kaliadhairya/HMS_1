@@ -518,7 +518,8 @@ router.get('/hms/today-patients', protect, restrictTo('super_admin', 'admin', 'd
         p.PATIENTTYPE, p.EMPNUMBER, p.RELATIONSHIP, p.PHONENUMBER,
         p.CREATED_AT,
         e.ID AS ENCOUNTER_ID, e.DOCTOR_ID AS CONSULTING_DOCTOR_ID, e.STATUS AS ENCOUNTER_STATUS,
-        u.NAME AS CONSULTING_DOCTOR_NAME
+        u.NAME AS CONSULTING_DOCTOR_NAME,
+        tk.ID AS TOKEN_ID, ap.ID AS APPOINTMENT_ID
       FROM HMS_PATIENTS p
       LEFT JOIN (
         SELECT ID, PATIENT_ID, DOCTOR_ID, STATUS,
@@ -527,6 +528,17 @@ router.get('/hms/today-patients', protect, restrictTo('super_admin', 'admin', 'd
         WHERE hms_service_date(ENCOUNTER_DATE) = TO_DATE(:today, 'YYYY-MM-DD')
       ) e ON e.PATIENT_ID = p.ID AND e.rn = 1
       LEFT JOIN HMS_USERS u ON u.ID = e.DOCTOR_ID
+      -- The visit the signed-in doctor would start: starting needs the exact token or appointment when both are open.
+      LEFT JOIN LATERAL (
+        SELECT t.ID FROM HMS_TOKENS t
+         WHERE t.PATIENT_ID = p.ID AND t.DOCTOR_ID = :actor AND TRUNC(t.TOKEN_DATE) = TO_DATE(:today, 'YYYY-MM-DD') AND t.STATUS = 'Waiting'
+         ORDER BY t.ID LIMIT 1
+      ) tk ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT a.ID FROM HMS_APPOINTMENTS a
+         WHERE a.PATIENT_ID = p.ID AND a.DOCTOR_ID = :actor AND TRUNC(a.APPOINTMENT_DATE) = TO_DATE(:today, 'YYYY-MM-DD') AND a.STATUS IN ('Scheduled', 'Checked-in')
+         ORDER BY a.ID LIMIT 1
+      ) ap ON TRUE
       WHERE hms_service_date(p.CREATED_AT) = TO_DATE(:today, 'YYYY-MM-DD')
          OR e.ID IS NOT NULL
          -- Returning patients the front desk queued today (token or booked appointment)
@@ -537,7 +549,7 @@ router.get('/hms/today-patients', protect, restrictTo('super_admin', 'admin', 'd
                        AND a.STATUS IN ('Scheduled', 'Checked-in'))
       ORDER BY p.CREATED_AT DESC
     `, {
-      replacements: { today },
+      replacements: { today, actor: Number(req.user.id) },
       type: QueryTypes.SELECT
     });
 
@@ -558,6 +570,8 @@ router.get('/hms/today-patients', protect, restrictTo('super_admin', 'admin', 'd
       consulting_doctor_id: r.consulting_doctor_id ?? r.CONSULTING_DOCTOR_ID ?? null,
       consulting_doctor_name: r.consulting_doctor_name ?? r.CONSULTING_DOCTOR_NAME ?? null,
       encounter_status: r.encounter_status ?? r.ENCOUNTER_STATUS ?? null,
+      token_id: r.token_id ?? r.TOKEN_ID ?? null,
+      appointment_id: r.appointment_id ?? r.APPOINTMENT_ID ?? null,
     }));
 
     res.json({ success: true, data: patients });

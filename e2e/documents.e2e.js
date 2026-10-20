@@ -209,9 +209,10 @@ const rekey = (keys) => new Promise((resolve) => execFile('node', ['scripts/reke
       const second = startServer({ HMS_DATA_KEYS: `cfb:${newKey}` });
       try {
         assert(await ready(second), `new-key server: ${second.log().slice(-300)}`);
-        const [avail] = await sql("SELECT id FROM hms_patient_documents WHERE patient_id = $1 AND facility_id=(SELECT facility_id FROM hms_patient_documents WHERE id=$2) AND state = 'Available' ORDER BY id LIMIT 1", [patient.id,good.id]);
+        // The newest available document: the altered file from the tamper step is older and must not be picked.
+        const [avail] = await sql("SELECT id FROM hms_patient_documents WHERE patient_id = $1 AND facility_id=(SELECT facility_id FROM hms_patient_documents WHERE id=$2) AND state = 'Available' ORDER BY id DESC LIMIT 1", [patient.id,good.id]);
         const d = await download(desk, patient.id, avail.id, `http://127.0.0.1:${SECOND_PORT}/api`);
-        assert(d.status === 200, `download with only the new key ${d.status}`);
+        assert(d.status === 200, `download with only the new key ${d.status} ${d.bytes.toString().slice(0, 200)}`);
         const shown = await fetch(`http://127.0.0.1:${SECOND_PORT}/api/patients/hms/${patient.id}`, { headers: { authorization: `Bearer ${desk}` } }).then((r) => r.text());
         assert(shown.includes('XXXX-XXXX-9012'), 'Aadhaar not readable with only the new key');
       } finally { second.kill('SIGTERM'); await second.exited; }
