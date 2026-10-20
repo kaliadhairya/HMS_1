@@ -1,7 +1,7 @@
 // Explicit synthetic hospital facilities/staff; no clinical approval is seeded.
 const crypto=require('crypto');
 const {isDeepStrictEqual}=require('node:util');
-const {api,apiLogin,sql,runner,assert,requireThrowawayDb,chromium,BASE}=require('./helpers');
+const {api,apiLogin,sql,runner,assert,requireThrowawayDb,chromium,BASE,syntheticClinician}=require('./helpers');
 requireThrowawayDb();
 const checked=(r,status=200)=>{assert(r.status===status,`${r.status}: ${JSON.stringify(r.data).slice(0,350)}`);return r.data.data;};
 (async()=>{
@@ -9,6 +9,7 @@ const checked=(r,status=200)=>{assert(r.status===status,`${r.status}: ${JSON.str
  const hash=await require('../backend/node_modules/bcryptjs').hash(password,10);
  const [administrator]=await sql("INSERT INTO hms_users(username,password,name,role,is_active,first_login) VALUES($1,$2,'Synthetic facility administrator','admin',1,0) RETURNING id,public_id",['fac-admin-'+tag,hash]);
  const [doctor]=await sql("INSERT INTO hms_users(username,password,name,role,is_active,first_login) VALUES($1,$2,'Synthetic facility doctor','doctor',1,0) RETURNING id,public_id",['fac-doctor-'+tag,hash]);
+await syntheticClinician(doctor.id,'doctor',{credential:false}); // the product creates this record when staff are added through /users
  const login=async username=>{const r=await api('POST','/auth/login',{body:{username,password},headers:{'X-Auth-Transport':'bearer'}});assert(r.status===200&&r.data.token,'Synthetic staff login failed');return r.data;};
  let admin=await login('fac-admin-'+tag),clinician=await login('fac-doctor-'+tag),facility,membership,initial=admin.user.facilityId;
  const call=(method,path,token,body,revision,key)=>api(method,path,{token,body,headers:{...(revision===undefined?{}:{'if-match':String(revision)}),...(key?{'idempotency-key':key}:{})}});
@@ -51,7 +52,7 @@ const checked=(r,status=200)=>{assert(r.status===status,`${r.status}: ${JSON.str
   const browser=await chromium.launch();try{const page=await browser.newPage();await page.goto(BASE+'/login');await page.fill('#login-username','fac-admin-'+tag);await page.fill('#login-password',password);await page.click('button[type=submit]');await page.waitForURL(u=>!u.pathname.startsWith('/login'));
    await page.goto(BASE+'/hms/facility');await page.getByLabel('Authorized facility').selectOption(facility.id);await page.getByRole('button',{name:'Switch facility',exact:true}).click();
    await page.waitForFunction(id=>JSON.parse(localStorage.getItem('lab_user')||'null')?.facilityId===id,facility.id);await page.waitForURL(u=>u.pathname!=='/hms/facility');
-   await page.goto(BASE+'/hms/facility');await page.getByRole('heading',{name:'Facility membership',exact:true}).waitFor();assert(await page.getByLabel('Authorized facility').inputValue()===facility.id,'Browser selected another facility');
+   await page.goto(BASE+'/hms/facility');await page.getByRole('heading',{name:'Facility membership',exact:true}).waitFor();await page.waitForFunction(id=>document.querySelector('select')?.value===id,facility.id,{timeout:10000});assert(await page.getByLabel('Authorized facility').inputValue()===facility.id,'Browser selected another facility');
   }finally{await browser.close();}
  });
  done();process.exit();

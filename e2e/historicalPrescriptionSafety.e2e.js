@@ -1,5 +1,5 @@
 const crypto=require('node:crypto');
-const {api,apiLogin,sql,inCare,runner,assert,requireThrowawayDb}=require('./helpers');
+const {api,apiLogin,sql,inCare,runner,assert,requireThrowawayDb,syntheticClinician}=require('./helpers');
 const {historicalPrescription}=require('./historicalPrescriptionFixture');
 requireThrowawayDb();
 (async()=>{
@@ -40,6 +40,7 @@ requireThrowawayDb();
  await step('A login with care membership but no verified clinical credential cannot read or print',async()=>{
   const username='hist-'+tag.slice(0,12),password=crypto.randomBytes(24).toString('hex'),hash=await require('../backend/node_modules/bcryptjs').hash(password,4);
   const [u]=await sql("INSERT INTO hms_users(username,password,name,role,is_active) VALUES($1,$2,'Synthetic unverified historical reader','doctor',1) RETURNING id",[username,hash]);
+  await syntheticClinician(u.id,'doctor',{credential:false}); // practitioner record without a verified credential
   await sql("INSERT INTO hms_care_team_assignments(patient_id,practitioner_user_id,role,assigned_by) VALUES($1,$2,'consulting',$3)",[own.p.id,u.id,user.id]);
   const login=await api('POST','/auth/login',{body:{username,password},headers:{'X-Auth-Transport':'bearer'}});assert(login.data.token,'Synthetic login failed');
   for(const path of [`/hms/prescriptions/${own.rx.id}`,`/pdf/prescription/${own.rx.id}`])assert((await api('GET',path,{token:login.data.token})).status===403,'Unverified login obtained a clinical record');

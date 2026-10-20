@@ -370,6 +370,9 @@ export default function VitalsEntryPage() {
                     const tempUnit = v.temp_unit || v.TEMP_UNIT || 'F';
                     const sys = v.bp_systolic || v.BP_SYSTOLIC;
                     const dia = v.bp_diastolic || v.BP_DIASTOLIC;
+                    const bmiVal = v.bmi || v.BMI || null;
+                    // Threshold alerts are not stored by the legacy writer; show only alerts the record actually carries.
+                    const recordAlerts = Array.isArray(v.alerts) ? v.alerts : [];
                     const items = [
                       { label: 'BP', value: sys ? `${sys}/${dia}` : null, unit: 'mmHg' },
                       { label: 'Pulse', value: v.pulse || v.PULSE, unit: 'bpm' },

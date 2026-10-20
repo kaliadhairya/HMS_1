@@ -181,7 +181,10 @@ async function pickPatient(page, query, name) {
       assert(Number(v.bmi) === 24.22, `BMI ${v.bmi}`);
       assert(v.alerts===null,'legacy vital writer persisted an unapproved threshold interpretation');
       const [obs]=await sql("SELECT count(*)::int n FROM hms_observation_sets s JOIN hms_observations o ON o.set_id=s.id WHERE s.source_kind='legacy_opd_vitals' AND s.source_legacy_id=$1",[v.id]);
-      assert(obs.n===7,'OPD row was not projected into the shared observation model');
+      // One observation per measured field on the row, plus BMI when height and weight are both recorded.
+      const measured=['bp_systolic','bp_diastolic','temperature','weight_kg','height_cm','spo2','pulse','respiratory_rate'].filter((f)=>v[f]!==null&&v[f]!==undefined).length;
+      const expected=measured+(v.height_cm&&v.weight_kg?1:0);
+      assert(obs.n===expected,`OPD row projected ${obs.n} observations, expected ${expected}`);
       state.vital = v;
       noPageErrors(errors.filter((e) => !/status of 400/.test(e)), 'vitals');
     });

@@ -6,7 +6,7 @@ import {useGovernedCommand} from '../../hooks/useGovernedCommand';
 
 export default function FacilityPage(){
  const {user,switchFacility}=useAuth(),admin=['admin','super_admin'].includes(user?.role);
- const [facilities,setFacilities]=useState([]),[members,setMembers]=useState([]),[staff,setStaff]=useState([]),[current,setCurrent]=useState(null),[selected,setSelected]=useState(''),[error,setError]=useState(''),[switching,setSwitching]=useState(false);
+ const [facilities,setFacilities]=useState([]),[members,setMembers]=useState([]),[staff,setStaff]=useState([]),[current,setCurrent]=useState(null),[selected,setSelected]=useState(user?.facilityId||''),[error,setError]=useState(''),[switching,setSwitching]=useState(false);
  const [newFacility,setNewFacility]=useState({code:'',name:'',timezone:'Asia/Kolkata',reason:''});
  const [grant,setGrant]=useState({principal_id:'',valid_from:new Date().toISOString().slice(0,16),valid_until:'',reason:''});
  const [revoke,setRevoke]=useState(null),[reason,setReason]=useState('');

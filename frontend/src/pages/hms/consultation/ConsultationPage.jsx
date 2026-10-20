@@ -382,7 +382,7 @@ export default function ConsultationPage() {
                   {vitals.recorded_by_name || vitals.RECORDED_BY_NAME ? ` by ${vitals.recorded_by_name || vitals.RECORDED_BY_NAME}` : ''}
                 </p>
                 <div className="facts">
-                  <div><div className="fact-label">BP</div><div className="fact-value tabular">{vitals.bp_systolic ? `${vitals.bp_systolic}/${shown(vitals.bp_diastolic)}` : '—'}</div></div>
+                  <div><div className="fact-label">BP</div><div className="fact-value tabular">{vitals.bp_systolic ? `${shown(vitals.bp_systolic)}/${shown(vitals.bp_diastolic)}` : '—'}</div></div>
                   <div><div className="fact-label">Pulse</div><div className="fact-value tabular">{shown(vitals.pulse, ' bpm')}</div></div>
                   <div><div className="fact-label">Temperature</div><div className="fact-value tabular">{shown(vitals.temperature, ` °${tempUnit}`)}</div></div>
                   <div><div className="fact-label">SpO2</div><div className="fact-value tabular">{shown(vitals.spo2, '%')}</div></div>
