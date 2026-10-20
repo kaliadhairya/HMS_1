@@ -95,6 +95,39 @@ async function call(method, url, token, body, headers = {}) {
     assert(missing.status === 404, `unknown identifier ${missing.status}`);
   });
 
+  await step('Reschedule needs the current booking version; a stale or missing version is refused and changes nothing', async () => {
+    const id = booked.data.data.id;
+    const none = await call('POST', `/v2/appointments/${id}/reschedule`, desk, { slot_start: '12:00' }, key());
+    assert(none.status === 428, `missing If-Match: ${none.status}`);
+    const stale = await call('POST', `/v2/appointments/${id}/reschedule`, desk, { slot_start: '12:00' }, { ...key(), 'if-match': '"99"' });
+    assert(stale.status === 412 && stale.data.code === 'VERSION_CONFLICT', `stale version: ${stale.status} ${JSON.stringify(stale.data).slice(0, 120)}`);
+    assert(await count('09:00') === 1 && await count('12:00') === 0, 'a refused change moved the booking');
+  });
+
+  await step('A reschedule with the current version moves the booking, bumps its version, and frees the old time', async () => {
+    const id = booked.data.data.id;
+    const r = await call('POST', `/v2/appointments/${id}/reschedule`, desk, { slot_start: '12:00' }, { ...key(), 'if-match': '"1"' });
+    assert(r.status === 200 && r.data.data.slot_start === '12:00' && r.data.data.version === 2 && r.headers.get('etag') === '"2"', `reschedule ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
+    assert(await count('09:00') === 0 && await count('12:00') === 1, 'the old or new time is wrong after the move');
+  });
+
+  await step('A reschedule into a taken time is refused and the booking keeps its version', async () => {
+    const id = booked.data.data.id;
+    const taken = await call('POST', `/v2/appointments/${id}/reschedule`, desk, { slot_start: '14:00' }, { ...key(), 'if-match': '"2"' });
+    assert(taken.status === 409 && taken.data.code === 'SLOT_UNAVAILABLE', `taken time: ${taken.status} ${JSON.stringify(taken.data).slice(0, 120)}`);
+    const read = await call('GET', `/v2/appointments/${id}`, desk);
+    assert(read.data.data.version === 2 && read.data.data.slot_start === '12:00', 'the refused move changed the booking');
+  });
+
+  await step('Cancelling needs the current version; a cancelled booking cannot be changed again', async () => {
+    const id = booked.data.data.id;
+    const c = await call('POST', `/v2/appointments/${id}/cancel`, desk, { cancellation_reason: 'Patient called' }, { ...key(), 'if-match': '"2"' });
+    assert(c.status === 200 && c.data.data.status === 'Cancelled' && c.data.data.version === 3, `cancel ${c.status} ${JSON.stringify(c.data).slice(0, 160)}`);
+    assert(await count('12:00') === 0, 'a cancelled booking still holds its time');
+    const again = await call('POST', `/v2/appointments/${id}/reschedule`, desk, { slot_start: '13:00' }, { ...key(), 'if-match': '"3"' });
+    assert(again.status === 409 && again.data.code === 'APPOINTMENT_NOT_CHANGEABLE', `changed after cancel: ${again.status}`);
+  });
+
   done();
   process.exit();
 })().catch((e) => { console.error(e.message); process.exit(1); });
