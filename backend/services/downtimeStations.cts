@@ -96,13 +96,15 @@ async function markCaughtUp(ids: string[], t?: Transaction) {
 async function authenticate(header: unknown): Promise<Station | null> {
   const m = /^Station (hdk_[A-Za-z0-9_-]{43})$/.exec(String(header || ''));
   if (!m) return null;
-  return one('SELECT id, name, location, revoked_at, facility_id FROM hms_downtime_stations WHERE token_sha256 = :h AND revoked_at IS NULL', { h: sha256(m[1]) });
+  // Through the narrow owner-rights function (migration 0157): no facility context exists yet.
+  return one('SELECT * FROM hms_authenticate_station(:h)', { h: sha256(m[1]) });
 }
 
 // The newest kit, checked against the fingerprint recorded when it was made.
 async function latestKit(station: Station) {
-  const snap: Snapshot | null = await one('SELECT id, file_name, sha256, generated_at, stale_after FROM hms_downtime_snapshots WHERE facility_id = CAST(:f AS uuid) ORDER BY generated_at DESC LIMIT 1', { f: station.facility_id });
-  await rows('UPDATE hms_downtime_stations SET last_pull_at = now() WHERE id = :id', { id: station.id });
+  // Machine reads go through the narrow functions of migration 0158: no user session exists here.
+  const snap: Snapshot | null = await one('SELECT * FROM hms_station_latest_snapshot(:s)', { s: station.id });
+  await rows('SELECT hms_touch_station(:id)', { id: station.id });
   if (!snap) fail(404, 'No downtime kit has been made yet.', 'NO_KIT');
   const dir = process.env.DOWNTIME_KIT_DIR;
   if (!dir) fail(503, 'The downtime kit is off on this server.', 'KIT_NOT_CONFIGURED');
@@ -113,12 +115,13 @@ async function latestKit(station: Station) {
 }
 
 async function acknowledge(station: Station, body: { snapshot_id?: unknown; sha256?: unknown; opened?: unknown }, t: Transaction) {
-  const snap = await one('SELECT id, sha256, stale_after FROM hms_downtime_snapshots WHERE id::text = :id AND facility_id = CAST(:f AS uuid)', { id: String(body.snapshot_id ?? ''), f: station.facility_id }, t);
+  const snapshotId = String(body.snapshot_id ?? '');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(snapshotId)) fail(404, 'Unknown kit.', 'NO_KIT');
+  const snap = await one('SELECT * FROM hms_station_snapshot(:s, :k)', { s: station.id, k: snapshotId }, t);
   if (!snap) fail(404, 'Unknown kit.', 'NO_KIT');
   if (body.sha256 !== snap.sha256) fail(409, 'The stored kit does not match the kit HMS made.', 'KIT_MISMATCH');
-  await rows(`INSERT INTO hms_downtime_station_receipts (station_id, snapshot_id, sha256, opened)
-    VALUES (:s, :k, :sha, :opened) ON CONFLICT (station_id, snapshot_id) DO NOTHING`, { s: station.id, k: snap.id, sha: snap.sha256, opened: body.opened === true }, t);
-  if (new Date(snap.stale_after) > new Date()) await markCaughtUp([station.id], t);
+  await rows('SELECT hms_station_record_receipt(:s, :k, :sha, :opened)', { s: station.id, k: snap.id, sha: snap.sha256, opened: body.opened === true }, t);
+  if (new Date(snap.stale_after) > new Date()) await rows('SELECT hms_station_caught_up(:s)', { s: station.id }, t);
   return { stored: true, stale_after: snap.stale_after };
 }
 

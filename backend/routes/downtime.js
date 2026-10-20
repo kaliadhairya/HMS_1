@@ -33,7 +33,11 @@ const station = async (req, res, next) => {
   try {
     req.station = await ST.authenticate(req.get('authorization'));
     if (!req.station) return res.status(401).json({ success: false, code: 'STATION_UNKNOWN', message: 'This machine is not registered, or was revoked.' });
-    return next();
+    // The machine's facility is its only context (A2): its kit and confirmations are read and
+    // written inside that facility, so the facility row policies apply to the restricted identity.
+    const [facility] = await require('../models/db').sequelize.query('SELECT timezone FROM hms_facilities WHERE id = :id', { replacements: { id: req.station.facility_id }, type: 'SELECT' });
+    const { storage } = require('../utils/auditContext');
+    return storage.run({ ...(storage.getStore() || {}), userId: null, sessionId: null, facilityId: req.station.facility_id, facilityTimezone: facility?.timezone || 'Asia/Kolkata' }, () => next());
   } catch (err) { return next(err); }
 };
 router.get('/station/kit', station, async (req, res) => {
