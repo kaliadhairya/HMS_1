@@ -57,13 +57,33 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # The application never connects as the owner (A2): this one-time step creates
+  # the restricted runtime role after migrations. Re-running it is harmless.
+  runtime-role:
+    build:
+      context: ./backend
+    container_name: hms-runtime-role
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: hms
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      RUNTIME_DB_USER: ${RUNTIME_DB_USER:-hms_runtime}
+      RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD:?Set RUNTIME_DB_PASSWORD in .env (16+ characters)}
+    command: ["node", "scripts/provision-runtime-role.cjs"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   backend:
     build:
       context: ./backend
     container_name: hms-backend
     restart: unless-stopped
     depends_on:
-      migrate:
+      runtime-role:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
@@ -71,8 +91,9 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: hms
-      DB_USER: postgres
-      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      # Restricted runtime identity (A2): no table ownership, no row-policy bypass, no schema creation.
+      DB_USER: ${RUNTIME_DB_USER:-hms_runtime}
+      DB_PASSWORD: ${RUNTIME_DB_PASSWORD:?Set RUNTIME_DB_PASSWORD in .env (16+ characters)}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_EXPIRES_IN: 8h
       CORS_ORIGIN: "*"

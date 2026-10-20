@@ -24,7 +24,7 @@ function beforeSend(res, priority, prepare) {
         for (const name of Object.keys(original)) res[name] = original[name];
         gate.queue.length = 0;
         if (res.locals.abortCommand) await res.locals.abortCommand().catch(() => {});
-        console.error('Response protection failed:', error.code || error.name);
+        console.error('Response protection failed:', error.original?.message || error.code || error.name);
         if (res.destroyed) return;
         const body = JSON.stringify({ success: false, code: error.publicCode || 'RESPONSE_NOT_DURABLE', message: 'The operation could not be confirmed safely. Retry with the same request key.' });
         res.statusCode = 503;

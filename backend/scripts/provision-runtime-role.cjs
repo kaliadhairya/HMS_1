@@ -23,6 +23,17 @@ async function provision({ role, password, client }) {
   await client.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${role}`);
   await client.query(`GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO ${role}`);
   await client.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO ${role}`);
+  // Audit (defence in depth): the application's audit log is append-only; the runtime
+  // identity never deletes or truncates it. Sealing writes only the seal columns, and the
+  // database guard (audit.forbid_rewrite) refuses every other change to a sealed or stored row.
+  await client.query(`REVOKE DELETE, TRUNCATE ON public.hms_audit_logs FROM ${role}`);
+  await client.query(`GRANT USAGE ON SCHEMA audit TO ${role}`);
+  await client.query(`GRANT SELECT ON ALL TABLES IN SCHEMA audit TO ${role}`);
+  await client.query(`GRANT UPDATE ON audit.row_changes, audit.access_events, audit.chain_heads, public.hms_audit_logs TO ${role}`);
+  await client.query(`GRANT INSERT ON audit.access_events TO ${role}`);
+  await client.query(`REVOKE DELETE, TRUNCATE ON audit.row_changes, audit.access_events, audit.chain_heads, audit.checkpoint_identity FROM ${role}`);
+  await client.query(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA audit TO ${role}`);
+  await client.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA audit TO ${role}`);
   return { database: db, role };
 }
 

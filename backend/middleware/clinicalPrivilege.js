@@ -24,4 +24,13 @@ function requireClinicalPrivilege(action, { patientIdFrom } = {}) {
   };
 }
 
-module.exports = { requireClinicalPrivilege };
+// Patient of an inpatient admission, taken from the route parameter or the body.
+async function patientOfAdmission(req) {
+  const id = Number(req.params.id ?? req.body?.admissionId ?? req.body?.admission_id);
+  if (!Number.isSafeInteger(id) || id < 1) return null;
+  const { sequelize } = require('../models/db');
+  const [rows] = await sequelize.query('SELECT patient_id FROM hms_admissions WHERE id = :id', { replacements: { id } });
+  return rows && rows.length ? (rows[0].patient_id ?? rows[0].PATIENT_ID) : null;
+}
+
+module.exports = { requireClinicalPrivilege, patientOfAdmission };

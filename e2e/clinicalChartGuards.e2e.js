@@ -79,6 +79,30 @@ requireThrowawayDb();
     assert(r.status === 403 && r.data.code === 'PATIENT_NOT_IN_CARE', `referral outside care: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
   });
 
+  await step('An unverified nurse cannot record inpatient vitals', async () => {
+    const username = `unverified-ipd-${tag}`;
+    const bcrypt = require('../backend/node_modules/bcryptjs');
+    const password = crypto.randomBytes(18).toString('hex');
+    const [u] = await sql("INSERT INTO hms_users(username,password,name,role,is_active) VALUES($1,$2,'Synthetic unverified ward nurse','nurse',1) RETURNING id", [username, await bcrypt.hash(password, 4)]);
+    await syntheticClinician(u.id, 'nurse', { credential: false });
+    const login = await api('POST', '/auth/login', { body: { username, password }, headers: { 'X-Auth-Transport': 'bearer' } });
+    assert(login.data.token, 'synthetic login failed');
+    const [adm] = await sql('SELECT id FROM hms_admissions ORDER BY id LIMIT 1');
+    const r = await api('POST', '/ipd/vitals', { token: login.data.token, body: { admissionId: adm.id, temperature: 37 } });
+    assert(r.status === 403 && r.data.code === 'CLINICAL_PRIVILEGE_REQUIRED', `unverified ward vitals: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
+  });
+
+  await step('A doctor cannot write a progress note for an admission outside their care', async () => {
+    const doctor = await apiLogin('doctor');
+    const [doctorUser] = await sql("SELECT id FROM hms_users WHERE username = 'doctor'");
+    const [outside] = await sql(`SELECT a.id FROM hms_admissions a
+      WHERE NOT EXISTS (SELECT 1 FROM hms_care_team_assignments c WHERE c.patient_id = a.patient_id AND c.practitioner_user_id = $1 AND c.valid_to IS NULL)
+      ORDER BY a.id LIMIT 1`, [doctorUser.id]);
+    assert(outside, 'no admission outside the doctor\'s care exists in this database');
+    const r = await api('POST', '/ipd/progress-notes', { token: doctor, body: { admissionId: outside.id, noteText: 'Synthetic note outside care' } });
+    assert(r.status === 403 && r.data.code === 'PATIENT_NOT_IN_CARE', `progress note outside care: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
+  });
+
   done();
   process.exit();
 })().catch((e) => { console.error(e.message); process.exit(1); });

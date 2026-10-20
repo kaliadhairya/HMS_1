@@ -5,6 +5,7 @@ const router = express.Router();
 const { sequelize, Ward, Bed, Admission, Patient, User, ProgressNote, NursingNote, IpdVitals, IpdRequest } = require('../models');
 const { publish } = require('../utils/outbox');
 const { protect, checkPermission, restrictTo } = require('../middleware/auth');
+const { requireClinicalPrivilege, patientOfAdmission } = require('../middleware/clinicalPrivilege');
 const logAction = require('../utils/auditLogger');
 const { clobToString } = require('../utils/clobToString');
 
@@ -601,7 +602,7 @@ router.get('/admissions/:id', protect, checkPermission('ipd', 'read'), async (re
 // Discharges the patient, frees the bed and stores the discharge summary in one transaction. A failed
 // summary insert used to be swallowed inside the transaction (Postgres then rolls the whole thing back
 // while the API still answered "discharged").
-router.patch('/admissions/:id/discharge', protect, checkPermission('ipd', 'write'), async (req, res) => {
+router.patch('/admissions/:id/discharge', protect, checkPermission('ipd', 'write'), requireClinicalPrivilege('CLINICAL_SIGN', { patientIdFrom: patientOfAdmission }), async (req, res) => {
   if (req.user.role !== 'doctor') return fail(res, 403, 'A responsible doctor must author and sign the discharge continuity record.');
   const t = await sequelize.transaction();
   const abort = async (status, message) => { await t.rollback(); return fail(res, status, message); };
@@ -767,7 +768,7 @@ async function activeAdmissionOr(res, id) {
 }
 
 // Progress (SOAP) notes are written by doctors; nursing notes by nurses (admins may write either).
-router.post('/progress-notes', protect, checkPermission('ipd', 'write'), async (req, res) => {
+router.post('/progress-notes', protect, checkPermission('ipd', 'write'), requireClinicalPrivilege('CHART_READ', { patientIdFrom: patientOfAdmission }), async (req, res) => {
   try {
     if (!['doctor', 'admin', 'super_admin'].includes(req.user.role)) return fail(res, 403, 'Only doctors write progress notes.');
     const fields = ['subjective', 'objective', 'assessment', 'plan'];
@@ -806,7 +807,7 @@ router.get('/progress-notes/:admissionId', protect, checkPermission('ipd', 'read
   }
 });
 
-router.post('/nursing-notes', protect, restrictTo('nurse'), checkPermission('ipd', 'write'), async (req, res) => {
+router.post('/nursing-notes', protect, restrictTo('nurse'), checkPermission('ipd', 'write'), requireClinicalPrivilege('NURSING_DOCUMENT', { patientIdFrom: patientOfAdmission }), async (req, res) => {
   const transaction=await sequelize.transaction();
   try {
     const conditionNotes=text(req.body.conditionNotes||req.body.noteText||req.body.note_text),complaints=text(req.body.complaints),actionsTaken=text(req.body.actionsTaken||req.body.actions_taken);
@@ -881,7 +882,7 @@ const FLUID_FIELDS = { intakeOralMl: 'Oral intake', intakeIvMl: 'IV intake', out
 const SHIFTS = ['Morning', 'Afternoon', 'Night'];
 const blank = (v) => v === undefined || v === null || v === '';
 
-router.post('/vitals', protect, checkPermission('ipd', 'write'), async (req, res) => {
+router.post('/vitals', protect, checkPermission('ipd', 'write'), requireClinicalPrivilege('CHART_READ', { patientIdFrom: patientOfAdmission }), async (req, res) => {
   try {
     const values = {};
     for (const [key, [min, max, label, whole]] of Object.entries(IPD_VITAL_LIMITS)) {
