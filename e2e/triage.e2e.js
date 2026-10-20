@@ -4,7 +4,7 @@
 // append-only; escalations must be acknowledged by the right role before a
 // disposition; overdue reassessments are flagged on the board.
 const crypto = require('crypto');
-const { API, apiLogin, sql, runner, assert, stamp } = require('./helpers');
+const { API, apiLogin, sql, runner, assert, stamp, inCare } = require('./helpers');
 
 async function call(method, url, token, body) {
   const res = await fetch(API + url, {
@@ -55,6 +55,9 @@ async function call(method, url, token, body) {
     });
 
     await step('A changed acuity is a new assessment; the earlier one cannot be altered', async () => {
+      // A doctor charts only for a patient in their care (A2), so the responsible doctor is assigned first.
+      const [arrival] = await sql('SELECT patient_id FROM hms_emergency_arrivals WHERE id = $1', [ctx.arrival]);
+      await inCare(arrival.patient_id, 'doctor');
       const again = await call('POST', `/triage/arrivals/${ctx.arrival}/assessments`, doctor, { protocolKey: 'esi', protocolVersion: 5, acuityLevel: 2, reassessMinutes: 10 });
       assert(again.status === 201, `reassessment ${again.status}`);
       const board = (await call('GET', '/triage/board', doctor)).data.data.find((r) => r.id === ctx.arrival);

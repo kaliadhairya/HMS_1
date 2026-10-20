@@ -2,6 +2,7 @@ const express = require('express');
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models/db');
 const { protect, restrictTo } = require('../middleware/auth');
+const { requireClinicalPrivilege } = require('../middleware/clinicalPrivilege');
 const { logAction } = require('../utils/auditLogger');
 const { patientInCare, ensureCareTeam, NOT_IN_CARE } = require('../utils/careTeam');
 const { conflictResponse } = require('../utils/dbErrors');
@@ -28,7 +29,7 @@ async function loadReferral(id, transaction, lock = false) {
 }
 
 // POST /api/referrals — raise a referral for a patient in the sender's care.
-router.post('/', protect, restrictTo(...DOCTORS), async (req, res) => {
+router.post('/', protect, restrictTo(...DOCTORS), requireClinicalPrivilege('CHART_READ', { patientIdFrom: (req) => req.body.patientId }), async (req, res) => {
   try {
     const patientId = posInt(req.body.patientId);
     const toUserId = req.body.toUserId ? posInt(req.body.toUserId) : null;

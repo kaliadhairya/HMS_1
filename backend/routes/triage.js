@@ -2,6 +2,7 @@ const express = require('express');
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models/db');
 const { protect, restrictTo } = require('../middleware/auth');
+const { requireClinicalPrivilege } = require('../middleware/clinicalPrivilege');
 const { logAction } = require('../utils/auditLogger');
 const { conflictResponse } = require('../utils/dbErrors');
 
@@ -75,7 +76,10 @@ router.get('/board', protect, restrictTo(...CLINICAL), async (req, res) => {
 });
 
 // POST /api/triage/arrivals/:id/assessments — a new assessment (never an edit).
-router.post('/arrivals/:id/assessments', protect, restrictTo(...ASSESSORS), async (req, res) => {
+router.post('/arrivals/:id/assessments', protect, restrictTo(...ASSESSORS), requireClinicalPrivilege('CHART_READ', { patientIdFrom: async (req) => {
+  const [rows] = await sequelize.query('SELECT patient_id FROM hms_emergency_arrivals WHERE id = :id', { replacements: { id: Number(req.params.id) } });
+  return rows && rows.length ? (rows[0].patient_id ?? rows[0].PATIENT_ID) : null;
+} }), async (req, res) => {
   try {
     const arrivalId = posInt(req.params.id);
     const protocolKey = text(req.body.protocolKey, 40);
@@ -114,7 +118,10 @@ router.post('/arrivals/:id/assessments', protect, restrictTo(...ASSESSORS), asyn
 });
 
 // POST /api/triage/arrivals/:id/escalate — raise the case to a doctor, nurse or admin.
-router.post('/arrivals/:id/escalate', protect, restrictTo(...ASSESSORS), async (req, res) => {
+router.post('/arrivals/:id/escalate', protect, restrictTo(...ASSESSORS), requireClinicalPrivilege('CHART_READ', { patientIdFrom: async (req) => {
+  const [rows] = await sequelize.query('SELECT patient_id FROM hms_emergency_arrivals WHERE id = :id', { replacements: { id: Number(req.params.id) } });
+  return rows && rows.length ? (rows[0].patient_id ?? rows[0].PATIENT_ID) : null;
+} }), async (req, res) => {
   try {
     const arrivalId = posInt(req.params.id);
     const reason = text(req.body.reason);

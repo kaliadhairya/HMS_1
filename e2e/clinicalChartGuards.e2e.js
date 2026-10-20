@@ -57,6 +57,28 @@ requireThrowawayDb();
     assert(r.status !== 403, `in-care doctor refused by the chart check: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
   });
 
+  await step('An unverified nurse cannot submit a triage assessment', async () => {
+    const username = `unverified-triage-${tag}`;
+    const bcrypt = require('../backend/node_modules/bcryptjs');
+    const password = crypto.randomBytes(18).toString('hex');
+    const [u] = await sql("INSERT INTO hms_users(username,password,name,role,is_active) VALUES($1,$2,'Synthetic unverified triage nurse','nurse',1) RETURNING id", [username, await bcrypt.hash(password, 4)]);
+    await syntheticClinician(u.id, 'nurse', { credential: false });
+    const login = await api('POST', '/auth/login', { body: { username, password }, headers: { 'X-Auth-Transport': 'bearer' } });
+    assert(login.data.token, 'synthetic login failed');
+    const r = await api('POST', '/triage/arrivals/1/assessments', { token: login.data.token, body: { protocolKey: 'x', protocolVersion: 1, acuityLevel: 3, reassessMinutes: 15 } });
+    assert(r.status === 403 && r.data.code === 'CLINICAL_PRIVILEGE_REQUIRED', `unverified triage: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
+  });
+
+  await step('A doctor cannot refer a patient outside their care', async () => {
+    const doctor = await apiLogin('doctor');
+    const [doctorUser] = await sql("SELECT id FROM hms_users WHERE username = 'doctor'");
+    const [outside] = await sql(`SELECT p.id FROM hms_patients p
+      WHERE NOT EXISTS (SELECT 1 FROM hms_care_team_assignments c WHERE c.patient_id = p.id AND c.practitioner_user_id = $1 AND c.valid_to IS NULL)
+      ORDER BY p.id LIMIT 1`, [doctorUser.id]);
+    const r = await api('POST', '/referrals', { token: doctor, body: { patientId: outside.id, toSpecialty: 'Cardiology', reason: 'Synthetic referral outside care' } });
+    assert(r.status === 403 && r.data.code === 'PATIENT_NOT_IN_CARE', `referral outside care: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
+  });
+
   done();
   process.exit();
 })().catch((e) => { console.error(e.message); process.exit(1); });
