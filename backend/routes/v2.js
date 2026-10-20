@@ -55,4 +55,7 @@ router.get('/medication-schedules/:id',restrictTo('doctor','nurse','pharmacist')
 router.post('/medication-schedules/:id/prepare',restrictTo('nurse'),handle((r,res,t)=>Medications.prepare(r.params.id,r.body,r.user,r.get('if-match'),t),{command:true,status:201}));
 router.post('/administrations',restrictTo('nurse'),handle((r,res,t)=>Medications.administer(r.body,r.user,r.get('if-match'),t),{command:true,status:201}));
 router.get('/administrations/:id',restrictTo('doctor','nurse','pharmacist'),medicationRead((r,t)=>Medications.readAdministration(r.params.id,r.user,t)));
+const Appointments=require('../services/appointmentV2.cts');
+router.post('/appointments',restrictTo('super_admin','admin','doctor','receptionist'),handle((r,res,t)=>Appointments.book(r.body,r.user,t),{command:true,status:201}));
+router.get('/appointments/:id',restrictTo('super_admin','admin','doctor','receptionist'),clinicalRead((r,res,t)=>Appointments.read(r.params.id,r.user,t)));
 module.exports=router;

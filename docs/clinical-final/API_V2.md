@@ -34,6 +34,23 @@ artifact differs from its source. `npm run typecheck` checks server CommonJS
 TypeScript and browser ES module contracts separately. Document section names
 come from `backend/domain/clinicalDocumentSchema.cts`.
 
+## Scheduling (A3, first adapter)
+
+- `POST /api/v2/appointments` books a slot. It requires an `Idempotency-Key`,
+  names the patient, doctor and department by public identifier, and returns
+  the booking with its `version` and `operation_id`. Roles: administrator,
+  receptionist, doctor.
+- `GET /api/v2/appointments/{id}` reads one booking by public identifier.
+- Booking calls the same transactional core as `POST /api/hms/appointments`
+  (`backend/services/appointmentBooking.js`): one doctor and day are serialized
+  by an advisory lock, and a database exclusion rule refuses overlapping times.
+  Legacy and v2 bookings therefore cannot both win one slot.
+- Verified by `e2e/v2Scheduling.e2e.js` (8/8): identifiers, retry replay,
+  conflicting key reuse, missing key, overlap, 50 concurrent requests for one
+  slot (exactly one booking), a legacy/v2 race, role refusal and reads.
+- Not yet in v2: reschedule and cancel (they need `If-Match` on the booking
+  version), and the generated OpenAPI entries for appointments.
+
 ## Identity and authority
 
 Migrations 0127–0130 add exact UUID mappings for 25 retained numeric resource
