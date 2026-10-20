@@ -12,7 +12,7 @@ Evidence means a clean full pass on the exact commit, in the stated configuratio
 - Applying the production compose change (runtime role) to the live stack.
 - Any step that needs a hospital, a licence, a vendor or a regional environment (listed last).
 
-## Phase 1 — A2 (finish)
+## Phase 1 — A2 (DONE on `3de5d7f`: standard pass 68/68; restricted-identity pass 67/68)
 
 1. Ward machines under the restricted identity: the kit fetch and the confirmations read
    through narrow owner-rights functions, like the machine login (migration 0157 is the start).
