@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Diagnosis, sequelize } = require('../../models');
 const { protect, checkPermission } = require('../../middleware/auth');
+const { requireClinicalPrivilege } = require('../../middleware/clinicalPrivilege');
 const { activeRelease, concept } = require('../../services/terminology');
 
 // Diagnoses belong to the consultation note; once it is finalized they are part of the record.
@@ -11,7 +12,10 @@ async function encounterStatus(encounterId) {
 }
 
 // Add diagnosis to encounter
-router.post('/', protect, checkPermission('consultation', 'write'), async (req, res) => {
+router.post('/', protect, checkPermission('consultation', 'write'), requireClinicalPrivilege('CHART_READ', { patientIdFrom: async (req) => {
+  const [rows] = await sequelize.query('SELECT PATIENT_ID FROM HMS_ENCOUNTERS WHERE ID = :id', { replacements: { id: Number(req.body.encounter_id) } });
+  return rows && rows.length ? (rows[0].patient_id ?? rows[0].PATIENT_ID) : null;
+} }), async (req, res) => {
   try {
     const { encounter_id, icd10_code, icd10_description, diagnosis_type, status, clinical_notes, original_text } = req.body;
     if (!encounter_id || !icd10_code) return res.status(400).json({ error: 'encounter_id and icd10_code are required' });

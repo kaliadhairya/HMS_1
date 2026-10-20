@@ -1,11 +1,12 @@
 const express = require('express');
+const { requireClinicalPrivilege } = require('../../middleware/clinicalPrivilege');
 const router = express.Router();
 const { RestForm, Patient } = require('../../models');
 const { protect, checkPermission, restrictTo } = require('../../middleware/auth');
 const { logAction } = require('../../utils/auditLogger');
 
 // Create Rest Form
-router.post('/', protect, checkPermission('consultation', 'write'), async (req, res) => {
+router.post('/', protect, checkPermission('consultation', 'write'), requireClinicalPrivilege('CLINICAL_SIGN', { patientIdFrom: (req) => req.body.patient_id }), async (req, res) => {
   try {
     const {
       patient_id, encounter_id, attended_date,

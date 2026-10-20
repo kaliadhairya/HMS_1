@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Vital, Patient, User, sequelize } = require('../../models');
 const { protect, restrictTo } = require('../../middleware/auth');
+const { requireClinicalPrivilege } = require('../../middleware/clinicalPrivilege');
 const { logAction } = require('../../utils/auditLogger');
 
 function computeBMI(weight_kg, height_cm) {
@@ -46,7 +47,7 @@ function validateVitals(body) {
 const blankToNull = (value) => (value === '' || value === undefined ? null : value);
 
 // POST /api/hms/vitals
-router.post('/', protect, restrictTo('super_admin', 'doctor', 'nurse'), async (req, res) => {
+router.post('/', protect, restrictTo('super_admin', 'doctor', 'nurse'), requireClinicalPrivilege('CHART_READ', { patientIdFrom: (req) => req.body.patient_id }), async (req, res) => {
   try {
     const { patient_id, encounter_type } = req.body;
     const [bp_systolic, bp_diastolic, temperature, weight_kg, height_cm, spo2, pulse, respiratory_rate] = [
