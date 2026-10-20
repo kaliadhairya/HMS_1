@@ -9,6 +9,7 @@ const nonblank = s => typeof s === 'string' && s.trim().length > 0;
 const named = s => nonblank(s) && !/^(tbd|pending|unknown|unassigned|placeholder|n\/a|demo|test)$/i.test(s.trim());
 const timestamp = s => typeof s === 'string' && /(?:Z|[+-]\d\d:\d\d)$/.test(s) && Number.isFinite(Date.parse(s));
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');
+const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 function template() {
   return {
     schema_version: 1,
@@ -20,8 +21,8 @@ function template() {
 }
 function validate(record) {
   const errors = [];
-  if (!record || record.schema_version !== 1) return ['Unsupported assessment schema'];
-  if (!record.context || !record.owner_names || !record.gates || !record.hazards) return ['Missing assessment sections'];
+  if (!object(record) || record.schema_version !== 1) return ['Unsupported assessment schema'];
+  if (!['context','owner_names','gates','hazards'].every(key=>object(record[key]))) return ['Missing or invalid assessment sections'];
   for (const field of ['release_commit', 'environment', 'site', 'scope_id']) {
     const value = record.context[field];
     if (!(value === null || nonblank(value))) errors.push(`Invalid context.${field}`);
@@ -45,12 +46,11 @@ function validate(record) {
       if (!named(e.reviewed_by) || !nonblank(e.decision_ref)) errors.push(`Missing review ${e.id}`);
       if (!e.context || Object.keys(record.context).some(f => !nonblank(e.context[f]))) errors.push(`Missing evidence binding ${e.id}`);
       if (!e.artifact || !nonblank(e.artifact.path) || !/^[a-f0-9]{64}$/.test(e.artifact.sha256 || '')) errors.push(`Invalid artifact ${e.id}`);
-      if (!Array.isArray(e.supersedes)) errors.push(`Missing supersession list ${e.id}`);
+      if (!Array.isArray(e.supersedes) || e.supersedes.some(id=>!nonblank(id))) errors.push(`Missing/invalid supersession list ${e.id}`);
     }
   }
   for (const [id, { gate, evidence: e }] of ids) {
-    if (!Array.isArray(e.supersedes)) continue; // reported above as an invalid supersession list
-    for (const priorId of e.supersedes) {
+    for (const priorId of Array.isArray(e.supersedes) ? e.supersedes : []) {
       const prior = ids.get(priorId);
       if (!prior || priorId === id || prior.gate.id !== gate.id || prior.evidence.kind !== e.kind || prior.evidence.stage !== e.stage ||
           Date.parse(prior.evidence.observed_at) >= Date.parse(e.observed_at) ||
