@@ -90,7 +90,6 @@ router.post('/', [
     const result = await sequelize.transaction(async (t) => {
       // ✅ Fetch IDs from sequences
       const [[{ NEXTVAL: nextId }]] = await sequelize.query("SELECT nextval('hms_patients_seq') AS \"NEXTVAL\"", { transaction: t });
-      const [[{ NEXTVAL: reportId }]] = await sequelize.query("SELECT nextval('hms_test_reports_seq') AS \"NEXTVAL\"", { transaction: t });
 
       const year = new Date().getFullYear();
       const paddedId = String(nextId).padStart(6, '0');
@@ -129,30 +128,15 @@ router.post('/', [
         transaction: t
       });
 
-      // ✅ Raw SQL Insert for Test Report
-      await sequelize.query(`
-        INSERT INTO HMS_TEST_REPORTS (
-          ID, PATIENT_ID, REPORTED_BY, STATUS, CREATED_AT, UPDATED_AT
-        ) VALUES (
-          :id, :patientId, :reportedBy, 'Draft', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-        )
-      `, {
-        replacements: {
-          id: reportId,
-          patientId: nextId,
-          reportedBy: Number(req.user.id)
-        },
-        transaction: t
-      });
-
-      return { id: nextId, uhid: uhid, reportId: reportId };
+      // No free-text lab report draft is created here any more (completion A6): the legacy
+      // report editor is retired and laboratory work starts from a coded order.
+      return { id: nextId, uhid: uhid };
     });
 
     res.status(201).json({
       success: true,
       message: 'Patient registered successfully.',
       patient: { id: result.id, uhid: result.uhid },
-      reportId: result.reportId,
     });
   } catch (err) {
     console.error(err);

@@ -205,7 +205,7 @@ export default function DoctorDashboard() {
 
   const actionsFor = useCallback((p) => [
     { label: 'Open consultation', icon: Stethoscope, onSelect: () => navigate(`/hms/consultation/${p.encounter_id}`), hidden: !p.encounter_id },
-    { label: 'Prescription', icon: Pill, onSelect: () => navigate(`/hms/prescription-slip?patientId=${p.id}&encounterId=${p.encounter_id || ''}`) },
+    { label: 'Prescription', icon: Pill, onSelect: () => navigate(`/medication/orders?patient_id=${p.id}${p.encounter_id ? `&encounter_id=${p.encounter_id}` : ''}`) },
     { label: 'Lab orders', icon: FlaskConical, onSelect: () => navigate(`/doctor/labs?patientId=${p.id}`) },
     { label: 'Referral', icon: Share2, onSelect: () => setReferralPatient(p) },
     { label: 'Rest form', icon: BedSingle, onSelect: () => navigate(`/doctor/rest-forms/new?patientId=${p.id}`) },

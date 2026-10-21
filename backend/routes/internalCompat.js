@@ -27,18 +27,9 @@ router.post('/doctor-profiles', async (req, res, next) => {
   }
 });
 
-router.post('/test-reports', async (req, res, next) => {
-  try {
-    const patientId = Number(req.body.patientId);
-    const reportedBy = Number(req.body.reportedBy);
-    if (!Number.isInteger(patientId) || patientId <= 0 || !Number.isInteger(reportedBy) || reportedBy <= 0) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Valid patientId and reportedBy are required.' } });
-    const [[row]] = await sequelize.query("SELECT nextval('hms_test_reports_seq') AS id");
-    const reportId = Number(row.id);
-    await sequelize.query("INSERT INTO HMS_TEST_REPORTS (ID, PATIENT_ID, REPORTED_BY, STATUS, CREATED_AT, UPDATED_AT) VALUES (:id, :patientId, :reportedBy, 'Draft', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)", { replacements: { id: reportId, patientId, reportedBy } });
-    return res.status(201).json({ success: true, reportId });
-  } catch (error) { return next(error); }
-});
-
-router.delete('/test-reports/:patientId', async (req, res, next) => { try { const patientId = Number(req.params.patientId); if (!Number.isInteger(patientId) || patientId <= 0) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Valid patientId is required.' } }); await sequelize.query('DELETE FROM HMS_TEST_REPORTS WHERE PATIENT_ID = :patientId', { replacements: { patientId } }); return res.json({ success: true }); } catch (error) { return next(error); } });
+// Legacy free-text lab report drafts are retired (completion A6): no service creates or deletes them.
+const LEGACY_REPORTS_RETIRED = (req, res) => res.status(410).json({ success: false, error: { code: 'LEGACY_REPORT_WRITE_RETIRED', message: 'Free-text lab report drafts are retired; laboratory work starts from a coded order.' } });
+router.post('/test-reports', LEGACY_REPORTS_RETIRED);
+router.delete('/test-reports/:patientId', LEGACY_REPORTS_RETIRED);
 
 module.exports = router;

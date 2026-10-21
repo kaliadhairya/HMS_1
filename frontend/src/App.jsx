@@ -44,7 +44,6 @@ const VitalsEntryPage = lazy(() => import('./pages/hms/opd/VitalsEntryPage'));
 
 // Sprint 3 Pages
 const ConsultationPage = lazy(() => import('./pages/hms/consultation/ConsultationPage'));
-const PrescriptionSlipPage = lazy(() => import('./pages/hms/consultation/LegacyPrescriptionEntry'));
 
 const PrescriptionPreviewPage = lazy(() => import('./pages/hms/pharmacy/PrescriptionPreviewPage'));
 const InvestigationQueuePage = lazy(() => import('./pages/hms/lab/InvestigationQueuePage'));
@@ -358,11 +357,6 @@ export default function App() {
             <Route path="/doctor/quick-consult" element={
               <HMSProtectedRoute allowedRoles={['doctor']}>
                 <DoctorQuickConsultPage />
-              </HMSProtectedRoute>
-            } />
-            <Route path="/hms/prescription-slip" element={
-              <HMSProtectedRoute allowedRoles={['super_admin', 'doctor']}>
-                <PrescriptionSlipPage />
               </HMSProtectedRoute>
             } />
             <Route path="/prescription/:id/print" element={

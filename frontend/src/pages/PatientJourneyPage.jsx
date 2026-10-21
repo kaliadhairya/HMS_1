@@ -78,7 +78,7 @@ export default function PatientJourneyPage() {
 
       // Clinical encounters need consultation access. Front desk and nurses read the same visits
       // from the patient's visit list instead, so the journey still shows every OPD visit.
-      const canOpenSlip = ['super_admin', 'doctor'].includes(user?.role);
+      const canOrder = user?.role === 'doctor'; // coded medication orders are the doctor's screen
       const encounters = encRes.status === 'fulfilled'
         ? listOf(encRes)
         : listOf(visitRes).filter((v) => v.type !== 'Lab Test').map((v) => ({
@@ -93,7 +93,7 @@ export default function PatientJourneyPage() {
         date: e.encounter_date || e.created_at,
         summary: `${e.encounter_type || 'OPD'} visit with Dr. ${(e.doctor?.name || e.doctor_name || 'N/A').replace(/^Dr\.?\s*/i, '')}${dept ? ` (${dept})` : ''}`,
         details: { complaint: e.chief_complaint, status: e.status },
-        link: canOpenSlip ? `/hms/prescription-slip?patientId=${patientId}&encounterId=${e.id}` : undefined,
+        link: canOrder ? `/medication/orders?patient_id=${patientId}&encounter_id=${e.id}` : undefined,
         });
       });
 
@@ -103,7 +103,7 @@ export default function PatientJourneyPage() {
         date: rx.created_at,
         summary: `Prescription, ${rx.items?.length || 0} ${rx.items?.length === 1 ? 'medicine' : 'medicines'}`,
         details: { medicines: rx.items?.map((i) => i.medicine_name).join(', ') || 'N/A', status: rx.status },
-        link: canOpenSlip ? `/hms/prescription-slip?patientId=${patientId}&encounterId=${rx.encounter_id}` : undefined,
+        link: canOrder ? `/medication/orders?patient_id=${patientId}&encounter_id=${rx.encounter_id}` : undefined,
       }));
 
       listOf(visitRes).filter((v) => v.type === 'Lab Test').forEach((lab) => timeline.push({

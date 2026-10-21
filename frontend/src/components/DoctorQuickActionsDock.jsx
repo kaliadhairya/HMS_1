@@ -5,7 +5,7 @@ import Glyph from './ui/Glyph';
 
 const quickActions = [
   { label: 'Register Patient', icon: '📝', to: '/hms/patients/new', color: '#059669' },
-  { label: 'Electronic Prescription', icon: '💊', to: '/hms/prescription-slip', color: '#3b82f6' },
+  { label: 'Electronic Prescription', icon: '💊', to: '/medication/orders', color: '#3b82f6' },
   { label: 'Lab Investigation', icon: '🔬', to: '/doctor/labs', color: '#10b981' },
   { label: 'Make a Referral', icon: '🔄', to: '/doctor/referrals', color: 'var(--primary)' },
   { label: 'Generate Rest Form', icon: '🛏️', to: '/doctor/rest-forms/new', color: '#f59e0b' },

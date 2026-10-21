@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Check, ClipboardList, Search, Stethoscope, UserR
 import Navbar from '../components/Navbar';
 import PageHeader from '../components/ui/PageHeader';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 import { localYmd } from '../utils/localDate';
 
 const WARDS = ['Medical', 'Surgical', 'Gynaecology', 'Private', 'N/A'];
@@ -18,6 +19,7 @@ const DIAGNOSES = [
 
 export default function RegisterPatientPage() {
   const { type, id } = useParams(); // 'ngl', 'other' for /register/:type, or id for /edit/:id
+  const { user } = useAuth();
   const isEditMode = !!id;
   const navigate = useNavigate();
 
@@ -200,7 +202,8 @@ export default function RegisterPatientPage() {
       } else {
         const { data } = await api.post('/patients', payload);
         toast.success('Patient registered');
-        navigate(`/report/${data.reportId}`, { state: { patient: data.patient } });
+        // Laboratory staff continue at the laboratory worklist; others open the patient's profile.
+        navigate(user?.role === 'lab_technician' ? '/lab/governed' : `/hms/patients/${data.patient.id}`);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || (isEditMode ? 'Update failed.' : 'Registration failed.'));

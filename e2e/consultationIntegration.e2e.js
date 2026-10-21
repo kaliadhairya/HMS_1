@@ -72,12 +72,21 @@ const { step, done } = runner('Coded consultation integration');
       assert(await page.getByLabel('Dose', { exact: true }).inputValue() === '', 'Quick Consult invented a dose');
       assert(ui.errors.length === 0, `Page errors: ${ui.errors.join('; ')}`);
     });
-    await step('Legacy entry links retain the exact encounter and historical prescriptions cannot be deleted', async () => {
+    await step('Visit links open coded ordering for the exact encounter; the retired slip address is gone; historical prescriptions cannot be deleted', async () => {
       const page = ui.page;
-      await page.goto(`${BASE}/hms/prescription-slip?patientId=${patient.id}&encounterId=${encounter.id}`, { waitUntil: 'domcontentloaded' });
+      // The patient journey links each visit straight to coded ordering (completion A6).
+      await page.goto(`${BASE}/patient/${patient.id}/journey`, { waitUntil: 'domcontentloaded' });
+      const visit = page.locator('button.timeline-head', { hasText: 'visit with Dr.' }).first();
+      await visit.waitFor();
+      await visit.click();
+      await page.getByRole('button', { name: 'Open', exact: true }).first().click();
       await page.waitForURL((url) => url.pathname === '/medication/orders');
       const target = new URL(page.url());
-      assert(target.searchParams.get('patient_id') === String(patient.id) && target.searchParams.get('encounter_id') === String(encounter.id), 'Legacy entry lost patient/encounter identity');
+      assert(target.searchParams.get('patient_id') === String(patient.id) && target.searchParams.get('encounter_id') === String(encounter.id), 'Visit link lost patient/encounter identity');
+      // The redirect-only screen is removed: its old address is no longer a route.
+      await page.goto(`${BASE}/hms/prescription-slip?patientId=${patient.id}&encounterId=${encounter.id}`, { waitUntil: 'domcontentloaded' });
+      await page.waitForURL((url) => url.pathname !== '/hms/prescription-slip');
+      assert(new URL(page.url()).pathname !== '/medication/orders', 'the retired slip address still redirects to ordering');
       const [doctor] = await sql("SELECT id FROM hms_users WHERE username='doctor'");
       const [prescription] = await sql("INSERT INTO hms_prescriptions(patient_id,encounter_id,doctor_id,status) VALUES($1,$2,$3,'Draft') RETURNING id", [patient.id, encounter.id, doctor.id]);
       const token = await apiLogin('doctor');

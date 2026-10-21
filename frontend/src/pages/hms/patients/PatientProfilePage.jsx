@@ -384,7 +384,7 @@ export default function PatientProfilePage() {
                         <td><span className={`status status-${p.status === 'Finalized' || p.status === 'Dispensed' ? 'success' : 'info'}`}>{p.status || '—'}</span></td>
                         <td className="text-right">
                           {canPrescribe && (
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(`/hms/prescription-slip?patientId=${id}&encounterId=${p.encounter_id}`)}>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(`/medication/orders?patient_id=${id}&encounter_id=${p.encounter_id}`)}>
                               View prescription
                             </button>
                           )}
