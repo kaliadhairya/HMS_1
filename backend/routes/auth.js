@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const User = require('../models/User');
 const { sequelize } = require('../models/db');
@@ -239,13 +240,14 @@ router.post('/forgot-password', async (req, res) => {
       users = await User.findAll({ where: { phone: usernameOrPhone } });
     }
     const user = users.length > 0 ? users[0] : null;
+    const sent = { success: true, message: 'OTP generated. Please check your registered contact.' };
 
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
+    // The answer is the same whether or not the account exists, so this cannot be used to find
+    // usernames or phone numbers.
+    if (!user) return res.json(sent);
 
-    // Generate 6-digit OTP
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    // Generate 6-digit OTP from a cryptographic source.
+    const otp = String(crypto.randomInt(100000, 1000000));
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     await User.update(
@@ -253,10 +255,7 @@ router.post('/forgot-password', async (req, res) => {
       { where: { id: user.id } }
     );
 
-    const responsePayload = {
-      success: true,
-      message: 'OTP generated. Please check your registered contact.',
-    };
+    const responsePayload = { ...sent };
 
     if (process.env.NODE_ENV === 'development' && process.env.EXPOSE_DEV_OTP === 'true') {
       responsePayload.dev_otp = otp;
@@ -281,16 +280,19 @@ router.post('/verify-otp', async (req, res) => {
     const users = await User.findAll({ where: { username: username.toLowerCase() } });
     const user = users.length > 0 ? users[0] : null;
 
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found.' });
-    }
-
-    if (user.otp_code !== otp) {
-      return res.status(400).json({ success: false, message: 'Invalid OTP.' });
+    // One guess per code: a wrong code cancels it, so guessing needs a new code each time, and
+    // requesting codes is rate-limited. The comparison takes the same time for every guess.
+    const given = Buffer.from(String(otp));
+    const expected = Buffer.from(String(user?.otp_code || ''));
+    const matches = Boolean(user?.otp_code) && given.length === expected.length && crypto.timingSafeEqual(given, expected);
+    if (!matches) {
+      if (user?.otp_code) await User.update({ otp_code: null, otp_expires: null }, { where: { id: user.id } });
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP. Request a new one.' });
     }
 
     if (!user.otp_expires || new Date(user.otp_expires) < new Date()) {
-      return res.status(400).json({ success: false, message: 'OTP has expired.' });
+      await User.update({ otp_code: null, otp_expires: null }, { where: { id: user.id } });
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP. Request a new one.' });
     }
 
     // Generate short-lived reset token

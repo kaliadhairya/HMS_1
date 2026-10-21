@@ -72,6 +72,21 @@ function connectSocket(token, origin = ORIGIN) {
     assert((await api('POST', '/auth/reset-password', { body: { resetToken, newPassword: 'Again@Pass4' } })).status === 400, 'a reset token was used twice');
   });
 
+  await step('A reset code cannot be guessed: a wrong guess cancels it, and unknown accounts get the same answer', async () => {
+    const hash = await require('../backend/node_modules/bcryptjs').hash('Synthetic@Guess1', 10);
+    const username = `guess-${tag}`;
+    await sql("INSERT INTO hms_users(username,password,name,role,is_active,first_login) VALUES($1,$2,'Synthetic guess user','receptionist',1,0)", [username, hash]);
+    const known = await api('POST', '/auth/forgot-password', { body: { usernameOrPhone: username } });
+    const unknown = await api('POST', '/auth/forgot-password', { body: { usernameOrPhone: `nobody-${tag}` } });
+    assert(known.status === 200 && unknown.status === 200 && known.data.message === unknown.data.message, `account existence revealed: ${known.status}/${unknown.status}`);
+    const [{ otp_code: otp }] = await sql('SELECT otp_code FROM hms_users WHERE username = $1', [username]);
+    const wrong = String((Number(otp) + 1) % 1000000).padStart(6, '1');
+    assert((await api('POST', '/auth/verify-otp', { body: { username, otp: wrong } })).status === 400, 'a wrong code was accepted');
+    const after = await api('POST', '/auth/verify-otp', { body: { username, otp } });
+    assert(after.status === 400 && !after.data.resetToken, 'the right code still worked after a wrong guess');
+    assert((await api('POST', '/auth/verify-otp', { body: { username: `nobody-${tag}`, otp } })).status === 400, 'an unknown account answered differently');
+  });
+
   await step('When the ABDM gateway fails during ABHA verification, the request is refused cleanly, nothing is half-recorded, and a retry works', async () => {
     const desk = await apiLogin('receptionist');
     const abha = digits(14);
