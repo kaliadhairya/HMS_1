@@ -37,6 +37,13 @@ async function discharge({ admissionId, body, user, transaction: t }) {
   const doc = await Documents.create({patientId:Number(admission.PATIENT_ID),admissionId:Number(admission.ID),docType:'discharge_summary',content},user,t);
   const signed = await Documents.change(Number(doc.id),user,'sign',{},'1',t);
   const signedRow = await Documents.read(Number(doc.id),user,t);
+  // The shared observations of this admission that were current when the doctor signed (a set
+  // replaced by a correction is not current) are linked to the signed document (A5).
+  await sequelize.query(`INSERT INTO hms_observation_links (observation_set_id, clinical_document_id, facility_id, linked_by)
+    SELECT s.id, :documentId, s.facility_id, :user FROM hms_observation_sets s
+    WHERE s.admission_id = :admissionId AND s.facility_id = :facility
+      AND NOT EXISTS (SELECT 1 FROM hms_observation_sets c WHERE c.correction_of = s.id)`,
+  { replacements: { documentId: Number(doc.id), user: user.id, admissionId: admission.ID, facility: user.facilityId }, transaction: t });
   if (String(signedRow.draft_content?.pendingResults || '').trim() && !plan.results_owner_user_id)
     throw refusal(409, 'Pending results need a named owner before discharge.');
 

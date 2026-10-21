@@ -822,12 +822,21 @@ async function handover(b, u, tx) {
       tx,
     );
   }
+  // The receiving nurse sees the observations the sender had: the latest current set (A5).
+  const linked = await q(
+    `INSERT INTO hms_observation_links(observation_set_id,handover_id,facility_id,linked_by)
+ SELECT s.id,:h,s.facility_id,:user FROM hms_observation_sets s
+ WHERE s.patient_id=:pid AND s.facility_id=:facility AND NOT EXISTS (SELECT 1 FROM hms_observation_sets c WHERE c.correction_of=s.id)
+ ORDER BY s.observed_at DESC,s.created_at DESC LIMIT 1 RETURNING observation_set_id`,
+    { h: h.id, user: u.id, pid, facility: h.facility_id },
+    tx,
+  );
   await event(
     "nursing_handover_sent",
     { handover_id: h.id, receiver_user_id: receiver.id },
     tx,
   );
-  return h;
+  return { ...h, observation_set_ids: linked.map((l) => l.observation_set_id) };
 }
 async function acknowledgeHandover(hid, b, u, header, tx) {
   await require('./medicationAccess.cts').authorize(u,'NURSING_DOCUMENT',tx);
