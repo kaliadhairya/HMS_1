@@ -66,6 +66,7 @@ router.post('/admissions/:id/transfer',restrictTo('super_admin','admin','nurse',
 router.post('/admissions/:id/discharge',restrictTo('doctor'),handle((r,res,t)=>Admissions.discharge(r.params.id,r.body,r.user,r.get('if-match'),t),{command:true}));
 const Laboratory=require('../services/laboratoryV2.cts');
 router.post('/lab-orders',restrictTo('doctor'),handle((r,res,t)=>Laboratory.create(r.body,r.user,t),{command:true,status:201}));
+router.get('/lab-orders/:id',restrictTo('doctor','nurse','lab_technician'),clinicalRead((r,res,t)=>Laboratory.read(r.params.id,r.user,t)));
 router.post('/lab-orders/:id/cancel',restrictTo('doctor','lab_technician'),handle((r,res,t)=>Laboratory.cancel(r.params.id,r.get('if-match'),r.user,t),{command:true}));
 router.post('/specimens',restrictTo('lab_technician','nurse'),handle((r,res,t)=>Laboratory.createSpecimen(r.body,r.user,t),{command:true,status:201}));
 for(const step of ['collect','receive','reject'])router.post(`/specimens/:id/${step}`,restrictTo('lab_technician','nurse'),handle((r,res,t)=>Laboratory.specimenStep(r.params.id,step,r.body,r.get('if-match'),r.user,t),{command:true}));

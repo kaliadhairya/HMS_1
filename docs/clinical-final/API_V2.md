@@ -1,7 +1,8 @@
 # Clinical API v2: implemented foundation and remaining adapters
 
 This is clinical HMS work under blueprint sections 3.2, 3.4, 3.9 and 3.10.
-The complete A3 package remains in progress.
+A3 is engineering-done: every 3.10 interface is implemented, documented and
+checked against the published contract.
 
 ## Implemented commands and reads
 
@@ -48,8 +49,8 @@ come from `backend/domain/clinicalDocumentSchema.cts`.
 - Verified by `e2e/v2Scheduling.e2e.js` (8/8): identifiers, retry replay,
   conflicting key reuse, missing key, overlap, 50 concurrent requests for one
   slot (exactly one booking), a legacy/v2 race, role refusal and reads.
-- Not yet in v2: reschedule and cancel (they need `If-Match` on the booking
-  version), and the generated OpenAPI entries for appointments.
+- `POST /api/v2/appointments/{id}/reschedule` and `/cancel` need `If-Match`
+  with the booking version (428 without it, 412 when stale).
 
 ## Identity and authority
 
@@ -109,16 +110,77 @@ facility and record context. A delayed response from a previous record cannot
 replace an edited destination note. A conflict requires comparing the server
 copy and explicitly choosing a version; it never silently advances If-Match.
 
-## Remaining A2/A3 work
+## Admissions, transfers and discharge (A3)
 
-- Complete scheduling, ADT, laboratory, finance and event adapters from blueprint
-  3.10, remaining medication operations, and consume their generated contracts.
-- Complete facility/membership administration, explicit facility switching,
-  remaining clinical action/care boundaries and restricted-runtime deployment.
-- Strengthen coherent multi-query clinical read snapshots and the final complete
-  permission/schema comparison; the current legacy fingerprint covers columns,
-  constraints, indexes, sequences and function/trigger identities, not all bodies
-  and permissions.
-- Preserve stable pending requests/drafts across broader navigation and session
-  transitions in coordination with Claude's C2 package. Run final C4 against the
-  reviewed consolidated candidate. These focused checks are not go-live proof.
+- `POST /api/v2/admissions` admits a patient into a bed (patient, bed and admitting
+  doctor by public identifier). The legacy route and v2 call one command
+  (`services/admissionCore.js`), so the patient, bed and request locks and the
+  occupancy rule are identical. Roles: administrator, doctor, nurse.
+- `GET /api/v2/admissions/{id}`; `POST .../transfer` (If-Match, target bed, reason);
+  `POST .../discharge` (If-Match; responsible doctor with the signing privilege and
+  the patient in care). The discharge body is snake_case (`final_diagnosis`,
+  `course_in_hospital`, ...); an unknown field is refused with 422, not dropped.
+
+## Laboratory (A3)
+
+- `POST /api/v2/lab-orders`, `GET /api/v2/lab-orders/{id}`, `POST .../cancel`.
+  An order lists its ordered tests with their identifiers and versions.
+- `POST /api/v2/specimens`, `POST /api/v2/specimens/{id}/collect|receive|reject`
+  (If-Match; the label's patient and accession are confirmed again).
+- `POST /api/v2/lab-items/{id}/results` (If-Match on the ordered test),
+  `POST /api/v2/results/{id}/verify`, `POST /api/v2/lab-orders/{id}/reports`
+  (release; blueprint `POST /reports/{id}/release` — a report has no identity
+  before its first release, so release is addressed to the order).
+- `POST /api/v2/critical-results/{id}/acknowledgments` and
+  `/clinical-actions`: acknowledgment and the documented clinical action stay
+  separate commands, both by the responsible doctor.
+- Lab orders and ordered tests count revisions from 0; their public version is
+  the revision plus one, and If-Match is translated back before the shared
+  check. Specimens and critical results use their revision (it starts at 1).
+
+## Finance (A3)
+
+- `GET /api/v2/billing-accounts/{id}`; `POST .../charges`;
+  `POST /api/v2/charges/{id}/reverse`; `POST .../draft-invoice`;
+  `POST .../invoices` issues the reviewed draft (If-Match on the draft version;
+  a draft changed by a later charge is 412). Invoice lines name their charges.
+- `POST /api/v2/payments`, `/deposit-allocations`, `/credit-notes`
+  (administrators; explicit lines or the cancelled charge it credits),
+  `/refunds` and `/refunds/{id}/approve|reject|pay|confirm` (the approver is not
+  the requester).
+- Every step is the legacy billing command: account locks, the price list,
+  journal postings and the database integrity rules are shared. A legacy field
+  refusal (400) answers 422 on v2.
+
+## Events (A3)
+
+- `GET /api/v2/events?cursor=<delivery sequence>` pages the same scoped events
+  as the live socket (audience, facility and doctor care scope), names the
+  patient by public identifier, and returns `next_cursor`, `latest_cursor`,
+  `has_more`. Without a cursor it returns the cursor to start from.
+
+## Browser consumers (A3)
+
+The medication order panel, the pharmacy page (verification, dispensing) and the
+nursing page (scheduled doses, bedside checks, dose documentation) use the v2
+medication commands. The safety assessment before signing and as-needed doses
+have no v2 command and stay on `/api/medication`. Catalogue, stock, allergy,
+controlled-drug, returns and counter-sale screens are outside blueprint 3.10 and
+stay on their APIs.
+
+## Contract and conformance
+
+All implemented operations are in `backend/contracts/v2.openapi.json` with the
+generated browser types and client. `e2e/v2Contract.e2e.js` checks every v2
+command response recorded during a regression (the idempotency store keeps the
+original response) and a sample of reads against the published schemas; run it
+after the other suites.
+
+## Remaining A2 work
+
+- Facility/membership administration and switching, remaining clinical
+  action/care boundaries and the restricted-runtime deployment are tracked
+  under A2 (engineering done; the production compose change needs owner
+  approval).
+- Coherent multi-query read snapshots and the final complete permission/schema
+  comparison belong to C4. These focused checks are not go-live proof.

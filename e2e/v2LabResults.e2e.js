@@ -52,7 +52,8 @@ const v = (n) => ({ 'if-match': `"${n}"` });
     ok(await cfg('critical', { unit: 'TEST-U', upper_bound: '4', lower_inclusive: false, upper_inclusive: false, escalation_policy_id: escalation.id }), 201);
     const o = await call('POST', '/v2/lab-orders', doctor, { patient_id: p.public_id, encounter_id: enc.public_id, test_version_ids: [test.id] });
     order = ok(o, 201);
-    [item] = await sql('SELECT i.public_id, i.lab_revision FROM hms_investigation_order_items i JOIN hms_investigation_orders o ON o.id = i.order_id WHERE o.public_id = $1', [order.id]);
+    item = { public_id: order.items[0].id };
+    assert(order.version === 1 && order.items[0].version === 1, `a new order and its test start at version 1: ${JSON.stringify(order)}`);
     [requirement] = await sql('SELECT id FROM hms_lab_requirements WHERE test_version_id = $1', [test.id]);
     Object.assign(ctx, { qcRule, test, encounter: enc.public_id });
   });
@@ -79,12 +80,15 @@ const v = (n) => ({ 'if-match': `"${n}"` });
   });
 
   await step('A result is entered once per revision; a critical value verified opens a critical result', async () => {
-    const [{ lab_revision }] = await sql('SELECT lab_revision FROM hms_investigation_order_items WHERE public_id = $1', [item.public_id]);
+    // The ordered test's current version comes from reading the order.
+    const read = ok(await call('GET', `/v2/lab-orders/${order.id}`, lab), 200);
+    assert(read.patient_id === patient.public_id, `order read ${JSON.stringify(read).slice(0, 160)}`);
+    const current = read.items.find((i) => i.id === item.public_id).version;
     const body = { specimen_id: specimen.id, raw_value: '6', unit: 'TEST-U', method: 'TEST-METHOD' };
-    const nurseTry = await call('POST', `/v2/lab-items/${item.public_id}/results`, nurse, body, v(lab_revision));
+    const nurseTry = await call('POST', `/v2/lab-items/${item.public_id}/results`, nurse, body, v(current));
     assert(nurseTry.status === 403, `nurse entered a result: ${short(nurseTry)}`);
-    result = ok(await call('POST', `/v2/lab-items/${item.public_id}/results`, lab, body, v(lab_revision)), 201);
-    const again = await call('POST', `/v2/lab-items/${item.public_id}/results`, lab, { ...body, raw_value: '7' }, v(lab_revision));
+    result = ok(await call('POST', `/v2/lab-items/${item.public_id}/results`, lab, body, v(current)), 201);
+    const again = await call('POST', `/v2/lab-items/${item.public_id}/results`, lab, { ...body, raw_value: '7' }, v(current));
     assert(again.status === 412, `a second result on the same revision: ${short(again)}`);
     const qc = ok(await legacy('/qc', lab, { rule_id: ctx.qcRule.id, status: 'PASS', evidence: { synthetic_control: 'fixture-pass' } }), 201);
     const verified = ok(await call('POST', `/v2/results/${result.id}/verify`, lab, { qc_record_id: qc.id, decision: 'VERIFIED', reason: 'Synthetic technical validation' }, v(result.version)), 200);
@@ -105,18 +109,18 @@ const v = (n) => ({ 'if-match': `"${n}"` });
   });
 
   await step('The report is released by the doctor with the exact verified result; the technician cannot release', async () => {
-    const [{ lab_revision }] = await sql('SELECT lab_revision FROM hms_investigation_orders WHERE public_id = $1', [order.id]);
+    const current = ok(await call('GET', `/v2/lab-orders/${order.id}`, doctor), 200).version;
     const body = { status: 'FINAL', reason: 'Synthetic release', result_version_ids: [result.id] };
-    const byLab = await call('POST', `/v2/lab-orders/${order.id}/reports`, lab, body, v(lab_revision));
+    const byLab = await call('POST', `/v2/lab-orders/${order.id}/reports`, lab, body, v(current));
     assert(byLab.status === 403, `technician released: ${short(byLab)}`);
-    const report = ok(await call('POST', `/v2/lab-orders/${order.id}/reports`, doctor, body, v(lab_revision)), 201);
+    const report = ok(await call('POST', `/v2/lab-orders/${order.id}/reports`, doctor, body, v(current)), 201);
     assert(report.id && report.order_id === order.id && report.report_version === 1 && report.status === 'FINAL', `report ${JSON.stringify(report)}`);
   });
 
   await step('A rejected specimen is recorded and the test asks for a recollection', async () => {
     // A second order: the first one's test is released and no longer collectable.
     const second = ok(await call('POST', '/v2/lab-orders', doctor, { patient_id: patient.public_id, encounter_id: ctx.encounter, test_version_ids: [ctx.test.id] }), 201);
-    const [item2] = await sql('SELECT i.public_id FROM hms_investigation_order_items i JOIN hms_investigation_orders o ON o.id = i.order_id WHERE o.public_id = $1', [second.id]);
+    const item2 = { public_id: second.items[0].id };
     const extra = ok(await call('POST', '/v2/specimens', lab, { patient_id: patient.public_id, specimen_type: 'TEST-BLOOD', container: 'TEST-TUBE', location: 'TEST-COLLECTION', links: [{ item_id: item2.public_id, requirement_id: requirement.id }] }), 201);
     const rejected = ok(await call('POST', `/v2/specimens/${extra.id}/reject`, lab, { patient_id: patient.public_id, accession: extra.accession, location: 'TEST-LAB', reason: 'Synthetic haemolysed sample' }, v(extra.version)), 200);
     assert(rejected.state === 'REJECTED', `reject ${JSON.stringify(rejected)}`);

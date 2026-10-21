@@ -62,6 +62,20 @@ async function read(id:string,actor:Actor,t:any){
  return projection(admissionId,t);
 }
 
+// The v2 discharge body is snake_case like the rest of v2; the shared command takes the legacy
+// names. An unknown field is refused rather than silently dropped.
+const DISCHARGE_FIELDS:Record<string,string>={final_diagnosis:'finalDiagnosis',course_in_hospital:'courseInHospital',condition_at_discharge:'conditionAtDischarge',
+ advice_on_discharge:'adviceOnDischarge',chief_complaint:'chiefComplaint',comorbidities:'comorbidities',allergies:'allergies',history_of_illness:'historyOfIllness',
+ investigations:'investigations',discharge_medications:'dischargeMedications',diet_lifestyle:'dietLifestyle',warning_signs:'warningSigns',follow_up_appointments:'followUpAppointments'};
+function dischargeFields(body:any){
+ const out:Record<string,unknown>={};
+ for(const [k,v] of Object.entries(body||{})){
+  if(!DISCHARGE_FIELDS[k])fail(422,`Unsupported field ${k}; use the documented snake_case contract.`,'UNSUPPORTED_FIELD');
+  out[DISCHARGE_FIELDS[k]]=v;
+ }
+ return out;
+}
+
 // Discharge (A3). The same command as the legacy route; this adds the version check
 // (If-Match), the doctor's clinical privilege and the patient-in-care check, and bumps the version.
 async function discharge(id:string,body:any,actor:Actor,ifMatch:any,t:any){
@@ -73,7 +87,7 @@ async function discharge(id:string,body:any,actor:Actor,ifMatch:any,t:any){
  if(Number(adm.api_version)!==expected)fail(412,'This admission changed after you read it. Reload it and try again.','VERSION_CONFLICT');
  await require('./facilities.cts').requirePrivilege(actor,'CLINICAL_SIGN',t);
  if(!(await require('../utils/careTeam').patientInCare(actor.id,Number(adm.patient_id),t)))fail(403,'The patient must be in your care.','PATIENT_NOT_IN_CARE');
- const result=await require('./dischargeCore').discharge({admissionId,body:body||{},user:actor,transaction:t});
+ const result=await require('./dischargeCore').discharge({admissionId,body:dischargeFields(body),user:actor,transaction:t});
  // The database trigger hms_bump_api_version advances the version on every change to the row,
  // and the row has been locked since the version check, so no second bump is made here.
  await logAction(actor.id,'UPDATE','ipd',admissionId,null,{action:'discharge_patient',summaryId:result.summaryId,signedDocumentId:result.clinicalDocumentId},actor.ip);

@@ -30,6 +30,7 @@ Observed on disposable PG16 database `hms_p4_final_v2_20261015b`, API 5064:
   e-MAR, PRN, controlled witnesses, handover and late-documentation workflows.
 - Strict TypeScript and generated contract consistency checks pass.
 
-Still required: medication browser migration, complete facility/care/action review
+The order, pharmacy and nursing screens use these commands (A3, see API_V2.md).
+Still required: complete facility/care/action review
 of remaining operations, final PG18/fresh/upgrade checks and consolidated release
 regression. These synthetic results are not hospital content approval or go-live.

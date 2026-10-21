@@ -4,11 +4,24 @@
 // Cancellation requires If-Match with the order revision it was based on.
 const I=require('./identities.cts');
 const O=require('./laboratoryOrders');
+const S=require('./laboratorySpecimens');
+const R=require('./laboratoryResults');
+const F=require('./laboratoryFollowup');
+const C=require('./laboratoryCommon');
 function fail(status:number,message:string,code:string):never{throw Object.assign(new Error(message),{status,code});}
 
+// Lab orders and ordered tests count revisions from 0; v2 versions start at 1, so the public
+// version is the revision plus one, and an If-Match is translated back before the shared check.
+const publicVersion=(revision:any)=>Number(revision)+1;
+function labIfMatch(ifMatch:any){
+ if(ifMatch===undefined||ifMatch===null||ifMatch==='')return undefined;
+ const m=/^"?(\d+)"?$/.exec(String(ifMatch));
+ if(!m||Number(m[1])<1)fail(422,'If-Match must be the version this API returned.','INVALID_PRECONDITION');
+ return String(Number(m[1])-1);
+}
 function project(order:any){
- const items=(order.items||[]).map((i:any)=>({item_name:i.item_name,status:i.status,lab_state:i.lab_state??null}));
- return {id:order.public_id,version:Number(order.lab_revision),status:order.status,items};
+ const items=(order.items||[]).map((i:any)=>({id:i.public_id,test_version_id:i.lab_test_version_id??null,item_name:i.item_name,status:i.status,lab_state:i.lab_state??null,version:publicVersion(i.lab_revision)}));
+ return {id:order.public_id,version:publicVersion(order.lab_revision),status:order.status,items};
 }
 
 async function create(body:any,actor:any,t:any){
@@ -19,10 +32,20 @@ async function create(body:any,actor:any,t:any){
  return project(order);
 }
 
+async function read(id:string,actor:any,t:any){
+ if(!['doctor','nurse','lab_technician'].includes(actor.role))fail(403,'Your role cannot read laboratory orders.','ROLE_NOT_PERMITTED');
+ const orderId=I.legacyNumber(await I.locate('lab_order',id,actor,t));
+ const order=await C.one('SELECT * FROM hms_investigation_orders WHERE id=:id',{id:orderId},t);
+ if(!order)fail(404,'Laboratory order not found.','RESOURCE_NOT_FOUND');
+ await C.scope(actor,order.patient_id,t);
+ const items=await C.q('SELECT * FROM hms_investigation_order_items WHERE order_id=:id ORDER BY id',{id:orderId},t);
+ return {...project({...order,items}),patient_id:await publicOf('hms_patients',order.patient_id,t)};
+}
+
 async function cancel(id:string,ifMatch:any,actor:any,t:any){
  const orderId=I.legacyNumber(await I.locate('lab_order',id,actor,t));
- const done=await O.cancel(orderId,actor,ifMatch,t);
- return {id,version:Number(done.revision),status:'Cancelled',items:[]};
+ const done=await O.cancel(orderId,actor,labIfMatch(ifMatch),t);
+ return {id,version:publicVersion(done.revision),status:'Cancelled',items:[]};
 }
 
 // Specimens, results, reports and critical-result follow-up (A3, blueprint 3.10). Patients,
@@ -30,10 +53,6 @@ async function cancel(id:string,ifMatch:any,actor:any,t:any){
 // critical tasks by their own UUIDs. Each step is the legacy laboratory command, so custody,
 // privileges, QC, release rules and the If-Match revision checks are the same for both APIs.
 // The version of a specimen or task is its revision; of a result, its ordered test's revision.
-const S=require('./laboratorySpecimens');
-const R=require('./laboratoryResults');
-const F=require('./laboratoryFollowup');
-const C=require('./laboratoryCommon');
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function uuid(value:any,name:string):string{if(!UUID.test(String(value??'')))fail(422,`${name} must be an identifier.`,'VALIDATION_FAILED');return String(value);}
 async function publicOf(table:string,id:number,t:any):Promise<string>{
@@ -67,19 +86,19 @@ async function specimenStep(id:string,step:string,body:any,ifMatch:any,actor:any
 
 async function enterResult(itemId:string,body:any,ifMatch:any,actor:any,t:any){
  const item=I.legacyNumber(await I.locate('lab_item',itemId,actor,t));
- const r=await R.write(item,{...body,specimen_id:body?.specimen_id?uuid(body.specimen_id,'specimen_id'):undefined},actor,ifMatch,t);
- return {id:r.result.id,item_id:itemId,specimen_id:r.result.specimen_id??null,value:r.result.raw_value??null,unit:r.result.unit??null,state:'ENTERED',version:Number(r.revision)};
+ const r=await R.write(item,{...body,specimen_id:body?.specimen_id?uuid(body.specimen_id,'specimen_id'):undefined},actor,labIfMatch(ifMatch),t);
+ return {id:r.result.id,item_id:itemId,specimen_id:r.result.specimen_id??null,value:r.result.raw_value??null,unit:r.result.unit??null,state:'ENTERED',version:publicVersion(r.revision)};
 }
 
 async function verifyResult(id:string,body:any,ifMatch:any,actor:any,t:any){
- const r=await R.review(uuid(id,'The result'),body||{},actor,ifMatch,t);
- return {id,decision:r.decision,critical_result_id:r.critical_task?.id??null,version:Number(r.revision)};
+ const r=await R.review(uuid(id,'The result'),body||{},actor,labIfMatch(ifMatch),t);
+ return {id,decision:r.decision,critical_result_id:r.critical_task?.id??null,version:publicVersion(r.revision)};
 }
 
 async function releaseReport(orderId:string,body:any,ifMatch:any,actor:any,t:any){
  const order=I.legacyNumber(await I.locate('lab_order',orderId,actor,t));
- const r=await R.release(order,body||{},actor,ifMatch,t);
- return {id:r.report.id,order_id:orderId,report_version_id:r.version.id,report_version:Number(r.version.version),status:r.version.status,version:Number(r.revision)};
+ const r=await R.release(order,body||{},actor,labIfMatch(ifMatch),t);
+ return {id:r.report.id,order_id:orderId,report_version_id:r.version.id,report_version:Number(r.version.version),status:r.version.status,version:publicVersion(r.revision)};
 }
 
 // Acknowledging a critical result and documenting the clinical action are separate commands.
@@ -88,4 +107,4 @@ async function criticalStep(id:string,action:'acknowledge'|'close',body:any,ifMa
  return {id:task.id,state:task.state,acknowledged_at:task.acknowledged_at??null,clinical_action:task.clinical_action??null,closed_at:task.closed_at??null,version:Number(task.revision)};
 }
 
-module.exports={create,cancel,createSpecimen,specimenStep,enterResult,verifyResult,releaseReport,criticalStep};
+module.exports={create,read,cancel,createSpecimen,specimenStep,enterResult,verifyResult,releaseReport,criticalStep};

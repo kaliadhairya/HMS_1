@@ -59,7 +59,7 @@ async function decideRefund(id:string,approve:boolean,note:any,actor:Actor,t:any
 }
 async function payRefund(id:string,body:any,actor:Actor,t:any){
  requireRole(actor,DESK);
- return refundView(await domain(B.payRefund(id,body||{},actor,t)));
+ return refundView(await domain(B.payRefund(id,{providerReference:body?.provider_reference},actor,t)));
 }
 async function completeRefund(id:string,outcome:'confirmed'|'failed',body:any,actor:Actor,t:any){
  requireRole(actor,DESK);

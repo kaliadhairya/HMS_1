@@ -4,6 +4,8 @@
 const crypto = require('crypto');
 const { API, apiLogin, sql, runner, assert, requireThrowawayDb } = require('./helpers');
 
+const { outpatientAccount } = require('./fixtures/billingFixture');
+
 requireThrowawayDb();
 
 async function call(method, url, token, body, headers = {}) {
@@ -20,8 +22,12 @@ const key = () => ({ 'idempotency-key': crypto.randomUUID() });
   const { step, done } = runner('V2 refunds');
   const desk = await apiLogin('receptionist');
   const admin = await apiLogin('admin');
-  const [fund] = await sql('SELECT id, billing_fund_balance(id) AS balance FROM hms_patient_funds WHERE billing_fund_balance(id) > 60 ORDER BY id LIMIT 1');
-  assert(fund, 'the database needs a deposit with a balance over 60');
+  // Its own deposit of Rs. 200, so the suite does not depend on deposits left by earlier suites.
+  const { patientId, patientPublic } = await outpatientAccount('V2 refunds');
+  const dep = await call('POST', '/v2/payments', desk, { patient_id: patientPublic, amount: 200, method: 'Cash' }, key());
+  assert(dep.status === 201, `deposit ${dep.status} ${JSON.stringify(dep.data).slice(0, 160)}`);
+  const [fund] = await sql("SELECT id, billing_fund_balance(id) AS balance FROM hms_patient_funds WHERE patient_id = $1 AND kind = 'deposit' ORDER BY created_at DESC LIMIT 1", [patientId]);
+  assert(fund && Number(fund.balance) === 200, `the fixture deposit: ${JSON.stringify(fund)}`);
   const amount = 50;
   const refundState = async (id) => (await sql('SELECT state FROM hms_refunds WHERE id = $1', [id]))[0].state;
   let refund;

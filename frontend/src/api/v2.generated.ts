@@ -257,6 +257,7 @@ export type Observation = {
 
 export type ObservationSet = {
   "id": string;
+  "version": number;
   "patient_id": string;
   "encounter_id": string | null;
   "admission_id": string | null;
@@ -533,6 +534,425 @@ export type Administration = {
   "witness_id": string | null;
   "base_quantity": string;
   "late_review_id": string | null;
+};
+
+export type AppointmentBook = {
+  "patient_id": string;
+  "doctor_id": string;
+  "department_id"?: string;
+  "appointment_date": string;
+  "slot_start"?: string;
+  "slot_end"?: string;
+  "appointment_time"?: string;
+  "appt_type"?: string;
+  "status"?: string;
+};
+
+export type AppointmentReschedule = {
+  "appointment_date"?: string;
+  "slot_start"?: string;
+  "slot_end"?: string;
+};
+
+export type AppointmentCancel = {
+  "cancellation_reason"?: string;
+};
+
+export type Appointment = {
+  "id": string;
+  "version": number;
+  "patient_id": string;
+  "doctor_id": string;
+  "department_id": string | null;
+  "appointment_date": string;
+  "slot_start": string | null;
+  "slot_end": string | null;
+  "appt_type": string | null;
+  "status": string;
+};
+
+export type AdmissionCreate = {
+  "patient_id": string;
+  "bed_id": string;
+  "admitting_doctor_id"?: string;
+  "department"?: string;
+  "admission_type"?: string;
+  "expected_discharge_date"?: string;
+};
+
+export type AdmissionTransfer = {
+  "to_bed_id": string;
+  "reason": string;
+};
+
+export type Discharge = {
+  "final_diagnosis"?: string;
+  "course_in_hospital"?: string;
+  "condition_at_discharge"?: string;
+  "advice_on_discharge"?: string;
+  "chief_complaint"?: string;
+  "comorbidities"?: string;
+  "allergies"?: string;
+  "history_of_illness"?: string;
+  "investigations"?: string;
+  "discharge_medications"?: string;
+  "diet_lifestyle"?: string;
+  "warning_signs"?: string;
+  "follow_up_appointments"?: string;
+};
+
+export type Admission = {
+  "id": string;
+  "version": number;
+  "patient_id": string;
+  "bed_id": string | null;
+  "status": string;
+  "admission_date": string;
+};
+
+export type DischargedAdmission = {
+  "id": string;
+  "version": number;
+  "patient_id": string;
+  "bed_id": string | null;
+  "status": string;
+  "admission_date": string;
+  "summary_id": number | string;
+  "clinical_document_id": string;
+  "signature_digest": string;
+  "discharge_date": string;
+};
+
+export type LabOrderCreate = {
+  "patient_id": string;
+  "encounter_id": string;
+  "test_version_ids": Array<string>;
+  "priority"?: string;
+  "urgency"?: string;
+  "clinical_notes"?: string;
+};
+
+export type LabOrderItem = {
+  "id": string;
+  "version": number;
+  "test_version_id": string | null;
+  "item_name": string;
+  "status": string;
+  "lab_state": string | null;
+};
+
+export type LabOrder = {
+  "id": string;
+  "version": number;
+  "status": string;
+  "items": Array<LabOrderItem>;
+};
+
+export type LabOrderView = {
+  "id": string;
+  "version": number;
+  "patient_id": string;
+  "status": string;
+  "items": Array<LabOrderItem>;
+};
+
+export type SpecimenCreate = {
+  "patient_id": string;
+  "specimen_type": string;
+  "container": string;
+  "location": string;
+  "links": Array<{
+  "item_id": string;
+  "requirement_id": string;
+}>;
+};
+
+export type SpecimenStep = {
+  "patient_id": string;
+  "accession": string;
+  "location": string;
+  "reason": string;
+  "occurred_at"?: string;
+};
+
+export type Specimen = {
+  "id": string;
+  "version": number;
+  "accession": string;
+  "patient_id": string;
+  "specimen_type": string;
+  "container": string;
+  "location": string;
+  "state": string;
+  "collected_at": string | null;
+  "received_at": string | null;
+};
+
+export type ResultEntry = {
+  "specimen_id": string;
+  "raw_value": string;
+  "unit": string;
+  "method": string;
+  "remarks"?: string;
+  "analyzer_run_id"?: string;
+  "correction_of_id"?: string;
+  "correction_reason"?: string;
+};
+
+export type Result = {
+  "id": string;
+  "version": number;
+  "item_id": string;
+  "specimen_id": string | null;
+  "value": string | null;
+  "unit": string | null;
+  "state": string;
+};
+
+export type ResultVerify = {
+  "qc_record_id": string;
+  "decision": "VERIFIED" | "REPEAT";
+  "reason": string;
+};
+
+export type ResultReview = {
+  "id": string;
+  "version": number;
+  "decision": string;
+  "critical_result_id": string | null;
+};
+
+export type ReportRelease = {
+  "status": "PRELIMINARY" | "FINAL" | "AMENDED";
+  "reason": string;
+  "result_version_ids": Array<string>;
+};
+
+export type Report = {
+  "id": string;
+  "version": number;
+  "order_id": string;
+  "report_version_id": string;
+  "report_version": number;
+  "status": string;
+};
+
+export type CriticalAcknowledgment = {
+  "reason": string;
+};
+
+export type CriticalAction = {
+  "clinical_action": string;
+};
+
+export type CriticalResult = {
+  "id": string;
+  "version": number;
+  "state": string;
+  "acknowledged_at": string | null;
+  "clinical_action": string | null;
+  "closed_at": string | null;
+};
+
+export type Charge = {
+  "id": string;
+  "version": number;
+  "account_id": string;
+  "source_type": string;
+  "category": string;
+  "code": string | null;
+  "description": string;
+  "quantity": string;
+  "unit_price": string;
+  "amount": string;
+  "gst_amount": string;
+  "service_at": string;
+  "reverses_id": string | null;
+  "reason": string | null;
+};
+
+export type ChargeCreate = {
+  "code"?: string;
+  "medicine_id"?: string;
+  "category"?: string;
+  "description"?: string;
+  "unit_price"?: number | string;
+  "gst_rate"?: number | string;
+  "quantity"?: number | string;
+  "reason"?: string;
+};
+
+export type ChargeReverse = {
+  "reason": string;
+};
+
+export type BillingAccount = {
+  "id": string;
+  "version": number;
+  "account_number": string;
+  "status": string;
+  "episode_type": string;
+  "patient_id": string;
+  "charges": Array<Record<string, unknown>>;
+  "draft_invoice": {
+  "id": string;
+  "version": number;
+  "revision": number;
+  "total": string;
+} | null;
+  "invoices": Array<{
+  "id": string;
+  "version": number;
+  "invoice_number": string | null;
+  "status": string;
+  "total": string;
+  "patient_due": string;
+}>;
+  "funds": Array<{
+  "id": string;
+  "version": number;
+  "kind": string;
+  "amount": string;
+  "balance": string;
+}>;
+  "totals": Record<string, unknown>;
+};
+
+export type InvoiceIssue = {
+  "apply_deposits"?: boolean;
+};
+
+export type Invoice = {
+  "id": string;
+  "version": number;
+  "invoice_number": string | null;
+  "account_id": string;
+  "status": string;
+  "kind": string;
+  "subtotal": string;
+  "gst_amount": string;
+  "discount_amount": string;
+  "total": string;
+  "payer_amount": string;
+  "patient_amount": string;
+  "patient_due": string;
+  "revision": number;
+  "lines": Array<{
+  "id": string;
+  "line_no": number;
+  "charge_id": string;
+  "category": string;
+  "code": string | null;
+  "description": string;
+  "amount": string;
+  "gst_amount": string;
+}>;
+};
+
+export type PaymentCreate = {
+  "invoice_id"?: string;
+  "account_id"?: string;
+  "patient_id"?: string;
+  "amount": number | string;
+  "method": string;
+  "outcome"?: "confirmed" | "pending" | "unknown";
+  "provider_reference"?: string;
+};
+
+export type Payment = {
+  "id": string;
+  "version": number;
+  "purpose": string;
+  "state": string;
+  "amount": number;
+  "method": string;
+  "invoice_id": string | null;
+  "account_id": string | null;
+  "receipt_number": string | null;
+};
+
+export type DepositAllocation = {
+  "fund_id": string;
+  "invoice_id": string;
+  "amount"?: number | string;
+};
+
+export type Allocation = {
+  "id": string;
+  "version": number;
+  "fund_id": string;
+  "invoice_id": string;
+  "amount": string;
+  "allocated_at": string;
+};
+
+export type CreditNoteCreate = {
+  "invoice_id"?: string;
+  "reversal_id"?: string;
+  "reason"?: string;
+  "payer_amount"?: number | string;
+  "lines"?: Array<{
+  "invoice_line_id"?: string;
+  "category"?: string;
+  "description"?: string;
+  "amount": number | string;
+  "gst_amount"?: number | string;
+}>;
+};
+
+export type CreditNote = {
+  "id": string;
+  "version": number;
+  "note_number": string;
+  "invoice_id": string;
+  "kind": string;
+  "amount": string;
+  "gst_amount": string;
+  "patient_amount": string;
+  "payer_amount": string;
+};
+
+export type RefundCreate = {
+  "fund_id": string;
+  "amount": number | string;
+  "method": string;
+  "reason": string;
+};
+
+export type RefundDecision = {
+  "note"?: string;
+};
+
+export type RefundPay = {
+  "provider_reference"?: string;
+};
+
+export type Refund = {
+  "id": string;
+  "version": number;
+  "refund_number": string | null;
+  "state": string;
+  "amount": number;
+  "method": string;
+};
+
+export type Event = {
+  "id": string;
+  "type": string;
+  "schema_version": number;
+  "sequence": string;
+  "occurred_at": string;
+  "patient_id": string | null;
+  "aggregate": Record<string, unknown> | null;
+  "correlation_id": string | null;
+  "data": Record<string, unknown>;
+};
+
+export type EventPage = {
+  "events": Array<Event>;
+  "next_cursor": string;
+  "latest_cursor": string;
+  "has_more": boolean;
 };
 
 export type CommandResponse<T> = {success:true;data:T;version:number;operation_id:string};

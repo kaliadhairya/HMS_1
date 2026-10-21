@@ -31,7 +31,8 @@ async function view(id:string,actor:Actor,t?:Transaction){
  await scope(actor,Number(set.patient_id),false,t);
  const observations=await q(`SELECT public_id,code,code_system,value_numeric,value_text,value_boolean,unit_code,unit_display,method
   FROM hms_observations WHERE set_id=:id AND facility_id=CAST(:facility AS uuid) ORDER BY code`,{id:set.id,facility:actor.facilityId},t);
- return {id:set.public_id,patient_id:(await I.locate('patient',set.patient_id,actor,t,true)).public_id,
+ // A set never changes (a correction is a new linked set), so its version is always 1.
+ return {id:set.public_id,version:1,patient_id:(await I.locate('patient',set.patient_id,actor,t,true)).public_id,
   encounter_id:set.encounter_id?(await I.locate('encounter',set.encounter_id,actor,t,true)).public_id:null,
   admission_id:set.admission_id?(await I.locate('admission',set.admission_id,actor,t,true)).public_id:null,
   context_kind:set.context_kind,observed_at:set.observed_at,recorded_by:(await I.locate('principal',set.recorded_by,actor,t,true)).public_id,

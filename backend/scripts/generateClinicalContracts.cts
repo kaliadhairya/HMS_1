@@ -36,7 +36,7 @@ const schemas:Record<string,Schema>={
  ObservationInput:object({code:text,value:{type:'number'},unit_code:text,method:nullable(text)},['code','value','unit_code']),
  ObservationCreate:object({patient_id:uuid,encounter_id:nullable(uuid),admission_id:nullable(uuid),observed_at:instant,observations:{type:'array',items:ref('ObservationInput')},correction_of:nullable(uuid),correction_reason:nullable(text)},['patient_id','observed_at','observations']),
  Observation:{type:'object',properties:{id:uuid,code:text,code_system:text,value:{type:'number'},unit_code:nullable(text),unit_display:nullable(text),method:nullable(text)},required:['id','code','code_system','value','unit_code','unit_display','method'],additionalProperties:false},
- ObservationSet:{type:'object',properties:{id:uuid,patient_id:uuid,encounter_id:nullable(uuid),admission_id:nullable(uuid),context_kind:{type:'string',enum:['encounter','admission']},observed_at:instant,recorded_by:uuid,facility_id:uuid,source:text,correction_of:nullable(uuid),correction_reason:nullable(text),observations:{type:'array',items:ref('Observation')}},required:['id','patient_id','encounter_id','admission_id','context_kind','observed_at','recorded_by','facility_id','source','correction_of','correction_reason','observations'],additionalProperties:false},
+ ObservationSet:{type:'object',properties:{id:uuid,version:integer,patient_id:uuid,encounter_id:nullable(uuid),admission_id:nullable(uuid),context_kind:{type:'string',enum:['encounter','admission']},observed_at:instant,recorded_by:uuid,facility_id:uuid,source:text,correction_of:nullable(uuid),correction_reason:nullable(text),observations:{type:'array',items:ref('Observation')}},required:['id','version','patient_id','encounter_id','admission_id','context_kind','observed_at','recorded_by','facility_id','source','correction_of','correction_reason','observations'],additionalProperties:false},
  ObservationSetList:{type:'array',items:ref('ObservationSet')},
  MedicationCreate:object({patient_id:uuid,encounter_id:uuid,admission_id:nullable(uuid),...medContent},['patient_id','encounter_id','dose','dose_unit','route','frequency','starts_at','ends_at','supply_quantity','supply_unit']),
  MedicationOverride:object({finding_code:text,reason:text}),
@@ -54,8 +54,56 @@ const schemas:Record<string,Schema>={
  MedicationPrepare:object(Object.fromEntries(Object.entries(adminInput).filter(([key])=>key!=='schedule_id')),['order_version_id','patient_id','product_id','dispense_line_id','dose','dose_unit','route','scan_evidence']),
  AdministrationCreate:object(adminInput,adminRequired),
  Administration:object({id:uuid,version:integer,schedule_id:uuid,schedule_version:integer,order_id:uuid,order_version_id:uuid,patient_id:uuid,facility_id:uuid,product_id:uuid,dispense_line_id:nullable(uuid),outcome:text,dose:decimal,dose_unit:text,route:text,actual_at:instant,recorded_at:instant,performer_id:uuid,scan_evidence:scan,reason:nullable(text),witness_id:nullable(uuid),base_quantity:decimal,late_review_id:nullable(uuid)}),
+ // Scheduling, ADT, laboratory, finance and event adapters (completion A3).
+ AppointmentBook:object({patient_id:uuid,doctor_id:uuid,department_id:uuid,appointment_date:{type:'string',format:'date'},slot_start:text,slot_end:text,appointment_time:text,appt_type:text,status:text},['patient_id','doctor_id','appointment_date']),
+ AppointmentReschedule:object({appointment_date:{type:'string',format:'date'},slot_start:text,slot_end:text},[]),
+ AppointmentCancel:object({cancellation_reason:text},[]),
+ Appointment:object({id:uuid,version:integer,patient_id:uuid,doctor_id:uuid,department_id:nullable(uuid),appointment_date:{type:'string',format:'date'},slot_start:nullable(text),slot_end:nullable(text),appt_type:nullable(text),status:text}),
+ AdmissionCreate:object({patient_id:uuid,bed_id:uuid,admitting_doctor_id:uuid,department:text,admission_type:text,expected_discharge_date:text},['patient_id','bed_id']),
+ AdmissionTransfer:object({to_bed_id:uuid,reason:text}),
+ Discharge:object({final_diagnosis:text,course_in_hospital:text,condition_at_discharge:text,advice_on_discharge:text,chief_complaint:text,comorbidities:text,allergies:text,history_of_illness:text,investigations:text,discharge_medications:text,diet_lifestyle:text,warning_signs:text,follow_up_appointments:text},[]),
+ Admission:object({id:uuid,version:integer,patient_id:uuid,bed_id:nullable(uuid),status:text,admission_date:instant}),
+ DischargedAdmission:object({id:uuid,version:integer,patient_id:uuid,bed_id:nullable(uuid),status:text,admission_date:instant,summary_id:{type:['integer','string']},clinical_document_id:uuid,signature_digest:text,discharge_date:instant}),
+ LabOrderCreate:object({patient_id:uuid,encounter_id:uuid,test_version_ids:{type:'array',items:uuid},priority:text,urgency:text,clinical_notes:text},['patient_id','encounter_id','test_version_ids']),
+ LabOrderItem:object({id:uuid,version:integer,test_version_id:nullable(uuid),item_name:text,status:text,lab_state:nullable(text)}),
+ LabOrder:object({id:uuid,version:integer,status:text,items:{type:'array',items:ref('LabOrderItem')}}),
+ LabOrderView:object({id:uuid,version:integer,patient_id:uuid,status:text,items:{type:'array',items:ref('LabOrderItem')}}),
+ SpecimenCreate:object({patient_id:uuid,specimen_type:text,container:text,location:text,links:{type:'array',items:object({item_id:uuid,requirement_id:uuid})}}),
+ SpecimenStep:object({patient_id:uuid,accession:text,location:text,reason:text,occurred_at:instant},['patient_id','accession','location','reason']),
+ Specimen:object({id:uuid,version:integer,accession:text,patient_id:uuid,specimen_type:text,container:text,location:text,state:text,collected_at:nullable(instant),received_at:nullable(instant)}),
+ ResultEntry:object({specimen_id:uuid,raw_value:text,unit:text,method:text,remarks:text,analyzer_run_id:uuid,correction_of_id:uuid,correction_reason:text},['specimen_id','raw_value','unit','method']),
+ Result:object({id:uuid,version:integer,item_id:uuid,specimen_id:nullable(uuid),value:nullable(text),unit:nullable(text),state:text}),
+ ResultVerify:object({qc_record_id:uuid,decision:{type:'string',enum:['VERIFIED','REPEAT']},reason:text}),
+ ResultReview:object({id:uuid,version:integer,decision:text,critical_result_id:nullable(uuid)}),
+ ReportRelease:object({status:{type:'string',enum:['PRELIMINARY','FINAL','AMENDED']},reason:text,result_version_ids:{type:'array',items:uuid}}),
+ Report:object({id:uuid,version:integer,order_id:uuid,report_version_id:uuid,report_version:integer,status:text}),
+ CriticalAcknowledgment:object({reason:text}),
+ CriticalAction:object({clinical_action:text}),
+ CriticalResult:object({id:uuid,version:integer,state:text,acknowledged_at:nullable(instant),clinical_action:nullable(text),closed_at:nullable(instant)}),
+ Charge:object({id:uuid,version:integer,account_id:uuid,source_type:text,category:text,code:nullable(text),description:text,quantity:decimal,unit_price:decimal,amount:decimal,gst_amount:decimal,service_at:instant,reverses_id:nullable(uuid),reason:nullable(text)}),
+ ChargeCreate:object({code:text,medicine_id:uuid,category:text,description:text,unit_price:{type:['number','string']},gst_rate:{type:['number','string']},quantity:{type:['number','string']},reason:text},[]),
+ ChargeReverse:object({reason:text}),
+ BillingAccount:object({id:uuid,version:integer,account_number:text,status:text,episode_type:text,patient_id:uuid,
+  charges:{type:'array',items:{type:'object',additionalProperties:true}},draft_invoice:nullable(object({id:uuid,version:integer,revision:integer,total:decimal})),
+  invoices:{type:'array',items:object({id:uuid,version:integer,invoice_number:nullable(text),status:text,total:decimal,patient_due:decimal})},
+  funds:{type:'array',items:object({id:uuid,version:integer,kind:text,amount:decimal,balance:decimal})},totals:{type:'object',additionalProperties:true}}),
+ InvoiceIssue:object({apply_deposits:boolean},[]),
+ Invoice:object({id:uuid,version:integer,invoice_number:nullable(text),account_id:uuid,status:text,kind:text,subtotal:decimal,gst_amount:decimal,discount_amount:decimal,total:decimal,payer_amount:decimal,patient_amount:decimal,patient_due:decimal,revision:integer,
+  lines:{type:'array',items:object({id:uuid,line_no:integer,charge_id:uuid,category:text,code:nullable(text),description:text,amount:decimal,gst_amount:decimal})}}),
+ PaymentCreate:object({invoice_id:uuid,account_id:uuid,patient_id:uuid,amount:{type:['number','string']},method:text,outcome:{type:'string',enum:['confirmed','pending','unknown']},provider_reference:text},['amount','method']),
+ Payment:object({id:uuid,version:integer,purpose:text,state:text,amount:{type:'number'},method:text,invoice_id:nullable(uuid),account_id:nullable(uuid),receipt_number:nullable(text)}),
+ DepositAllocation:object({fund_id:uuid,invoice_id:uuid,amount:{type:['number','string']}},['fund_id','invoice_id']),
+ Allocation:object({id:uuid,version:integer,fund_id:uuid,invoice_id:uuid,amount:decimal,allocated_at:instant}),
+ CreditNoteCreate:object({invoice_id:uuid,reversal_id:uuid,reason:text,payer_amount:{type:['number','string']},lines:{type:'array',items:object({invoice_line_id:uuid,category:text,description:text,amount:{type:['number','string']},gst_amount:{type:['number','string']}},['amount'])}},[]),
+ CreditNote:object({id:uuid,version:integer,note_number:text,invoice_id:uuid,kind:text,amount:decimal,gst_amount:decimal,patient_amount:decimal,payer_amount:decimal}),
+ RefundCreate:object({fund_id:uuid,amount:{type:['number','string']},method:text,reason:text}),
+ RefundDecision:object({note:text},[]),
+ RefundPay:object({provider_reference:text},[]),
+ Refund:object({id:uuid,version:integer,refund_number:nullable(text),state:text,amount:{type:'number'},method:text}),
+ Event:object({id:text,type:text,schema_version:integer,sequence:text,occurred_at:instant,patient_id:nullable(uuid),aggregate:nullable({type:'object',additionalProperties:true}),correlation_id:nullable(text),data:{type:'object',additionalProperties:true}}),
+ EventPage:object({events:{type:'array',items:ref('Event')},next_cursor:text,latest_cursor:text,has_more:boolean}),
 };
-type Operation={method:string;path:string;name:string;input?:string;output:string;status?:number;version?:boolean};
+type Operation={method:string;path:string;name:string;input?:string;output:string;status?:number;version?:boolean;query?:string};
 const operations:Operation[]=[
  {method:'get',path:'/legacy-identities/{kind}/{id}',name:'resolveLegacyIdentity',output:'Identity'},
  {method:'get',path:'/patients/{id}',name:'readPatient',output:'Patient'},
@@ -79,11 +127,44 @@ const operations:Operation[]=[
  {method:'post',path:'/medication-schedules/{id}/prepare',name:'prepareMedicationAdministration',input:'MedicationPrepare',output:'MedicationSchedule',status:201,version:true},
  {method:'post',path:'/administrations',name:'createAdministration',input:'AdministrationCreate',output:'Administration',status:201,version:true},
  {method:'get',path:'/administrations/{id}',name:'readAdministration',output:'Administration'},
+ {method:'post',path:'/appointments',name:'bookAppointment',input:'AppointmentBook',output:'Appointment',status:201},
+ {method:'get',path:'/appointments/{id}',name:'readAppointment',output:'Appointment'},
+ {method:'post',path:'/appointments/{id}/reschedule',name:'rescheduleAppointment',input:'AppointmentReschedule',output:'Appointment',version:true},
+ {method:'post',path:'/appointments/{id}/cancel',name:'cancelAppointment',input:'AppointmentCancel',output:'Appointment',version:true},
+ {method:'post',path:'/admissions',name:'admitPatient',input:'AdmissionCreate',output:'Admission',status:201},
+ {method:'get',path:'/admissions/{id}',name:'readAdmission',output:'Admission'},
+ {method:'post',path:'/admissions/{id}/transfer',name:'transferAdmission',input:'AdmissionTransfer',output:'Admission',version:true},
+ {method:'post',path:'/admissions/{id}/discharge',name:'dischargeAdmission',input:'Discharge',output:'DischargedAdmission',version:true},
+ {method:'post',path:'/lab-orders',name:'createLabOrder',input:'LabOrderCreate',output:'LabOrder',status:201},
+ {method:'get',path:'/lab-orders/{id}',name:'readLabOrder',output:'LabOrderView'},
+ {method:'post',path:'/lab-orders/{id}/cancel',name:'cancelLabOrder',input:'Empty',output:'LabOrder',version:true},
+ {method:'post',path:'/specimens',name:'createSpecimen',input:'SpecimenCreate',output:'Specimen',status:201},
+ ...(['collect','receive','reject'] as const).map(step=>({method:'post',path:`/specimens/{id}/${step}`,name:{collect:'collectSpecimen',receive:'receiveSpecimen',reject:'rejectSpecimen'}[step],input:'SpecimenStep',output:'Specimen',version:true})),
+ {method:'post',path:'/lab-items/{id}/results',name:'enterLabResult',input:'ResultEntry',output:'Result',status:201,version:true},
+ {method:'post',path:'/results/{id}/verify',name:'verifyLabResult',input:'ResultVerify',output:'ResultReview',version:true},
+ {method:'post',path:'/lab-orders/{id}/reports',name:'releaseLabReport',input:'ReportRelease',output:'Report',status:201,version:true},
+ {method:'post',path:'/critical-results/{id}/acknowledgments',name:'acknowledgeCriticalResult',input:'CriticalAcknowledgment',output:'CriticalResult',status:201,version:true},
+ {method:'post',path:'/critical-results/{id}/clinical-actions',name:'recordCriticalResultAction',input:'CriticalAction',output:'CriticalResult',status:201,version:true},
+ {method:'get',path:'/billing-accounts/{id}',name:'readBillingAccount',output:'BillingAccount'},
+ {method:'post',path:'/billing-accounts/{id}/charges',name:'addCharge',input:'ChargeCreate',output:'Charge',status:201},
+ {method:'post',path:'/charges/{id}/reverse',name:'reverseCharge',input:'ChargeReverse',output:'Charge',status:201},
+ {method:'post',path:'/billing-accounts/{id}/draft-invoice',name:'prepareDraftInvoice',input:'Empty',output:'Invoice'},
+ {method:'post',path:'/billing-accounts/{id}/invoices',name:'issueInvoice',input:'InvoiceIssue',output:'Invoice',status:201,version:true},
+ {method:'post',path:'/payments',name:'startPayment',input:'PaymentCreate',output:'Payment',status:201},
+ {method:'post',path:'/deposit-allocations',name:'allocateDeposit',input:'DepositAllocation',output:'Allocation',status:201},
+ {method:'post',path:'/credit-notes',name:'createCreditNote',input:'CreditNoteCreate',output:'CreditNote',status:201},
+ {method:'post',path:'/refunds',name:'requestRefund',input:'RefundCreate',output:'Refund',status:201},
+ {method:'post',path:'/refunds/{id}/approve',name:'approveRefund',input:'RefundDecision',output:'Refund'},
+ {method:'post',path:'/refunds/{id}/reject',name:'rejectRefund',input:'RefundDecision',output:'Refund'},
+ {method:'post',path:'/refunds/{id}/pay',name:'payRefund',input:'RefundPay',output:'Refund'},
+ {method:'post',path:'/refunds/{id}/confirm',name:'confirmRefund',input:'RefundPay',output:'Refund'},
+ {method:'get',path:'/events',name:'readEvents',output:'EventPage',query:'cursor'},
 ];
 const paths:Record<string,Record<string,unknown>>={};
 for(const op of operations){
  const command=op.method!=='get',parameters:any[]=[];
  for(const name of [...op.path.matchAll(/\{([^}]+)\}/g)].map(m=>m[1]))parameters.push({name,in:'path',required:true,schema:op.path.startsWith('/legacy-identities')?(name==='kind'?{type:'string',enum:resourceKinds}:{type:'string',pattern:'^[1-9][0-9]*$'}):uuid});
+ if(op.query)parameters.push({name:op.query,in:'query',required:false,schema:{type:'string',pattern:'^[0-9]{1,15}$'},description:'Delivery sequence of the last event received; omit to get the cursor to start from.'});
  if(command)parameters.push({name:'Idempotency-Key',in:'header',required:true,schema:{type:'string',minLength:8,maxLength:200,pattern:'^[A-Za-z0-9._:-]+$'}});
  if(op.version)parameters.push({name:'If-Match',in:'header',required:true,schema:{type:'string',pattern:'^("[1-9][0-9]*"|[1-9][0-9]*)$'},description:'The public aggregate version returned by this API. Never substitute a legacy draft or content revision.'});
  const envelope=object({success:{type:'boolean',enum:[true]},data:ref(op.output),...(command?{version:integer,operation_id:uuid}:{})});
@@ -91,7 +172,7 @@ for(const op of operations){
  for(const code of [400,401,403,404,409,412,422,428,500,503])responses[code]={description:({400:'Malformed transport header',500:'Operation cannot be confirmed; reconcile its original idempotency key',401:'Invalid session',403:'Scope or clinical privilege denied',404:'Resource unavailable in this facility',409:'Invalid state or idempotency conflict',412:'Reviewed version is stale',422:'Invalid clinical fields or identity',428:'Required precondition missing',503:'Integrity or operational state cannot be confirmed'} as Record<number,string>)[code],content:{'application/json':{schema:ref('Error')}}};
  (paths[op.path]||={})[op.method]={operationId:op.name,parameters,responses,...(op.input?{requestBody:{required:true,content:{'application/json':{schema:ref(op.input)}}}}:{})};
 }
-const spec={openapi:'3.1.0',info:{title:'HMS clinical API v2',version:'2.0.0',description:'Implemented patient, encounter, shared observation, clinical document and medication commands. Observations preserve measured values, units, source and context; no clinical alert thresholds are inferred. Clinical document fields depend on doc_type. Signatures expose the original canonical_signed_content; digest does not cover the snake_case presentation. Dispensing reviews the order version; bedside preparation and administration review the schedule version. Immutable administration records have version 1; corrections remain linked records. Full clinical adapter coverage remains in the clinical completion checklist.'},servers:[{url:'/api/v2'}],security:[{session:[]},{bearer:[]}],paths,components:{securitySchemes:{session:{type:'apiKey',in:'cookie',name:'hms_session'},bearer:{type:'http',scheme:'bearer',bearerFormat:'purpose-bound access assertion'}},schemas}};
+const spec={openapi:'3.1.0',info:{title:'HMS clinical API v2',version:'2.0.0',description:'Implemented patient, encounter, shared observation, clinical document, medication, scheduling, admission/transfer/discharge, laboratory, finance and event catch-up commands. Observations preserve measured values, units, source and context; no clinical alert thresholds are inferred. Clinical document fields depend on doc_type. Signatures expose the original canonical_signed_content; digest does not cover the snake_case presentation. Dispensing reviews the order version; bedside preparation and administration review the schedule version. Immutable administration records have version 1; corrections remain linked records. Full clinical adapter coverage remains in the clinical completion checklist.'},servers:[{url:'/api/v2'}],security:[{session:[]},{bearer:[]}],paths,components:{securitySchemes:{session:{type:'apiKey',in:'cookie',name:'hms_session'},bearer:{type:'http',scheme:'bearer',bearerFormat:'purpose-bound access assertion'}},schemas}};
 function ts(schema:Schema):string{
  if(schema.$ref)return schema.$ref.split('/').pop()!;
  if(schema.enum)return schema.enum.map(v=>JSON.stringify(v)).join(' | ');
@@ -112,11 +193,13 @@ const client='// Generated by backend/scripts/generateClinicalContracts.cts. Do 
  operations.map(op=>{
   const command=op.method!=='get',params=[...op.path.matchAll(/\{([^}]+)\}/g)].map(m=>m[1]),args=['transport:ClinicalTransport',...params.map(name=>`${name}:string`)];
   if(op.input)args.push(`body:${op.input}`);
+  if(op.query)args.push(`${op.query}?:string`);
   if(command)args.push(`options:{idempotencyKey:string${op.version?';expectedVersion:number':''}}`);
   const response=`${command?'CommandResponse':'ReadResponse'}<${op.output}>`;
   const url='/v2'+op.path.replace(/\{([^}]+)\}/g,(_,name)=>'${encodeURIComponent('+name+')}');
+  const query=op.query?`\${${op.query}===undefined?'':'?${op.query}='+encodeURIComponent(${op.query})}`:'';
   return `export async function ${op.name}(${args.join(', ')}):Promise<${response}>{\n`+
-   ` return (await transport.request<${response}>({method:${JSON.stringify(op.method)},url:\`${url}\`${op.input?',data:body':''}${command?",headers:{'Idempotency-Key':options.idempotencyKey"+(op.version?",'If-Match':String(options.expectedVersion)":"")+"}":''}})).data;\n}\n`;
+   ` return (await transport.request<${response}>({method:${JSON.stringify(op.method)},url:\`${url}${query}\`${op.input?',data:body':''}${command?",headers:{'Idempotency-Key':options.idempotencyKey"+(op.version?",'If-Match':String(options.expectedVersion)":"")+"}":''}})).data;\n}\n`;
  }).join('\n');
 const root=path.resolve(__dirname,'../..'),outputs=new Map<string,string>([
  [path.join(root,'backend/contracts/v2.openapi.json'),JSON.stringify(spec,null,2)+'\n'],

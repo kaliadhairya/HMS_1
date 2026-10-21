@@ -34,9 +34,9 @@ const key = () => ({ 'idempotency-key': crypto.randomUUID() });
   const state = async () => (await call('GET', `/v2/admissions/${adm.public_id}`, doctor)).data.data;
   const bedStatus = async () => (await sql('SELECT status FROM hms_beds WHERE id = $1', [adm.bed_id]))[0].status;
   const body = {
-    finalDiagnosis: 'Fever with sore throat', courseInHospital: 'Improved on oral treatment',
-    conditionAtDischarge: 'Stable', adviceOnDischarge: 'Rest and fluids', warningSigns: 'Fever above 102F or breathlessness',
-    followUpAppointments: 'Review in one week',
+    final_diagnosis: 'Fever with sore throat', course_in_hospital: 'Improved on oral treatment',
+    condition_at_discharge: 'Stable', advice_on_discharge: 'Rest and fluids', warning_signs: 'Fever above 102F or breathlessness',
+    follow_up_appointments: 'Review in one week',
   };
   let before;
 
@@ -58,6 +58,12 @@ const key = () => ({ 'idempotency-key': crypto.randomUUID() });
     assert((await state()).status === 'Active', 'a stale discharge closed the admission');
   });
 
+  await step('A field outside the snake_case contract is refused, not dropped', async () => {
+    const r = await call('POST', `/v2/admissions/${adm.public_id}/discharge`, doctor, { ...body, finalDiagnosis: 'camelCase' }, { ...key(), 'if-match': `"${before.version}"` });
+    assert(r.status === 422 && r.data.code === 'UNSUPPORTED_FIELD', `legacy field name: ${r.status} ${JSON.stringify(r.data).slice(0, 120)}`);
+    assert((await state()).status === 'Active', 'a refused discharge closed the admission');
+  });
+
   const dischargeKey = crypto.randomUUID();
   await step('A discharge with the current version closes the admission, sends the bed to cleaning and links the signed summary', async () => {
     const r = await call('POST', `/v2/admissions/${adm.public_id}/discharge`, doctor, body, { 'idempotency-key': dischargeKey, 'if-match': `"${before.version}"` });
@@ -66,7 +72,7 @@ const key = () => ({ 'idempotency-key': crypto.randomUUID() });
     assert(d.status === 'Discharged' && d.version === before.version + 1 && d.summary_id && d.clinical_document_id, `fields ${JSON.stringify(d).slice(0, 220)}`);
     assert(await bedStatus() === 'Dirty', 'the bed was not sent to cleaning');
     const [summary] = await sql('SELECT s.clinical_document_id, s.final_diagnosis FROM hms_discharge_summaries s WHERE s.admission_id = $1', [adm.id]);
-    assert(summary && summary.final_diagnosis === body.finalDiagnosis, 'no discharge summary for the admission');
+    assert(summary && summary.final_diagnosis === body.final_diagnosis, 'no discharge summary for the admission');
     const [signed] = await sql("SELECT d.state FROM hms_clinical_documents d WHERE d.id = $1", [summary.clinical_document_id]);
     assert(signed && signed.state === 'signed', `summary document is ${signed && signed.state}`);
   });
