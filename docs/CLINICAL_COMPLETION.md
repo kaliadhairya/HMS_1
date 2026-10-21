@@ -58,7 +58,7 @@ when real regional evidence exists.
 
 | ID | Remaining work | Completion evidence | State |
 |---|---|---|---|
-| C1 | Cover every blueprint 5.3 acceptance category, including 50 concurrent same-bed/slot requests and transactional races, on real PostgreSQL | Requirement/scenario matrix and passing negative/concurrency tests | IN_PROGRESS |
+| C1 | Cover every blueprint 5.3 acceptance category, including 50 concurrent same-bed/slot requests and transactional races, on real PostgreSQL | Requirement/scenario matrix and passing negative/concurrency tests | ENGINEERING_DONE: every 5.3 row has a matching step (`e2e/failureModes.e2e.js` 4/4 closes reset token as a session, a downstream service failing mid-command and a connection cut mid-command and mid-session); ACCEPTANCE_MATRIX.md. Open: a keyboard-only end-to-end OPD journey (keyboard handling is tested in clinicalUx) |
 | C2 | Finish shared query/cache, draft/failure recovery, keyboard access, accessible alerts and multilingual printing across clinical journeys | Browser/print artifacts and complete patient-to-department rehearsals | ENGINEERING_DONE (Claude `aad6508`; C8 review). External: hospital language review of print text |
 | C3 | Validate the stated 200-bed/1,000-visit/200-user envelope and latency/freshness targets with a repeatable workload | Measured distributions, failure/backlog observations and explicit environment limits | ENGINEERING_DONE (Claude `794b33a`; C8 review). External: target hosting/network measurement |
 | C4 | Run fresh/upgrade PG16/18 migrations, full regression, type checks and builds against the exact final candidate | Commit-bound evidence, schema equality and invariant checks | OPEN |

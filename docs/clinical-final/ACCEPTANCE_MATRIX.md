@@ -10,7 +10,7 @@ rows run on real PostgreSQL with separate connections, as the blueprint requires
 
 | Area | Mandatory scenario | Suites | Status |
 |---|---|---|---|
-| Authentication | Reset token rejected as a session | none | GAP |
+| Authentication | Reset token rejected as a session | failureModes | Step found (bearer, cookie, socket and event feed refused; session token cannot reset; reset token single use) |
 | Authentication | Revoked sessions remain invalid | facilitySessions, sessions | Step found |
 | Authentication | Deactivated users lose socket access | facilitySessions, sessions, eventScope | Step found |
 | Authentication | Remote identity rejection cannot fall through | abdm, abdmUse | Step found (ABDM gateway token refusal) |
@@ -41,22 +41,22 @@ rows run on real PostgreSQL with separate connections, as the blueprint requires
 | Laboratory | Two writers on one result; simultaneous completion | laboratory, phase45, phase45cf | Step found |
 | Laboratory | QC failure; unit mismatch; corrected critical result | laboratoryGuards, laboratory, phase45cf | Step found |
 | Critical follow-up | Recipient unavailable; missed acknowledgment; escalation | laboratoryWorker, laboratory, triage | Step found |
-| Critical follow-up | Discharge before result release; amended-result recontact | adt, laboratory | Partly covered (confirm recontact step) |
+| Critical follow-up | Discharge before result release; amended-result recontact | adt, laboratory | Step found (named owner for pending results; amended critical finding restarts communication) |
 | Finance | Duplicate partial-payment retry; concurrent credit | finance, billingControls | Step found |
 | Finance | Oversized or partial deposit allocation; refund replay | finance | Step found |
 | Finance | Package exclusions | billingControls, finance | Step found |
-| Finance | Payer remittance; missing settlement | finance | Partly covered (confirm payer remittance step) |
+| Finance | Payer remittance; missing settlement | finance | Step found (payer split, claim, partial denial and remittance; settlement mismatch opens an owned exception) |
 | Durability | Crash after commit before response | durability, idempotency | Step found |
 | Durability | Duplicate and out-of-order events; worker restart | durability, eventScope, laboratoryWorker | Step found |
-| Durability | Failed downstream service | none specific | GAP (only outbound delivery failure in interfaceOps and abdm) |
+| Durability | Failed downstream service | failureModes, documents, interfaceOps, abdm | Step found (ABDM gateway failing during ABHA verification: refused cleanly, nothing half-recorded, retry works; virus scanner down: upload quarantined on the worklist; outbound delivery failure) |
 | Durability | Reconciliation of unknown outcomes | idempotency, finance, consultationNotes | Step found |
-| Privacy / audit | Emergency access review | careTeam, triage | Partly covered |
+| Privacy / audit | Emergency access review | careTeam, triage | Step found (break-glass needs a reason, lasts one hour, is audited and waits for review; expiry refuses again) |
 | Privacy / audit | Consent revocation | abdm, abdmUse | Step found |
 | Privacy / audit | Audit tampering or deletion; missing checkpoint | audit, auditWorm, documents | Step found |
 | Privacy / audit | Retention hold; authorized export | documents, auditWorm, clinicalExchange | Step found |
 | Recovery | Point-in-time restore | recoveryDrill, documents | Covered locally; target-region evidence external |
 | Recovery | Regional failover | recoveryDrill (local fencing only) | Local only; target-region drill external |
-| Recovery | Lost connectivity | downtimeDrill, interfaceOps | Partly covered (offline kit; no network-cut step) |
+| Recovery | Lost connectivity | failureModes, downtimeDrill, interfaceOps, medicationFrontend | Step found (answer lost after commit: same-key retry returns the original, one payment; live socket cut: missed events recovered from the cursor; offline kit) |
 | Recovery | Stale downtime summary; paper-era reconciliation | downtimeDrill, downtime | Step found |
 | UX / performance | Full keyboard workflow | clinicalUx, pharmacy, admin | Partly covered |
 | UX / performance | Multilingual printing | clinicalUx, documents, finance | Step found (text review external) |
@@ -66,8 +66,7 @@ rows run on real PostgreSQL with separate connections, as the blueprint requires
 
 ## Open gaps (not closed by this matrix)
 
-- Reset token presented as a session: no test step exists. Add an authentication suite step.
-- Failed downstream service during a clinical command: add a step with the downstream dependency down.
-- Network cut during an active session: add a step that drops connectivity mid-command.
-- Confirm steps for amended-result recontact and payer remittance (marked partly covered).
-- Keyboard-only completion of the full OPD journey is not one step; add it.
+- Keyboard-only completion of the full OPD journey is not one step (keyboard tabs, Ctrl+S and
+  focus handling are tested in clinicalUx); add an end-to-end keyboard-only journey before the
+  hospital release.
+- "Step found" rows still need the line-by-line assertion review described above.
