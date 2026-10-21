@@ -81,6 +81,11 @@ services:
       - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env - see .env.example}
       - AADHAAR_ENCRYPTION_KEY=${AADHAAR_ENCRYPTION_KEY:-cd9da93cb9ff3ccd87b4b2da30920bd5ac549e7470423996345cbde3ff5b986a0}
       - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET:-}
+      # This is the development stack: the image defaults to NODE_ENV=production, whose
+      # checks (restricted database identity, real data keys) belong to docker-compose.prod.yml.
+      - NODE_ENV=development
+      # Data keyring (id:64-hex); without it a development-only key is used.
+      - HMS_DATA_KEYS=${HMS_DATA_KEYS:-}
       # Signed audit checkpoints (see docs/phase1). In development they land in
       # ./audit-checkpoints; production must ship them to storage the database
       # administrators cannot rewrite.
