@@ -217,6 +217,13 @@
 /* Layout utilities for converted pages */
 .stack { display: grid; gap: 16px; }
 .stack-sm { display: grid; gap: 10px; }
+/* Forms lock their fields with a <fieldset disabled>; it is a grouping, not a visible box. */
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+/* A label wrapping its field reads as a caption above the field. */
+.stack > label, .stack-sm > label { display: grid; gap: 6px; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); }
+.stack > label:has(+ .form-input) { margin-bottom: -10px; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); }
+.stack > label > .form-input, .stack-sm > label > .form-input { font-weight: 400; color: var(--text-primary); }
+.panel h2 { font-size: 1.1rem; margin: 0; }
 .form-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 860px) { .form-grid-3 { grid-template-columns: 1fr; } }
 .inline-actions { display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
