@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Prove a backup restores: load it into a temporary database inside the
 # Docker "db" service, compare per-table row counts with the backup's
-# row-counts.txt, then drop the temporary database. The live database is
+# row-counts.txt, verify every stored patient document against the backup's
+# document archive, then drop the temporary database. The live database is
 # never touched.
 # Usage: scripts/restore-check.sh <backup-dir> [compose-file]
 set -euo pipefail
@@ -34,3 +35,17 @@ else
   exit 1
 fi
 tar -tzf "$DIR/uploads.tar.gz" >/dev/null && echo "Uploads archive is readable."
+
+# Every stored patient document of the restored database must match its exact encrypted version
+# in the backup (completion B6). The check runs in the backend container, which holds the keys;
+# a restore with stored documents but no archive fails. DB_PASSWORD is the password of DB_USER.
+ARCHIVE_IN=/tmp/hms-restore-documents-$$.tar.gz
+if [ -f "$DIR/documents.tar.gz" ]; then dc exec -T backend sh -c "cat > $ARCHIVE_IN" < "$DIR/documents.tar.gz"; fi
+set +e
+dc exec -T -e RESTORE_DB_HOST=db -e RESTORE_DB_PORT=5432 -e RESTORE_DB_NAME="$CHECK_DB" -e RESTORE_DB_USER="$DB_USER" -e RESTORE_DB_PASSWORD="${DB_PASSWORD:-}" \
+  -e DOCUMENT_ARCHIVE="$ARCHIVE_IN" backend node scripts/restore-verify-documents.cts
+verified=$?
+set -e
+dc exec -T backend rm -f "$ARCHIVE_IN" >/dev/null 2>&1 || true
+if [ "$verified" -ne 0 ]; then echo "FAIL: stored patient documents do not match the backup (see the counts above)." >&2; exit 1; fi
+echo "PASS: every stored patient document matches the backup."

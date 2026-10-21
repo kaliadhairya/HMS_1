@@ -63,3 +63,24 @@ regression and the separately owned protected/regional deployment evidence.
 Sources: [pg_dump snapshots](https://www.postgresql.org/docs/18/app-pgdump.html),
 [snapshot administration](https://www.postgresql.org/docs/18/functions-admin.html),
 [pg_verifybackup](https://www.postgresql.org/docs/18/app-pgverifybackup.html).
+
+## Patient documents in a restore (B6)
+
+Encrypted patient documents live outside the database. `scripts/backup-db.sh` archives
+the backend's private document store (`HMS_DOCUMENT_DIR`) as `documents.tar.gz`, still
+encrypted. `scripts/restore-check.sh` restores the dump into a temporary database and runs
+`backend/scripts/restore-verify-documents.cts` in the backend container (which holds the
+keys): every stored document of the restored records must be present in the archive as the
+exact version written for it (decryption with its recorded purpose, size and SHA-256). Any
+missing, altered, wrong-version, unreadable or quarantined document fails the restore, and a
+restore with stored documents but no archive is refused. Output is counts and opaque
+references only.
+
+After a point-in-time restore (`scripts/pitr-restore-drill.sh`), run the same check against
+the restored database with the document archive taken closest to the recovery target:
+`RESTORE_DB_NAME=<restored> DOCUMENT_ARCHIVE=<documents.tar.gz> node scripts/restore-verify-documents.cts`.
+A document written after that archive is reported missing; restore it from a later document
+backup or record it on the recovery worklist before returning to service.
+
+Evidence: `e2e/backupRestore.e2e.js` (clean backup verifies; an altered stored document, an
+archive of another store and a missing archive each fail).

@@ -5,6 +5,8 @@
 #   hms.dump          pg_dump custom-format archive
 #   row-counts.txt    per-table row counts, checked by restore-check.sh
 #   uploads.tar.gz    backend/uploads
+#   documents.tar.gz  the private patient-document store (HMS_DOCUMENT_DIR in the backend
+#                     container), when the backend has one; checked by restore-check.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 COMPOSE_FILE="${1:-docker-compose.yml}"
@@ -28,5 +30,11 @@ else
   echo "WARNING: data changed while the backup ran; row-counts.txt not written, so restore-check can only confirm the archive restores." >&2
 fi
 tar -czf "$OUT/uploads.tar.gz" -C backend uploads
+# Encrypted patient documents live outside the database (completion B6). They are archived as
+# stored, still encrypted; restore-check.sh verifies every one against the restored records.
+DOC_DIR=$(dc exec -T backend printenv HMS_DOCUMENT_DIR 2>/dev/null || true)
+if [ -n "$DOC_DIR" ]; then
+  dc exec -T backend tar -czf - -C "$DOC_DIR" . > "$OUT/documents.tar.gz"
+fi
 echo "Backup written to $OUT ($(du -sh "$OUT" | cut -f1))"
 echo "Prove it restores: scripts/restore-check.sh $OUT"
