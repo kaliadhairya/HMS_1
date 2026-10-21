@@ -290,7 +290,16 @@ async function journalBalanced() {
     assert(interim.status === 200 && interim.data.data.status === 'Issued', `interim ${short(interim)}`);
     ctx.interim = interim.data.data;
     assert(money(ctx.interim.subtotal) === money(400 + 800 + 800 + Number(ctx.medCharge.amount) + 150), `interim total ${ctx.interim.subtotal}`);
-    // Discharge a day later: the fourth day is charged at the Private rate.
+    // Discharge a day later: the fourth day is charged at the Private rate. A discharge needs the
+    // doctor's signed discharge document (completion A5), so the doctor signs one for this
+    // back-dated stay and it is recorded as the summary before the admission is closed.
+    const content = { diagnosis: 'Synthetic billing stay', condition: 'Stable', instructions: 'Synthetic instructions', warningSigns: 'Synthetic warning signs', followUp: 'Synthetic follow-up', course: 'Synthetic course' };
+    const made = await call('POST', '/clinical-documents', doctor, { patientId: ctx.ipdPatient, admissionId: ctx.admission, docType: 'discharge_summary', content });
+    assert(made.status === 201, `discharge document ${short(made)}`);
+    const signedDoc = await call('POST', `/clinical-documents/${made.data.data.id}/sign`, doctor, undefined, undefined, { 'if-match': String(made.data.data.version) });
+    assert(signedDoc.status === 200, `sign discharge ${short(signedDoc)}`);
+    await sql(`INSERT INTO hms_discharge_summaries (id, admission_id, final_diagnosis, created_by, created_at, clinical_document_id, facility_id)
+      SELECT nextval('hms_discharge_seq'), a.id, 'Synthetic billing stay', $2, now(), $3, a.facility_id FROM hms_admissions a WHERE a.id = $1`, [ctx.admission, doc.id, made.data.data.id]);
     await sql("UPDATE hms_admissions SET status = 'Discharged', discharge_date = (admission_date + interval '4 days 3 hours') WHERE id = $1", [ctx.admission]);
     await sql("UPDATE hms_bed_occupancies SET ends_at = now() WHERE admission_id = $1 AND ends_at IS NULL", [ctx.admission]);
     await sql("UPDATE hms_beds SET status = 'Dirty' WHERE id = $1", [ctx.privBed]);

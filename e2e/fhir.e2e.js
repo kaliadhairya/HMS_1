@@ -9,6 +9,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { API, apiLogin, sql, runner, assert, inCare, requireThrowawayDb } = require('./helpers');
+const { clinicalFixture } = require('./clinicalFixtures');
 
 requireThrowawayDb();
 const tag = crypto.randomUUID().slice(0, 8);
@@ -26,6 +27,9 @@ async function fhir(p, token, { method = 'GET', headers = {} } = {}) {
   const nurse = await apiLogin('nurse');
   const desk = await apiLogin('receptionist');
   const pharm = await apiLogin('pharmacist');
+  const labTech = await apiLogin('lab_technician');
+  // Clinical resources are read by the treating doctor with the chart-read privilege (B1).
+  await clinicalFixture('doctor', ['CHART_READ']);
   let pid, stranger, enc, dx, labPatient, merged;
 
   await step('Set up a synthetic patient with identifiers, a visit, a diagnosis and vitals', async () => {
@@ -49,6 +53,7 @@ async function fhir(p, token, { method = 'GET', headers = {} } = {}) {
       JOIN hms_investigation_orders o ON o.id = r.order_id ORDER BY v.released_at DESC LIMIT 1`);
     assert(lab, 'needs a released laboratory report (run after phase45)');
     labPatient = lab.patient_id;
+    await inCare(labPatient);
   });
 
   await step('The capability statement is public and lists only reads', async () => {
@@ -69,7 +74,15 @@ async function fhir(p, token, { method = 'GET', headers = {} } = {}) {
     assert(out.status === 403 && out.data.resourceType === 'OperationOutcome', `doctor read a patient outside their care: ${out.status}`);
     const ok = await fhir(`Patient/${pid}`, doctor);
     assert(ok.status === 200 && ok.data.resourceType === 'Patient', `doctor in care: ${ok.status}`);
-    assert((await fhir(`Condition?patient=${pid}`, nurse)).status === 200, 'nurse search');
+    // Clinical resources follow the application's chart rules (B1): no chart for an
+    // administrator, none for a nurse without nursing responsibility, laboratory records only for
+    // laboratory staff; patient demographics stay readable as before.
+    assert((await fhir(`Condition?patient=${pid}`, nurse)).status === 403, 'a nurse without nursing responsibility read the chart');
+    assert((await fhir(`Condition?patient=${pid}`, admin)).status === 403, 'an administrator read the chart');
+    assert((await fhir(`Patient/${pid}`, admin)).status === 200, 'an administrator could not read demographics');
+    assert((await fhir(`Condition?patient=${pid}`, labTech)).status === 403, 'laboratory staff read a non-laboratory record');
+    assert((await fhir(`DiagnosticReport?patient=${labPatient}`, labTech)).status === 200, 'laboratory staff could not read a laboratory report');
+    assert((await fhir(`Condition?patient=${pid}`, doctor)).status === 200, 'the treating doctor could not read the chart');
     const write = await fhir('Patient', admin, { method: 'POST', headers: { 'content-type': 'application/fhir+json' } });
     assert(write.status === 405 && write.data.resourceType === 'OperationOutcome', `write accepted: ${write.status}`);
     const bad = await fhir(`Patient/${pid}`, admin, { headers: { 'x-purpose-of-use': 'MARKETING' } });
@@ -78,7 +91,7 @@ async function fhir(p, token, { method = 'GET', headers = {} } = {}) {
   });
 
   await step('Every read is audited with the patient and its purpose', async () => {
-    const r = await fhir(`Encounter?patient=${pid}`, admin, { headers: { 'x-purpose-of-use': 'PATRQT' } });
+    const r = await fhir(`Encounter?patient=${pid}`, doctor, { headers: { 'x-purpose-of-use': 'PATRQT' } });
     assert(r.status === 200, `search ${r.status}`);
     const [ev] = await sql(`SELECT patient_id, detail, outcome FROM audit.access_events WHERE path = '/api/fhir/Encounter' AND patient_id = $1 ORDER BY id DESC LIMIT 1`, [pid]);
     assert(ev && ev.outcome === 'read' && ev.detail === 'fhir purpose=PATRQT', `audit ${JSON.stringify(ev)}`);
@@ -98,26 +111,28 @@ async function fhir(p, token, { method = 'GET', headers = {} } = {}) {
   });
 
   await step('A diagnosis without a recorded edition is sent as text, never as an ICD-10 coding', async () => {
-    const c = (await fhir(`Condition/${dx.id}`, admin)).data;
+    const c = (await fhir(`Condition/${dx.id}`, doctor)).data;
     assert(!c.code.coding && /R50\.9/.test(c.code.text) && /edition not recorded/.test(c.code.text), `legacy condition ${JSON.stringify(c.code)}`);
-    const [coded] = await sql("SELECT d.id, r.version FROM hms_diagnoses d JOIN hms_term_releases r ON r.id = d.term_release_id WHERE d.coding_status = 'CODED' LIMIT 1");
+    const [coded] = await sql(`SELECT d.id, r.version, e.patient_id FROM hms_diagnoses d JOIN hms_term_releases r ON r.id = d.term_release_id
+      JOIN hms_encounters e ON e.id = d.encounter_id WHERE d.coding_status = 'CODED' LIMIT 1`);
     if (coded) {
-      const k = (await fhir(`Condition/${coded.id}`, admin)).data;
+      await inCare(coded.patient_id);
+      const k = (await fhir(`Condition/${coded.id}`, doctor)).data;
       assert(k.code.coding[0].system === 'http://hl7.org/fhir/sid/icd-10' && k.code.coding[0].version === coded.version, `coded condition ${JSON.stringify(k.code)}`);
     }
   });
 
   await step('Vital signs carry LOINC codes and UCUM units; only released lab results are sent', async () => {
-    const vs = (await fhir(`Observation?patient=${pid}&category=vital-signs`, admin)).data.entry.map((e) => e.resource);
+    const vs = (await fhir(`Observation?patient=${pid}&category=vital-signs`, doctor)).data.entry.map((e) => e.resource);
     const bp = vs.find((o) => o.code.coding[0].code === '85354-9');
     assert(bp && bp.component.length === 2 && bp.component[0].valueQuantity.code === 'mm[Hg]', 'blood pressure panel');
     assert(vs.some((o) => o.code.coding[0].code === '29463-7' && o.meta.profile[0].endsWith('ObservationBodyMeasurement')), 'body weight');
     assert(vs.every((o) => /^[A-Za-z0-9\-.]{1,64}$/.test(o.id)), 'invalid FHIR ids');
-    const lab = (await fhir(`Observation?patient=${labPatient}&category=laboratory`, admin)).data.entry.map((e) => e.resource.id.replace(/^lab-/, ''));
+    const lab = (await fhir(`Observation?patient=${labPatient}&category=laboratory`, doctor)).data.entry.map((e) => e.resource.id.replace(/^lab-/, ''));
     const released = (await sql(`SELECT DISTINCT rr.result_version_id AS id FROM hms_lab_report_results rr JOIN hms_lab_result_versions rv ON rv.id = rr.result_version_id
       JOIN hms_investigation_order_items i ON i.id = rv.item_id JOIN hms_investigation_orders o ON o.id = i.order_id WHERE o.patient_id = $1`, [labPatient])).map((r) => r.id);
     assert(lab.length === released.length && lab.every((id) => released.includes(id)), `sent ${lab.length} lab results, ${released.length} released`);
-    const reports = (await fhir(`DiagnosticReport?patient=${labPatient}`, admin)).data.entry.map((e) => e.resource);
+    const reports = (await fhir(`DiagnosticReport?patient=${labPatient}`, doctor)).data.entry.map((e) => e.resource);
     assert(reports.length && reports.every((r) => r.result.length && ['final', 'amended', 'preliminary'].includes(r.status)), 'reports');
   });
 
@@ -128,12 +143,12 @@ async function fhir(p, token, { method = 'GET', headers = {} } = {}) {
     const add = (r) => resources.set(`${r.resourceType}/${r.id}`, r);
     for (const p of [pid, labPatient]) {
       add((await fhir(`Patient/${p}`, admin)).data);
-      for (const t of ['Encounter', 'Condition', 'AllergyIntolerance', 'Observation', 'DiagnosticReport']) (await fhir(`${t}?patient=${p}`, admin)).data.entry.forEach((e) => add(e.resource));
+      for (const t of ['Encounter', 'Condition', 'AllergyIntolerance', 'Observation', 'DiagnosticReport']) (await fhir(`${t}?patient=${p}`, doctor)).data.entry.forEach((e) => add(e.resource));
     }
     for (let pass = 0; pass < 2; pass++) {
       for (const ref of new Set(JSON.stringify([...resources.values()]).match(/"reference":"(Practitioner|Organization|Specimen)\/[^"]+"/g) || [])) {
         const target = ref.slice(13, -1);
-        if (!resources.has(target)) add((await fhir(target, admin)).data);
+        if (!resources.has(target)) add((await fhir(target, doctor)).data);
       }
     }
     const out = fs.mkdtempSync(path.join(os.tmpdir(), 'hms-fhir-'));

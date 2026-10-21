@@ -6,6 +6,7 @@ const os=require('os');
 const path=require('path');
 const {spawnSync}=require('child_process');
 const {API,api,apiLogin,sql,runner,assert,inCare,requireThrowawayDb}=require('./helpers');
+const {clinicalFixture}=require('./clinicalFixtures');
 requireThrowawayDb();
 const tag=crypto.randomUUID().slice(0,8);
 const call=(method,url,token,body,etag)=>api(method,url,{token,body,headers:etag?{'if-match':String(etag)}:{}});
@@ -13,6 +14,8 @@ const get=async(url,token)=>{const r=await fetch(API+'/fhir/'+url,{headers:{auth
 (async()=>{
  const {step,done}=runner('Final clinical exchange');
  const admin=await apiLogin('admin'),doctor=await apiLogin('doctor'),nurse=await apiLogin('nurse');
+ // Clinical exports are read by the treating doctor with the chart-read privilege (B1).
+ await clinicalFixture('doctor',['CHART_READ','CLINICAL_SIGN']);
  let pid,admission,doc,signature,rx,resources=[],original,amended;
  await step('Capability statement declares exactly the 15 primary clinical resource types',async()=>{
   const c=(await get('metadata',admin)).body.rest[0].resource.map(r=>r.type);
@@ -24,20 +27,20 @@ const get=async(url,token)=>{const r=await fetch(API+'/fhir/'+url,{headers:{auth
     WHERE v.signed_at IS NOT NULL AND EXISTS(SELECT 1 FROM hms_med_dispense_lines l WHERE l.version_id=v.id)
       AND EXISTS(SELECT 1 FROM hms_med_administrations a JOIN hms_med_order_versions av ON av.id=a.version_id WHERE av.order_id=o.id)
     ORDER BY v.signed_at DESC LIMIT 1`);
-  assert(r,'Run medication.e2e.js first');rx=r;
+  assert(r,'Run medication.e2e.js first');rx=r;await inCare(r.patient_id);
   for(const type of ['MedicationRequest','MedicationDispense','MedicationAdministration']){
-   const out=await get(`${type}?patient=${r.patient_id}`,admin);
+   const out=await get(`${type}?patient=${r.patient_id}`,doctor);
    assert(out.status===200,'Search '+type+' '+out.status);
    assert(out.body.entry.length,'Missing '+type+' source fixture');
    for(const e of out.body.entry){assert(e.resource.subject.reference===`Patient/${r.patient_id}`,'Wrong subject');resources.push(e.resource);}
   }
   const med=resources.find(m=>m.id===r.id);assert(med&&med.dosageInstruction[0].doseAndRate[0].doseQuantity.value===Number(r.dose),'Changed signed dose');
-  const read=await get('MedicationRequest/'+r.id,admin);assert(read.status===200&&read.body.id===r.id,'Version read');
+  const read=await get('MedicationRequest/'+r.id,doctor);assert(read.status===200&&read.body.id===r.id,'Version read');
   const [draft]=await sql('SELECT id FROM hms_med_order_versions WHERE signed_at IS NULL LIMIT 1');
-  assert(draft,'Needs unsigned draft fixture');assert((await get('MedicationRequest/'+draft.id,admin)).status===404,'Unsigned prescription exported');
+  assert(draft,'Needs unsigned draft fixture');assert((await get('MedicationRequest/'+draft.id,doctor)).status===404,'Unsigned prescription exported');
  });
  await step('Prescription documents are self-contained and stable for identical signed source versions',async()=>{
-  const a=await get('documents/prescription/'+rx.encounter_id,admin),b=await get('documents/prescription/'+rx.encounter_id,admin);
+  const a=await get('documents/prescription/'+rx.encounter_id,doctor),b=await get('documents/prescription/'+rx.encounter_id,doctor);
   assert(a.status===200&&a.body.type==='document','Prescription '+a.status);
   assert(a.body.id===b.body.id,'Unstable source identity');
   const references=new Set(a.body.entry.map(e=>`${e.resource.resourceType}/${e.resource.id}`));
@@ -52,7 +55,7 @@ const get=async(url,token)=>{const r=await fetch(API+'/fhir/'+url,{headers:{auth
   const [b]=await sql('SELECT id FROM hms_beds ORDER BY id LIMIT 1');
   const bed=await get('Location/bed-'+b.id,admin);assert(bed.status===200&&bed.body.partOf.reference.startsWith('Location/ward-'),'Location');resources.push(bed.body);
   const [i]=await sql('SELECT patient_id FROM hms_investigation_orders ORDER BY id DESC LIMIT 1');
-  const orders=await get('ServiceRequest?patient='+i.patient_id,admin);assert(orders.status===200&&orders.body.entry.length,'Service requests');resources.push(...orders.body.entry.map(e=>e.resource));
+  await inCare(i.patient_id);const orders=await get('ServiceRequest?patient='+i.patient_id,doctor);assert(orders.status===200&&orders.body.entry.length,'Service requests');resources.push(...orders.body.entry.map(e=>e.resource));
  });
  await step('Discharge drafts require a matching patient/admission and cannot be exported',async()=>{
   const [p]=await sql(`INSERT INTO hms_patients(name,uhid,patienttype,age,gender,opdindoor,testdate) VALUES($1,$2,'other',35,'Female','IPD',hms_service_today()) RETURNING id`,['Synthetic continuity '+tag,'CONT-'+tag]);pid=p.id;await inCare(pid);
@@ -65,16 +68,20 @@ const get=async(url,token)=>{const r=await fetch(API+'/fhir/'+url,{headers:{auth
   assert(made.status===201,'Create discharge '+made.status);doc=made.data.data.id;
   const incomplete=await call('POST',`/clinical-documents/${doc}/sign`,doctor,undefined,1);
   assert(incomplete.status===422,'Incomplete discharge signed '+incomplete.status);
-  assert((await get('documents/discharge/999999999',admin)).status===404,'Unsigned document served');
+  assert((await get('documents/discharge/999999999',doctor)).status===404,'Unsigned document served');
  });
  await step('A complete discharge signature freezes its digest; active admission export is refused',async()=>{
   const content={diagnosis:'Synthetic diagnosis',condition:'Synthetic reviewed condition',instructions:'Synthetic handover instructions',warningSigns:'Synthetic reviewed escalation instructions',followUp:'Synthetic named clinician follow-up',course:'Synthetic course <script>unsafe</script>'};
   const save=await call('PUT',`/clinical-documents/${doc}/draft`,doctor,{content},1);assert(save.status===200,'Save discharge');
   const signed=await call('POST',`/clinical-documents/${doc}/sign`,doctor,undefined,2);assert(signed.status===200,'Sign discharge '+signed.status);
   [signature]=await sql('SELECT id,version,digest FROM hms_document_signatures WHERE document_id=$1',[doc]);
-  assert((await get('documents/discharge/'+signature.id,admin)).status===409,'Active admission exported as discharged');
+  assert((await get('documents/discharge/'+signature.id,doctor)).status===409,'Active admission exported as discharged');
+  // A discharge needs its signed discharge document in the database (A5): the fixture records the
+  // summary for the signed document, as the discharge command does, before closing the admission.
+  await sql(`INSERT INTO hms_discharge_summaries(id,admission_id,final_diagnosis,created_by,created_at,clinical_document_id,facility_id)
+    SELECT nextval('hms_discharge_seq'),$1,'Synthetic diagnosis',(SELECT id FROM hms_users WHERE username='doctor'),now(),$2,a.facility_id FROM hms_admissions a WHERE a.id=$1`,[admission,doc]);
   await sql("UPDATE hms_admissions SET status='Discharged',discharge_date=now() WHERE id=$1",[admission]);
-  const out=await get('documents/discharge/'+signature.id,admin);assert(out.status===200,'Discharge export '+out.status);amended=out.body;
+  const out=await get('documents/discharge/'+signature.id,doctor);assert(out.status===200,'Discharge export '+out.status);amended=out.body;
   assert(!JSON.stringify(out.body).includes('<script>'),'Unescaped narrative');
  });
  await step('Linked discharge amendment leaves the original signature/export intact and enforces the recorded reason',async()=>{
@@ -82,9 +89,9 @@ const get=async(url,token)=>{const r=await fetch(API+'/fhir/'+url,{headers:{auth
   const start=await call('POST',`/clinical-documents/${doc}/amend`,doctor,{reason},2);assert(start.status===200,'Start amendment');
   const bad=await call('POST',`/clinical-documents/${doc}/sign-amendment`,doctor,{reason:'A different unreviewed explanation'},3);assert(bad.status===409,'Changed amendment reason accepted');
   const signed=await call('POST',`/clinical-documents/${doc}/sign-amendment`,doctor,{reason},3);assert(signed.status===200,'Sign linked amendment');
-  const originalAfter=await get('documents/discharge/'+signature.id,admin);assert(originalAfter.status===200&&originalAfter.body.id===amended.id,'Original export changed');
+  const originalAfter=await get('documents/discharge/'+signature.id,doctor);assert(originalAfter.status===200&&originalAfter.body.id===amended.id,'Original export changed');
   const [s]=await sql('SELECT id FROM hms_document_signatures WHERE document_id=$1 AND version=2',[doc]);
-  const newExport=await get('documents/discharge/'+s.id,admin);assert(newExport.status===200&&newExport.body.entry[0].resource.status==='amended','Amended signature');
+  const newExport=await get('documents/discharge/'+s.id,doctor);assert(newExport.status===200&&newExport.body.entry[0].resource.status==='amended','Amended signature');
   assert(newExport.body.id!==amended.id,'Versions share identity');
  });
  await step('The added resources and both new documents pass the official FHIR R4/ABDM validator',async()=>{
@@ -95,7 +102,7 @@ const get=async(url,token)=>{const r=await fetch(API+'/fhir/'+url,{headers:{auth
   for(let pass=0;pass<5;pass++){
    const refs=[...new Set((JSON.stringify([...all.values()]).match(/"reference":"[A-Za-z]+\/[^\"]+"/g)||[]).map(m=>m.slice(13,-1)))];
    let changed=false;
-   for(const ref of refs){if(all.has(ref))continue;const r=await get(ref,admin);assert(r.status===200,'Unresolved '+ref+' '+r.status);all.set(ref,r.body);changed=true;}
+   for(const ref of refs){if(all.has(ref))continue;const r=await get(ref,doctor);assert(r.status===200,'Unresolved '+ref+' '+r.status);all.set(ref,r.body);changed=true;}
    if(!changed)break;
   }
   resources=[...all.values()];

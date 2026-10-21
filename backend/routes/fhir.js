@@ -5,6 +5,7 @@ const { patientInCare, NOT_IN_CARE } = require('../utils/careTeam');
 const F = require('../services/fhir');
 const C = require('../services/fhirClinical.cts');
 const Documents = require('../services/fhirDocuments');
+const ClinicalDocuments = require('../services/clinicalDocuments.cts');
 
 // FHIR R4 read boundary (Phase 6B). Mounted at /api/fhir. Same sign-in,
 // roles and care-team scope as the application; every read is audited with
@@ -32,6 +33,28 @@ router.use((req, res, next) => {
   return next();
 });
 
+// Who may read a patient's records here is who may read them in the application (completion B1,
+// with the A2 rules): the demographic and directory resources follow the patient-record rules;
+// clinical resources need the treating doctor or the responsible nurse with a current
+// credential and the chart-read privilege (the same check as the v2 clinical API), and
+// laboratory staff read laboratory resources only. An administrator role alone reads no chart.
+const DIRECTORY = /^\/(Patient|Practitioner|PractitionerRole|Location|Organization)(\/|$)/;
+const LABORATORY = /^\/(ServiceRequest|Specimen|DiagnosticReport|documents\/laboratory)(\/|$)/;
+const forbidden = (message) => Object.assign(new Error(message), { status: 403, code: 'forbidden' });
+async function authorizePatient(req, patientId, t) {
+  if (DIRECTORY.test(req.path)) {
+    if (req.user.role === 'doctor' && !(await patientInCare(req.user.id, patientId, t))) throw forbidden(NOT_IN_CARE);
+    return;
+  }
+  if (['doctor', 'nurse'].includes(req.user.role)) {
+    try { await ClinicalDocuments.authorize(req.user, patientId, req.user.role === 'nurse' ? 'nursing_assessment' : 'clinical_note', false, t); }
+    catch (err) { throw forbidden(err.message); }
+    return;
+  }
+  if (req.user.role === 'lab_technician' && LABORATORY.test(req.path)) return;
+  throw forbidden('Clinical records are read by the treating clinicians; laboratory staff read laboratory records.');
+}
+
 // Resolves the request to one patient, checks scope, then answers.
 const read = (fn) => async (req, res) => {
   try {
@@ -39,9 +62,7 @@ const read = (fn) => async (req, res) => {
       const result = await fn(req, t);
       if (result.patientId) {
         res.locals.auditPatientId = result.patientId;
-        if (req.user.role === 'doctor' && !(await patientInCare(req.user.id, result.patientId, t))) {
-          throw Object.assign(new Error(NOT_IN_CARE), { status: 403, code: 'forbidden' });
-        }
+        await authorizePatient(req, result.patientId, t);
       }
       return result.body;
     });
