@@ -52,7 +52,8 @@ export ABDM_BRIDGE_PUBLIC_URL="http://127.0.0.1:$API_PORT/abdm" ABDM_CLIENT_ID=s
 MINIO="hms-e2e-minio-$$"
 PIDS=()
 cleanup() {
-  for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || true; done
+  # Each service runs in its own process group, so its children (npx starts vite) stop with it.
+  for p in "${PIDS[@]}"; do kill -- "-$p" 2>/dev/null || kill "$p" 2>/dev/null || true; done
   docker rm -f "$MINIO" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -70,7 +71,7 @@ mc admin policy create local ship-only /tmp/ship.json >/dev/null; mc admin user 
 export AUDIT_WORM_BUCKET=hms-audit AUDIT_WORM_ENDPOINT="http://127.0.0.1:$MINIO_PORT" AUDIT_WORM_REGION=us-east-1 AUDIT_WORM_ACCESS_KEY=shipper AUDIT_WORM_SECRET_KEY="$SHIP_PW" AUDIT_SHIP_INTERVAL_MS=3000
 
 # ── Services ──
-start() { local name=$1; shift; ( "$@" > "$OUT/$name.log" 2>&1 < /dev/null ) & PIDS+=($!); }
+start() { local name=$1; shift; setsid "$@" > "$OUT/$name.log" 2>&1 < /dev/null & PIDS+=($!); }
 start clamav  bash -c "cd '$ROOT/e2e' && exec node fixtures/clamavFixture.js"
 start mock    bash -c "cd '$ROOT/backend' && PORT=$MOCK_PORT exec node scripts/abdm-mock-gateway.js"
 sleep 2

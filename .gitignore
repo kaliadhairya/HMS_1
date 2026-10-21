@@ -1,6 +1,7 @@
-node_modules/
-backend/node_modules/
-frontend/node_modules/
+# Without a trailing slash these also match symlinks (a worktree may link node_modules).
+node_modules
+backend/node_modules
+frontend/node_modules
 .env
 *.env*
 !services/**/.env.example
