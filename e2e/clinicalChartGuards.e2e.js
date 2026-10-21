@@ -38,10 +38,17 @@ requireThrowawayDb();
   await step('A doctor cannot start a diagnosis for a patient outside their care', async () => {
     const doctor = await apiLogin('doctor');
     const [doctorUser] = await sql("SELECT id FROM hms_users WHERE username = 'doctor'");
-    const [outside] = await sql(`SELECT e.id AS encounter_id FROM hms_encounters e
+    let [outside] = await sql(`SELECT e.id AS encounter_id FROM hms_encounters e
       WHERE NOT EXISTS (SELECT 1 FROM hms_care_team_assignments c WHERE c.patient_id = e.patient_id AND c.practitioner_user_id = $1 AND c.valid_to IS NULL)
       ORDER BY e.id LIMIT 1`, [doctorUser.id]);
-    assert(outside, 'no encounter outside the doctor\'s care exists in this database');
+    if (!outside) {
+      // A database without one (a seeded one, or after suites put every patient in this doctor's
+      // care) gets a synthetic visit of a patient no care team of this doctor holds.
+      const [p] = await sql("INSERT INTO hms_patients(name,uhid,patienttype,age,gender,opdindoor,testdate) VALUES($1,$2,'other',60,'Male','OPD',CURRENT_DATE) RETURNING id",
+        [`Synthetic outside visit ${Date.now()}`, `OUTV-${Date.now()}`]);
+      [outside] = await sql("INSERT INTO hms_encounters(id,patient_id,doctor_id,status) SELECT nextval('hms_encounters_seq'), $1, id, 'In Progress' FROM hms_users WHERE username = 'admin' RETURNING id AS encounter_id", [p.id]);
+    }
+    assert(outside, 'no encounter outside the doctor\'s care');
     const r = await api('POST', '/hms/diagnoses', { token: doctor, body: { encounter_id: outside.encounter_id, icd10_code: 'R50.9', icd10_description: 'Fever, unspecified' } });
     assert(r.status === 403 && r.data.code === 'PATIENT_NOT_IN_CARE', `outside care: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
   });
@@ -95,10 +102,17 @@ requireThrowawayDb();
   await step('A doctor cannot write a progress note for an admission outside their care', async () => {
     const doctor = await apiLogin('doctor');
     const [doctorUser] = await sql("SELECT id FROM hms_users WHERE username = 'doctor'");
-    const [outside] = await sql(`SELECT a.id FROM hms_admissions a
+    let [outside] = await sql(`SELECT a.id FROM hms_admissions a
       WHERE NOT EXISTS (SELECT 1 FROM hms_care_team_assignments c WHERE c.patient_id = a.patient_id AND c.practitioner_user_id = $1 AND c.valid_to IS NULL)
       ORDER BY a.id LIMIT 1`, [doctorUser.id]);
-    assert(outside, 'no admission outside the doctor\'s care exists in this database');
+    if (!outside) {
+      // A database without one (for example built from the demo seed) gets a synthetic admission
+      // of a patient no care team of this doctor holds.
+      const [p] = await sql("INSERT INTO hms_patients(name,uhid,patienttype,age,gender,opdindoor,testdate) VALUES($1,$2,'other',60,'Male','IPD',CURRENT_DATE) RETURNING id",
+        [`Synthetic outside care ${Date.now()}`, `OUT-${Date.now()}`]);
+      [outside] = await sql("INSERT INTO hms_admissions(patient_id,admitting_doctor_id,status,admission_date) SELECT $1, id, 'Active', now() FROM hms_users WHERE username = 'admin' RETURNING id", [p.id]);
+    }
+    assert(outside, 'no admission outside the doctor\'s care');
     const r = await api('POST', '/ipd/progress-notes', { token: doctor, body: { admissionId: outside.id, noteText: 'Synthetic note outside care' } });
     assert(r.status === 403 && r.data.code === 'PATIENT_NOT_IN_CARE', `progress note outside care: ${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
   });

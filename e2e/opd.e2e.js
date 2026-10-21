@@ -98,8 +98,9 @@ async function pickPatient(page, query, name) {
       await page.getByLabel('Age (years)').fill('41');
       await page.getByLabel('Gender').selectOption('Male');
       await page.getByLabel('Employee number').fill(EMP_NO);
-      await page.getByRole('button', { name: /Register and enter test results/ }).click();
-      await page.waitForURL(/\/report\/\d+/, { timeout: 15000 });
+      await page.getByRole('button', { name: /Register patient/ }).click();
+      // Registration opens the patient's profile; no free-text lab report draft is made (A6).
+      await page.waitForURL(/\/hms\/patients\/\d+/, { timeout: 15000 });
       const [p] = await sql('SELECT id, uhid, patienttype, empnumber, relationship FROM hms_patients WHERE name = $1', [CORP_NAME]);
       assert(p, 'corporate patient row not created');
       assert(/^HOSP-\d{4}-\d{6}$/.test(p.uhid), `bad UHID ${p.uhid}`);

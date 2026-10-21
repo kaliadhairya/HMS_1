@@ -463,7 +463,7 @@ export default function RegisterPatientPage() {
               {loading ? (isEditMode ? 'Updating…' : 'Registering…') : isEditMode ? (
                 <><Check size={16} aria-hidden="true" /> Update patient</>
               ) : (
-                <>Register and enter test results <ArrowRight size={16} aria-hidden="true" /></>
+                <>Register patient <ArrowRight size={16} aria-hidden="true" /></>
               )}
             </button>
           </div>

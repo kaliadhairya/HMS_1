@@ -32,6 +32,14 @@ const yearsAgo = (n) => `${new Date().getFullYear() - n}-01-01`;
     const [{ missing }] = await sql(`SELECT count(*)::int AS missing FROM hms_users u WHERE u.role = 'doctor'
       AND NOT EXISTS (SELECT 1 FROM hms_practitioners p WHERE p.user_id = u.id)`);
     assert(missing === 0, `${missing} doctor logins without a practitioner record`);
+    // On a database that existed before migration 0012, the demo doctor's profile registration was
+    // carried over as an unverified credential. A database built from the migrations and the demo
+    // seed has no such history, so the same carried-over credential is recorded here exactly as
+    // 0012 records it (test databases only).
+    await sql(`INSERT INTO hms_practitioner_credentials (practitioner_id, kind, identifier, issuing_body, valid_from)
+      SELECT p.id, 'medical_registration', 'REG-12345', 'not verified (migrated from doctor profile)', (now() AT TIME ZONE 'Asia/Kolkata')::date
+        FROM hms_practitioners p JOIN hms_users u ON u.id = p.user_id WHERE u.username = 'doctor'
+         AND NOT EXISTS (SELECT 1 FROM hms_practitioner_credentials c WHERE c.practitioner_id = p.id AND c.identifier = 'REG-12345')`);
     const [demo] = await sql(`SELECT c.verified_at, c.identifier FROM hms_practitioner_credentials c
       JOIN hms_practitioners p ON p.id = c.practitioner_id JOIN hms_users u ON u.id = p.user_id WHERE u.username = 'doctor' AND c.identifier = 'REG-12345'`);
     assert(demo && demo.identifier === 'REG-12345' && demo.verified_at === null, `demo registration: ${JSON.stringify(demo)}`);

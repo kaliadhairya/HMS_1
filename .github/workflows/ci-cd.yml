@@ -36,6 +36,11 @@ jobs:
       - name: Check Typed Clinical Contracts
         run: cd backend && npm run typecheck
 
+      - name: Check the Published Contract and the Requirement Inventory
+        run: |
+          (cd backend && npm run contracts:check)
+          node scripts/requirements-inventory.cjs --check
+
       - name: Backend Unit Tests
         run: |
           cd backend
@@ -128,10 +133,62 @@ jobs:
       - run: npm test
         working-directory: backend
 
+  # Stage 1c (completion A1): every end-to-end suite against databases built from the
+  # migrations and the demo seed, with the API, frontend, ABDM mock, scanner fixture, write-once
+  # storage and the official FHIR validator started for the run (scripts/e2e-regression.sh).
+  e2e-regression:
+    name: End-to-end Regression (PostgreSQL 18)
+    needs: [test-and-verify, migrations]
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install dependencies
+        run: |
+          (cd backend && npm ci)
+          (cd frontend && npm ci)
+          (cd e2e && npm ci && npx playwright install --with-deps chromium)
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Build the FHIR validator
+        run: tools/fhir-validator/build.sh "$RUNNER_TEMP/fhir-validator"
+      - name: Run every end-to-end suite
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          HMS_FHIR_VALIDATOR_DIR: ${{ runner.temp }}/fhir-validator
+        run: scripts/e2e-regression.sh "$RUNNER_TEMP/e2e"
+      - name: Keep the suite logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-regression-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/e2e/*.txt
+            ${{ runner.temp }}/e2e/*.log
+
   # Stage 2: Container Image Build Verification
   docker-build-check:
     name: Docker Container Build & Topology Verification
-    needs: [test-and-verify, migrations, phase1-acceptance]
+    needs: [test-and-verify, migrations, phase1-acceptance, e2e-regression]
     runs-on: ubuntu-latest
 
     steps:
@@ -147,6 +204,8 @@ jobs:
           JWT_SECRET: ci-placeholder
           AADHAAR_ENCRYPTION_KEY: ci-placeholder
           AUDIT_CHECKPOINT_KEY: ci-placeholder
+          RUNTIME_DB_PASSWORD: ci-placeholder-runtime
+          HMS_DATA_KEYS: ci:0000000000000000000000000000000000000000000000000000000000000000
         run: |
           docker compose -f docker-compose.prod.yml config
 
