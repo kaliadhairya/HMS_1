@@ -52,7 +52,16 @@ function bundle({ id, profile, title, type, patient, encounter, author, sections
     date, author: [{ reference: `Practitioner/${author.id}` }], title, custodian: { reference: 'Organization/hospital' },
     section: sections.filter((s) => s.entry.length),
   };
-  const all = [composition, ...resources];
+  // Traceability (blueprint 3.11, completion B1): who authored the document, for which hospital,
+  // and when. The recorded time is the document's own (signature, finalization or release).
+  const provenance = {
+    resourceType: 'Provenance', id: `prov-${id}`, target: [{ reference: `Composition/${id}` }], recorded: date || new Date().toISOString(),
+    agent: [{
+      type: { coding: [{ system: 'http://terminology.hl7.org/CodeSystem/provenance-participant-type', code: 'author', display: 'Author' }] },
+      who: { reference: `Practitioner/${author.id}` }, onBehalfOf: { reference: 'Organization/hospital' },
+    }],
+  };
+  const all = [composition, ...resources, provenance];
   const seen = new Set();
   return JSON.parse(JSON.stringify({
     resourceType: 'Bundle', id, meta: { versionId: '1', lastUpdated: new Date().toISOString(), profile: [F.P('DocumentBundle')], security: [{ system: 'http://terminology.hl7.org/CodeSystem/v3-Confidentiality', code: 'V', display: 'very restricted' }] },

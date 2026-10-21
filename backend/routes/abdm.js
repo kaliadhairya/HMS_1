@@ -47,8 +47,9 @@ router.post('/shares/:sid/dismiss', restrictTo(...DESK), handle('Could not dismi
 router.get('/patients/:id/care-contexts', restrictTo(...DESK, 'doctor'), handle('Could not load care contexts', tx((req, t) => A.rows('SELECT * FROM hms_abdm_care_contexts WHERE patient_id = :p ORDER BY created_at DESC', { p: Number(req.params.id) }, t))));
 router.post('/patients/:id/care-contexts/link', restrictTo(...DESK), handle('Could not link the visits', (req) => {
   const ids = Array.isArray(req.body?.encounterIds) ? req.body.encounterIds : [];
-  if (!ids.length) A.fail(400, 'Choose the visits to link.');
-  return A.linkCareContexts(Number(req.params.id), ids, req.user);
+  const stays = Array.isArray(req.body?.admissionIds) ? req.body.admissionIds : [];
+  if (!ids.length && !stays.length) A.fail(400, 'Choose the visits or completed stays to link.');
+  return A.linkCareContexts(Number(req.params.id), ids, req.user, stays);
 }, 202));
 router.get('/consents', restrictTo('super_admin', 'admin'), handle('Could not load consents', tx((req, t) => A.rows(`SELECT id, role, consent_id, patient_id, abha_address, purpose, hi_types, date_from, date_to, data_erase_at, status, received_at, status_changed_at
   FROM hms_abdm_consents WHERE (:role::text IS NULL OR role = :role) ORDER BY received_at DESC LIMIT 500`, { role: req.query.role || null }, t))));

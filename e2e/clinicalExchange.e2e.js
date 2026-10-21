@@ -47,6 +47,10 @@ const get=async(url,token)=>{const r=await fetch(API+'/fhir/'+url,{headers:{auth
   const section=a.body.entry[0].resource.section[0];
   assert(section.code.coding[0].code==='440545006','Prescription section code');
   assert(section.entry.every(e=>references.has(e.reference)),'Incomplete medication closure');
+  // Traceability (B1): the document names its author and hospital in a Provenance entry.
+  const prov=a.body.entry.map(e=>e.resource).find(r=>r.resourceType==='Provenance');
+  const composition=a.body.entry[0].resource;
+  assert(prov&&prov.target[0].reference===`Composition/${composition.id}`&&prov.agent[0].who.reference===composition.author[0].reference&&prov.agent[0].onBehalfOf.reference==='Organization/hospital'&&prov.recorded,'Prescription provenance '+JSON.stringify(prov));
   original=a.body;
  });
  await step('PractitionerRole, ward/bed Location and ServiceRequest expose exact governed identities',async()=>{

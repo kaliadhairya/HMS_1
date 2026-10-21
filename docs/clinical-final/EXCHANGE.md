@@ -35,9 +35,26 @@ warnings and external code validation remain visible; this is structural
 fixture validation, not ABDM sandbox certification or approval of clinical
 content. The existing FHIR suite also passed with zero validator errors.
 
-Facility/privilege strengthening, consent/provenance coverage and linking
-the new document types into the ABDM delivery workflow remain tracked in
-the three-phase checklist. The entire exchange package is not closed yet.
+## Completion (B1)
+
+- **Access.** Clinical FHIR resources are read only by the treating doctor or
+  the responsible nurse with a current credential and the chart-read privilege
+  (the v2 clinical check); laboratory staff read laboratory resources only; an
+  administrator role alone reads no chart. Directory resources keep their rules.
+- **ABDM delivery.** A finished visit's care context offers its Prescription
+  when it has signed coded medication orders. A completed stay with a signed
+  discharge document is its own care context (`IPD-<admission>`) offering the
+  DischargeSummary; discovery and HIP-initiated linking include it. Under a
+  consent for those types the push sends them as encrypted document bundles and
+  records each; a consent without a type sends nothing of it.
+- **Provenance.** Every exported document carries a Provenance entry naming
+  its author, the hospital and the document's own time. Consent is enforced at
+  use (B2) and every read and push is in the audit trail.
+
+Evidence: `e2e/fhir.e2e.js` 8/8, `e2e/clinicalExchange.e2e.js` 8/8 (official
+validator, zero errors, provenance asserted), `e2e/abdmDocuments.e2e.js` 4/4,
+`e2e/abdm.e2e.js` 10/10, `e2e/abdmUse.e2e.js` 6/6. Mock gateway only: ABDM
+sandbox certification remains external.
 
 Sources: [FHIR R4 MedicationRequest](https://hl7.org/fhir/R4/medicationrequest.html),
 [MedicationDispense](https://hl7.org/fhir/R4/medicationdispense.html),

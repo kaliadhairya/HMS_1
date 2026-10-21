@@ -146,15 +146,36 @@ const verifiedAbha = (patientId, t) => one(`SELECT
     max(value) FILTER (WHERE system = 'ABHA_NUMBER') AS number, max(value) FILTER (WHERE system = 'ABHA_ADDRESS') AS address
   FROM hms_patient_identifiers WHERE patient_id = :p AND verified_via = 'abdm' AND verification_status = 'verified' AND (valid_to IS NULL OR valid_to > now())`, { p: patientId }, t);
 
+// The latest signature of an admission's signed discharge document (an amendment signs again).
+const dischargeSignature = (admissionId, t) => one(`SELECT s.id FROM hms_document_signatures s JOIN hms_clinical_documents d ON d.id = s.document_id
+  WHERE d.admission_id = :a AND d.doc_type = 'discharge_summary' ORDER BY s.signed_at DESC, s.version DESC LIMIT 1`, { a: admissionId }, t);
+
+// A completed inpatient stay with a signed discharge document is a care context for its
+// DischargeSummary (completion B1).
+async function ensureAdmissionCareContext(admissionId, t) {
+  const a = await one(`SELECT a.*, u.name AS doctor FROM hms_admissions a LEFT JOIN hms_users u ON u.id = a.admitting_doctor_id WHERE a.id = :id`, { id: admissionId }, t);
+  if (!a) fail(404, `Admission ${admissionId} not found.`);
+  if (a.status !== 'Discharged') fail(409, `Admission ${admissionId} is not discharged; only completed stays are shared.`, 'NOT_DISCHARGED');
+  if (!(await dischargeSignature(a.id, t))) fail(409, `Admission ${admissionId} has no signed discharge summary to share.`, 'SIGNED_DISCHARGE_REQUIRED');
+  const day = (d) => new Date(d).toISOString().slice(0, 10);
+  return one(`INSERT INTO hms_abdm_care_contexts (patient_id, admission_id, reference, display, hi_types)
+    VALUES (:p, :a, :ref, :display, CAST(:types AS text[]))
+    ON CONFLICT (admission_id) DO UPDATE SET hi_types = EXCLUDED.hi_types RETURNING *`,
+  { p: a.patient_id, a: a.id, ref: `IPD-${a.id}`, display: `Inpatient stay ${day(a.admission_date)} to ${day(a.discharge_date || a.admission_date)}${a.doctor ? ` under ${a.doctor}` : ''}`, types: '{DischargeSummary}' }, t);
+}
+
 // A finalized OPD visit becomes a care context; its released lab reports
-// travel with it as DiagnosticReport.
+// travel with it as DiagnosticReport and its signed coded medication orders
+// as Prescription.
 async function ensureCareContext(encounterId, t) {
   const e = await one(`SELECT e.*, u.name AS doctor FROM hms_encounters e LEFT JOIN hms_users u ON u.id = e.doctor_id WHERE e.id = :id`, { id: encounterId }, t);
   if (!e) fail(404, `Encounter ${encounterId} not found.`);
   if (e.status !== 'Finalized') fail(409, `Visit ${encounterId} is not finalized; only finished visits are shared.`, 'NOT_FINALIZED');
   const labs = await one(`SELECT count(*)::int AS n FROM hms_lab_report_versions v JOIN hms_lab_reports r ON r.id = v.report_id
     JOIN hms_investigation_orders o ON o.id = r.order_id WHERE o.encounter_id = :id`, { id: encounterId }, t);
-  const types = ['OPConsultation', ...(labs.n ? ['DiagnosticReport'] : [])];
+  const rx = await one(`SELECT count(*)::int AS n FROM hms_med_order_versions v JOIN hms_med_orders o ON o.id = v.order_id
+    WHERE o.encounter_id = :id AND v.signed_at IS NOT NULL`, { id: encounterId }, t);
+  const types = ['OPConsultation', ...(labs.n ? ['DiagnosticReport'] : []), ...(rx.n ? ['Prescription'] : [])];
   const date = new Date(e.encounter_date || e.created_at).toISOString().slice(0, 10);
   return one(`INSERT INTO hms_abdm_care_contexts (patient_id, encounter_id, reference, display, hi_types)
     VALUES (:p, :e, :ref, :display, CAST(:types AS text[]))
@@ -164,15 +185,16 @@ async function ensureCareContext(encounterId, t) {
 
 // HIP-initiated linking: a link token for the patient, then one call per
 // care context (ABDM advises one at a time).
-async function linkCareContexts(patientId, encounterIds, user) {
+async function linkCareContexts(patientId, encounterIds, user, admissionIds = []) {
   return sequelize.transaction(async (t) => {
     const abha = await verifiedAbha(patientId, t);
     if (!abha?.number || !abha?.address) fail(409, 'Verify this patient\'s ABHA with ABDM first.', 'ABHA_NOT_VERIFIED');
     const p = await one('SELECT * FROM hms_patients WHERE id = :id', { id: patientId }, t);
     const contexts = [];
-    for (const id of encounterIds) {
-      const cc = await ensureCareContext(Number(id), t);
-      if (cc.patient_id !== patientId) fail(409, `Visit ${id} belongs to another patient.`);
+    const wanted = [...encounterIds.map((id) => ['visit', id]), ...admissionIds.map((id) => ['stay', id])];
+    for (const [kind, id] of wanted) {
+      const cc = kind === 'visit' ? await ensureCareContext(Number(id), t) : await ensureAdmissionCareContext(Number(id), t);
+      if (cc.patient_id !== patientId) fail(409, `${kind === 'visit' ? 'Visit' : 'Admission'} ${id} belongs to another patient.`);
       contexts.push(await one("UPDATE hms_abdm_care_contexts SET link_status = 'Linking', abha_address = :a, last_error = NULL WHERE id = :id AND link_status <> 'Linked' RETURNING *", { id: cc.id, a: abha.address }, t) || cc);
     }
     const requestId = crypto.randomUUID();
@@ -231,6 +253,9 @@ async function discover(body, t) {
       const encs = await rows("SELECT id FROM hms_encounters WHERE patient_id = :p AND status = 'Finalized' ORDER BY id", { p: patient.id }, t);
       const ccs = [];
       for (const e of encs) ccs.push(await ensureCareContext(e.id, t));
+      const stays = await rows(`SELECT a.id FROM hms_admissions a WHERE a.patient_id = :p AND a.status = 'Discharged' AND EXISTS (SELECT 1 FROM hms_clinical_documents d
+        JOIN hms_document_signatures s ON s.document_id = d.id WHERE d.admission_id = a.id AND d.doc_type = 'discharge_summary') ORDER BY a.id`, { p: patient.id }, t);
+      for (const a of stays) ccs.push(await ensureAdmissionCareContext(a.id, t));
       const unlinked = ccs.filter((c) => c.link_status !== 'Linked');
       result = { patient: [{ referenceNumber: patient.uhid || String(patient.id), display: patient.name, careContexts: unlinked.map((c) => ({ referenceNumber: c.reference, display: c.display })), hiType: 'OPConsultation', count: unlinked.length }], matchedBy: ['ABHA_NUMBER'] };
     }
@@ -341,10 +366,20 @@ async function hiRequest(body, t) {
   for (const ref of consent.care_contexts) {
     const cc = await one("SELECT * FROM hms_abdm_care_contexts WHERE reference = :r AND patient_id = :p AND link_status = 'Linked'", { r: ref.careContextReference, p: consent.patient_id }, t);
     if (!cc) continue; // not ours, not linked, or another patient: never sent
+    if (cc.admission_id) {
+      // A completed stay: its signed discharge summary, dated by the discharge.
+      const adm = await one('SELECT admission_date, discharge_date FROM hms_admissions WHERE id = :id', { id: cc.admission_id }, t);
+      const ended = new Date(adm.discharge_date || adm.admission_date);
+      if (ended < from || ended > to) continue;
+      const signature = await dischargeSignature(cc.admission_id, t);
+      if (allowed.has('DischargeSummary') && cc.hi_types.includes('DischargeSummary') && signature) docs.push({ cc, ...(await D.dischargeSummary(signature.id, t)) });
+      continue;
+    }
     const enc = await one('SELECT * FROM hms_encounters WHERE id = :id', { id: cc.encounter_id }, t);
     const when = new Date(enc.encounter_date || enc.created_at);
     if (when < from || when > to) continue;
     if (allowed.has('OPConsultation') && cc.hi_types.includes('OPConsultation')) docs.push({ cc, ...(await D.opConsultation(cc.encounter_id, t)) });
+    if (allowed.has('Prescription') && cc.hi_types.includes('Prescription')) docs.push({ cc, ...(await D.prescription(cc.encounter_id, t)) });
     if (allowed.has('DiagnosticReport') && cc.hi_types.includes('DiagnosticReport')) {
       const versions = await rows(`SELECT DISTINCT ON (v.report_id) v.id FROM hms_lab_report_versions v JOIN hms_lab_reports r ON r.id = v.report_id
         JOIN hms_investigation_orders o ON o.id = r.order_id WHERE o.encounter_id = :e ORDER BY v.report_id, v.version DESC`, { e: cc.encounter_id }, t);
@@ -577,5 +612,5 @@ function startAbdmWorker() {
 }
 
 module.exports = { PURPOSES, HI_TYPES, differences, attachVerifiedAbha, startVerification, completeVerification, receiveShare, linkShare, dismissShare,
-  verifiedAbha, ensureCareContext, linkCareContexts, onLinkToken, onCareContextLinked, discover, linkInit, linkConfirm, storeConsent, withdrawConsent, consentNotifyHip, usableConsent, hiRequest,
+  verifiedAbha, ensureCareContext, ensureAdmissionCareContext, linkCareContexts, onLinkToken, onCareContextLinked, discover, linkInit, linkConfirm, storeConsent, withdrawConsent, consentNotifyHip, usableConsent, hiRequest,
   requestConsent, onConsentInit, consentNotifyHiu, onConsentFetch, onHiRequest, receiveData, imports, decideItem, expireConsents, startAbdmWorker, rows, one, fail, sha, otpHash };
