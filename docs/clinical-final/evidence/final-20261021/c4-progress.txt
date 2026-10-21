@@ -1,0 +1,6 @@
+candidate 491c924a3efffc290b3f75635f81ffa8659b22aa
+migrations PG16 exit=0 :: PASS: fresh and upgraded databases have identical schemas (6256 facts)
+migrations PG18 exit=0 :: PASS: fresh and upgraded databases have identical schemas (6256 facts)
+seeded PG18 regression exit=1 :: [e2e] 83/85 suites passed (logs in /tmp/claude-1000/-home-kalmaf/19f25583-74da-4c16-a6ea-25a74aa181f9/scratchpad/c4/seeded-pg18)
+snapshot PG16 regression :: 85 suites, 1 failing
+C4-DONE

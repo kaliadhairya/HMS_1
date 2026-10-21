@@ -1,0 +1,3 @@
+Applied 0159_discharge_handover_continuity.sql (6 ms)
+Applied 0160_observation_link_audit.sql (1 ms)
+PASS: fresh and upgraded databases have identical schemas (6256 facts)

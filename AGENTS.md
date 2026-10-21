@@ -217,3 +217,7 @@ review) stay open and are named in each package's state.
   5/5, ABDM mock 10/10, consent/readiness 6/6, devices 12/12. Harness now enforces
   loopback-only fetch targets and no redirects. See INTERFACES.md. Continuing
   remaining clinical/foundation/recovery/release packages, without shared cutover.
+- 2026-10-21 Claude (integration/complete-hms): A3, A5, A6, B1, B6, B8, C1, A1, C4 and C8 finished;
+  all 24 packages engineering-done. Final code commit 26ae041, evidence on candidate 491c924
+  (docs/clinical-final/EVIDENCE_INDEX.md), handoff in docs/clinical-final/HANDOFF.md. Migrations
+  0159-0160. Nothing merged, pushed or deployed; those await the owner.

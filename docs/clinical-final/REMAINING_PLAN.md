@@ -1,5 +1,8 @@
 # Remaining work plan (from the clinical completion plan)
 
+**Status 21 October 2026: every item below is engineering-done; see `HANDOFF.md` for the owner
+decisions and external gates that remain, and `EVIDENCE_INDEX.md` for the evidence.**
+
 Source: `docs/CLINICAL_COMPLETION.md` (24 packages). Order below is the order of work.
 Each item closes only when its code, its acceptance checks and its evidence exist.
 Evidence means a clean full pass on the exact commit, in the stated configuration.

@@ -1,0 +1,6 @@
+Final commit 26ae041 (test tooling only since 491c924):
+pg16-backupRestore: Backup and restore of patient documents: 4/4 steps passed
+pg16-recoveryDrill: Recovery drill: 6/6 steps passed
+pg18-backupRestore: Backup and restore of patient documents: 4/4 steps passed
+pg18-recoveryDrill: Recovery drill: 6/6 steps passed
+patientIdentity reruns on PG16 after the intermittent timeout: Patient identity: 9/9 steps passed; Patient identity: 9/9 steps passed
