@@ -34,15 +34,11 @@ pipeline {
             steps {
                 echo "Building and launching HMS containers via Docker Compose..."
                 script {
-                    if (isUnix()) {
-                        sh 'docker rm -f hms-backend hms-frontend hms-db hms-prometheus hms-grafana 2>/dev/null || true'
-                        sh 'docker compose up -d --build'
-                        sh 'docker compose ps'
-                    } else {
-                        bat 'docker rm -f hms-backend hms-frontend hms-db hms-prometheus hms-grafana 2>nul || ver >nul'
-                        bat 'docker compose up -d --build'
-                        bat 'docker compose ps'
-                    }
+                    // The release script keeps the data: backup, migrate, replace containers one by
+                    // one, health check, automatic rollback (OPERATIONS.md section 10).
+                    if (!isUnix()) { error('Releases run on the Linux host (scripts/release.sh).') }
+                    sh 'bash scripts/release.sh docker-compose.prod.yml'
+                    sh 'docker compose -f docker-compose.prod.yml ps'
                 }
             }
         }
@@ -51,15 +47,7 @@ pipeline {
             steps {
                 echo "Waiting for services to report healthy..."
                 script {
-                    if (isUnix()) {
-                        sh 'sleep 15'
-                        sh 'curl -f http://localhost:5001/api/ready || exit 1'
-                        sh 'curl -f http://localhost:4999 || exit 1'
-                    } else {
-                        bat 'timeout /t 15 /nobreak'
-                        bat 'curl -f http://localhost:5001/api/ready'
-                        bat 'curl -f http://localhost:4999'
-                    }
+                    sh 'curl -skf https://127.0.0.1/api/ready'
                 }
             }
         }

@@ -12,45 +12,22 @@ provider "aws" {
   region = var.aws_region
 }
 
-# 1. Security Group: Inbound access for SSH, Frontend (4999), Backend (5001), HTTP (80)
+# 1. Security Group: only HTTPS (and HTTP, which redirects to it) is public. The application,
+# database, metrics and dashboards listen on the host's loopback only; reach them over SSH.
 resource "aws_security_group" "hms_sg" {
   name        = "${var.project_name}-sg"
   description = "Security group for Hospital Management System EC2 host"
 
   ingress {
-    description = "SSH Access"
+    description = "SSH from the administrators' network only"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.admin_cidr_blocks
   }
 
   ingress {
-    description = "HMS Web Application Frontend"
-    from_port   = 4999
-    to_port     = 4999
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "HMS Backend API"
-    from_port   = 5001
-    to_port     = 5001
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "Grafana Observability Dashboard"
-    from_port   = 3000
-    to_port     = 3000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "Standard HTTP"
+    description = "HTTP (redirects to HTTPS)"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -58,7 +35,7 @@ resource "aws_security_group" "hms_sg" {
   }
 
   ingress {
-    description = "Standard HTTPS"
+    description = "HMS over HTTPS"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
@@ -103,6 +80,7 @@ resource "aws_instance" "hms_server" {
   root_block_device {
     volume_size           = 20
     volume_type           = "gp3"
+    encrypted             = true
     delete_on_termination = true
   }
 
@@ -137,12 +115,10 @@ resource "aws_instance" "hms_server" {
               mkdir -p /opt/hms
               git clone ${var.github_repo} /opt/hms
 
-              # Launch application using production self-contained container topology
-              echo "==> [HMS] Launching containers via Docker Compose..."
-              cd /opt/hms
-              docker compose -f docker-compose.prod.yml up -d --build
-
-              echo "==> [HMS] Bootstrap complete! Containers running."
+              # The application is not started here: it needs the secrets in /opt/hms/.env
+              # (see .env.example), which never pass through instance user data. An operator
+              # writes .env over SSH and runs scripts/release.sh docker-compose.prod.yml.
+              echo "==> [HMS] Bootstrap complete. Next: create /opt/hms/.env, then run scripts/release.sh"
               EOF
 
   tags = {

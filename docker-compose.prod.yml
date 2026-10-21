@@ -102,6 +102,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_EXPIRES_IN: 8h
       CORS_ORIGIN: "*"
+      # Served over HTTPS by the proxy service: the session cookie is never sent in clear text.
+      COOKIE_SECURE: "true"
       FRONTEND_URL: http://localhost:4999
       AADHAAR_ENCRYPTION_KEY: ${AADHAAR_ENCRYPTION_KEY:?Set AADHAAR_ENCRYPTION_KEY in .env - must match the key existing data was encrypted with}
       # Data keyring (A4): new values use the first key; older keys stay listed until rekeyed.
@@ -114,13 +116,15 @@ services:
       RATE_LIMIT_WINDOW_MS: 900000
       RATE_LIMIT_MAX_AUTH: 20
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-}
-      TRUST_PROXY: "1"
+      # Two proxies in front: the HTTPS proxy, then the frontend's nginx.
+      TRUST_PROXY: "2"
       # Ship this directory to write-once storage the database administrators
       # cannot alter (for example an S3 bucket with Object Lock).
       AUDIT_CHECKPOINT_DIR: /app/audit-checkpoints
       AUDIT_CHECKPOINT_KEY: ${AUDIT_CHECKPOINT_KEY:?Set AUDIT_CHECKPOINT_KEY in .env}
+    # Reached only through the frontend; published on this host's loopback for operators.
     ports:
-      - "5001:5001"
+      - "127.0.0.1:5001:5001"
     volumes:
       - hms_uploads:/app/uploads
       - hms_audit_checkpoints:/app/audit-checkpoints
@@ -181,7 +185,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "4999:4999"
+      - "127.0.0.1:4999:4999"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4999/healthz"]
       interval: 30s
@@ -205,7 +209,7 @@ services:
       - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - hms_promdata:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     depends_on:
       backend:
         condition: service_healthy
@@ -221,14 +225,14 @@ services:
     restart: unless-stopped
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?Set GRAFANA_PASSWORD in .env}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./deploy/grafana/dashboards:/etc/grafana/dashboards:ro
       - hms_grafanadata:/var/lib/grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - prometheus
       - db
@@ -238,7 +242,28 @@ services:
           cpus: '0.50'
           memory: 256M
 
+  # The only service reachable from the network: HTTPS on 443 (80 redirects to it).
+  proxy:
+    image: caddy:2.10.2-alpine
+    container_name: hms-proxy
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_healthy
+    environment:
+      HMS_SITE_ADDRESS: ${HMS_SITE_ADDRESS:-localhost}
+      HMS_TLS_ISSUER: ${HMS_TLS:-internal}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - hms_caddy_data:/data
+      - hms_caddy_config:/config
+
 volumes:
+  hms_caddy_data:
+  hms_caddy_config:
   hms_private_documents:
   hms_wal_archive:
   hms_basebackups:

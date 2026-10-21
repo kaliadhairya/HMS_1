@@ -21,3 +21,8 @@ variable "github_repo" {
   default     = "https://github.com/kaliadhairya/HMS_1.git"
   description = "Git repository URL to clone and deploy onto the EC2 instance"
 }
+
+variable "admin_cidr_blocks" {
+  type        = list(string)
+  description = "Networks allowed to reach SSH (for example the hospital IT office, \"203.0.113.10/32\")"
+}

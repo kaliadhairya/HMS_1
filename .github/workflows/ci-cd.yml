@@ -107,7 +107,7 @@ jobs:
         image: postgres:18-alpine
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: hms_ci
+          POSTGRES_DB: hms_verify_final_ci
         ports:
           - 5432:5432
         options: >-
@@ -118,19 +118,29 @@ jobs:
       DB_PORT: 5432
       DB_USER: postgres
       DB_PASSWORD: postgres
-      DB_NAME: hms_ci
+      # The database-level suites (facility policies, privileges, signed documents, interface
+      # contracts, encrypted backup and restore) only run on a hms_verify_final_* database.
+      DB_NAME: hms_verify_final_ci
       HMS_TEST_DATABASE: 'true'
+      HMS_FACILITY_TEST: 'true'
+      HMS_INTERFACE_TEST: 'true'
+      HMS_BACKUP_TEST: 'true'
       NODE_ENV: development
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: PostgreSQL 18 client tools (the backup suite dumps and restores)
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
       - run: npm ci
         working-directory: backend
       - run: node migrate.js up && node seed_demo_data.js
         working-directory: backend
-      - run: npm test
+      - run: BACKUP_ENCRYPTION_KEY=$(openssl rand -hex 32) JWT_SECRET=$(openssl rand -hex 32) npm test
         working-directory: backend
 
   # Stage 1c (completion A1): every end-to-end suite against databases built from the

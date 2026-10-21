@@ -1,9 +1,9 @@
 # Hospital Management System (HMS)
 
 [![HMS CI/CD Pipeline](https://github.com/kaliadhairya/HMS_1/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/kaliadhairya/HMS_1/actions/workflows/ci-cd.yml)
-[![Node.js](https://img.shields.io/badge/Node.js-20.x-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-24-green.svg)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-blue.svg)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Multi--Stage-2496ED.svg)](https://www.docker.com/)
 [![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC.svg)](https://www.terraform.io/)
 [![AWS](https://img.shields.io/badge/Cloud-AWS%20EC2-FF9900.svg)](https://aws.amazon.com/)
@@ -31,8 +31,8 @@ The system provides 7 role-specific dashboards with server-enforced permissions 
 
 | Layer | Component | Description |
 | :--- | :--- | :--- |
-| **Backend Runtime** | Node.js 20 LTS | Express 4.18 REST API layer |
-| **Data Layer** | PostgreSQL 16 | Relational schema with Sequelize ORM |
+| **Backend Runtime** | Node.js 24 LTS | Express 4.18 REST API layer |
+| **Data Layer** | PostgreSQL 18 | Relational schema with Sequelize ORM |
 | **Frontend** | React 18 & Vite 5 | SPA with React Router, custom CSS design system |
 | **Reverse Proxy** | Nginx Alpine | Serves production build and proxies `/api` endpoints |
 | **Observability** | Prometheus & Grafana | Telemetry collection with `prom-client` & pre-provisioned dashboards |
@@ -57,10 +57,11 @@ The `infra/` directory defines the complete cloud infrastructure using Terraform
 ./infra/deploy.sh
 ```
 This provisions:
-1. An AWS EC2 instance (`t3.small` / `t2.micro`) within a configured Security Group (ports 22, 80, 443, 3000, 4999, 5001, 9090).
-2. Cloud-init bootstrap configuring swap memory, Docker Engine, and Docker Compose.
-3. Automated clone and startup of the multi-container stack.
-4. Outputs the public IP address for web access (`http://<ec2-ip>:4999`).
+1. An AWS EC2 instance with an encrypted disk. Only 80 and 443 are public; SSH is limited to `admin_cidr_blocks`.
+2. Cloud-init bootstrap configuring swap memory, Docker Engine, and Docker Compose, and cloning the repository.
+3. The application is then released by an operator: write `/opt/hms/.env` from `.env.example`
+   over SSH and run `scripts/release.sh docker-compose.prod.yml` (or `deploy/setup_ec2.sh`).
+4. HMS is served at `https://<HMS_SITE_ADDRESS>`.
 
 **Teardown:**
 To terminate all AWS resources and stop ongoing charges:
@@ -83,15 +84,13 @@ docker compose up -d --build
 - Grafana: `http://localhost:3000` (User: `admin`, Password: `admin`)
 
 #### Standalone Production Stack (Self-Contained)
-Runs the complete 3-tier architecture including a dedicated PostgreSQL container:
+Runs the complete stack with a dedicated PostgreSQL container, released with backup, migration,
+health check and automatic rollback (`docs/clinical-final/OPERATIONS.md` section 10). Needs `.env` (see `.env.example`):
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+scripts/release.sh docker-compose.prod.yml
 ```
-- Web Application: `http://localhost:4999`
-- REST API: `http://localhost:5001/api`
-- Metrics: `http://localhost:5001/metrics`
-- Prometheus: `http://localhost:9090`
-- Grafana: `http://localhost:3000`
+- HMS: `https://<HMS_SITE_ADDRESS>` (the only address reachable from the network)
+- On the server itself only: API `http://127.0.0.1:5001/api`, Prometheus `:9090`, Grafana `:3000`
 ```
 
 ---

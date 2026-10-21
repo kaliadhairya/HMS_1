@@ -1,6 +1,6 @@
 # Hospital Management System (HMS) — Default Credentials
 
-This document lists the default user accounts, roles, and system credentials configured for testing and demonstration.
+These are the **demo** accounts that `seed_demo_data.js` creates for development and testing. Their passwords are public: never load demo data on a hospital server (production never does), and never reuse these passwords.
 
 ---
 

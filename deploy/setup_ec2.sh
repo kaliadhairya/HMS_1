@@ -117,39 +117,22 @@ fi
 # Fix file permissions
 chown -R "$INVOKING_USER":"$INVOKING_USER" "$APP_DIR"
 
-# ── Step 5: Build and Start Docker Containers ─────────────────────────────────
-info "Building and launching Docker stack (Postgres, Backend, Frontend, Prometheus, Grafana)..."
-docker compose down --remove-orphans 2>/dev/null || true
-docker compose up -d --build
-
-# ── Step 6: Wait for Health Checks ────────────────────────────────────────────
-info "Waiting for services to become healthy..."
-
-MAX_WAIT=90
-ELAPSED=0
-BACKEND_HEALTHY=false
-
-while [ $ELAPSED -lt $MAX_WAIT ]; do
-  if curl -s -f http://127.0.0.1:5001/api/health >/dev/null 2>&1; then
-    BACKEND_HEALTHY=true
-    break
-  fi
-  sleep 3
-  ELAPSED=$((ELAPSED + 3))
-  echo -n "."
-done
-echo ""
-
-if [ "$BACKEND_HEALTHY" = true ]; then
-  success "Backend API is healthy and reachable on port 5001."
-else
-  warn "Backend took longer than expected to report healthy. Checking container logs..."
-  docker compose logs --tail=20 backend
+# ── Step 5: Release with the production configuration ─────────────────────────
+# Production secrets live in .env (see .env.example) and are never generated or printed here.
+# No demo data or demo accounts are loaded: the first administrator is created by hand.
+if [ ! -f "$APP_DIR/.env" ]; then
+  error "Create ${APP_DIR}/.env from .env.example (JWT_SECRET, database passwords, data keys, HMS_SITE_ADDRESS, GRAFANA_PASSWORD), then run this script again."
 fi
+# A first installation has no database yet: start it (and wait) so the release can back it up.
+sudo -u "$INVOKING_USER" docker compose -f docker-compose.prod.yml up -d --wait db
+info "Releasing HMS (backup, migrate, replace containers, health check, automatic rollback)..."
+sudo -u "$INVOKING_USER" bash scripts/release.sh docker-compose.prod.yml
 
-# Check Frontend
-if curl -s -f http://127.0.0.1:4999/healthz >/dev/null 2>&1; then
-  success "Frontend Nginx is healthy and serving on port 4999."
+# ── Step 6: Check HTTPS ───────────────────────────────────────────────────────
+if curl -skf https://127.0.0.1/api/ready >/dev/null 2>&1; then
+  success "HMS answers over HTTPS."
+else
+  warn "HMS did not answer on https://127.0.0.1/api/ready yet: docker compose -f docker-compose.prod.yml logs proxy backend"
 fi
 
 # ── Step 7: Detect Public IP Address ──────────────────────────────────────────
@@ -168,24 +151,12 @@ echo -e "${GREEN}===============================================================
 echo -e "${GREEN}             🎉 HMS DEPLOYMENT COMPLETED SUCCESSFULLY!                         ${NC}"
 echo -e "${GREEN}================================================================================${NC}"
 echo ""
-echo -e "${CYAN}Access URLs:${NC}"
-echo -e "  🌐 Frontend Application : ${GREEN}http://${PUBLIC_IP}:4999${NC}"
-echo -e "  📊 Grafana Dashboards   : ${GREEN}http://${PUBLIC_IP}:3001${NC} (admin / admin)"
-echo -e "  🩺 Backend Healthcheck  : ${GREEN}http://${PUBLIC_IP}:5001/api/health${NC}"
-echo -e "  📈 Prometheus Metrics   : ${GREEN}http://${PUBLIC_IP}:9090${NC}"
+echo -e "${CYAN}Access:${NC}"
+echo -e "  🌐 HMS : ${GREEN}https://<HMS_SITE_ADDRESS from .env>${NC}  (server address: ${PUBLIC_IP})"
+echo -e "  📊 Grafana, Prometheus and the API listen on this server's loopback only; use an SSH tunnel."
 echo ""
-echo -e "${CYAN}Demo Credentials:${NC}"
-echo -e "  • Superadmin  : ${YELLOW}superadmin${NC}   /  ${YELLOW}Superadmin@123${NC}"
-echo -e "  • Doctor      : ${YELLOW}doctor${NC}       /  ${YELLOW}Doctor@123${NC}"
-echo -e "  • Nurse       : ${YELLOW}nurse${NC}        /  ${YELLOW}Nurse@123${NC}"
-echo -e "  • Pharmacist  : ${YELLOW}pharmacist${NC}   /  ${YELLOW}Pharmacist@123${NC}"
-echo -e "  • Receptionist: ${YELLOW}receptionist${NC} /  ${YELLOW}Receptionist@123${NC}"
-echo -e "  • System Admin: ${YELLOW}admin${NC}        /  ${YELLOW}Admin@123${NC}"
-echo ""
-echo -e "${YELLOW}IMPORTANT: AWS Security Group Inbound Rules Required!${NC}"
-echo -e "Ensure your EC2 Security Group allows inbound traffic for these ports:"
-echo -e "  - Port ${GREEN}4999${NC} (TCP) -> Custom TCP -> 0.0.0.0/0 (HMS Web Application)"
-echo -e "  - Port ${GREEN}3001${NC} (TCP) -> Custom TCP -> 0.0.0.0/0 (Grafana Dashboard)"
-echo -e "  - Port ${GREEN}22${NC}   (TCP) -> SSH -> Your IP"
+echo -e "${YELLOW}AWS Security Group inbound rules:${NC}"
+echo -e "  - 443 and 80 (TCP) from the users' networks"
+echo -e "  - 22 (SSH) from the administrators' network only"
 echo ""
 echo -e "${GREEN}================================================================================${NC}"

@@ -60,7 +60,11 @@ dc run --rm runtime-role || { log "REFUSED: the runtime identity could not be gr
 
 # 5–6. Replace and check.
 for svc in $SERVICES; do dc up -d --no-deps --no-build "$svc"; done
-if wait_healthy; then log "RELEASED: backend and worker are healthy."; exit 0; fi
+if wait_healthy; then
+  # Supporting services (HTTPS proxy, metrics, dashboards) are started if they are not running.
+  dc up -d --no-build proxy prometheus grafana || log "warning: a supporting service did not start"
+  log "RELEASED: backend and worker are healthy."; exit 0
+fi
 
 log "The new version is not healthy; rolling back."
 if [ ${#IMAGE_NAME[@]} -eq 0 ]; then log "ROLLBACK IMPOSSIBLE: there was no running version to return to."; exit 2; fi

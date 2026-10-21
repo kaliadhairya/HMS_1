@@ -1,0 +1,12 @@
+# HTTPS in front of HMS. HMS_SITE_ADDRESS is the name staff type in the browser:
+# - a public domain (hms.example.org): set HMS_TLS to the administrator's email address and
+#   Caddy obtains a trusted certificate automatically;
+# - a LAN name or IP: leave HMS_TLS=internal; Caddy issues one from its own authority, whose root
+#   (/data/caddy/pki/authorities/local/root.crt in the caddy_data volume) is installed on the
+#   hospital's computers.
+{$HMS_SITE_ADDRESS:localhost} {
+	tls {$HMS_TLS_ISSUER:internal}
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy frontend:4999
+}
