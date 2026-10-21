@@ -60,4 +60,7 @@ router.post('/appointments',restrictTo('super_admin','admin','doctor','reception
 router.get('/appointments/:id',restrictTo('super_admin','admin','doctor','receptionist'),clinicalRead((r,res,t)=>Appointments.read(r.params.id,r.user,t)));
 router.post('/appointments/:id/reschedule',restrictTo('super_admin','admin','doctor','receptionist'),handle((r,res,t)=>Appointments.change(r.params.id,'reschedule',r.body,r.user,r.get('if-match'),t),{command:true}));
 router.post('/appointments/:id/cancel',restrictTo('super_admin','admin','doctor','receptionist'),handle((r,res,t)=>Appointments.change(r.params.id,'cancel',r.body,r.user,r.get('if-match'),t),{command:true}));
+const Admissions=require('../services/admissionV2.cts');
+router.get('/admissions/:id',restrictTo('super_admin','admin','nurse','doctor'),clinicalRead((r,res,t)=>Admissions.read(r.params.id,r.user,t)));
+router.post('/admissions/:id/transfer',restrictTo('super_admin','admin','nurse','doctor'),handle((r,res,t)=>Admissions.transfer(r.params.id,r.body,r.user,r.get('if-match'),t),{command:true}));
 module.exports=router;
