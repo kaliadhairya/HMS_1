@@ -11,6 +11,7 @@
 # It only ever creates and drops the databases named by E2E_DB_NAME (hms_p4_p5_*) and
 # E2E_TEMPLATE_DB (hms_verify_*); every key it uses is generated for the run.
 # Usage: scripts/e2e-regression.sh [out-dir]
+#   E2E_SUITES="opd pharmacy" runs only those suites (to recheck a failure).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${1:-$(mktemp -d)}"; mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
@@ -98,8 +99,9 @@ run() {
 }
 FIRST="facilitySessions facilityLifecycle medication medicationFrontend medicationGuards pharmacy devices phase45"
 LAST="auditWorm v2Contract"
+if [ -n "${E2E_SUITES:-}" ]; then FIRST=""; LAST=""; for s in $E2E_SUITES; do run "$s"; done; fi
 for s in $FIRST; do run "$s"; done
-for s in $(ls *.e2e.js | sed 's/\.e2e\.js$//'); do
+for s in $([ -n "${E2E_SUITES:-}" ] || ls *.e2e.js | sed 's/\.e2e\.js$//'); do
   case " $FIRST $LAST " in *" $s "*) continue ;; esac
   run "$s"
 done

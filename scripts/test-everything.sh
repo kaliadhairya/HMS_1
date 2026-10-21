@@ -8,6 +8,7 @@
 # Needs: docker; Node 24 with backend, frontend and e2e dependencies installed; Playwright
 #   Chromium; Java 17+ and the FHIR validator (tools/fhir-validator/build.sh).
 # Usage: scripts/test-everything.sh [report-dir]
+#   E2E_SUITES="opd pharmacy" scripts/test-everything.sh   rechecks only those suites.
 # Exit 0 only if every suite passed.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -37,7 +38,8 @@ cleanup() { docker rm -f -v "$PG" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 say "starting a throwaway PostgreSQL 18 server on port $PG_PORT"
 docker run -d --name "$PG" -p "127.0.0.1:$PG_PORT:5432" -e POSTGRES_PASSWORD=postgres postgres:18-alpine >/dev/null || exit 2
-for _ in $(seq 1 60); do docker exec "$PG" pg_isready -U postgres -q 2>/dev/null && break; sleep 1; done
+# Over TCP: during first-time setup the server listens only on its local socket, then restarts.
+for _ in $(seq 1 60); do docker exec "$PG" pg_isready -h 127.0.0.1 -U postgres -q 2>/dev/null && break; sleep 1; done
 
 # ── Full regression ──
 say "running every suite (about an hour); live progress in $OUT/summary.txt"
