@@ -13,6 +13,8 @@ import {
   useRows,
   iso,
   timeInput,
+  V2,
+  only,
 } from "./MedicationUI";
 export default function MedicationNursingPage() {
   const { user } = useAuth();
@@ -95,6 +97,17 @@ export default function MedicationNursingPage() {
       ? { witness_id: form.witness_id }
       : { witness_id: undefined }),
   });
+  // A bedside step on v2 names the occurrence, the order version and the patient by public
+  // identifier, and states the occurrence version it was based on (If-Match).
+  const SCAN = ["mode", "patient_identifier", "product_id", "product_barcode", "reason", "identity_confirmed", "dose_checked", "route_checked", "time_checked"];
+  const bedside = (row, b) =>
+    only(["order_version_id", "patient_id", "product_id", "dispense_line_id", "dose", "dose_unit", "route", "scan_evidence", "outcome", "actual_at", "reason", "witness_id", "late_review_id"], {
+      ...b,
+      order_version_id: row.version_id,
+      patient_id: row.patient_public_id,
+      dose: b.dose == null || b.dose === "" ? undefined : String(b.dose),
+      scan_evidence: b.scan_evidence ? only(SCAN, b.scan_evidence) : undefined,
+    });
   const persist = (p) => {
     setPending(p);
     if (p) sessionStorage.setItem(storageKey, JSON.stringify(p));
@@ -116,15 +129,16 @@ export default function MedicationNursingPage() {
     }
   }, [rows.rows, pending, user.id]);
   const record = async (p) => {
-    const r = await command.run(
-      "/emar/" + p.schedule_id + "/record",
-      p.body,
-      undefined,
-      {
-        key: p.key,
-        reconciling: command.status.kind === "pending_confirmation",
-      },
-    );
+    const r = p.v2
+      ? await command.run("/administrations", p.v2.body, p.v2.version, {
+          ...V2,
+          key: p.key,
+          reconciling: command.status.kind === "pending_confirmation",
+        })
+      : await command.run("/emar/" + p.schedule_id + "/record", p.body, undefined, {
+          key: p.key,
+          reconciling: command.status.kind === "pending_confirmation",
+        });
     if (r) {
       persist(null);
       setSelected(null);
@@ -133,11 +147,13 @@ export default function MedicationNursingPage() {
   const submit = async (e) => {
     e.preventDefault();
     const b = payload();
+    const v2 = { body: { schedule_id: selected.id, ...bedside(selected, b) }, version: selected.api_version };
     if (b.outcome === "GIVEN") {
-      const p = { schedule_id: selected.id, key: commandKey(), body: b };
+      // Kept until confirmed, so a lost answer is reconciled with the same key and body.
+      const p = { schedule_id: selected.id, key: commandKey(), body: b, v2 };
       persist(p);
       await record(p);
-    } else if (await command.run("/emar/" + selected.id + "/record", b))
+    } else if (await command.run("/administrations", v2.body, v2.version, V2))
       setSelected(null);
   };
   const scan = (k, v) =>
@@ -146,13 +162,11 @@ export default function MedicationNursingPage() {
     e.preventDefault();
     const o = orders.rows.find((r) => r.id === scheduleOrder);
     if (!o) return;
-    await command.run(
-      "/orders/" + o.id + (o.prn ? "/prn" : "/schedules"),
-      o.prn
-        ? { scheduled_at: iso(through), indication }
-        : { through_at: iso(through) },
-      o.revision,
-    );
+    // As-needed doses have no v2 command yet; scheduled ones are generated through v2.
+    if (o.prn)
+      await command.run("/orders/" + o.id + "/prn", { scheduled_at: iso(through), indication }, o.revision);
+    else
+      await command.run("/medication-orders/" + o.id + "/schedules", { through_at: iso(through) }, o.api_version, V2);
   };
   return (
     <>
@@ -451,13 +465,17 @@ export default function MedicationNursingPage() {
                     if (!e.currentTarget.closest("form").reportValidity())
                       return;
                     const result = await command.run(
-                      "/emar/" + selected.id + "/prepare",
-                      payload(),
+                      "/medication-schedules/" + selected.id + "/prepare",
+                      bedside(selected, payload()),
+                      selected.api_version,
+                      V2,
                     );
+                    // The bedside claim changes the occurrence version; the dose is recorded on it.
                     if (result)
                       setSelected({
                         ...selected,
-                        documentation_intent_id: result.id,
+                        api_version: result.version,
+                        documentation_intent_id: result.bedside_claim?.id,
                       });
                   }}
                 >

@@ -212,7 +212,7 @@ read("/orders", readers, async (r) => {
       : null;
   return C.q(
     `SELECT o.*,v.id AS version_id,v.product_id,v.ingredient_id,v.product_snapshot,v.dose,v.dose_unit,v.route,v.frequency,v.starts_at,v.ends_at,v.prn,v.indication,v.max_dose,v.max_period_hours,v.min_interval_minutes,v.supply_quantity,v.supply_unit,v.signed_at,
- p.name AS patient_name,p.uhid,z.state AS verification_state,z.id AS verification_id,a.findings,a.coverage,a.input_snapshot,
+ p.name AS patient_name,p.uhid,p.public_id AS patient_public_id,z.state AS verification_state,z.id AS verification_id,a.findings,a.coverage,a.input_snapshot,
  (v.supply_quantity-coalesce((SELECT sum(l.quantity) FROM hms_med_dispense_lines l WHERE l.version_id=v.id),0))::text AS remaining
  FROM hms_med_orders o JOIN hms_med_order_versions v ON v.order_id=o.id AND v.version=o.current_version
  JOIN hms_patients p ON p.id=o.patient_id LEFT JOIN hms_med_verifications z ON z.version_id=v.id LEFT JOIN hms_med_assessments a ON a.id=z.assessment_id
@@ -425,7 +425,7 @@ post("/late-documentation-requests/:id/review", ["doctor"], (r, t) =>
 read("/emar", readers, (r) =>
   C.q(
     `SELECT s.*,o.id AS order_id,o.revision AS order_revision,o.state AS order_state,v.dose,v.dose_unit,v.route,v.product_id,v.product_snapshot,v.indication,v.max_dose,v.prn,
- p.name AS patient_name,p.uhid,a.id AS administration_id,a.actual_at,a.recorded_at,a.outcome,a.performer_user_id,
+ p.name AS patient_name,p.uhid,p.public_id AS patient_public_id,a.id AS administration_id,a.actual_at,a.recorded_at,a.outcome,a.performer_user_id,
  i.id AS documentation_intent_id,i.state AS documentation_state,i.performer_user_id AS documentation_owner_user_id,i.scan_evidence AS documentation_scan_evidence,
  coalesce((SELECT jsonb_agg(c) FROM hms_med_corrections c WHERE c.administration_id=a.id),'[]') AS corrections
  FROM hms_med_schedules s JOIN hms_med_order_versions v ON v.id=s.version_id JOIN hms_med_orders o ON o.id=v.order_id JOIN hms_patients p ON p.id=s.patient_id

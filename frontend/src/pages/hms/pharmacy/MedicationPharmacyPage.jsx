@@ -8,6 +8,7 @@ import {
   Findings,
   MedicationLinks,
   useCommand,
+  V2,
   useRows,
 } from "./MedicationUI";
 export default function MedicationPharmacyPage() {
@@ -38,7 +39,7 @@ export default function MedicationPharmacyPage() {
   const review = async (e) => {
     e.preventDefault();
     const saved = await command.run(
-      "/orders/" + selected.id + "/verify",
+      "/medication-orders/" + selected.id + "/verify",
       {
         state: e.nativeEvent.submitter.value,
         reason,
@@ -48,21 +49,26 @@ export default function MedicationPharmacyPage() {
           reason,
         })),
       },
-      selected.revision,
+      selected.api_version,
+      V2,
     );
     if (saved) setSelected(null);
   };
   const supply = async (e) => {
     e.preventDefault();
+    // The supply names the exact order version reviewed; the order's public version is checked.
     const result = await command.run(
-      "/orders/" + selected.id + "/dispense",
+      "/dispenses",
       {
+        order_id: selected.id,
+        order_version_id: selected.version_id,
         product_id: selected.product_id,
         location_id: location,
-        quantity,
+        quantity: String(quantity),
         ...(witness ? { witness_id: witness } : {}),
       },
-      selected.revision,
+      selected.api_version,
+      V2,
     );
     if (result) {
       setReceipt(result);
@@ -247,7 +253,10 @@ export default function MedicationPharmacyPage() {
           <section role="status">
             <h2>Confirmed supply</h2>
             <p>
-              {receipt.remaining} base units remain authorized. Each listed line
+              {orders.rows.some((o) => o.id === receipt.order_id)
+                ? `${orders.rows.find((o) => o.id === receipt.order_id).remaining} base units remain authorized.`
+                : "The order is fully supplied or no longer listed."}{" "}
+              Each listed line
               has its stock movement and charge.
             </p>
             <ul>

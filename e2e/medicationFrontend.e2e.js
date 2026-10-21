@@ -130,7 +130,8 @@ const browser = chromium;
       "A version conflict keeps the clinician reason and the current chart",
       async () => {
         const p = doctorUI.page;
-        await p.route("**/api/medication/orders/*/hold", (r) =>
+        // The screen holds an order through the v2 medication API (completion A3).
+        await p.route("**/api/v2/medication-orders/*/hold", (r) =>
           r.fulfill({
             status: 412,
             contentType: "application/json",
@@ -162,7 +163,7 @@ const browser = chromium;
           p.url().includes("/medication/orders"),
           "Conflict navigated away",
         );
-        await p.unroute("**/api/medication/orders/*/hold");
+        await p.unroute("**/api/v2/medication-orders/*/hold");
         await p.getByRole("button", { name: "Cancel", exact: true }).click();
       },
     );
@@ -271,8 +272,9 @@ const browser = chromium;
           .waitFor();
         const keys = [];
         let sid;
-        await p.route("**/api/medication/emar/*/record", async (route) => {
-          sid = route.request().url().split("/").at(-2);
+        // The dose is documented through the v2 administrations command, which names its occurrence.
+        await p.route("**/api/v2/administrations", async (route) => {
+          sid = route.request().postDataJSON().schedule_id;
           keys.push(route.request().headers()["idempotency-key"]);
           await route.fetch();
           await route.abort("failed");
@@ -300,7 +302,7 @@ const browser = chromium;
           keys.length === 3 && new Set(keys).size === 1,
           "Network retries used different keys",
         );
-        await p.unroute("**/api/medication/emar/*/record");
+        await p.unroute("**/api/v2/administrations");
         await p
           .getByRole("button", {
             name: "Reconcile original documentation",

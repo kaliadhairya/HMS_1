@@ -9,6 +9,9 @@ import {
   Findings,
   timeInput,
   iso,
+  V2,
+  publicId,
+  only,
 } from "../pharmacy/MedicationUI";
 const empty = {
   product_id: "",
@@ -32,6 +35,18 @@ export default function MedicationOrderPanel({ patientId, encounterId, onPending
     "/orders" + (encounterId ? "?encounter_id=" + encounterId : ""),
   );
   const command = useCommand(data.refresh);
+  const [ids, setIds] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setIds(null);
+    if (!patientId || !encounterId) return undefined;
+    Promise.all([publicId("patient", patientId), publicId("encounter", encounterId)])
+      .then(([patient, encounter]) => live && setIds({ patient, encounter }))
+      .catch(() => live && setIds(false));
+    return () => {
+      live = false;
+    };
+  }, [patientId, encounterId]);
   const [form, setForm] = useState(empty),
     [action, setAction] = useState(null),
     [assessment, setAssessment] = useState(null),
@@ -55,25 +70,41 @@ export default function MedicationOrderPanel({ patientId, encounterId, onPending
   };
   const submit = async (e) => {
     e.preventDefault();
-    const b = {
-      ...form,
-      patient_id: Number(patientId),
-      encounter_id: Number(encounterId),
-      frequency: {
-        type: "INTERVAL",
-        interval_minutes: Number(form.interval_minutes),
-      },
+    const decimal = (v) => (v === "" || v == null ? undefined : String(v));
+    const values = {
+      product_id: form.product_id,
+      dose: decimal(form.dose),
+      dose_unit: form.dose_unit,
+      route: form.route,
+      frequency: { type: "INTERVAL", interval_minutes: Number(form.interval_minutes) },
       starts_at: iso(form.starts_at),
       ends_at: iso(form.ends_at),
+      prn: Boolean(form.prn),
+      indication: form.indication,
+      max_dose: decimal(form.max_dose),
+      max_period_hours: decimal(form.max_period_hours),
+      min_interval_minutes:
+        form.min_interval_minutes === "" || form.min_interval_minutes == null
+          ? undefined
+          : Number(form.min_interval_minutes),
+      supply_quantity: decimal(form.supply_quantity),
+      supply_unit: form.supply_unit,
     };
+    const content = only(Object.keys(values), values);
     const saved =
       action?.type === "amend"
         ? await command.run(
-            "/orders/" + action.row.id + "/amend",
-            { ...b, reason },
-            action.row.revision,
+            "/medication-orders/" + action.row.id + "/amend",
+            { ...content, reason },
+            action.row.api_version,
+            V2,
           )
-        : await command.run("/orders", b);
+        : await command.run(
+            "/medication-orders",
+            { patient_id: ids.patient, encounter_id: ids.encounter, ...content },
+            undefined,
+            V2,
+          );
     if (saved) {
       setForm(empty);
       setAction(null);
@@ -105,16 +136,25 @@ export default function MedicationOrderPanel({ patientId, encounterId, onPending
   };
   const act = async (e) => {
     e.preventDefault();
-    const b = {
-      reason,
-      override_requests: Object.entries(overrides).map(
-        ([finding_code, reason]) => ({ finding_code, reason }),
-      ),
-    };
+    const b =
+      action.type === "sign"
+        ? {
+            reason,
+            override_requests: Object.entries(overrides).map(
+              ([finding_code, reason]) => ({ finding_code, reason }),
+            ),
+          }
+        : { reason };
+    // The safety assessment before signing changes the order's public version but not its content;
+    // the reviewed content is the same revision, so its current public version is the one to send.
+    const current = data.rows.find((r) => r.id === action.row.id);
+    const version =
+      current && current.revision === action.row.revision ? current.api_version : action.row.api_version;
     const result = await command.run(
-      "/orders/" + action.row.id + "/" + action.type,
+      "/medication-orders/" + action.row.id + "/" + action.type,
       b,
-      action.row.revision,
+      version,
+      V2,
     );
     if (result) {
       setAction(null);
@@ -252,7 +292,10 @@ export default function MedicationOrderPanel({ patientId, encounterId, onPending
               onChange={(e) => setReason(e.target.value)}
             />
           )}
-          <button className="btn btn-primary" disabled={command.saving}>
+          {ids === false && (
+            <p role="alert">This visit could not be identified for ordering. Reload the consultation.</p>
+          )}
+          <button className="btn btn-primary" disabled={command.saving || (!action && !ids)}>
             {command.saving
               ? "Saving…"
               : action

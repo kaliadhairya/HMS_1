@@ -116,6 +116,7 @@ export function useCommand(onSaved, namespace = "/medication") {
         }));
         return null;
       }
+      // A call may name its own API (the v2 medication commands); a retry keeps the original.
       const attempt = options.reconciling
         ? uncertain.current
         : {
@@ -123,6 +124,7 @@ export function useCommand(onSaved, namespace = "/medication") {
             body: JSON.parse(JSON.stringify(body)),
             revision,
             key: options.key || commandKey(),
+            namespace: options.namespace || namespace,
           };
       if (!attempt) return null;
       busy.current = true;
@@ -132,7 +134,7 @@ export function useCommand(onSaved, namespace = "/medication") {
       });
       try {
         const response = await api.post(
-          namespace + attempt.path,
+          (attempt.namespace || namespace) + attempt.path,
           attempt.body,
           {
             headers: {
@@ -188,6 +190,21 @@ export function useCommand(onSaved, namespace = "/medication") {
     [onSaved, namespace],
   );
   return { run, status, saving: status.kind === "saving", setStatus };
+}
+// Clinical medication commands go to the v2 API (completion A3), which names records by public
+// identifier, checks their public version (If-Match) and takes exact decimals as strings.
+export const V2 = { namespace: "/v2" };
+export async function publicId(kind, legacyId) {
+  const r = await api.get(`/v2/legacy-identities/${kind}/${legacyId}`);
+  return r.data.data.id;
+}
+// Only the fields a v2 command accepts, without blanks: an empty optional field is left out.
+export function only(fields, values) {
+  return Object.fromEntries(
+    fields
+      .filter((k) => values[k] !== undefined && values[k] !== null && values[k] !== "")
+      .map((k) => [k, values[k]]),
+  );
 }
 export function useRows(path) {
   const [rows, setRows] = useState([]),
