@@ -89,4 +89,5 @@ router.post('/billing-accounts/:id/draft-invoice',restrictTo('super_admin','admi
 router.post('/billing-accounts/:id/invoices',restrictTo('super_admin','admin','receptionist'),handle((r,res,t)=>Billing.issueInvoice(r.params.id,r.body,r.user,r.get('if-match'),t),{command:true,status:201}));
 router.post('/deposit-allocations',restrictTo('super_admin','admin','receptionist'),handle((r,res,t)=>Billing.allocateDeposit(r.body,r.user,t),{command:true,status:201}));
 router.post('/credit-notes',restrictTo('super_admin','admin'),handle((r,res,t)=>Billing.creditNote(r.body,r.user,t),{command:true,status:201}));
+router.get('/events',handle((r)=>require('../services/eventsV2.cts').page(r.query.cursor,r.user)));
 module.exports=router;
