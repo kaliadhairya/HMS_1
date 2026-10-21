@@ -27,4 +27,6 @@ async function findAdmission(id, transaction, lock = false) {
   return rows[0] || null;
 }
 
-module.exports = { text, posInt, refusal, nextId, findAdmission };
+const DURATION_DAYS = { Days: 1, Weeks: 7, Months: 30 };
+
+module.exports = { text, posInt, refusal, nextId, findAdmission, DURATION_DAYS };

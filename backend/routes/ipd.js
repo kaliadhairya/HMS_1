@@ -1,5 +1,4 @@
 const express = require('express');
-const { openOccupancy, closeOccupancy } = require('../utils/adt');
 const { QueryTypes } = require('sequelize');
 const router = express.Router();
 const { sequelize, Ward, Bed, Admission, Patient, User, ProgressNote, NursingNote, IpdVitals, IpdRequest } = require('../models');
@@ -9,7 +8,8 @@ const { requireClinicalPrivilege, patientOfAdmission } = require('../middleware/
 const logAction = require('../utils/auditLogger');
 const { clobToString } = require('../utils/clobToString');
 const { discharge } = require('../services/dischargeCore');
-const { nextId, findAdmission } = require('../services/admissionRows');
+const { nextId, findAdmission, DURATION_DAYS } = require('../services/admissionRows');
+const { admitPatient } = require('../services/admissionCore');
 
 function normalizeRowKeys(row) {
   if (!row || typeof row !== 'object') return row;
@@ -170,7 +170,6 @@ const posInt = (v) => { const n = Number(v); return Number.isInteger(n) && n > 0
 const STAY_DAYS_SQL = `EXTRACT(DAY FROM (COALESCE(a.DISCHARGE_DATE, CURRENT_TIMESTAMP::timestamp) - a.ADMISSION_DATE))`;
 
 const URGENCY_LEVELS = ['Routine', 'Urgent', 'Emergency'];
-const DURATION_DAYS = { Days: 1, Weeks: 7, Months: 30 };
 
 // ── POST /api/ipd/admissions ───────────────────────────────
 // Admits a patient into a bed. The bed, the patient and the admission request are locked so two desks
@@ -178,110 +177,8 @@ const DURATION_DAYS = { Days: 1, Weeks: 7, Months: 30 };
 // transaction (it used to be a second call from the browser that could fail and leave it Pending).
 router.post('/admissions', protect, checkPermission('ipd', 'write'), async (req, res) => {
   const t = await sequelize.transaction();
-  const abort = async (status, message) => { await t.rollback(); return fail(res, status, message); };
   try {
-    const { admittingDoctorId, department, admissionType, expectedDischargeDate } = req.body;
-    const patientId = posInt(req.body.patientId);
-    const bedId = posInt(req.body.bedId);
-    if (!patientId) return abort(400, 'Select a patient.');
-    if (!bedId) return abort(400, 'Select a bed.');
-
-    const [[patient]] = await sequelize.query(
-      'SELECT ID, NAME, UHID, GENDER, AGE FROM HMS_PATIENTS WHERE ID = :patientId FOR UPDATE',
-      { replacements: { patientId }, transaction: t },
-    );
-    if (!patient) return abort(404, 'Patient not found.');
-
-    const [[current]] = await sequelize.query(
-      "SELECT ADMISSION_ID_FORMATTED FROM HMS_ADMISSIONS WHERE PATIENT_ID = :patientId AND STATUS = 'Active' LIMIT 1",
-      { replacements: { patientId }, transaction: t },
-    );
-    if (current) return abort(409, `${patient.NAME} is already admitted (${current.ADMISSION_ID_FORMATTED}).`);
-
-    const [[bed]] = await sequelize.query(
-      'SELECT ID, BED_NUMBER, STATUS, IS_ACTIVE FROM HMS_BEDS WHERE ID = :bedId FOR UPDATE',
-      { replacements: { bedId }, transaction: t },
-    );
-    if (!bed) return abort(404, 'Bed not found.');
-    const [[inBed]] = await sequelize.query(
-      "SELECT ID FROM HMS_ADMISSIONS WHERE BED_ID = :bedId AND STATUS = 'Active' LIMIT 1",
-      { replacements: { bedId }, transaction: t },
-    );
-    const bedStatus = bed.STATUS || 'Available';
-    if (Number(bed.IS_ACTIVE) !== 1 || bedStatus !== 'Available' || inBed) {
-      return abort(409, `Bed ${bed.BED_NUMBER} is not available (${inBed ? 'Occupied' : Number(bed.IS_ACTIVE) !== 1 ? 'inactive' : bedStatus}).`);
-    }
-
-    // The admission request being fulfilled: the one given, else the patient's pending request.
-    let request = null;
-    if (req.body.requestId !== undefined && req.body.requestId !== null && req.body.requestId !== '') {
-      const [[r]] = await sequelize.query(
-        'SELECT * FROM HMS_IPD_REQUESTS WHERE ID = :id FOR UPDATE',
-        { replacements: { id: posInt(req.body.requestId) || 0 }, transaction: t },
-      );
-      if (!r) return abort(404, 'Admission request not found.');
-      if (Number(r.PATIENT_ID) !== patientId) return abort(400, 'The admission request is for another patient.');
-      if (r.STATUS !== 'Pending') return abort(409, `This admission request is already ${String(r.STATUS).toLowerCase()}.`);
-      request = r;
-    } else {
-      const [[r]] = await sequelize.query(
-        "SELECT * FROM HMS_IPD_REQUESTS WHERE PATIENT_ID = :patientId AND STATUS = 'Pending' ORDER BY REQUEST_DATE DESC LIMIT 1 FOR UPDATE",
-        { replacements: { patientId }, transaction: t },
-      );
-      request = r || null;
-    }
-
-    // Admitting doctor: as chosen, else the requesting doctor, else the user admitting.
-    const doctorId = posInt(admittingDoctorId) || (request && posInt(request.DOCTOR_ID)) || req.user.id;
-    const [[doctor]] = await sequelize.query(
-      `SELECT u.ID, u.NAME, dp.NAME AS DEPARTMENT_NAME, d.SPECIALITY
-       FROM HMS_USERS u
-       LEFT JOIN HMS_DOCTORS d ON d.USER_ID = u.ID
-       LEFT JOIN HMS_DEPARTMENTS dp ON dp.ID = d.DEPARTMENT_ID
-       WHERE u.ID = :doctorId`,
-      { replacements: { doctorId }, transaction: t },
-    );
-    if (!doctor) return abort(400, 'Admitting doctor not found.');
-    // The department is the admitting doctor's (the requests page used to send the diagnosis here).
-    const dept = text(department) || doctor.DEPARTMENT_NAME || doctor.SPECIALITY || 'General';
-    const admType = text(admissionType) || (request && request.URGENCY_LEVEL) || 'Routine';
-
-    let expected = null;
-    if (expectedDischargeDate) {
-      const d = new Date(expectedDischargeDate);
-      if (Number.isNaN(d.getTime())) return abort(400, 'Expected discharge date is not a valid date.');
-      expected = d;
-    } else if (request && posInt(request.ESTIMATED_DURATION)) {
-      expected = new Date(Date.now() + Number(request.ESTIMATED_DURATION) * (DURATION_DAYS[request.DURATION_UNIT] || 1) * 86400000);
-    }
-
-    const admissionId = await nextId('hms_admissions_seq', 'HMS_ADMISSIONS', t);
-    const formattedId = `ADM-${new Date().getFullYear()}-${String(admissionId).padStart(6, '0')}`;
-
-    await sequelize.query(`
-      INSERT INTO HMS_ADMISSIONS (
-        ID, PATIENT_ID, ADMITTING_DOCTOR_ID, DEPARTMENT, BED_ID, ADMISSION_TYPE, ADMISSION_DATE,
-        EXPECTED_DISCHARGE_DATE, STATUS, ADMISSION_ID_FORMATTED, CREATED_BY, CREATED_AT
-      ) VALUES (
-        :id, :patientId, :doctorId, :department, :bedId, :admType, CURRENT_TIMESTAMP,
-        :expected, 'Active', :formatted, :createdBy, CURRENT_TIMESTAMP
-      )
-    `, {
-      replacements: {
-        id: admissionId, patientId, doctorId, department: dept, bedId, admType,
-        expected, formatted: formattedId, createdBy: req.user.id,
-      },
-      transaction: t,
-    });
-    await sequelize.query("UPDATE HMS_BEDS SET STATUS = 'Occupied' WHERE ID = :bedId", { replacements: { bedId }, transaction: t });
-    // The bed's occupancy history starts with the admission (migration 0017).
-    await openOccupancy(sequelize, { bedId, admissionId, userId: req.user.id, reason: 'admission', transaction: t });
-    if (request) {
-      await sequelize.query(
-        "UPDATE HMS_IPD_REQUESTS SET STATUS = 'Admitted', ADMISSION_ID = :admissionId, UPDATED_AT = CURRENT_TIMESTAMP WHERE ID = :id",
-        { replacements: { admissionId, id: request.ID }, transaction: t },
-      );
-    }
+    const { admissionId, formattedId, patientId, bedId, bed, doctorId, patient, doctor, request, expected, dept, admType } = await admitPatient({ body: req.body, user: req.user, t });
     await t.commit();
     await logAction(req.user.id, 'CREATE', 'ipd', admissionId, null, { action: 'admit_patient', bedId, requestId: request?.ID || null }, req.ip);
 
@@ -309,6 +206,7 @@ router.post('/admissions', protect, checkPermission('ipd', 'write'), async (req,
     return res.status(201).json({ success: true, data });
   } catch (err) {
     await t.rollback().catch(() => {});
+    if (err.status) return fail(res, err.status, err.message);
     console.error('Admission failed:', err.message);
     return fail(res, 500, 'Failed to admit patient');
   }

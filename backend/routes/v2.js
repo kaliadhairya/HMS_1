@@ -74,4 +74,5 @@ router.post('/refunds/:id/approve',restrictTo('super_admin','admin'),handle((r,r
 router.post('/refunds/:id/reject',restrictTo('super_admin','admin'),handle((r,res,t)=>Billing.decideRefund(r.params.id,false,r.body?.note,r.user,t),{command:true}));
 router.post('/refunds/:id/pay',restrictTo('super_admin','admin','receptionist'),handle((r,res,t)=>Billing.payRefund(r.params.id,r.body,r.user,t),{command:true}));
 router.post('/refunds/:id/confirm',restrictTo('super_admin','admin','receptionist'),handle((r,res,t)=>Billing.completeRefund(r.params.id,'confirmed',r.body,r.user,t),{command:true}));
+router.post('/admissions',restrictTo('super_admin','admin','doctor','nurse'),handle((r,res,t)=>Admissions.admit(r.body,r.user,t),{command:true,status:201}));
 module.exports=router;

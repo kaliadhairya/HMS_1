@@ -81,4 +81,22 @@ async function discharge(id:string,body:any,actor:Actor,ifMatch:any,t:any){
  return {...view,summary_id:result.summaryId,clinical_document_id:result.clinicalDocumentId,signature_digest:result.signatureDigest,discharge_date:result.dischargeDate};
 }
 
-module.exports={transfer,read,discharge};
+// Admission into a bed (A3). The patient, bed and admitting doctor are named by public identifier.
+// The admission command is the one the legacy route calls. Admission requests are still named
+// by their legacy number; the request is picked up automatically when the patient has one.
+const ADMITTERS=['super_admin','admin','doctor','nurse'];
+async function admit(body:any,actor:Actor,t:any){
+ if(!ADMITTERS.includes(actor.role))fail(403,'Your role cannot admit patients.','ROLE_NOT_PERMITTED');
+ if(!body?.patient_id||!body?.bed_id)fail(422,'patient_id and bed_id are required.','VALIDATION_FAILED');
+ const patientId=I.legacyNumber(await I.locate('patient',body.patient_id,actor,t));
+ const bedId=I.legacyNumber(await I.locate('bed',body.bed_id,actor,t));
+ const doctorId=body.admitting_doctor_id?I.legacyNumber(await I.locate('principal',body.admitting_doctor_id,actor,t)):undefined;
+ const r=await require('./admissionCore').admitPatient({
+  body:{patientId,bedId,admittingDoctorId:doctorId,department:body.department,admissionType:body.admission_type,expectedDischargeDate:body.expected_discharge_date},
+  user:actor,t,
+ });
+ await logAction(actor.id,'CREATE','ipd',r.admissionId,null,{action:'admit_patient',bedId:r.bedId,requestId:r.request?.ID||null},actor.ip);
+ return projection(r.admissionId,t);
+}
+
+module.exports={transfer,read,discharge,admit};
