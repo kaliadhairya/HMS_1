@@ -62,4 +62,23 @@ async function read(id:string,actor:Actor,t:any){
  return projection(admissionId,t);
 }
 
-module.exports={transfer,read};
+// Discharge (A3). The same command as the legacy route; this adds the version check
+// (If-Match), the doctor's clinical privilege and the patient-in-care check, and bumps the version.
+async function discharge(id:string,body:any,actor:Actor,ifMatch:any,t:any){
+ if(actor.role!=='doctor')fail(403,'A responsible doctor must author and sign the discharge continuity record.','RESPONSIBLE_DOCTOR_REQUIRED');
+ const expected=expectedVersion(ifMatch);
+ const admissionId=I.legacyNumber(await I.locate('admission',id,actor,t));
+ const [adm]=await rows('SELECT id,patient_id,api_version FROM hms_admissions WHERE id=:id FOR UPDATE',{id:admissionId},t);
+ if(!adm)fail(404,'Admission record not found.','RESOURCE_NOT_FOUND');
+ if(Number(adm.api_version)!==expected)fail(412,'This admission changed after you read it. Reload it and try again.','VERSION_CONFLICT');
+ await require('./facilities.cts').requirePrivilege(actor,'CLINICAL_SIGN',t);
+ if(!(await require('../utils/careTeam').patientInCare(actor.id,Number(adm.patient_id),t)))fail(403,'The patient must be in your care.','PATIENT_NOT_IN_CARE');
+ const result=await require('./dischargeCore').discharge({admissionId,body:body||{},user:actor,transaction:t});
+ // The database trigger hms_bump_api_version advances the version on every change to the row,
+ // and the row has been locked since the version check, so no second bump is made here.
+ await logAction(actor.id,'UPDATE','ipd',admissionId,null,{action:'discharge_patient',summaryId:result.summaryId,signedDocumentId:result.clinicalDocumentId},actor.ip);
+ const view=await projection(admissionId,t);
+ return {...view,summary_id:result.summaryId,clinical_document_id:result.clinicalDocumentId,signature_digest:result.signatureDigest,discharge_date:result.dischargeDate};
+}
+
+module.exports={transfer,read,discharge};

@@ -63,4 +63,5 @@ router.post('/appointments/:id/cancel',restrictTo('super_admin','admin','doctor'
 const Admissions=require('../services/admissionV2.cts');
 router.get('/admissions/:id',restrictTo('super_admin','admin','nurse','doctor'),clinicalRead((r,res,t)=>Admissions.read(r.params.id,r.user,t)));
 router.post('/admissions/:id/transfer',restrictTo('super_admin','admin','nurse','doctor'),handle((r,res,t)=>Admissions.transfer(r.params.id,r.body,r.user,r.get('if-match'),t),{command:true}));
+router.post('/admissions/:id/discharge',restrictTo('doctor'),handle((r,res,t)=>Admissions.discharge(r.params.id,r.body,r.user,r.get('if-match'),t),{command:true}));
 module.exports=router;

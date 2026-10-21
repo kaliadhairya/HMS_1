@@ -8,6 +8,8 @@ const { protect, checkPermission, restrictTo } = require('../middleware/auth');
 const { requireClinicalPrivilege, patientOfAdmission } = require('../middleware/clinicalPrivilege');
 const logAction = require('../utils/auditLogger');
 const { clobToString } = require('../utils/clobToString');
+const { discharge } = require('../services/dischargeCore');
+const { nextId, findAdmission } = require('../services/admissionRows');
 
 function normalizeRowKeys(row) {
   if (!row || typeof row !== 'object') return row;
@@ -164,28 +166,6 @@ const posInt = (v) => { const n = Number(v); return Number.isInteger(n) && n > 0
 // Next primary key for an IPD table. Some tables were seeded with explicit ids, which left their
 // sequence behind the data (HMS_IPD_VITALS: every insert failed with a duplicate key). When that
 // happens the sequence is moved past the highest id instead of failing the insert.
-async function nextId(seq, table, transaction) {
-  const [[row]] = await sequelize.query(
-    `SELECT nextval('${seq}') AS "SEQ", (SELECT COALESCE(MAX(ID), 0) FROM ${table}) AS "MAX_ID"`,
-    { transaction },
-  );
-  const seqVal = Number(row.SEQ ?? row.seq);
-  const maxId = Number(row.MAX_ID ?? row.max_id);
-  if (seqVal > maxId) return seqVal;
-  const [[fixed]] = await sequelize.query(`SELECT setval('${seq}', :next) AS "ID"`, { replacements: { next: maxId + 1 }, transaction });
-  return Number(fixed.ID ?? fixed.id);
-}
-
-// Admission row (raw, both key cases), optionally locked for the rest of the transaction.
-async function findAdmission(id, transaction, lock = false) {
-  if (!posInt(id)) return null;
-  const [rows] = await sequelize.query(
-    `SELECT * FROM HMS_ADMISSIONS WHERE ID = :id${lock ? ' FOR UPDATE' : ''}`,
-    { replacements: { id: Number(id) }, transaction },
-  );
-  return rows[0] || null;
-}
-
 // Days charged / shown for a stay: completed days, at least one, counted up to discharge (not to today).
 const STAY_DAYS_SQL = `EXTRACT(DAY FROM (COALESCE(a.DISCHARGE_DATE, CURRENT_TIMESTAMP::timestamp) - a.ADMISSION_DATE))`;
 
@@ -605,102 +585,15 @@ router.get('/admissions/:id', protect, checkPermission('ipd', 'read'), async (re
 router.patch('/admissions/:id/discharge', protect, checkPermission('ipd', 'write'), requireClinicalPrivilege('CLINICAL_SIGN', { patientIdFrom: patientOfAdmission }), async (req, res) => {
   if (req.user.role !== 'doctor') return fail(res, 403, 'A responsible doctor must author and sign the discharge continuity record.');
   const t = await sequelize.transaction();
-  const abort = async (status, message) => { await t.rollback(); return fail(res, status, message); };
   try {
-    const { courseInHospital, conditionAtDischarge, adviceOnDischarge,
-            chiefComplaint, comorbidities, allergies, historyOfIllness,
-            investigations, dischargeMedications, dietLifestyle, warningSigns,
-            followUpAppointments } = req.body;
-    const admission = await findAdmission(req.params.id, t, true);
-    if (!admission) return abort(404, 'Admission record not found');
-    if (String(admission.FACILITY_ID).toLowerCase() !== String(req.user.facilityId).toLowerCase()) return abort(404, 'Admission record not found');
-    if (admission.STATUS !== 'Active') return abort(409, `This admission is already ${String(admission.STATUS).toLowerCase()}.`);
-    const Documents = require('../services/clinicalDocuments.cts');
-    const planRows = await sequelize.query('SELECT clinical_ready_at,pending_results,results_owner_user_id FROM hms_discharge_plans WHERE admission_id=:admissionId AND facility_id=:facility FOR SHARE',
-      { replacements: { admissionId: admission.ID,facility:req.user.facilityId }, type: QueryTypes.SELECT, transaction: t });
-    const plan = planRows[0];
-    if (!plan || !plan.clinical_ready_at) return abort(409, 'A clinically ready discharge plan is required.');
-    if (plan.pending_results && !plan.results_owner_user_id) return abort(409, 'Pending results need a named owner before discharge.');
-
-    // The doctor confirms and signs the exact structured document in the same
-    // transaction that closes the admission and occupancy. No unsigned legacy
-    // summary can authorize a discharge.
-    const content = {
-      diagnosis: text(req.body.finalDiagnosis),course: text(courseInHospital),condition: text(conditionAtDischarge),
-      instructions: text(adviceOnDischarge),medicationPlan: text(dischargeMedications),warningSigns: text(warningSigns),
-      followUp: text(followUpAppointments),pendingResults: plan.pending_results || '',
-      chiefComplaint: text(chiefComplaint),comorbidities: text(comorbidities),allergies: text(allergies),
-      historyOfIllness: text(historyOfIllness),investigations: text(investigations),dietLifestyle: text(dietLifestyle),
-    };
-    const doc = await Documents.create({patientId:Number(admission.PATIENT_ID),admissionId:Number(admission.ID),docType:'discharge_summary',content},req.user,t);
-    const signed = await Documents.change(Number(doc.id),req.user,'sign',{},'1',t);
-    const signedRow = await Documents.read(Number(doc.id),req.user,t);
-    if (String(signedRow.draft_content?.pendingResults || '').trim() && !plan.results_owner_user_id)
-      return abort(409, 'Pending results need a named owner before discharge.');
-
-    const [[updated]] = await sequelize.query(`
-      UPDATE HMS_ADMISSIONS SET DISCHARGE_DATE = CURRENT_TIMESTAMP, STATUS = 'Discharged'
-      WHERE ID = :admissionId
-      RETURNING DISCHARGE_DATE AS "DISCHARGE_DATE"
-    `, { replacements: { admissionId: admission.ID }, transaction: t });
-    // The bed goes to cleaning, not straight back to Ready (blueprint 4.1).
-    await closeOccupancy(sequelize, { admissionId: admission.ID, reason: 'discharged', transaction: t });
-    if (admission.BED_ID) {
-      await sequelize.query("UPDATE HMS_BEDS SET STATUS = 'Dirty' WHERE ID = :bedId", { replacements: { bedId: admission.BED_ID }, transaction: t });
-    }
-
-    const summaryId = await nextId('hms_discharge_seq', 'HMS_DISCHARGE_SUMMARIES', t);
-    await sequelize.query(`
-      INSERT INTO HMS_DISCHARGE_SUMMARIES (
-        ID, ADMISSION_ID, FINAL_DIAGNOSIS, COURSE_IN_HOSPITAL,
-        DISCHARGE_CONDITION, ADVICE_ON_DISCHARGE,
-        CHIEF_COMPLAINT, COMORBIDITIES, ALLERGIES, HISTORY_OF_ILLNESS,
-        INVESTIGATIONS, DISCHARGE_MEDICATIONS, DIET_LIFESTYLE,
-        WARNING_SIGNS, FOLLOW_UP_APPOINTMENTS,
-        CREATED_BY, CREATED_AT, CLINICAL_DOCUMENT_ID, FACILITY_ID
-      ) VALUES (
-        :id, :admId, :fd, :cih, :dc, :aod,
-        :cc, :como, :allg, :hoi,
-        :inv, :dm, :dl,
-        :ws, :fua,
-        :createdBy, CURRENT_TIMESTAMP, :documentId, :facility
-      )
-    `, {
-      replacements: {
-        id: summaryId,
-        admId: admission.ID,
-        fd: content.diagnosis,
-        cih: content.course || null,
-        dc: content.condition || null,
-        aod: content.instructions || null,
-        cc: content.chiefComplaint || null,
-        como: content.comorbidities || null,
-        allg: content.allergies || null,
-        hoi: content.historyOfIllness || null,
-        inv: content.investigations || null,
-        dm: content.medicationPlan || null,
-        dl: content.dietLifestyle || null,
-        ws: content.warningSigns || null,
-        fua: content.followUp || null,
-        createdBy: req.user.id,
-        documentId: doc.id,facility:req.user.facilityId,
-      },
-      transaction: t,
-    });
-
-    await publish('adt.admission.discharged',`facility:${req.user.facilityId}`,{
-      admission_id:Number(admission.ID),patient_id:Number(admission.PATIENT_ID),summary_id:summaryId,
-      signed_document_id:doc.public_id,signed_version:signed.row.signed_version,
-    },{transaction:t});
-
+    const result = await discharge({ admissionId: req.params.id, body: req.body, user: req.user, transaction: t });
     await t.commit();
-    await logAction(req.user.id, 'UPDATE', 'ipd', admission.ID, null, { action: 'discharge_patient', summaryId,signedDocumentId:doc.public_id }, req.ip);
-
-    return res.json({ success: true, message: 'Patient discharged with signed continuity record.', data: { summaryId,clinicalDocumentId:doc.public_id,signatureDigest:signed.digest,dischargeDate: updated?.DISCHARGE_DATE || new Date() } });
+    await logAction(req.user.id, 'UPDATE', 'ipd', result.admissionId, null, { action: 'discharge_patient', summaryId: result.summaryId, signedDocumentId: result.clinicalDocumentId }, req.ip);
+    return res.json({ success: true, message: 'Patient discharged with signed continuity record.', data: result });
   } catch (err) {
     await t.rollback().catch(() => {});
     console.error(err);
-    if(err.status)return fail(res,err.status,err.message,err.code);
+    if (err.status) return fail(res, err.status, err.message, err.code);
     return fail(res, 500, 'Failed to discharge patient');
   }
 });
