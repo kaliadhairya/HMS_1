@@ -41,6 +41,8 @@ export DB_NAME PHASE4_FOUNDATION_DB_NAME="$TEMPLATE" TZ=UTC
 export JWT_SECRET="$(rand 32)" HMS_DATA_KEYS="cfa:$(rand 32)" DOWNTIME_KIT_KEY="$(rand 32)" BACKUP_ENCRYPTION_KEY="$(rand 32)" AUDIT_CHECKPOINT_KEY="$(rand 32)"
 export HMS_DOCUMENT_DIR="$WORK/docstore" DOWNTIME_KIT_DIR="$WORK/kit" AUDIT_CHECKPOINT_DIR="$WORK/ckpt"
 export CLAMAV_HOST=127.0.0.1 CLAMAV_PORT="$CLAM_PORT"
+# The suites that copy databases run the PostgreSQL tools in an image of the server's version.
+export E2E_PG_TOOLS=network E2E_PG_IMAGE="postgres:$(pg -d "$DB_NAME" -Atc "SHOW server_version_num" | cut -c1-2)-alpine"
 export E2E_API="http://localhost:$API_PORT/api" E2E_BASE="http://localhost:$VITE_PORT"
 FAC=$(pg -d "$DB_NAME" -Atc "SELECT hms_initial_facility()"); ADMIN=$(pg -d "$DB_NAME" -Atc "SELECT id FROM hms_users WHERE username='admin'")
 export HMS_WORKER_USER_ID="$ADMIN" HMS_ABDM_SERVICE_USER_ID="$ADMIN" HMS_ABDM_FACILITY_ID="$FAC"

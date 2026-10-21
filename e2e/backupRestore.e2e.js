@@ -8,7 +8,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn, execFile } = require('child_process');
-const { runner, assert, sleep, creds, requireThrowawayDb } = require('./helpers');
+const { runner, assert, sleep, creds, requireThrowawayDb, pgDocker } = require('./helpers');
 
 requireThrowawayDb();
 const BACKEND = path.join(__dirname, '..', 'backend');
@@ -34,7 +34,7 @@ const result = (r) => { try { return JSON.parse(r.stdout); } catch { return null
   let api;
   try {
     await step('An isolated HMS stores two encrypted patient documents in its own folder', async () => {
-      assert((await sh('docker', ['exec', 'hms-db', 'createdb', '-U', 'postgres', '-T', TEMPLATE, SRC])).code === 0, 'createdb');
+      assert((await sh('docker', pgDocker(`createdb -U postgres -T ${TEMPLATE} ${SRC}`))).code === 0, 'createdb');
       const mig = await sh('node', ['migrate.js', 'up'], { DB_NAME: SRC });
       assert(mig.code === 0, `migrate ${mig.out.slice(-300)}`);
       fs.mkdirSync(DOCS, { mode: 0o700 });
@@ -63,7 +63,7 @@ const result = (r) => { try { return JSON.parse(r.stdout); } catch { return null
     });
 
     await step('Backed up and restored, every stored document verifies against the archive', async () => {
-      const dump = await sh('docker', ['exec', 'hms-db', 'sh', '-c', `createdb -U postgres ${DST} && pg_dump -U postgres -Fc -d ${SRC} | pg_restore -U postgres -d ${DST} --no-owner --exit-on-error`]);
+      const dump = await sh('docker', pgDocker(`createdb -U postgres ${DST} && pg_dump -U postgres -Fc -d ${SRC} | pg_restore -U postgres -d ${DST} --no-owner --exit-on-error`));
       assert(dump.code === 0, `restore ${dump.out.slice(-300)}`);
       assert((await sh('tar', ['-czf', path.join(WORK, 'documents.tar.gz'), '-C', DOCS, '.'])).code === 0, 'archive');
       const r = await verify(path.join(WORK, 'documents.tar.gz'));
@@ -101,7 +101,7 @@ const result = (r) => { try { return JSON.parse(r.stdout); } catch { return null
     });
   } finally {
     if (api && api.exitCode === null) api.kill('SIGKILL');
-    for (const db of [SRC, DST]) await sh('docker', ['exec', 'hms-db', 'dropdb', '-U', 'postgres', '--if-exists', '--force', db]);
+    for (const db of [SRC, DST]) await sh('docker', pgDocker(`dropdb -U postgres --if-exists --force ${db}`));
     fs.rmSync(WORK, { recursive: true, force: true });
   }
   done();

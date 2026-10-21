@@ -161,4 +161,18 @@ async function syntheticClinician(userId, role = 'doctor', { credential = true }
   END $$`);
 }
 
-module.exports = { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, creds, inCare, requireThrowawayDb, syntheticClinician };
+// Docker arguments that run a shell script with the PostgreSQL client tools against the test server
+// (createdb, pg_dump, pg_restore, dropdb, psql; connection details from the PG* variables). By
+// default the tools run inside the local database container (E2E_PG_CONTAINER, "hms-db"); with
+// E2E_PG_TOOLS=network they run in a tools image of the server's version (E2E_PG_IMAGE) over the
+// network, which is how CI and a separate PostgreSQL server are reached.
+function pgDocker(script) {
+  if (process.env.E2E_PG_TOOLS === 'network') {
+    const e = process.env;
+    return ['run', '--rm', '--network', 'host', '-e', `PGHOST=${e.DB_HOST || '127.0.0.1'}`, '-e', `PGPORT=${e.DB_PORT || 5432}`,
+      '-e', `PGUSER=${e.DB_USER || 'postgres'}`, '-e', `PGPASSWORD=${e.DB_PASSWORD || ''}`, e.E2E_PG_IMAGE || 'postgres:18-alpine', 'sh', '-c', script];
+  }
+  return ['exec', process.env.E2E_PG_CONTAINER || 'hms-db', 'sh', '-c', script];
+}
+
+module.exports = { chromium, BASE, API, api, apiLogin, sql, browserAs, runner, assert, sleep, stamp, creds, inCare, requireThrowawayDb, syntheticClinician, pgDocker };

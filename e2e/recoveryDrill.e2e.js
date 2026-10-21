@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn, execFile } = require('child_process');
-const { api, runner, assert, sleep, creds, requireThrowawayDb } = require('./helpers');
+const { api, runner, assert, sleep, creds, requireThrowawayDb, pgDocker } = require('./helpers');
 
 requireThrowawayDb();
 const BACKEND = path.join(__dirname, '..', 'backend');
@@ -26,7 +26,7 @@ const { Client } = require(path.join(BACKEND, 'node_modules', 'pg'));
 const dbConf = (database) => ({ host: process.env.DB_HOST || '127.0.0.1', port: Number(process.env.DB_PORT || 5432), user: process.env.DB_USER || 'postgres', password: process.env.DB_PASSWORD || 'postgres', database });
 async function q(database, text, params = []) { const c = new Client(dbConf(database)); await c.connect(); try { return (await c.query(text, params)).rows; } finally { await c.end(); } }
 const sh = (cmd, args, env = {}) => new Promise((resolve) => execFile(cmd, args, { cwd: BACKEND, env: { ...process.env, ...env }, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => resolve({ code: err ? (err.code ?? 1) : 0, out: String(stdout) + String(stderr), stdout: String(stdout) })));
-const dockerPsql = (db, sql) => sh('docker', ['exec', 'hms-db', 'psql', '-U', 'postgres', '-d', db, '-Atc', sql]);
+const dockerPsql = (db, sql) => sh('docker', [...pgDocker('psql -U postgres -d "$0" -Atc "$1"'), db, sql]);
 function startApi(database, port) {
   const child = spawn('node', ['server.js'], { cwd: BACKEND, env: { ...process.env, DB_NAME: database, PORT: String(port), AUDIT_SEALER: 'off', AUDIT_CHECKPOINT_DIR: '', INTERNAL_SERVICE_SECRET: '', TZ: 'UTC', DEVICE_MLLP: 'off', DOWNTIME_KIT_DIR: '', OUTBOX_DISPATCH: 'off', INTERFACE_WORKER: 'off', FINANCE_WORKER: 'off' } });
   const out = [];
@@ -63,7 +63,7 @@ const patient = (port, token, n) => call(port, 'POST', '/patients/hms', token, {
 
   try {
     await step('Setup: a primary copy with a running HMS, a session, a pending outbound message and an unfinished payment', async () => {
-      const made = await sh('docker', ['exec', 'hms-db', 'createdb', '-U', 'postgres', '-T', TEMPLATE, OLD]);
+      const made = await sh('docker', pgDocker(`createdb -U postgres -T ${TEMPLATE} ${OLD}`));
       assert(made.code === 0, `createdb ${made.out}`);
       const mig = await sh('node', ['migrate.js', 'up'], { DB_NAME: OLD });
       assert(mig.code === 0, `migrate ${mig.out.slice(-300)}`);
@@ -77,8 +77,8 @@ const patient = (port, token, n) => call(port, 'POST', '/patients/hms', token, {
     });
 
     await step('A recovery copy is taken; later writes on the primary fall inside the recovery window and are counted', async () => {
-      await sh('docker', ['exec', 'hms-db', 'createdb', '-U', 'postgres', NEW]);
-      const copied = await sh('docker', ['exec', 'hms-db', 'sh', '-c', `pg_dump -U postgres -Fc -d ${OLD} | pg_restore -U postgres -d ${NEW} --no-owner --exit-on-error`]);
+      await sh('docker', pgDocker(`createdb -U postgres ${NEW}`));
+      const copied = await sh('docker', pgDocker(`pg_dump -U postgres -Fc -d ${OLD} | pg_restore -U postgres -d ${NEW} --no-owner --exit-on-error`));
       assert(copied.code === 0, `copy ${copied.out.slice(-300)}`);
       for (let i = 2; i <= 4; i++) assert((await patient(PORT_A, tokenA, i)).status === 201, `write ${i}`);
       const [onOld] = await q(OLD, "SELECT count(*)::int AS n, max(occurred_at) AS last FROM audit.row_changes WHERE table_name = 'hms_patients' AND new_values->>'name' LIKE $1", [`Recovery drill ${tag}%`]);
