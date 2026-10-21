@@ -343,3 +343,36 @@ Owner review (hospital):
 | Procedures §2–§7 approved for this hospital | | | |
 | Paper forms approved (orders, administration, specimen, receipt, temporary registration) | | | |
 | First Drill A–D completed per ward (sheet §8.5) | | | |
+
+## 10. Releases
+
+A release is done by IT on the HMS server, outside clinic peak hours, with the Downtime lead
+told beforehand. Run `scripts/release.sh` from the release checkout. It:
+
+1. keeps the images now running as the rollback point;
+2. takes a fresh backup (`scripts/backup-db.sh`) and refuses to continue without one;
+3. builds the new images and runs the migrations, then grants the restricted runtime identity
+   the new schema. If either fails, nothing running is changed;
+4. replaces the worker, then the backend, then the frontend. Each old instance drains first:
+   it stops taking new requests and finishes the ones in progress (up to 25 seconds; Docker
+   waits 40);
+5. waits until the backend and the worker are healthy. If they are not, it puts the previous
+   images back and waits for them to be healthy.
+
+| Result | Meaning | What to do |
+|---|---|---|
+| `RELEASED` (exit 0) | The new version is running and healthy | Check one login and one patient search; record the release |
+| `REFUSED` (exit 1) | Backup, build, migration or grant failed | Nothing changed. Read the message, fix, and run again |
+| `ROLLED BACK` (exit 1) | The new version was not healthy; the previous one is running | Users may have seen one short interruption. Keep the logs (`docker compose logs backend worker`) and investigate before retrying |
+| `ROLLBACK FAILED` / `IMPOSSIBLE` (exit 2) | Neither version is healthy, or there was no previous one | Declare a downtime (section 3) and follow section 6 once HMS is back |
+
+Migrations are never undone by a rollback, so a release may only add to the schema (new
+tables, columns, functions); removing or renaming waits for a later release, after no running
+version uses the old form. Run `scripts/restore-check.sh` on the new backup after a release.
+
+The worker runs as its own service. Docker restarts it when it exits; it exits when a worker
+cannot start or the database stays unreachable. `docker compose ps worker` shows `healthy`
+while its heartbeat is fresh.
+
+Evidence: `e2e/release.e2e.js` (order of steps, rollback, failed migration),
+`e2e/workerSupervision.e2e.js`, `e2e/drain.e2e.js`.
