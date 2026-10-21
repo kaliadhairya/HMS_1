@@ -33,4 +33,33 @@ async function startPayment(body:any,actor:Actor,t:any){
  };
 }
 
-module.exports={startPayment};
+// Refunds (A3): request, decide, pay and confirm. Each step calls the legacy command, which
+// enforces the separation of duties (the approver is not the requester) and the fund balance.
+const ADMIN=['super_admin','admin'];
+function refundView(result:any){
+ const r=result?.refund??result;
+ return {id:r.id,refund_number:r.refund_number,state:r.state,amount:Number(r.amount),method:r.method,version:Number(r.api_version??1)};
+}
+function requireRole(actor:Actor,roles:string[]){if(!roles.includes(actor.role))fail(403,'Your role cannot do this step of a refund.','ROLE_NOT_PERMITTED');}
+
+async function requestRefund(body:any,actor:Actor,t:any){
+ requireRole(actor,DESK);
+ if(!body?.fund_id)fail(422,'fund_id is required.','VALIDATION_FAILED');
+ const result=await B.requestRefund({fundId:body.fund_id,amount:body.amount,method:body.method,reason:body.reason},actor,t);
+ return refundView(result);
+}
+async function decideRefund(id:string,approve:boolean,note:any,actor:Actor,t:any){
+ requireRole(actor,ADMIN);
+ return refundView(await B.decideRefund(id,{approve,note},actor,t));
+}
+async function payRefund(id:string,body:any,actor:Actor,t:any){
+ requireRole(actor,DESK);
+ return refundView(await B.payRefund(id,body||{},actor,t));
+}
+async function completeRefund(id:string,outcome:'confirmed'|'failed',body:any,actor:Actor,t:any){
+ requireRole(actor,DESK);
+ const args=outcome==='confirmed'?{outcome,providerReference:body?.provider_reference}:{outcome,reason:body?.reason};
+ return refundView(await B.completeRefund(id,args,actor,t));
+}
+
+module.exports={startPayment,requestRefund,decideRefund,payRefund,completeRefund};
