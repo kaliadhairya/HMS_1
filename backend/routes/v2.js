@@ -75,4 +75,11 @@ router.post('/refunds/:id/reject',restrictTo('super_admin','admin'),handle((r,re
 router.post('/refunds/:id/pay',restrictTo('super_admin','admin','receptionist'),handle((r,res,t)=>Billing.payRefund(r.params.id,r.body,r.user,t),{command:true}));
 router.post('/refunds/:id/confirm',restrictTo('super_admin','admin','receptionist'),handle((r,res,t)=>Billing.completeRefund(r.params.id,'confirmed',r.body,r.user,t),{command:true}));
 router.post('/admissions',restrictTo('super_admin','admin','doctor','nurse'),handle((r,res,t)=>Admissions.admit(r.body,r.user,t),{command:true,status:201}));
+router.get('/billing-accounts/:id',restrictTo('super_admin','admin','receptionist','nurse'),clinicalRead((r,res,t)=>Billing.readAccount(r.params.id,r.user,t)));
+router.post('/billing-accounts/:id/charges',restrictTo('super_admin','admin','receptionist','nurse'),handle((r,res,t)=>Billing.addCharge(r.params.id,r.body,r.user,t),{command:true,status:201}));
+router.post('/charges/:id/reverse',restrictTo('super_admin','admin','receptionist','nurse'),handle((r,res,t)=>Billing.reverseCharge(r.params.id,r.body,r.user,t),{command:true,status:201}));
+router.post('/billing-accounts/:id/draft-invoice',restrictTo('super_admin','admin','receptionist','nurse'),handle((r,res,t)=>Billing.draftInvoice(r.params.id,r.user,t),{command:true}));
+router.post('/billing-accounts/:id/invoices',restrictTo('super_admin','admin','receptionist'),handle((r,res,t)=>Billing.issueInvoice(r.params.id,r.body,r.user,r.get('if-match'),t),{command:true,status:201}));
+router.post('/deposit-allocations',restrictTo('super_admin','admin','receptionist'),handle((r,res,t)=>Billing.allocateDeposit(r.body,r.user,t),{command:true,status:201}));
+router.post('/credit-notes',restrictTo('super_admin','admin'),handle((r,res,t)=>Billing.creditNote(r.body,r.user,t),{command:true,status:201}));
 module.exports=router;

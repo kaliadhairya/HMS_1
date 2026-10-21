@@ -28,7 +28,7 @@ const key = () => ({ 'idempotency-key': crypto.randomUUID() });
 
   await step('A refund larger than the deposit balance is refused', async () => {
     const r = await call('POST', '/v2/refunds', desk, { fund_id: fund.id, amount: Number(fund.balance) + 1000, method: 'Cash', reason: 'Too large for the test' }, key());
-    assert(r.status === 400 && r.data.code === 'REFUND_EXCEEDS_CREDIT', `oversized refund: ${r.status} ${JSON.stringify(r.data).slice(0, 120)}`);
+    assert(r.status === 422 && r.data.code === 'REFUND_EXCEEDS_CREDIT', `oversized refund: ${r.status} ${JSON.stringify(r.data).slice(0, 120)}`);
   });
 
   await step('The front desk requests a refund; it is recorded once with a refund number', async () => {
