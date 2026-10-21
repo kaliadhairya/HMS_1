@@ -1,7 +1,7 @@
 # Phase 6: interoperability and operations
 
 Branch `phase6/interop-ops` (worktree `../HMS_1-phase6`), based on the
-combined Phase 4 + 5 branch `integration/phase4-phase5` (2a07ca8).
+combined Phase 4 + 5 branch `integration/phase4-phase5` (0a90745).
 Migrations 0090–0095. **Not merged and not deployed.** Plan: `PLAN.md`.
 
 ## What changed, in plain terms

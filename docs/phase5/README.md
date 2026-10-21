@@ -1,7 +1,7 @@
 # Phase 5: revenue cycle
 
 Branch `phase5/revenue-cycle` (worktree `../HMS_1-phase5`), cut from
-`integration/phase2-phase3` at 01c19aa. Migrations 0070–0076. **Not merged
+`integration/phase2-phase3` at 816367e. Migrations 0070–0076. **Not merged
 and not deployed.** Plan: `PLAN.md`.
 
 ## What changed, in plain terms

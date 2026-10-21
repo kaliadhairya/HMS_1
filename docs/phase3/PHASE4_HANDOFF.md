@@ -7,7 +7,7 @@ Phase 4 files, worktree or implementation have been created yet.
 **Recommended base:** the owner-approved merged Phase 3 result, after Phase 3
 has been rebased on the approved Phase 2 result and every suite rerun. The
 current review branch is `phase3/medication-safety`; code evidence is at
-`a7548b4` plus the subsequent documentation commit. Do not start from its old
+`45eedbf` plus the subsequent documentation commit. Do not start from its old
 Phase 1 base and lose the medication/clinical-context integration.
 
 The parallel rules explicitly say, "Phase 4 starts from Phase 3's merged

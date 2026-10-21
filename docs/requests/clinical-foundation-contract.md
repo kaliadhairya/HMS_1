@@ -1,6 +1,6 @@
 # A2/A3 implementation contract for dependent packages
 
-The first implementation is committed at **584e169**, with migrations
+The first implementation is committed at **1dc70b6**, with migrations
 0113–0122 applied/tested on disposable PostgreSQL 16 and 18 databases. A2/A3
 remain partial; depend on the committed definitions below and read the open
 integration list in `docs/clinical-final/PROGRESS.md` before final acceptance.
@@ -45,4 +45,4 @@ fabricate a professional credential for an instrument account.
 The administrator credential and privilege screens plus AuthContext timezone
 binding were updated by Codex for A2. The reusable `useGovernedCommand` hook
 retains the exact body/revision/key through uncertain confirmation. C2 should
-preserve these behaviors and rebase on 584e169 before overlapping those files.
+preserve these behaviors and rebase on 1dc70b6 before overlapping those files.

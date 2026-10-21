@@ -1,9 +1,9 @@
 # Completion handoff checkpoints
 
-## `21302d8`: consultation UI overlap available for Claude C2
+## `392ff47`: consultation UI overlap available for Claude C2
 
 Rebase `completion/claude-final` onto `completion/clinical-final` at
-`21302d8` before changing the overlapping clinical note, consultation or
+`392ff47` before changing the overlapping clinical note, consultation or
 Quick Consult UI. Preserve these controls:
 
 - Encounter saves/signing send the reviewed `If-Match` revision.
@@ -28,7 +28,7 @@ them. No deployment occurred. Do not mount an old PG16 volume into PG18.
 
 ## B6 / B7 boundary
 
-**B6 database core ready for B7 engineering: `a59850b`.** Encrypted logical
+**B6 database core ready for B7 engineering: `a757ac5`.** Encrypted logical
 export/restore acceptance passes 7/7 on PG16 and PG18. Full-invariant physical
 PITR/standby drills pass on both engines. See `docs/clinical-final/RECOVERY.md`
 for evidence and actual measurements. Claude may now rebase and build B7 on

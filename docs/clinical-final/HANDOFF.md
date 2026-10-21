@@ -1,6 +1,6 @@
 # Clinical completion handoff (completion C8)
 
-21 October 2026. Branch `integration/complete-hms`, final code commit `26ae041`. Requirements
+21 October 2026. Branch `integration/complete-hms`, final code commit `1dc3a42`. Requirements
 source: `HMS_1_Clinical_Architecture_Blueprint.md` (clinical Phases 0–7). Mission Control is a
 separate product and is not part of this work.
 
@@ -18,17 +18,17 @@ full regressions on both; contract, inventory, type and build checks).
 
 | Package | Delivered | Commits |
 |---|---|---|
-| A3 | Every blueprint 3.10 interface on `/api/v2` (scheduling, admissions, transfers, discharge, laboratory, billing, payments, deposits, credit notes, refunds, events, medication), each calling the legacy command; medication screens on v2; published contract checked against recorded responses | `7076ce2` `13c5530` `142a553` `47eeda6` `eed1a2d` `e6684e9` |
-| A5 | The database refuses a discharge without its signed document; discharge and handover keep the observations current at the time | `03a4427` `f26f511` (audit trigger) |
-| A6 | Legacy writers confirmed retired; redirect-only prescription screen removed; registration makes no free-text report draft | `185d681` |
-| B6 | Backups carry the encrypted document store; a restore verifies every stored document | `c6b4acd` |
-| B8 | Release script with automatic rollback; drain-safe stop; separate supervised worker | `8273b90` |
-| C1 | The three missing 5.3 scenarios tested; matrix brought up to date | `20142a4` |
-| B1 | FHIR reads follow the chart rules; prescriptions and discharge summaries delivered to ABDM; provenance in every document | `4a2db87` `efb67ad` |
-| A1 | Requirement-to-test inventory; CI end-to-end regression on seeded databases; validator build | `f26f511` |
-| C4 | Exact-candidate evidence | `491c924` `26ae041`, `EVIDENCE_INDEX.md` |
-| — | Security: password-reset codes could be guessed (no attempt or rate limit); fixed | `3fcde18` |
-| — | Repository: machine-local `node_modules` symlinks were tracked; removed | `491c924` |
+| A3 | Every blueprint 3.10 interface on `/api/v2` (scheduling, admissions, transfers, discharge, laboratory, billing, payments, deposits, credit notes, refunds, events, medication), each calling the legacy command; medication screens on v2; published contract checked against recorded responses | `f46e92a` `b431d7e` `51a303f` `933f3ca` `f521132` `b998734` |
+| A5 | The database refuses a discharge without its signed document; discharge and handover keep the observations current at the time | `2ed7c54` `25fad3a` (audit trigger) |
+| A6 | Legacy writers confirmed retired; redirect-only prescription screen removed; registration makes no free-text report draft | `93c6f39` |
+| B6 | Backups carry the encrypted document store; a restore verifies every stored document | `6228ec5` |
+| B8 | Release script with automatic rollback; drain-safe stop; separate supervised worker | `2dd5ec8` |
+| C1 | The three missing 5.3 scenarios tested; matrix brought up to date | `33e8c29` |
+| B1 | FHIR reads follow the chart rules; prescriptions and discharge summaries delivered to ABDM; provenance in every document | `8885fc9` `2fbea0e` |
+| A1 | Requirement-to-test inventory; CI end-to-end regression on seeded databases; validator build | `25fad3a` |
+| C4 | Exact-candidate evidence | `c985abe` `1dc3a42`, `EVIDENCE_INDEX.md` |
+| — | Security: password-reset codes could be guessed (no attempt or rate limit); fixed | `788c4bd` |
+| — | Repository: machine-local `node_modules` symlinks were tracked; removed | `c985abe` |
 
 Earlier packages (A2, A4, A7, A8, B2–B5, B7, C2, C3, C5–C7) are described with their commits
 in `CLINICAL_COMPLETION.md`.
@@ -36,14 +36,14 @@ in `CLINICAL_COMPLETION.md`.
 ## Decisions for the owner
 
 1. **Merge** `integration/complete-hms` into local `main`.
-2. **Before any push**: 91 of the 144 commits not yet on GitHub end with a
-   "Co-Authored-By: Claude" line, which GitHub shows as a contributor (all 144 are authored by
-   the owner). Those lines can be removed from the unpushed history before pushing; commits from
-   `eed1a2d` on have none. Already-pushed history was left unchanged at the owner's request.
+2. **Co-author lines: done.** The 91 unpushed commits that ended with "Co-Authored-By: Claude"
+   were rewritten without that line (messages only; trees identical; old to new IDs in
+   `evidence/final-20261021/commit-map-before-message-rewrite.txt`, previous history kept on the
+   local branch `backup/complete-hms-before-trailer-strip`). Already-pushed history is unchanged.
 3. **Push to GitHub.** This is also the first time the new CI jobs (`e2e-regression`, the
    inventory check) will run; nothing deploys automatically from CI.
 4. **Update the running Docker application.** It serves older code on PostgreSQL 16 (including
-   the password-reset weakness fixed in `3fcde18`). The production compose now specifies
+   the password-reset weakness fixed in `788c4bd`). The production compose now specifies
    PostgreSQL 18, the restricted runtime identity and the separate worker. Rehearse the data
    upgrade on a copy first (dump/restore into PostgreSQL 18, `migrate.js up`,
    `scripts/restore-check.sh`), then release with `scripts/release.sh`. The `Jenkinsfile` still

@@ -73,7 +73,7 @@ contacts/training, target hosting/regional recovery and monitored pilots retain
 their explicit external evidence gates. No shared application was deployed.
 # Later handoff review — 17 October 2026
 
-Reviewed the four commits after f7f73c2 on completion/claude-final. Kept the
+Reviewed the four commits after 00156d9 on completion/claude-final. Kept the
 newer fail-closed scanner in every environment instead of restoring the old
 development-only basic-scanner success path. Adapted the added scanner test
 accordingly. Audit mismatch deduplication now groups by chain within facility;

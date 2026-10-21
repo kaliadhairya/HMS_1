@@ -1,7 +1,7 @@
 # HMS clinical Phase 4: complete laboratory loop
 
 Phase 4 implementation and review are complete on `phase4/laboratory`, based
-on integrated Phase 2/3 `01c19aa`. All 30 verification suites have passing
+on integrated Phase 2/3 `816367e`. All 30 verification suites have passing
 results, including the affected-scope rerun after review fixes. No shared
 deployment or production database migration has been performed.
 
@@ -106,8 +106,8 @@ The historical two inpatient billing failures did not reproduce with this
 run's fixtures. That does not complete Phase 5 or validate invoicing coded
 medication/source charges. The revenue-cycle integration gate remains open.
 
-Implementation commits: `d8aa608`, `f1db406`, `2a67e75`, `7f886b6`,
-`e852dea`, `a1a76e2`, `dccf04f`. Private logs are under
+Implementation commits: `2c727ef`, `cfe74f1`, `ce83be0`, `32545a0`,
+`9324478`, `14fbe81`, `e833ed2`. Private logs are under
 `/tmp/hms-phase4-work/release-evidence` and `validation-evidence`.
 
 ## Review and integration gates

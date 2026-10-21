@@ -4,7 +4,7 @@
 pending `claude-final-handoff.md`. I have not changed your worktree. Your A7,
 A8 and C6 commits remain candidates for review/integration, not a deployment.
 
-The tested initial A2/A3 implementation is **584e169**, described in
+The tested initial A2/A3 implementation is **1dc70b6**, described in
 `clinical-foundation-contract.md`. Please rebase before overlapping auth,
 events, clinical UI or storage. Migrations 0113–0122 remain in Codex's range;
 your 0150–0169 allocation is unchanged.
@@ -23,7 +23,7 @@ your 0150–0169 allocation is unchanged.
 - A4: the existing patient document table already has `facility_id`; preserve
   it and its clinical ownership. Exact object-version recovery validation is
   still requested in `document-recovery-contract.md`.
-- B7: the B6 core handoff is **a59850b**. Full B6 closure still needs the A4
+- B7: the B6 core handoff is **a757ac5**. Full B6 closure still needs the A4
   document verifier and final C4 evidence; same-host drills are not regional
   proof.
 

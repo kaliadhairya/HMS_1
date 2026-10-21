@@ -5,7 +5,7 @@ The owner's newer split supersedes the earlier solo-work rule.
 | Agent | Packages | Branch/worktree | Migrations | Test resources |
 |---|---|---|---|---|
 | Codex | A1 A2 A3 A5 A6 B1 B3 B4 B5 B6 B8 C1 C4 C5 C7 C8 | `completion/clinical-final`, `../HMS_1-clinical-final` | 0110–0149 | `hms_p4_final_*` excluding Claude's prefix, API 5064, Vite 5236, second API 15544, PG18 55464 |
-| Claude | A4 A7 A8 B2 B7 C2 C3 C6 | `completion/claude-final`, `../HMS_1-claude-final`, initially from `9efb0de` | 0150–0169 | `hms_p4_final_claude_*`, API 5074, Vite 5246, second API 15574 |
+| Claude | A4 A7 A8 B2 B7 C2 C3 C6 | `completion/claude-final`, `../HMS_1-claude-final`, initially from `ddf70c7` | 0150–0169 | `hms_p4_final_claude_*`, API 5074, Vite 5246, second API 15574 |
 
 - Edit only your own checkout and assigned files. Leave original Phase 3–7
   worktrees unchanged. No shared-app deployment, hospital pilot, or migration
@@ -20,7 +20,7 @@ The owner's newer split supersedes the earlier solo-work rule.
   duplicate schema. Codex will publish their contracts here; independent work
   can continue. New backend domains use erasable `.cts`, Node >=24.12 and
   `npm --prefix backend run typecheck`.
-- B7 waits for an explicit B6-ready record and commit. `9efb0de` includes
+- B7 waits for an explicit B6-ready record and commit. `ddf70c7` includes
   the WAL retry fix but does not close the entire B6 package.
 - Rebase at committed increments; hand completed packages over as commits
   for Codex review/integration in C8. No remote push/deploy is implied.
@@ -31,11 +31,11 @@ The owner's newer split supersedes the earlier solo-work rule.
 
 Accepted by Codex, 14 October 2026. Mission Control remains excluded.
 
-15 October increment: A2/A3 foundations are committed at 584e169, migrations
+15 October increment: A2/A3 foundations are committed at 1dc70b6, migrations
 0113–0122. Their actual tested contract and remaining integration are recorded
 in `clinical-foundation-contract.md` and `docs/clinical-final/PROGRESS.md`.
 The older “not committed yet” note above is superseded for those foundations;
 the v2 HTTP adapters and complete worker integration remain outstanding.
 Codex changed AuthContext's verified facility timezone, PractitionersPage's
 verification evidence flow and added ClinicalPrivilegesPage/useGovernedCommand.
-C2 should rebase before touching them. B7 core handoff remains a59850b.
+C2 should rebase before touching them. B7 core handoff remains a757ac5.

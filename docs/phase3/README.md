@@ -1,7 +1,7 @@
 # HMS clinical Phase 3: medication safety and nursing
 
 Worktree: `HMS_1-phase3`; branch: `phase3/medication-safety`.
-Base: Phase 1 `09df78e`. The main Phase 2 worktree was not used for implementation.
+Base: Phase 1 `6a70dcf`. The main Phase 2 worktree was not used for implementation.
 No shared Docker deployment, production database migration or merge was performed.
 This is the clinical medication phase, not Mission Control's fleet-operations phase.
 
@@ -125,8 +125,8 @@ The two historically known inpatient billing failures did not occur with this
 run's fixtures. That observation does not complete Phase 5 or validate new
 medication-charge invoicing. No such phase-completion claim is made.
 
-Verification source commits: backend `e8c3037`, safety hardening `6bb3be5`,
-frontend `9107801`, regression adaptation `a7548b4`. Logs are private local
+Verification source commits: backend `29dbac6`, safety hardening `da69fea`,
+frontend `f85ba09`, regression adaptation `45eedbf`. Logs are private local
 artifacts in `/tmp/hms-phase3-work/candidate-evidence`; the committed JSON keeps
 results, commands, timestamps and log hashes without raw patient data.
 

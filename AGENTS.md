@@ -13,10 +13,10 @@
 - No one deploys to the shared Docker app without the owner's approval.
 
 ### Session log
-- 2026-10-13 Claude: Phase 2 part 1 (patient identity) committed fcb87c7; part 1 deployed to Docker 2026-10-13; part 2 (duplicate review and merge) finished and tested; not deployed yet.
+- 2026-10-13 Claude: Phase 2 part 1 (patient identity) committed 6bf8b0e; part 1 deployed to Docker 2026-10-13; part 2 (duplicate review and merge) finished and tested; not deployed yet.
 - 2026-10-13 Claude: Phase 2 parts 3–9 built (practitioners 0012, scheduling 0013, care teams 0014, triage 0015, clinical documents 0016, beds/ADT 0017, referrals 0018); see docs/phase2/README.md. Not deployed. Appointment slot resolver now follows the scheduling exclusion rule. The durability e2e suite starts a second backend on port 15103 by default; that port is used by Codex's `hms_p3_final` server, so run it with `E2E_SECOND_PORT=15203`.
 - 2026-10-13 Claude: merged Phase 3 onto Phase 2 on `integration/phase2-phase3` (not deployed). Medication routes now follow care-team scope; old /api/ipd/mar writes return 410; tests run on any throwaway DB. Full regression passes except the two known IPD-billing steps. See docs/INTEGRATION_PHASE2_PHASE3.md. Codex: start Phase 4 from this branch only when the owner says so.
-- 2026-10-14 Claude: Phase 5 (revenue cycle) finished on `phase5/revenue-cycle` (worktree `../HMS_1-phase5`, head 36a1fac, migrations 0070–0076). Full regression passes, including the two IPD billing steps. Not merged, not deployed. Phase 4 and Phase 5 share base 01c19aa; whichever merges second re-runs all suites. See docs/phase5/README.md on that branch.
+- 2026-10-14 Claude: Phase 5 (revenue cycle) finished on `phase5/revenue-cycle` (worktree `../HMS_1-phase5`, head b7ceb7a, migrations 0070–0076). Full regression passes, including the two IPD billing steps. Not merged, not deployed. Phase 4 and Phase 5 share base 816367e; whichever merges second re-runs all suites. See docs/phase5/README.md on that branch.
 
 ## Status (2026-10-13): Phase 1 complete — you may work
 
@@ -70,7 +70,7 @@ required; leave Phase 2's implementation files unchanged.
 STOP: Phase 5 billing files are owned by Claude in `HMS_1-phase5` on
 `phase5/revenue-cycle` (see `docs/phase5/PLAN.md`, "Ownership"). Other agents
 leave this worktree unchanged.
-- 2026-10-14: started from `01c19aa`. Billing accounts, charge capture,
+- 2026-10-14: started from `816367e`. Billing accounts, charge capture,
   invoices, journal, deposits/payments/refunds, insurance and reconciliation.
   Lab and medicine charges are captured by database triggers, so Phase 3 and
   Phase 4 files are not edited. Test databases `hms_p5_*`, API 5032, Vite 5204.
@@ -89,7 +89,7 @@ leave this worktree unchanged.
 
 Phase 4 implementation and review completed in `HMS_1-phase4` on
 `phase4/laboratory`; integration/deployment remain owner-controlled.
-- 2026-10-13: started from integrated Phase 2/3 `01c19aa`; read Phase 4 prompt,
+- 2026-10-13: started from integrated Phase 2/3 `816367e`; read Phase 4 prompt,
   parallel rules, foundation/medication evidence and laboratory blueprint.
   Implementing laboratory-owned routes/UI, migrations 0050–0069 and tests;
   shared changes limited to additive registrations. Private test databases
@@ -114,13 +114,13 @@ Integration completed in `HMS_1-phase4-phase5` on
 
 STOP: Phase 6 (interoperability and operations) is owned by Claude in
 `HMS_1-phase6` on `phase6/interop-ops`, based on `integration/phase4-phase5`
-(2a07ca8). Plan: `docs/phase6/PLAN.md`. Other agents leave this worktree
+(0a90745). Plan: `docs/phase6/PLAN.md`. Other agents leave this worktree
 unchanged; Codex (Phase 7) asks through `docs/requests/`.
 - 2026-10-14: started 6A (terminology releases). Migrations 0090–0109, test
   databases `hms_p6_*`, API 5052, Vite 5224. No shared deployment.
 - 2026-10-14: 6A terminology (0090), 6B FHIR read boundary, 6H write-once
   audit checkpoints + accountable worklist (0091), 6G PITR/standby drills
-  committed (5d28c9e, 58d8b61, e1eee19, 215b907). Full regression on
+  committed (0f9773a, f0cadda, cbe2e19, 681b149). Full regression on
   hms_p4_p5_p6_e2e (name chosen so the Phase 4/5 suites' guards accept it)
   passes; new suites terminology, fhir, auditWorm. Codex's 4+5 integration
   independently re-verified: 32/32 suites, evidence in
@@ -130,10 +130,10 @@ unchanged; Codex (Phase 7) asks through `docs/requests/`.
   packages done; final regression 39/39 on hms_p4_p5_p6_e2e, FHIR/ABDM
   documents 0 validator errors. Results and owner items: docs/phase6/README.md.
   Not merged, not deployed. STOP notice remains until the owner decides the merge.
-- 2026-10-14: go-live gap fixes on top of acc1c5b (6F/6G/6H unchanged for
-  Codex's review): 468bd5e hospital calendar day (0096), 15c1538 coded lab
-  pricing (0097), c7e92c7 counter sales + pre-Phase-5 bills in the journal
-  (0098), d5f64c4 doctor lab list -> /lab/governed. Regression 43/43.
+- 2026-10-14: go-live gap fixes on top of e215653 (6F/6G/6H unchanged for
+  Codex's review): b42ef64 hospital calendar day (0096), 64e711a coded lab
+  pricing (0097), 153e05b counter sales + pre-Phase-5 bills in the journal
+  (0098), 5f14d2a doctor lab list -> /lab/governed. Regression 43/43.
   Requests for Codex: docs/requests/phase6-service-date.md (UTC dates in
   Phase 3/4 files), phase4-clinical-navigation.md (consultation coded ordering).
 
@@ -144,7 +144,7 @@ final completion phases. Authoritative checklist: `docs/CLINICAL_COMPLETION.md`.
 STOP: this completion worktree is owned by Codex. Existing phase worktrees
 remain unchanged. This local instruction supersedes their historical file
 ownership restrictions for the completion checkout only.
-- Branch `completion/clinical-final`, baseline `c9940c8`.
+- Branch `completion/clinical-final`, baseline `87b5833`.
 - Additive migrations 0110–0149. Disposable databases `hms_p4_final_*` and
   `hms_verify_final_*`; API 5064, Vite 5236, second API 15544, PG18 55464.
 - Mission Control is excluded. No shared-app deployment or hospital pilot.
@@ -166,16 +166,16 @@ go through `docs/requests/clinical-final-coordination.md`.
   Additional own drill ports 55465/55466; private second API 15544. Claude's
   worktree was not yet present when checked; its package ownership is unchanged.
 - 2026-10-15: committed A2/A3 initial facility, professional privilege and scoped
-  receipt foundations at 584e169 (0113–0122). PG16/18 policy/grant tests 19/19
+  receipt foundations at 1dc70b6 (0113–0122). PG16/18 policy/grant tests 19/19
   each, sessions 5/5, administration browser 4/4, scoped receipts 4/4, financial
   idempotency 8/8 and Phase 1 failure acceptance 16/16 on PG18. Typecheck/build
   pass. Packages remain partial; continuing complete clinical/worker/v2 integration.
-- 2026-10-15: B3 analyzer engineering completed at 92765a8: actual HL7/ASTM
+- 2026-10-15: B3 analyzer engineering completed at 9a2ad7f: actual HL7/ASTM
   bridge 12/12, restricted-runtime custody/limits/rollback/revocation 9/9 on
   PG16 and PG18, schema equality through 0126 (5663 facts). B4 now in progress;
   remaining clinical/facility/v2/release integration continues. No shared deployment.
 
-- 2026-10-15: canonical identity / clinical v2 increment committed at 9408731,
+- 2026-10-15: canonical identity / clinical v2 increment committed at 660ee19,
   migrations 0127–0130. Shared encounter/document commands, immutable linked
   signatures, generated contracts/client and scoped draft recovery verified:
   focused API/browser 34/34, strict types/build/generation pass. A2/A3/A5/A6
@@ -190,10 +190,10 @@ go through `docs/requests/clinical-final-coordination.md`.
 ### Claude completion packages (2026-10-15)
 
 All eight Claude packages are engineering-complete on `completion/claude-final`
-(rebased onto Codex `0d904fb`), handed to Codex for C8 review/integration;
-nothing deployed or pushed. A7 `981bf9c`, A8 `fab333a`, C6 `9f27b04`,
-C3 `794b33a`, C2 `aad6508`, A4 `ab978b8`, B2 `a954678`, then B7 + A8
-facility scope + A4 restore verifier + C6 per facility `d10b0e9`.
+(rebased onto Codex `e6ef968`), handed to Codex for C8 review/integration;
+nothing deployed or pushed. A7 `67dc6e1`, A8 `45540d7`, C6 `a0e388f`,
+C3 `e1d28c4`, C2 `649b53d`, A4 `d18ea11`, B2 `422fb9a`, then B7 + A8
+facility scope + A4 restore verifier + C6 per facility `8210fa9`.
 Migrations 0150–0156. Handoff, shared-file list and remaining Codex-area
 failures: `docs/requests/claude-final-handoff.md`. External gates (sandbox,
 licensed content, ClamAV, target-region drills, owner review, language
@@ -218,6 +218,6 @@ review) stay open and are named in each package's state.
   loopback-only fetch targets and no redirects. See INTERFACES.md. Continuing
   remaining clinical/foundation/recovery/release packages, without shared cutover.
 - 2026-10-21 Claude (integration/complete-hms): A3, A5, A6, B1, B6, B8, C1, A1, C4 and C8 finished;
-  all 24 packages engineering-done. Final code commit 26ae041, evidence on candidate 491c924
+  all 24 packages engineering-done. Final code commit 1dc3a42, evidence on candidate c985abe
   (docs/clinical-final/EVIDENCE_INDEX.md), handoff in docs/clinical-final/HANDOFF.md. Migrations
   0159-0160. Nothing merged, pushed or deployed; those await the owner.

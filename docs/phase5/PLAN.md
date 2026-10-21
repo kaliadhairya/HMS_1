@@ -1,6 +1,6 @@
 # Phase 5: revenue cycle (plan)
 
-Branch `phase5/revenue-cycle`, cut from `integration/phase2-phase3` (01c19aa).
+Branch `phase5/revenue-cycle`, cut from `integration/phase2-phase3` (816367e).
 Worktree `../HMS_1-phase5`. Migrations 0070–0089. Agent: Claude.
 Tests: databases `hms_p5_*`, backend 5032, Vite 5204.
 

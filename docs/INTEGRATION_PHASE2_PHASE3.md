@@ -1,7 +1,7 @@
 # Integration: Phase 2 + Phase 3
 
-Branch `integration/phase2-phase3`, cut from `phase2/patient-journey` (64db139) with
-`phase3/medication-safety` (a359c9e) merged into it. Neither source branch was changed.
+Branch `integration/phase2-phase3`, cut from `phase2/patient-journey` (87546a5) with
+`phase3/medication-safety` (0da8bff) merged into it. Neither source branch was changed.
 Not deployed.
 
 ## What the merge needed

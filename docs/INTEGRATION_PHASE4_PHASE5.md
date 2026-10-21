@@ -5,8 +5,8 @@ in `../HMS_1-phase4-phase5`. Both source branches are ancestors of the combined
 branch. The remaining feature and go-live gaps belong to the owner. **No shared
 application deployment or shared `hms` migration was performed.**
 
-Source commits: Phase 4 `3eb076e`, Phase 5 `36a1fac`. Merge commits:
-`5424925` and `44905ca`. Application regression commit: `247b8a2`; final verification tooling: `7f9c2eb`.
+Source commits: Phase 4 `26872c1`, Phase 5 `b7ceb7a`. Merge commits:
+`a4bf566` and `e683439`. Application regression commit: `9ddb542`; final verification tooling: `6c71d62`.
 Only `AGENTS.md` conflicted; both phases' records were retained. Source
 worktrees and the main checkout remain unchanged.
 

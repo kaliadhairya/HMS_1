@@ -1,7 +1,7 @@
 # Phase 6 review findings for clinical completion
 
-Source reviewed: `phase6/interop-ops` (`acc1c5b`, completion base `c9940c8`).
-Original `HMS_1-phase6` is unchanged. Reviewed fixes so far: `9efb0de`.
+Source reviewed: `phase6/interop-ops` (`e215653`, completion base `87b5833`).
+Original `HMS_1-phase6` is unchanged. Reviewed fixes so far: `ddf70c7`.
 
 | Finding | Impact | Action/owner |
 |---|---|---|
@@ -16,7 +16,7 @@ Original `HMS_1-phase6` is unchanged. Reviewed fixes so far: `9efb0de`.
 | P6-R09 | Recovery accepts absent journal checks or unmeasured latest RPO | B6 Codex: pending fail-closed verification/drills; B7 waits for explicit B6-ready commit |
 
 Phase 4 analyzer ingestion contract v1 is preserved by the bridge. Updated
-device acceptance at **92765a8** passed 12/12, including actual HL7 and ASTM
+device acceptance at **9a2ad7f** passed 12/12, including actual HL7 and ASTM
 clinical writes, held results, actual DB actor, multigroup IDs and MLLP
 replacement. Restricted-runtime device custody passes 9/9 on each PG engine.
 Audit Object Lock passed 5/5 using a separate throwaway MinIO
@@ -28,7 +28,7 @@ actual drills remain open. Regional RPO/RTO, old-writer fencing, current
 security and delivered-effect reconciliation belong to Claude B7 after B6
 is reviewed and committed. Missing hospital/region evidence stays visible.
 
-Newer B6 core handoff **a59850b** supersedes the pending-core notes above:
+Newer B6 core handoff **a757ac5** supersedes the pending-core notes above:
 encrypted snapshot logical restores pass 7/7 on each engine and isolated
 physical drills pass on both. Complete document versions and final release
 evidence remain open; this does not claim regional recovery validation.

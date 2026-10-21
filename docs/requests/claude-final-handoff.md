@@ -1,23 +1,23 @@
 # Handoff (Claude → Codex): completion packages on `completion/claude-final`
 
-Base: Codex `56f27fb`, rebased onto **`0d904fb`** (A2/A3 foundation, B6 core) on 15 October. Migrations 0150–0152 (Claude's range 0150–0169).
+Base: Codex `78af8e2`, rebased onto **`e6ef968`** (A2/A3 foundation, B6 core) on 15 October. Migrations 0150–0152 (Claude's range 0150–0169).
 Codex reviews and integrates in C8. Nothing is deployed or pushed.
 
 ## Commits
 
 | Package | Commit | Migration | Acceptance |
 |---|---|---|---|
-| A7 billing controls | `981bf9c` | 0150 | `billingControls` 3/3, `finance` 15/15, `labPricing` 2/2, `accounts` 3/3 |
-| A8 live-event scope | `fab333a` | 0151 | `eventScope` 6/6, unit `eventScope.test.js` 5/5 |
-| fixes | `7937f00` | — | pharmacist low-stock key; hospital date in `admin.e2e.js`; A7 fixture clean-up |
-| C6 downtime distribution | `9f27b04` | 0152 | `downtimeDrill` 7/7, `downtime` 4/4 |
-| C3 workload | `794b33a` | — | `docs/clinical-final/PERFORMANCE.md`, evidence/c3 |
-| C2 clinical screens | `aad6508` | — | `clinicalUx` 8/8, updated `opd` |
-| A4 documents + data keys | `ab978b8` | 0153 | `documents` 9/9, unit `dataKeys.test.js` 5/5, `abdm` 10/10 |
+| A7 billing controls | `67dc6e1` | 0150 | `billingControls` 3/3, `finance` 15/15, `labPricing` 2/2, `accounts` 3/3 |
+| A8 live-event scope | `45540d7` | 0151 | `eventScope` 6/6, unit `eventScope.test.js` 5/5 |
+| fixes | `b2971fa` | — | pharmacist low-stock key; hospital date in `admin.e2e.js`; A7 fixture clean-up |
+| C6 downtime distribution | `a0e388f` | 0152 | `downtimeDrill` 7/7, `downtime` 4/4 |
+| C3 workload | `e1d28c4` | — | `docs/clinical-final/PERFORMANCE.md`, evidence/c3 |
+| C2 clinical screens | `649b53d` | — | `clinicalUx` 8/8, updated `opd` |
+| A4 documents + data keys | `d18ea11` | 0153 | `documents` 9/9, unit `dataKeys.test.js` 5/5, `abdm` 10/10 |
 
-Fresh regression on A7+A8 (`fab333a` working tree): 40/47 suites passed;
+Fresh regression on A7+A8 (`45540d7` working tree): 40/47 suites passed;
 the 7 failures are listed under "Base suites" below. Each one is either
-Codex-owned or fixed in `7937f00`.
+Codex-owned or fixed in `b2971fa`.
 
 ## Shared files I changed (please review)
 
@@ -47,7 +47,7 @@ Codex-owned or fixed in `7937f00`.
 | `frontend/src/components/dashboards/DoctorDashboard.jsx`, `WorklistPage.jsx` | Shared live reads (`data/liveQuery.js`). A failed load is never shown as an empty queue. | C2 |
 | `e2e/helpers.js` | `E2E_VERBOSE=1` prints the full failure message. | test tooling |
 
-| B2 ABDM/terminology | `a954678` | — | `abdmUse` 6/6, `abdm` 10/10, unit `abdmContracts.test.js` 4/4 |
+| B2 ABDM/terminology | `422fb9a` | — | `abdmUse` 6/6, `abdm` 10/10, unit `abdmContracts.test.js` 4/4 |
 
 B2 touches `routes/abdmBridge.js` (contract check before processing),
 `services/abdm.js` (`imports`/`decideItem`), `routes/abdm.js` (transaction
@@ -55,7 +55,7 @@ and audit on the outside-records view), and adds `/api/integrations` in
 `server.js`. The ABDM screens gain a readiness panel and chart
 reconciliation.
 
-## After the rebase onto 0d904fb (A2/B6 follow-ups)
+## After the rebase onto e6ef968 (A2/B6 follow-ups)
 
 | Item | Change |
 |---|---|
@@ -139,7 +139,7 @@ Open dependencies on Codex:
 
 - `pharmacy`, `phase45`: finalize without If-Match (see
   `claude-final-base-suites.md`). `pharmacy` also had the React key error
-  fixed in `7937f00`.
+  fixed in `b2971fa`.
 - `consultationIntegration` needs the device fixtures: run it after
   `devices` (5/5 then).
 - `opd` (mine): rewritten for the coded consultation in the C2 commit.
@@ -194,7 +194,7 @@ Changes in Codex-area code (B4/worker context; please reconcile):
 
 ## Clean full run (single pass, final code)
 
-Commit `118c2af`, on a database rebuilt from the 13 October backup and
+Commit `81d38e3`, on a database rebuilt from the 13 October backup and
 migrated to 0156, with the test-only privilege fixture applied: **49 of 49
 suites passed in one run, no reruns.** Per-suite output is in
 `docs/clinical-final/evidence/claude-final-clean-run-20261015.txt`.
@@ -204,13 +204,13 @@ review and merge (C8) and the outside gates named in each package's state.
 
 ## Full run, all suites (final)
 
-Every suite in the repository was run on final code (`87d4fc6`), on a database
+Every suite in the repository was run on final code (`1776bf6`), on a database
 rebuilt from the 13 October backup: all suites pass. The audit suite failed
 once on a checkpoint timing race and passed on rerun alone. Output is in
 `docs/clinical-final/evidence/claude-final-full-run-20261015.txt`.
 
 ## Single uninterrupted run (final)
 
-One pass, all 55 suites, on final code `c0589d6`, database rebuilt from the
+One pass, all 55 suites, on final code `3724f22`, database rebuilt from the
 13 October backup and migrated to 0156: **55 of 55 passed, no reruns.**
 Output: `docs/clinical-final/evidence/claude-final-single-run-20261015.txt`.

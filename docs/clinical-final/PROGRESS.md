@@ -69,7 +69,7 @@ hospital/target-environment gates remain tracked in the plan.
   offers explicit comparison and reuses the original request during reconcile.
 - Prepared Node 24/PostgreSQL 18 artifacts with distinct new volumes and WAL
   archive initialization. CI publishes verification metadata without deploying.
-- Owner authorized the Claude/Codex split, recorded at ef97130.
+- Owner authorized the Claude/Codex split, recorded at 9d820fa.
 
 Latest observed checks: consultation notes 7/7 (including real save/sign race
 and browser response loss, plus Quick Consult save/sign), clinical exchange 8/8 (three official validator
@@ -86,7 +86,7 @@ Older OPD fixtures assume the retired free-text writer/unversioned notes and
 need to exercise the governed workflow. A5/B1 are partial packages; shared
 observations, full continuity integration and consent/ABDM delivery remain.
 
-## Third increment — recovery artifacts (a59850b)
+## Third increment — recovery artifacts (a757ac5)
 
 B6 core now produces encrypted, snapshot-consistent logical exports with
 signed manifests and verifies them by restoring into a separate disposable
@@ -104,9 +104,9 @@ The recovery lab uses isolated resources and does not contact integrations.
   or production capacity.
 - Status is `VERIFIED_DATABASE`, not complete clinical protection. Exact
   private document version verification still depends on A4; B7 target-region
-  evidence remains separate. B7 engineering may build on a59850b.
+  evidence remains separate. B7 engineering may build on a757ac5.
 
-## Fourth increment — facility authority and scoped receipts (584e169)
+## Fourth increment — facility authority and scoped receipts (1dc70b6)
 
 Migrations 0113–0122 add explicit clinical facilities, initial single-hospital
 ownership backfills, UUID identity mappings, memberships, professional roles
@@ -160,7 +160,7 @@ full clinical regression with explicit synthetic approvals. RLS is not a claim
 that every old route/worker has finished its integration. Local tests use the
 disposable databases and do not establish hospital approvals or a deployment.
 
-## Fifth increment — complete analyzer safety and machine custody (92765a8)
+## Fifth increment — complete analyzer safety and machine custody (9a2ad7f)
 
 B3 engineering acceptance is complete. HL7 and ASTM bridge tests pass 12/12;
 restricted-role intake tests pass 9/9 on each PostgreSQL engine. Machine
@@ -184,7 +184,7 @@ A2 still needs remaining clinical action guards, facility configuration/switch
 and safe runtime provisioning; A3 v2 adapters and final C4 regression remain.
 
 
-## Increment 6 — canonical clinical API and signed document authority (9408731)
+## Increment 6 — canonical clinical API and signed document authority (660ee19)
 
 - Migrations 0127–0130 preserve exact numeric/UUID identity mappings, immutable
   public and legacy identities, aggregate versions, visit patient/doctor/facility

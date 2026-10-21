@@ -7,7 +7,7 @@
 Owner-authorized scope (14 October 2026): hazard register, acceptance gates,
 staff rehearsals and staged rollout preparation. Branch
 `phase7/clinical-readiness`, worktree `../HMS_1-phase7`, from integrated
-Phase 4/5 base `2a07ca8`. No clinical deployment is authorized by this package.
+Phase 4/5 base `0a90745`. No clinical deployment is authorized by this package.
 
 1. Trace every blueprint finding and current release risk to a control,
    acceptance test, procedure and accountable hospital role.

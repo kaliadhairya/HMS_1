@@ -1,6 +1,6 @@
 # Regional recovery and fencing (completion B7)
 
-Builds on Codex's B6 database recovery core (`a59850b`,
+Builds on Codex's B6 database recovery core (`a757ac5`,
 `docs/clinical-final/RECOVERY.md`):
 - encrypted logical backups;
 - full-invariant restore validation;

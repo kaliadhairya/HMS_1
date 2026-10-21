@@ -1,6 +1,6 @@
 # Analyzer contract and device custody evidence
 
-Engineering candidate: **92765a8**, migrations through 0126. Package B3 is
+Engineering candidate: **9a2ad7f**, migrations through 0126. Package B3 is
 engineering-complete; B4 still needs the remaining named-owner/versioned
 departmental delivery and restore-suppression integration. Final candidate
 regression remains C4. No production deployment or real-device validation is

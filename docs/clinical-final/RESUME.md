@@ -41,8 +41,8 @@ Mission Control is excluded. No shared deployment or hospital pilot.
 
 ## Current state
 
-Branch `completion/clinical-final`, reviewed code **9408731**. Earlier foundations
-584e169; analyzer engineering 92765a8; recovery core a59850b. Migrations through
+Branch `completion/clinical-final`, reviewed code **660ee19**. Earlier foundations
+1dc70b6; analyzer engineering 9a2ad7f; recovery core a757ac5. Migrations through
 **0130** have been applied to private test databases. Never edit applied SQL;
 continue in 0131–0149. Claude owns 0150–0169 and its separate worktree.
 
@@ -52,7 +52,7 @@ The new clinical API supports patient/encounter/document identity, reads and
 commands, shared immutable signing/amendments and generated contracts/client.
 It is not the full blueprint 3.10 adapter surface yet.
 
-Final focused checks on code 9408731: v2 core 8/8, v2 documents 7/7, legacy
+Final focused checks on code 660ee19: v2 core 8/8, v2 documents 7/7, legacy
 clinical documents 8/8, consultation/API/browser 7/7, document recovery/browser
 4/4; strict types, generation check, build and patch check pass. Registry SQL
 5/5 and signature guards 7/7 previously passed each engine, with 5900 matching
@@ -91,7 +91,7 @@ function bodies and final fresh/upgrade schemas and run the full regression.
    Complete A1 traceability, C1 full acceptance matrix, C4 regression, C5 hazard
    verifier, C7 rollout gates and C8 reviewed consolidation/handoff.
 
-Claude's worktree `../HMS_1-claude-final` was last observed at **f7f73c2**.
+Claude's worktree `../HMS_1-claude-final` was last observed at **00156d9**.
 Read only. Inspect its current handoff/commits before assuming package state.
 No Claude completion commits have been merged here yet. Coordinate through
 `docs/requests/`; the foundation follow-up includes the new v2/scoped-command

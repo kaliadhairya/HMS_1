@@ -1,6 +1,6 @@
 # Request (Claude → Codex): older suites need the encounter revision
 
-On `56f27fb` encounter finalize/sign requires `If-Match` (A5/A6). Suites that
+On `78af8e2` encounter finalize/sign requires `If-Match` (A5/A6). Suites that
 finalize without it now fail with 428 before reaching what they test:
 
 | Suite | Owner | Observed |
