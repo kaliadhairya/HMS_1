@@ -47,7 +47,11 @@ export default function RestFormPrintPage() {
 
   const handlePrint = () => {
     if (!data) return;
-    const { name, empNo, attendedDateStr, attendedTimeStr, fromDate, toDate, fitDate, extendedDate, formDate } = getDisplayValues(data, patientInfo);
+    // The print window shares this page's origin: every stored text is escaped before it becomes HTML.
+    const esc = (v) => (typeof v === 'string' ? v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]) : v);
+    const safeData = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, esc(v)]));
+    const safePatient = patientInfo && { ...patientInfo, name: esc(patientInfo.name), empNumber: esc(patientInfo.empNumber) };
+    const { name, empNo, attendedDateStr, attendedTimeStr, fromDate, toDate, fitDate, extendedDate, formDate } = getDisplayValues(safeData, safePatient);
 
     const printWindow = window.open('', '_blank');
     printWindow.document.write(`
@@ -104,16 +108,16 @@ export default function RestFormPrintPage() {
           </div>
 
           <div class="booksr">
-            <div>Sr. No. &nbsp;<span class="val val-red" style="min-width:110px">${data.sr_no || '........'}</span></div>
+            <div>Sr. No. &nbsp;<span class="val val-red" style="min-width:110px">${safeData.sr_no || '........'}</span></div>
           </div>
 
           <div class="row">
             <span class="lbl">श्री / Shri.&nbsp;</span>
             <span class="val" style="flex:1; min-width:160px">${name}</span>
             <span class="lbl">&nbsp;&nbsp;कार्यरत / working as&nbsp;</span>
-            <span class="val" style="min-width:120px">${data.working_as || '............'}</span>
+            <span class="val" style="min-width:120px">${safeData.working_as || '............'}</span>
             <span class="lbl">&nbsp;में / in&nbsp;</span>
-            <span class="val" style="min-width:120px">${data.department || '............'}</span>
+            <span class="val" style="min-width:120px">${safeData.department || '............'}</span>
           </div>
 
           <div class="row">
@@ -139,7 +143,7 @@ export default function RestFormPrintPage() {
 
           <div class="row">
             <span class="lbl">He has been advised rest/light duty for&nbsp;</span>
-            <span class="val" style="min-width:110px">${data.advised_days || '............'}</span>
+            <span class="val" style="min-width:110px">${safeData.advised_days || '............'}</span>
             <span class="lbl">&nbsp;दोनो / Days</span>
           </div>
 
@@ -150,7 +154,7 @@ export default function RestFormPrintPage() {
 
           <div class="row">
             <span class="lbl">से वह बीमार as he/she is suffering from&nbsp;</span>
-            <span class="val" style="flex:1; min-width:80px">${data.disease || '............'}</span>
+            <span class="val" style="flex:1; min-width:80px">${safeData.disease || '............'}</span>
             <span class="lbl">&nbsp;बीमारी (Disease)</span>
           </div>
 

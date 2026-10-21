@@ -36,10 +36,12 @@ function splitPatientName(rawName) {
 }
 
 // POST /api/patients — Register new patient
+// Stored as typed: React and the PDF writer escape on display, and HTML-escaping here saved
+// "D'Souza" as "D&#x27;Souza" on screens, printouts and ABDM exports.
 router.post('/', [
-  body('name').trim().escape(),
-  body('phoneNumber').optional({ checkFalsy: true }).trim().escape(),
-  body('empNumber').optional({ checkFalsy: true }).trim().escape(),
+  body('name').trim(),
+  body('phoneNumber').optional({ checkFalsy: true }).trim(),
+  body('empNumber').optional({ checkFalsy: true }).trim(),
 ], protect, restrictTo('super_admin', 'admin', 'receptionist', 'lab_technician'), async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -230,12 +232,12 @@ router.get('/', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', '
 
 // POST /api/patients/hms — Full HMS Patient Registration
 router.post('/hms', [
-  body('name').trim().escape(),
-  body('first_name').optional({ checkFalsy: true }).trim().escape(),
-  body('last_name').optional({ checkFalsy: true }).trim().escape(),
-  body('phoneNumber').optional({ checkFalsy: true }).trim().escape(),
-  body('empNumber').optional({ checkFalsy: true }).trim().escape(),
-  body('relationship').optional({ checkFalsy: true }).trim().escape(),
+  body('name').trim(),
+  body('first_name').optional({ checkFalsy: true }).trim(),
+  body('last_name').optional({ checkFalsy: true }).trim(),
+  body('phoneNumber').optional({ checkFalsy: true }).trim(),
+  body('empNumber').optional({ checkFalsy: true }).trim(),
+  body('relationship').optional({ checkFalsy: true }).trim(),
   body('email').optional({ checkFalsy: true }).isEmail().normalizeEmail(),
 ], protect, restrictTo('super_admin', 'doctor', 'receptionist'), async (req, res) => {
   const errors = validationResult(req);

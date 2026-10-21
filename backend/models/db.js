@@ -26,6 +26,11 @@ const sequelize = new Sequelize(
       max: 3,
     },
     logging: false, // Set to console.log in dev if debugging
+    // A runaway query or an abandoned transaction must not hold a pooled connection forever.
+    dialectOptions: {
+      statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT_MS) || 120000,
+      idle_in_transaction_session_timeout: Number(process.env.DB_IDLE_TX_TIMEOUT_MS) || 300000,
+    },
   }
 );
 

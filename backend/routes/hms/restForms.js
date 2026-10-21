@@ -125,12 +125,20 @@ router.get('/:id', protect, restrictTo('super_admin', 'admin', 'doctor'), async 
 });
 
 // Update a Rest Form
-router.put('/:id', protect, checkPermission('consultation', 'write'), async (req, res) => {
+// Only the certificate's own fields change; its patient, author and serial number are fixed.
+// The editor must be the author (or an administrator) and hold signing privilege for the patient.
+const EDITABLE = ['attended_date', 'advised_days', 'from_date', 'to_date', 'disease', 'fit_date', 'working_as', 'department', 'extended_date'];
+const formPatient = async (req) => (await RestForm.findByPk(req.params.id))?.patient_id;
+const isAdmin = (user) => ['admin', 'super_admin'].includes(user.role);
+
+router.put('/:id', protect, checkPermission('consultation', 'write'), requireClinicalPrivilege('CLINICAL_SIGN', { patientIdFrom: formPatient }), async (req, res) => {
   try {
     const restForm = await RestForm.findByPk(req.params.id);
     if (!restForm) return res.status(404).json({ error: 'Rest form not found' });
+    if (restForm.doctor_id !== req.user.id && !isAdmin(req.user)) return res.status(403).json({ error: 'Only the doctor who wrote this rest form can change it' });
 
-    await restForm.update(req.body);
+    const changes = Object.fromEntries(EDITABLE.filter((k) => k in req.body).map((k) => [k, req.body[k]]));
+    await restForm.update(changes);
     logAction(req.user.id, 'UPDATE_REST_FORM', 'RestForms', restForm.id, 'old', 'new', req.ip);
     
     res.json(restForm);

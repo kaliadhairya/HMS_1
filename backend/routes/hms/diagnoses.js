@@ -11,11 +11,13 @@ async function encounterStatus(encounterId) {
   return rows && rows.length ? rows[0].STATUS : null;
 }
 
-// Add diagnosis to encounter
-router.post('/', protect, checkPermission('consultation', 'write'), requireClinicalPrivilege('CHART_READ', { patientIdFrom: async (req) => {
-  const [rows] = await sequelize.query('SELECT PATIENT_ID FROM HMS_ENCOUNTERS WHERE ID = :id', { replacements: { id: Number(req.body.encounter_id) } });
+async function encounterPatient(encounterId) {
+  const [rows] = await sequelize.query('SELECT PATIENT_ID FROM HMS_ENCOUNTERS WHERE ID = :id', { replacements: { id: Number(encounterId) } });
   return rows && rows.length ? (rows[0].patient_id ?? rows[0].PATIENT_ID) : null;
-} }), async (req, res) => {
+}
+
+// Add diagnosis to encounter
+router.post('/', protect, checkPermission('consultation', 'write'), requireClinicalPrivilege('CHART_READ', { patientIdFrom: (req) => encounterPatient(req.body.encounter_id) }), async (req, res) => {
   try {
     const { encounter_id, icd10_code, icd10_description, diagnosis_type, status, clinical_notes, original_text } = req.body;
     if (!encounter_id || !icd10_code) return res.status(400).json({ error: 'encounter_id and icd10_code are required' });
@@ -51,7 +53,11 @@ router.post('/', protect, checkPermission('consultation', 'write'), requireClini
 });
 
 // Remove diagnosis from encounter
-router.delete('/:id', protect, checkPermission('consultation', 'write'), async (req, res) => {
+// Removing a diagnosis needs the same privilege and care relationship as adding one.
+router.delete('/:id', protect, checkPermission('consultation', 'write'), requireClinicalPrivilege('CHART_READ', { patientIdFrom: async (req) => {
+  const diagnosis = await Diagnosis.findByPk(req.params.id);
+  return diagnosis ? encounterPatient(diagnosis.encounter_id) : null;
+} }), async (req, res) => {
   try {
     const diagnosis = await Diagnosis.findByPk(req.params.id);
     if (!diagnosis) return res.status(404).json({ error: 'Diagnosis not found' });
