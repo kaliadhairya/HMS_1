@@ -67,4 +67,6 @@ router.post('/admissions/:id/discharge',restrictTo('doctor'),handle((r,res,t)=>A
 const Laboratory=require('../services/laboratoryV2.cts');
 router.post('/lab-orders',restrictTo('doctor'),handle((r,res,t)=>Laboratory.create(r.body,r.user,t),{command:true,status:201}));
 router.post('/lab-orders/:id/cancel',restrictTo('doctor','lab_technician'),handle((r,res,t)=>Laboratory.cancel(r.params.id,r.get('if-match'),r.user,t),{command:true}));
+const Billing=require('../services/billingV2.cts');
+router.post('/payments',restrictTo('super_admin','admin','receptionist'),handle((r,res,t)=>Billing.startPayment(r.body,r.user,t),{command:true,status:201}));
 module.exports=router;
