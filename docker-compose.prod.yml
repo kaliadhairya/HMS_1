@@ -227,6 +227,10 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?Set GRAFANA_PASSWORD in .env}
       - GF_USERS_ALLOW_SIGN_UP=false
+      # PostgreSQL data source: the restricted runtime login, not the superuser.
+      - HMS_GRAFANA_DB_NAME=hms
+      - HMS_GRAFANA_DB_USER=${RUNTIME_DB_USER:-hms_runtime}
+      - HMS_GRAFANA_DB_PASSWORD=${RUNTIME_DB_PASSWORD:?Set RUNTIME_DB_PASSWORD in .env (16+ characters)}
     volumes:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./deploy/grafana/dashboards:/etc/grafana/dashboards:ro

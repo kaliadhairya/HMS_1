@@ -12,11 +12,11 @@ datasources:
     type: postgres
     access: proxy
     url: db:5432
-    database: ${DB_NAME:-hms}
-    user: ${DB_USER:-postgres}
+    user: ${HMS_GRAFANA_DB_USER}
     secureJsonData:
-      password: ${DB_PASSWORD:-postgres}
+      password: ${HMS_GRAFANA_DB_PASSWORD}
     jsonData:
+      database: ${HMS_GRAFANA_DB_NAME}
       sslmode: 'disable'
       maxOpenConns: 5
       maxIdleConns: 2
