@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    // Same Docker project as the running app, so Jenkins updates it instead of clashing with it.
+    environment {
+        COMPOSE_PROJECT_NAME = 'hms_1'
+    }
+
     stages {
         stage('Checkout') {
             steps {
