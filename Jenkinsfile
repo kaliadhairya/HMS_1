@@ -37,6 +37,16 @@ pipeline {
                     // Owner's choice (2026-10-22): deploy the development stack as before, with a
                     // database backup first. Secure production releases use scripts/release.sh.
                     if (!isUnix()) { error('Deploys run on the Linux host.') }
+                    // The app's secrets live on this machine, never in git: $JENKINS_HOME/hms.env
+                    // (a copy of the project's .env) becomes the build's .env.
+                    sh '''
+                        if [ -f "$JENKINS_HOME/hms.env" ]; then
+                          cp "$JENKINS_HOME/hms.env" .env
+                        elif [ -z "$JWT_SECRET" ]; then
+                          echo "Missing $JENKINS_HOME/hms.env - copy the project's .env there (see README)."
+                          exit 1
+                        fi
+                    '''
                     sh '''
                         if docker ps --format '{{.Names}}' | grep -qx hms-db; then
                           bash scripts/backup-db.sh docker-compose.yml
