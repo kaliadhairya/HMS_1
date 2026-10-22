@@ -2,6 +2,7 @@ apiVersion: 1
 
 datasources:
   - name: Prometheus
+    uid: hms-prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
@@ -9,7 +10,8 @@ datasources:
     editable: true
 
   - name: PostgreSQL (HMS)
-    type: postgres
+    uid: hms-postgres
+    type: grafana-postgresql-datasource
     access: proxy
     url: db:5432
     user: ${HMS_GRAFANA_DB_USER}

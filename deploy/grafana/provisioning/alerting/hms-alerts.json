@@ -1,0 +1,410 @@
+{
+  "apiVersion": 1,
+  "groups": [
+    {
+      "orgId": 1,
+      "name": "HMS",
+      "folder": "Hospital Management System",
+      "interval": "1m",
+      "rules": [
+        {
+          "uid": "hms-down",
+          "title": "HMS is down",
+          "condition": "C",
+          "for": "1m",
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "annotations": {
+            "summary": "The HMS server is not answering."
+          },
+          "labels": {
+            "service": "hms"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "hms-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "max(up{job=\"hms-backend\"}) or vector(0)",
+                "instant": true,
+                "range": false
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "lt",
+                      "params": [
+                        1
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "uid": "hms-errors",
+          "title": "Server errors jumped",
+          "condition": "C",
+          "for": "2m",
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "annotations": {
+            "summary": "More than 10 server errors in 5 minutes."
+          },
+          "labels": {
+            "service": "hms"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "hms-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "sum(increase(hms_http_requests_total{code=~\"5..\"}[5m])) or vector(0)",
+                "instant": true,
+                "range": false
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        10
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "uid": "hms-slow",
+          "title": "HMS is slow",
+          "condition": "C",
+          "for": "5m",
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "annotations": {
+            "summary": "5% of requests take longer than 1 second."
+          },
+          "labels": {
+            "service": "hms"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "hms-prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "histogram_quantile(0.95, sum(rate(hms_http_request_duration_seconds_bucket[5m])) by (le))",
+                "instant": true,
+                "range": false
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        1
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "uid": "hms-backup",
+          "title": "Database backup copy is behind",
+          "condition": "C",
+          "for": "5m",
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "annotations": {
+            "summary": "No database change has been copied to the backup archive for 15 minutes."
+          },
+          "labels": {
+            "service": "hms"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "hms-postgres",
+              "model": {
+                "refId": "A",
+                "rawSql": "SELECT COALESCE(EXTRACT(EPOCH FROM now() - last_archived_time), 999999) AS v FROM pg_stat_archiver",
+                "rawQuery": true,
+                "editorMode": "code",
+                "format": "table"
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        900
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "uid": "hms-backup-fail",
+          "title": "Database backup copy is failing",
+          "condition": "C",
+          "for": "2m",
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "annotations": {
+            "summary": "The last attempt to copy database changes to the backup archive failed."
+          },
+          "labels": {
+            "service": "hms"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "hms-postgres",
+              "model": {
+                "refId": "A",
+                "rawSql": "SELECT COUNT(*) AS v FROM pg_stat_archiver WHERE last_failed_time > COALESCE(last_archived_time, 'epoch')",
+                "rawQuery": true,
+                "editorMode": "code",
+                "format": "table"
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "uid": "hms-critical-lab",
+          "title": "Critical lab value not acknowledged",
+          "condition": "C",
+          "for": "0s",
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "annotations": {
+            "summary": "A dangerous lab result has gone unacknowledged for over 15 minutes."
+          },
+          "labels": {
+            "service": "hms"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "hms-postgres",
+              "model": {
+                "refId": "A",
+                "rawSql": "SELECT COUNT(*) AS v FROM hms_lab_critical_tasks WHERE state = 'OPEN' AND created_at < now() - interval '15 minutes'",
+                "rawQuery": true,
+                "editorMode": "code",
+                "format": "table"
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "uid": "hms-lab-stuck",
+          "title": "Lab results stuck",
+          "condition": "C",
+          "for": "10m",
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "annotations": {
+            "summary": "Lab tests ordered over 4 hours ago still have no result."
+          },
+          "labels": {
+            "service": "hms"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "hms-postgres",
+              "model": {
+                "refId": "A",
+                "rawSql": "SELECT COUNT(*) AS v FROM hms_investigation_order_items WHERE lab_state IS NOT NULL AND lab_state NOT IN ('RELEASED','CANCELLED') AND created_at < now() - interval '4 hours'",
+                "rawQuery": true,
+                "editorMode": "code",
+                "format": "table"
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "uid": "hms-db-connections",
+          "title": "Database connections nearly used up",
+          "condition": "C",
+          "for": "5m",
+          "noDataState": "OK",
+          "execErrState": "Error",
+          "annotations": {
+            "summary": "Over 85% of database connections are in use."
+          },
+          "labels": {
+            "service": "hms"
+          },
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "hms-postgres",
+              "model": {
+                "refId": "A",
+                "rawSql": "SELECT COUNT(*) * 100.0 / current_setting('max_connections')::int AS v FROM pg_stat_activity",
+                "rawQuery": true,
+                "editorMode": "code",
+                "format": "table"
+              }
+            },
+            {
+              "refId": "C",
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        85
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
