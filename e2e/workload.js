@@ -20,12 +20,13 @@ const fs = require('fs');
 const os = require('os');
 const { execFileSync } = require('child_process');
 const { io } = require('../frontend/node_modules/socket.io-client');
-const { API, sql, creds, requireThrowawayDb } = require('./helpers');
+const { API, sql, creds, requireThrowawayDb, syntheticClinician, inCare } = require('./helpers');
 
 requireThrowawayDb();
 const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt; };
 const MINUTES = Number(arg('minutes', 10));
 const SCALE = Number(arg('scale', 1));
+if (!Number.isFinite(MINUTES) || MINUTES <= 0 || !Number.isFinite(SCALE) || SCALE <= 0) throw new Error('minutes and scale must be positive finite numbers');
 const OUT = arg('out', `workload-${Date.now()}.json`);
 const API_PID = arg('api-pid', null);
 const ORIGIN = API.replace(/\/api$/, '');
@@ -37,7 +38,6 @@ const CATCH_UP = 5;
 const VISITS_PER_HOUR = (1000 * 2) / 8;
 const IPD_VITALS_PER_HOUR = (200 * 6) / 24;
 const run = crypto.randomUUID().slice(0, 6);
-const today = new Date().toISOString().slice(0, 10);
 
 const samples = new Map(); // op -> { kind, ms: [], errors: {status: n} }
 function record(op, kind, ms, status) {
@@ -82,6 +82,9 @@ async function ensureAccounts() {
         FROM hms_users u, generate_series(1, $3) g WHERE u.username = $1
       ON CONFLICT (username) DO NOTHING`, [username, role, n]);
     made[role] = (await sql("SELECT id, username FROM hms_users WHERE username LIKE $1 ORDER BY id", [`load\\_${role}\\_%`])).slice(0, n);
+    if (['doctor', 'nurse', 'lab_technician', 'pharmacist'].includes(role)) {
+      for (const account of made[role]) await syntheticClinician(account.id, role);
+    }
     // Doctors also need a doctor record (department, consulting slots) to take tokens.
     if (role === 'doctor') await sql(`INSERT INTO hms_doctors (user_id, department_id, speciality, consulting_days, slot_start_time, slot_end_time, slot_duration_mins, fee, is_active)
       SELECT u.id, d.department_id, d.speciality, d.consulting_days, d.slot_start_time, d.slot_end_time, d.slot_duration_mins, d.fee, 'Y'
@@ -101,13 +104,15 @@ async function login(username, password) {
 }
 
 (async () => {
+  const [facility] = await sql('SELECT timezone FROM hms_facilities WHERE id=hms_initial_facility()');
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: facility.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const accounts = await ensureAccounts();
   const users = [];
   for (const [role, n] of Object.entries(USERS)) {
     const [, password] = creds(role === 'admin' ? 'admin' : role);
     for (let i = 0; i < n; i++) {
       const acct = accounts[role][i % accounts[role].length];
-      users.push({ role, id: acct.id, token: await login(acct.username, password), sequence: null });
+      users.push({ role, id: acct.id, username: acct.username, token: await login(acct.username, password), sequence: null });
     }
   }
   const byRole = (role) => users.filter((u) => u.role === role);
@@ -146,7 +151,7 @@ async function login(username, password) {
       await sleep(Math.random() * CATCH_UP * 1000 / SCALE);
       while (Date.now() < end) {
         const r = await call('every page: event catch-up', 'read', 'GET', `/events${u.sequence == null ? '' : `?after_sequence=${u.sequence}`}`, u.token);
-        if (r.status === 200) u.sequence = r.data.next_sequence ?? u.sequence;
+        if (r.status === 200) u.sequence = r.data.next_sequence ?? r.data.latest_sequence ?? u.sequence;
         await sleep(jitter(CATCH_UP / SCALE));
       }
     })());
@@ -154,6 +159,7 @@ async function login(username, password) {
 
   // One outpatient visit, start to signature.
   let visits = 0; let visitsSigned = 0;
+  const journeyErrors = [];
   async function visit(n) {
     const desk = pick('receptionist'); const nurse = pick('nurse'); const doc = pick('doctor');
     const reg = await call('front desk: register patient', 'command', 'POST', '/patients/hms', desk.token, {
@@ -162,10 +168,11 @@ async function login(username, password) {
     });
     const patientId = reg.data?.data?.id ?? reg.data?.id;
     if (!patientId) return;
+    await inCare(patientId, doc.username);
     const token = await call('front desk: issue token', 'command', 'POST', '/hms/tokens', desk.token, { patient_id: patientId, doctor_id: doc.id });
     if (token.status !== 201 && token.status !== 200) return;
     await sleep(jitter(2));
-    await call('nurse: record vitals', 'command', 'POST', '/hms/vitals', nurse.token, { patient_id: patientId, bp_systolic: 120, bp_diastolic: 80, pulse: 76, temperature: 37, spo2: 98 });
+    await call('nurse: record vitals', 'command', 'POST', '/hms/vitals', nurse.token, { patient_id: patientId, bp_systolic: 120, bp_diastolic: 80, pulse: 76, temperature: 37, temp_unit: 'C', spo2: 98 });
     await call('doctor: patient chart', 'read', 'GET', `/patients/hms/${patientId}`, doc.token);
     await call('doctor: latest vitals', 'read', 'GET', `/hms/vitals/latest/${patientId}`, doc.token);
     const enc = await call('doctor: open consultation', 'command', 'POST', '/hms/encounters', doc.token, { patient_id: patientId });
@@ -187,7 +194,8 @@ async function login(username, password) {
     while (Date.now() < end) {
       await until(exp(3600 / (VISITS_PER_HOUR * SCALE)));
       if (Date.now() >= end) break;
-      visits++; tasks.push(visit(++n).catch(() => {}));
+      visits++; const visitNumber = ++n;
+      tasks.push(visit(visitNumber).catch(error => journeyErrors.push({ visit: visitNumber, error: error.message })));
     }
   })());
   if (admissions.length) tasks.push((async () => {
@@ -231,7 +239,9 @@ async function login(username, password) {
   const total = ops.reduce((a, o) => a + o.ok + o.errors, 0);
   const report = {
     run, started_minutes: MINUTES, scale: SCALE, users: users.length, visits_started: visits, visits_signed: visitsSigned,
+    coverage: { active_admissions_available: admissions.length, inpatient_vital_writes: samples.get('nurse: inpatient vitals')?.ms.length || 0 },
     requests: total, requests_per_second: round(total / (MINUTES * 60)),
+    journey_errors: journeyErrors,
     targets: { read_p95_ms: 250, command_p95_ms: 500, event_p95_ms: 2000 },
     ops,
     event_freshness_ms: { n: fr.length, p50: pct(fr, 50), p95: pct(fr, 95), p99: pct(fr, 99), max: fr[fr.length - 1] ?? null },
@@ -254,5 +264,14 @@ async function login(username, password) {
   ops.forEach((o) => console.log(line(o)));
   console.log(`event freshness ms: ${JSON.stringify(report.event_freshness_ms)}`);
   console.log(`backlog: ${JSON.stringify(report.backlog)}`);
-  process.exit();
+  const failures = ops.filter(o => o.errors || (o.ok && o.p95 > (o.kind === 'read' ? report.targets.read_p95_ms : report.targets.command_p95_ms))).map(o => o.op);
+  if (visitsSigned !== visits) failures.push('Incomplete outpatient journeys');
+  if (visits === 0) failures.push('No outpatient journey was exercised; increase the duration');
+  if (!fr.length) failures.push('No live-event freshness sample was observed');
+  else if (report.event_freshness_ms.p95 > report.targets.event_p95_ms) failures.push('Live-event freshness');
+  report.failures = failures;
+  report.pass = failures.length === 0;
+  fs.writeFileSync(OUT, JSON.stringify(report, null, 2));
+  if (failures.length) console.error('Workload failed: ' + failures.join('; '));
+  process.exit(failures.length ? 1 : 0);
 })().catch((err) => { console.error(err); process.exit(1); });

@@ -43,15 +43,32 @@ function idleLimitMinutes(role) {
   return Number.isFinite(minutes) && minutes > 0 ? minutes : null;
 }
 
+// Read identity, session and facility authorization facts in one current snapshot.
+async function readSessionPrincipal(sessionId, userId) {
+  const [row] = await sequelize.query(`SELECT u.id,u.username,u.name,u.role,u.department_id,u.first_login,u.is_active,u.locked_until,
+    s.id AS session_id,s.facility_id,s.revoked_at,s.revoked_reason,s.expires_at<=now() AS expired,
+    EXTRACT(EPOCH FROM (now()-s.last_seen_at))*1000 AS idle_ms,f.timezone,
+    (f.status='ACTIVE' AND EXISTS(SELECT 1 FROM hms_facility_memberships m
+      WHERE m.user_id=u.id AND m.facility_id=s.facility_id AND m.revoked_at IS NULL
+      AND m.valid_from<=now() AND (m.valid_until IS NULL OR m.valid_until>now()))) AS membership_valid,
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('module',p.module,'read',p.can_read='Y',
+      'write',p.can_write='Y','edit',p.can_edit='Y','delete',p.can_delete='Y'))
+      FROM hms_permissions p WHERE p.role=u.role),'[]'::jsonb) AS permissions
+    FROM hms_users u LEFT JOIN hms_sessions s ON s.id=:sessionId AND s.user_id=u.id
+    LEFT JOIN hms_facilities f ON f.id=s.facility_id WHERE u.id=:userId`,
+  { replacements: { sessionId, userId }, type: QueryTypes.SELECT });
+  return row || null;
+}
+
 // Returns null when the session is usable, otherwise why it is not.
 // An idle session is revoked here, so it cannot come back.
-async function checkSession(sessionId, userId, role) {
-  const rows = await sequelize.query(
+async function checkSession(sessionId, userId, role, snapshot) {
+  const rows = snapshot === undefined ? await sequelize.query(
     `SELECT revoked_at, revoked_reason, expires_at <= now() AS expired,
             EXTRACT(EPOCH FROM (now() - last_seen_at)) * 1000 AS idle_ms
        FROM hms_sessions WHERE id = :sessionId AND user_id = :userId`,
     { replacements: { sessionId, userId }, type: QueryTypes.SELECT }
-  );
+  ) : snapshot?.session_id ? [snapshot] : [];
   const s = rows[0];
   if (!s) return 'Session not found. Please sign in.';
   if (s.revoked_at || s.REVOKED_AT) return 'Your session has ended. Please sign in again.';
@@ -123,6 +140,7 @@ module.exports = {
   sessionLengthMs,
   createSession,
   checkSession,
+  readSessionPrincipal,
   revokeSession,
   revokeUserSessions,
   setSessionCookie,

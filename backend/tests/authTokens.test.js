@@ -24,6 +24,21 @@ test('a valid session token is accepted', () => {
   assert.strictEqual(decoded.id, 7);
 });
 
+test('key reuse observes secret rotation immediately', () => {
+  const original = process.env.JWT_SECRET;
+  try {
+    const token = tokens.signSessionToken(user, sid);
+    assert.strictEqual(tokens.verifySessionToken(token).id, user.id);
+    process.env.JWT_SECRET = crypto.randomBytes(32).toString('hex');
+    assert.throws(() => tokens.verifySessionToken(token));
+    const rotated = tokens.signSessionToken(user, sid);
+    assert.strictEqual(tokens.verifySessionToken(rotated).id, user.id);
+    process.env.JWT_SECRET = original;
+    assert.strictEqual(tokens.verifySessionToken(token).id, user.id);
+    assert.throws(() => tokens.verifySessionToken(rotated));
+  } finally { process.env.JWT_SECRET = original; }
+});
+
 test('a session token without a session ID is rejected', () => {
   const noSid = jwt.sign({ id: 7, purpose: 'session' }, process.env.JWT_SECRET, { issuer: 'hms-backend', audience: 'hms-session' });
   assert.throws(() => tokens.verifySessionToken(noSid));

@@ -27,6 +27,17 @@ function getJwtSecret() {
   return secret;
 }
 
+let loadedSecret;
+let loadedKey;
+function getJwtKey() {
+  const secret = getJwtSecret();
+  if (secret !== loadedSecret) {
+    loadedKey = crypto.createSecretKey(Buffer.from(secret));
+    loadedSecret = secret;
+  }
+  return loadedKey;
+}
+
 // Called once at startup so a weak or published secret stops the server
 // instead of silently protecting nothing.
 function assertSecurityConfig() {
@@ -42,7 +53,7 @@ function signSessionToken(user, sessionId, facilityId) {
   if (!sessionId) throw new Error('A session token needs a session ID');
   return jwt.sign(
     { id: user.id, username: user.username, role: user.role, purpose: 'session', sid: sessionId,...(facilityId?{facility_id:facilityId}:{}) },
-    getJwtSecret(),
+    getJwtKey(),
     {
       algorithm: 'HS256',
       issuer: ISSUER,
@@ -54,7 +65,7 @@ function signSessionToken(user, sessionId, facilityId) {
 
 // Throws unless the token is a signed, unexpired session token.
 function verifySessionToken(token) {
-  const decoded = jwt.verify(token, getJwtSecret(), {
+  const decoded = jwt.verify(token, getJwtKey(), {
     algorithms: ALGORITHMS,
     issuer: ISSUER,
     audience: SESSION_AUDIENCE,
@@ -66,20 +77,20 @@ function verifySessionToken(token) {
 // Binds a reset token to the current password hash, so the token stops
 // working as soon as the password changes (single use).
 function passwordFingerprint(user) {
-  return crypto.createHmac('sha256', getJwtSecret()).update(String(user.password)).digest('base64url').slice(0, 22);
+  return crypto.createHmac('sha256', getJwtKey()).update(String(user.password)).digest('base64url').slice(0, 22);
 }
 
 function signPasswordResetToken(user) {
   return jwt.sign(
     { id: user.id, purpose: 'password_reset', pwf: passwordFingerprint(user) },
-    getJwtSecret(),
+    getJwtKey(),
     { algorithm: 'HS256', issuer: ISSUER, audience: RESET_AUDIENCE, expiresIn: '15m' }
   );
 }
 
 // Throws unless the token is a signed, unexpired password-reset token.
 function verifyPasswordResetToken(token) {
-  const decoded = jwt.verify(token, getJwtSecret(), {
+  const decoded = jwt.verify(token, getJwtKey(), {
     algorithms: ALGORITHMS,
     issuer: ISSUER,
     audience: RESET_AUDIENCE,

@@ -133,4 +133,11 @@ async function latestEventId() {
   const [row] = await sequelize.query('SELECT COALESCE(max(id), 0) AS id FROM hms_outbox WHERE delivery_sequence IS NOT NULL', { type: QueryTypes.SELECT });
   return Number(row.id);
 }
-module.exports = { publish, dispatchOnce, startOutboxDispatcher, eventsSince, latestEventId, latestSequence, eventsPage, allocateSequences };
+async function eventWatermarks() {
+  // Keep the indexed max lookups, but use one pool acquisition/round trip.
+  const [row] = await sequelize.query(`SELECT
+    (SELECT COALESCE(max(id),0) FROM hms_outbox WHERE delivery_sequence IS NOT NULL) AS id,
+    (SELECT COALESCE(max(delivery_sequence),0) FROM hms_outbox) AS sequence`, { type: QueryTypes.SELECT });
+  return { latest_id: Number(row.id), latest_sequence: Number(row.sequence) };
+}
+module.exports = { publish, dispatchOnce, startOutboxDispatcher, eventsSince, latestEventId, latestSequence, eventWatermarks, eventsPage, allocateSequences };

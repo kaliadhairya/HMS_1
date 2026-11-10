@@ -65,7 +65,7 @@ export default function PrescriptionPreviewPage() {
   };
 
   return (
-    <main>
+    <main className="prescription-preview">
     {/* Screen toolbar (hidden on print). Kept outside the sheet so the sheet's forced print colours do not apply to it. */}
     <div className="no-print" style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
@@ -104,8 +104,8 @@ export default function PrescriptionPreviewPage() {
         <p role="note" style={{border:'1px solid #555',padding:8}}>Historical prescription record. Review signed coded medication orders before dispensing or administering medicines.</p>
 
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0f4c81', paddingBottom: 20, marginBottom: 20 }}>
-          <div style={{ display: 'flex', gap: 15, alignItems: 'center' }}>
+        <div className="prescription-header" style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0f4c81', paddingBottom: 20, marginBottom: 20 }}>
+          <div className="prescription-brand" style={{ display: 'flex', gap: 15, alignItems: 'center' }}>
             <img src="/logo.png" alt="Logo" style={{ width: 60 }} />
             <div>
               <h1 style={{ margin: 0, color: '#000', fontSize: '24px' }}>{hosp.NAME || 'HMS HOSPITAL'}</h1>
@@ -124,7 +124,7 @@ export default function PrescriptionPreviewPage() {
           <span style={{ color: '#000' }}>{doctor?.role ? doctor.role.replace('_', ' ').toUpperCase() : 'DOCTOR'}</span>
         </div>
 
-        <div style={{ borderTop: '1px solid #ddd', borderBottom: '1px solid #ddd', padding: '10px 0', display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: 20, color: '#000' }}>
+        <div className="prescription-patient" style={{ borderTop: '1px solid #ddd', borderBottom: '1px solid #ddd', padding: '10px 0', display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: 20, color: '#000' }}>
           <div>
             <strong>{bi('patientName', 'Patient Name')}:</strong> {patient?.name} <br />
             <strong>{bi('ageGender', 'Age/Sex')}:</strong> {patient?.age} / {patient?.gender}
@@ -156,6 +156,7 @@ export default function PrescriptionPreviewPage() {
         </div>
 
         {/* Meds Table */}
+        <div className="prescription-medicines-scroll" role="region" aria-label="Prescribed medicines" tabIndex={0}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', marginBottom: 40, color: '#000' }}>
           <thead>
             <tr style={{ background: '#f5f5f5', textAlign: 'left' }}>
@@ -187,9 +188,10 @@ export default function PrescriptionPreviewPage() {
             )}
           </tbody>
         </table>
+        </div>
 
         {/* Footer info (QR & Sign) */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 60 }}>
+        <div className="prescription-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 60 }}>
           <div>
             {prescription.qr_data ? (
               <div style={{ border: '1px solid #ddd', padding: 10, display: 'inline-block' }}>
@@ -212,6 +214,20 @@ export default function PrescriptionPreviewPage() {
       </div>
 
       <style>{`
+        @media screen {
+          .prescription-preview { min-width: 0; max-width: 100%; }
+          .prescription-medicines-scroll { overflow-x: auto; max-width: 100%; }
+          .prescription-medicines-scroll table { min-width: 640px; }
+          .prescription-preview-sheet { overflow-wrap: anywhere; }
+          .prescription-header, .prescription-patient, .prescription-footer { flex-wrap: wrap; gap: 16px; }
+          .prescription-brand, .prescription-brand > div { min-width: 0; }
+          .prescription-brand img { flex-shrink: 0; }
+        }
+        @media screen and (max-width: 600px) {
+          .prescription-preview-page { padding: 16px 0 !important; }
+          .prescription-preview-sheet { padding: 16px !important; }
+          .prescription-header > div, .prescription-patient > div { max-width: 100%; text-align: left !important; }
+        }
         .prescription-preview-page,
         .prescription-preview-page * {
           color: #000 !important;

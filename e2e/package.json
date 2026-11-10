@@ -3,7 +3,8 @@
   "private": true,
   "description": "End-to-end workflow tests for HMS",
   "scripts": {
-    "test": "node opd.e2e.js && node pharmacy.e2e.js && node lab.e2e.js && node ipd.e2e.js && node admin.e2e.js"
+    "test": "node opd.e2e.js && node pharmacy.e2e.js && node lab.e2e.js && node ipd.e2e.js && node admin.e2e.js",
+    "test:load": "node workload.js"
   },
   "devDependencies": {
     "pg": "^8.11.3",

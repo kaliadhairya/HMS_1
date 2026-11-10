@@ -36,6 +36,9 @@ jobs:
       - name: Check Typed Clinical Contracts
         run: cd backend && npm run typecheck
 
+      - name: Check Backend Dependency Advisories
+        run: cd backend && npm audit --audit-level=moderate
+
       - name: Check the Published Contract and the Requirement Inventory
         run: |
           (cd backend && npm run contracts:check)
@@ -55,6 +58,9 @@ jobs:
         run: |
           cd frontend
           npm run build
+
+      - name: Check Frontend Dependency Advisories
+        run: cd frontend && npm audit --audit-level=moderate
 
   # Stage 1b: Database migrations build the same schema from scratch and from
   # a database created the pre-migration way, on each supported PostgreSQL.

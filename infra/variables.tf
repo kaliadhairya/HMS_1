@@ -1,4 +1,4 @@
-variable "aws_region" {
+  variable "aws_region" {
   type        = string
   default     = "ap-south-1"
   description = "AWS region for provisioning HMS infrastructure (ap-south-1 Mumbai)"

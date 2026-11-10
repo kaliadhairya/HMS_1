@@ -1,6 +1,6 @@
 const express = require('express');
 const { protect } = require('../middleware/auth');
-const { eventsSince, latestEventId, latestSequence, eventsPage } = require('../utils/outbox');
+const { eventsSince, eventWatermarks, eventsPage } = require('../utils/outbox');
 const router = express.Router();
 router.get('/', protect, async (req, res) => {
   const parse = (value) => value === undefined ? null : Number(value);
@@ -10,7 +10,7 @@ router.get('/', protect, async (req, res) => {
   if (after !== null && sequence !== null) return res.status(400).json({ success: false, message: 'Supply one cursor.' });
   try {
     if (sequence !== null) return res.json({ success: true, ...await eventsPage(req.user, sequence) });
-    res.json({ success: true, data: after === null ? [] : await eventsSince(req.user, after), latest_id: await latestEventId(), latest_sequence: await latestSequence() });
+    res.json({ success: true, data: after === null ? [] : await eventsSince(req.user, after), ...await eventWatermarks() });
   } catch (error) { res.status(500).json({ success: false, message: 'Could not load events.' }); }
 });
 module.exports = router;

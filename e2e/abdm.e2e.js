@@ -153,13 +153,22 @@ const receivedOn = (p, pred = () => true) => until(async () => (await mock(`/_mo
     await mock('/_mock/fail', { prefix: '/_mock/datapush/', count: 1, status: 503 });
     const tx = crypto.randomUUID();
     await call('/api/v3/hip/health-information/request', { transactionId: tx, hiRequest: { consent: { id: consentHip.consent_id }, dateRange: { from: new Date(Date.now() - 30 * 864e5).toISOString(), to: new Date().toISOString() }, dataPushUrl: `${MOCK}/_mock/datapush/${tx}`, keyMaterial: km.material } });
-    await until(async () => (await sql("SELECT attempts FROM hms_interface_messages WHERE system = 'abdm-datapush' AND endpoint LIKE $1 AND attempts >= 1", [`%${tx}`]))[0]);
+    // A claimed attempt can still be in flight. Wait until the deliberately
+    // rejected first send has completed and its safe retry is durably queued.
+    await until(async () => (await sql(`SELECT m.id FROM hms_interface_messages m
+      JOIN hms_interface_attempt_events e ON e.message_id=m.id
+      WHERE m.system='abdm-datapush' AND m.endpoint LIKE $1 AND m.status='Pending'
+      AND m.lease_token IS NULL AND e.phase='RETRY_WAIT' AND e.attempt_number=1`, [`%${tx}`]))[0]);
+    const firstAttempts = (await mock('/_mock/datapushes')).filter(p => p.name === tx);
+    assert(firstAttempts.length === 1 && !firstAttempts[0].accepted, 'the first send did not reach the expected rejected state');
+    const revocation = await call('/api/v3/consent/request/hip/notify', { notification: { status: 'REVOKED', consentId: consentHip.consent_id } });
+    assert(revocation.status === 202, `revocation ${revocation.status}`);
     const revokedAt = new Date();
-    await call('/api/v3/consent/request/hip/notify', { notification: { status: 'REVOKED', consentId: consentHip.consent_id } });
     const [msg] = await until(async () => sql("SELECT * FROM hms_interface_messages WHERE system = 'abdm-datapush' AND endpoint LIKE $1 AND status = 'Failed'", [`%${tx}`]).then((r) => r.length && r), 40000);
     assert(msg && /consent/.test(msg.last_error), `a waiting push was not stopped: ${JSON.stringify(msg)}`);
     const attempts = (await mock('/_mock/datapushes')).filter((p) => p.name === tx);
     assert(!attempts.some((p) => p.accepted), 'records were delivered');
+    assert(attempts.length === firstAttempts.length, 'the queued retry reached the external provider after revocation');
     assert(!attempts.some((p) => new Date(p.at) > revokedAt), 'a delivery was attempted after revocation');
     const after = crypto.randomUUID();
     await call('/api/v3/hip/health-information/request', { transactionId: after, hiRequest: { consent: { id: consentHip.consent_id }, dateRange: { from: new Date(Date.now() - 30 * 864e5).toISOString(), to: new Date().toISOString() }, dataPushUrl: `${MOCK}/_mock/datapush/${after}`, keyMaterial: km.material } });

@@ -2,7 +2,7 @@ const { validateToken } = require('../utils/identityClient');
 const { readTrustedContext } = require('./trustedContext');
 
 const { verifySessionToken } = require('../utils/authTokens');
-const { COOKIE_NAME, checkSession, readCookie } = require('../utils/sessions');
+const { COOKIE_NAME, checkSession, readSessionPrincipal, readCookie } = require('../utils/sessions');
 const { setActor } = require('../utils/auditContext');
 const { idempotencyGuard } = require('../utils/idempotency');
 
@@ -26,7 +26,6 @@ function failsCsrfCheck(req, source) {
 }
 
 const User = require('../models/User');
-const Permission = require('../models/Permission');
 
 const identityServiceEnabled = () => Boolean(process.env.INTERNAL_SERVICE_SECRET && process.env.IDENTITY_URL);
 
@@ -78,8 +77,11 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid or expired token.' });
     }
     {
-      const user = await User.findByPk(decoded.id);
-      if (!user || user.isActive === 0) {
+      // One current database snapshot supplies all local authentication facts.
+      // Nothing is cached across requests: revocation and permission changes
+      // are observed on the very next request.
+      const user = await readSessionPrincipal(decoded.sid, decoded.id);
+      if (!user || user.is_active !== 1) {
         return res.status(401).json({ success: false, message: 'User not found or deactivated.' });
       }
 
@@ -87,22 +89,15 @@ const protect = async (req, res, next) => {
         return res.status(423).json({ success: false, message: 'Account is temporarily locked.' });
       }
 
-      const sessionProblem = await checkSession(decoded.sid, user.id, user.role);
+      const sessionProblem = await checkSession(decoded.sid, user.id, user.role, user);
       if (sessionProblem) return res.status(401).json({ success: false, message: sessionProblem });
 
-      let permissions = [];
-      try {
-        const dbPerms = await Permission.findAll({ where: { role: user.role } });
-        permissions = dbPerms.map((p) => ({
-          module: p.module,
-          read: p.can_read === 'Y',
-          write: p.can_write === 'Y',
-          edit: p.can_edit === 'Y',
-          delete: p.can_delete === 'Y',
-        }));
-      } catch {
-        permissions = [];
-      }
+      if (decoded.facility_id !== undefined && decoded.facility_id !== null && String(decoded.facility_id) !== user.facility_id)
+        return res.status(403).json({success:false,code:'FACILITY_BINDING_MISMATCH',message:'Session facility context does not match.'});
+      if (!user.membership_valid)
+        return res.status(403).json({success:false,code:'FACILITY_MEMBERSHIP_REQUIRED',message:'Your facility membership is inactive or expired.'});
+      if (req.headers['x-facility-id'] && req.headers['x-facility-id'] !== user.facility_id)
+        return res.status(403).json({success:false,code:'FACILITY_BINDING_MISMATCH',message:'The supplied facility header differs from the verified session.'});
 
       req.user = {
         id: user.id,
@@ -112,9 +107,10 @@ const protect = async (req, res, next) => {
         department_id: user.department_id,
         first_login: user.first_login,
         sessionId: decoded.sid,
-        permissions,
+        permissions: user.permissions,
+        facilityId: user.facility_id,
+        facilityTimezone: user.timezone,
       };
-      await attachFacility(req,decoded.facility_id);
       setActor(req.user);
       return next();
     }
