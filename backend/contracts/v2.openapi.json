@@ -15079,6 +15079,9 @@
           },
           "follow_up_appointments": {
             "type": "string"
+          },
+          "clinical_override_reason": {
+            "type": "string"
           }
         },
         "required": [],

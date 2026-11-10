@@ -58,6 +58,7 @@ async function shipPending(sequelize, dir, { limit = 50, transport = s3() } = {}
   const scope = await scopeForDatabase(sequelize);
   const pending = await sequelize.query('SELECT * FROM hms_audit_checkpoint_shipments WHERE shipped_at IS NULL ORDER BY queued_at LIMIT :limit', { replacements: { limit }, type: QueryTypes.SELECT });
   let shipped = 0;
+  let failed = false;
   for (const p of pending) {
     try {
       const file = path.join(dir, p.file_name);
@@ -82,11 +83,12 @@ async function shipPending(sequelize, dir, { limit = 50, transport = s3() } = {}
       { replacements: { id: p.id, key: Key, version: stored.VersionId, mode: head.ObjectLockMode, until: head.ObjectLockRetainUntilDate } });
       shipped++;
     } catch (err) {
+      failed = true;
       await sequelize.query('UPDATE hms_audit_checkpoint_shipments SET attempts = attempts + 1, last_error = :e WHERE id = :id', { replacements: { id: p.id, e: String(err.message).slice(0, 500) } });
       break; // keep order; retry on the next round
     }
   }
-  return { shipped };
+  return { shipped, failed };
 }
 
 async function remoteList(transport) {
@@ -187,8 +189,9 @@ async function checkAndReport(sequelize, options = {}) {
 function startAuditShipper(sequelize) {
   const dir = process.env.AUDIT_CHECKPOINT_DIR;
   if (!configured() || !dir || process.env.AUDIT_SEALER === 'off') return () => {};
-  const ship = setInterval(() => shipPending(sequelize, dir).catch((err) => console.error('Audit shipping failed:', err.message)), SHIP_EVERY_MS);
-  const check = setInterval(() => checkAndReport(sequelize).catch((err) => console.error('Audit store check failed:', err.message)), CHECK_EVERY_MS);
+  const health = require('./workerHealthState');
+  const ship = setInterval(() => shipPending(sequelize, dir).then(result => result.failed ? health.failure('audit_shipper', new Error('Shipment failed')) : health.success('audit_shipper')).catch((err) => { health.failure('audit_shipper', err); console.error('Audit shipping failed:', err.message); }), SHIP_EVERY_MS);
+  const check = setInterval(() => checkAndReport(sequelize).then(result => result.problems.length ? health.failure('audit_store_check', new Error('Audit protection problems')) : health.success('audit_store_check')).catch((err) => { health.failure('audit_store_check', err); console.error('Audit store check failed:', err.message); }), CHECK_EVERY_MS);
   ship.unref(); check.unref();
   return () => { clearInterval(ship); clearInterval(check); };
 }

@@ -212,9 +212,9 @@ export default function RestFormPrintPage() {
       </div>
 
       {/* Preview */}
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '30px 20px' }}>
+      <div className="rest-preview-scroll" role="region" aria-label="Rest form preview, scroll horizontally" tabIndex={0}>
         <div style={{
-          width: '210mm', background: '#fff', padding: '12mm 18mm',
+          width: '210mm', flex: '0 0 210mm', background: '#fff', padding: '12mm 18mm',
           boxShadow: '0 4px 25px rgba(0,0,0,0.25)',
           fontFamily: "'Noto Sans Devanagari', 'Times New Roman', serif",
           color: '#111', fontSize: '12pt', lineHeight: 1.5

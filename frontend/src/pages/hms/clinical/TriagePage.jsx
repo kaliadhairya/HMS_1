@@ -1,3 +1,4 @@
+import TableScroll from '../../../components/ui/TableScroll';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { ShieldAlert, Siren, TriangleAlert } from 'lucide-react';
@@ -110,7 +111,7 @@ export default function TriagePage() {
           {board === null && <p className="muted panel-pad">Loading…</p>}
           {board && board.length === 0 && <EmptyState icon={Siren} title="No open arrivals" description="Arrivals appear here until they are discharged or moved." />}
           {board && board.length > 0 && (
-            <table className="mini-table">
+            <TableScroll label="Triage arrivals"><table className="mini-table">
               <thead><tr><th>Acuity</th><th>Patient</th><th>Arrived</th><th>Complaint</th><th>Reassess</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {board.map((r) => (
@@ -129,7 +130,7 @@ export default function TriagePage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></TableScroll>
           )}
         </section>
       </main>

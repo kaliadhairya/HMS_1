@@ -88,6 +88,7 @@
 .status-success { background: var(--success-light); color: var(--success); border-color: var(--success-border); }
 .status-warning { background: var(--amber-light); color: var(--amber); border-color: var(--amber-border); }
 .status-danger { background: var(--red-light); color: var(--red); border-color: var(--red-border); }
+.downtime-warning { height: auto; min-height: 22px; white-space: normal; overflow-wrap: anywhere; }
 
 /* Row action trigger */
 .row-action { width: 32px; height: 32px; border: 1px solid transparent; }
@@ -297,3 +298,32 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .chart-tip { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; box-shadow: var(--shadow-lg); font-size: 0.8rem; }
 .chart-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 .chart-grid .span-all { grid-column: 1 / -1; }
+
+/* Responsive clinical tables and master/detail panels */
+.stack, .stack-sm { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.stack > *, .stack-sm > *, .panel, .card { min-width: 0; }
+.split-2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); }
+.kpi-strip { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.practitioner-layout { display: grid; gap: 16px; grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr); align-items: start; }
+.table-scroll-wrap, .table-scroll { min-width: 0; max-width: 100%; }
+.table-scroll { overflow-x: auto; }
+.table-scroll > .mini-table { min-width: 680px; }
+.table-scroll-hint { display: none; color: var(--text-secondary); font-size: .8rem; padding: 8px; margin: 0; }
+.referral-options { display: grid; gap: 12px; }
+.referral-option { display: flex; align-items: center; gap: 16px; text-align: left; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text-primary); cursor: pointer; }
+.referral-option:hover { background: var(--surface-2); }
+.referral-option span { display: grid; gap: 4px; }
+.referral-option small { color: var(--text-secondary); }
+.rest-preview-scroll { display: flex; justify-content: safe center; overflow-x: auto; max-width: 100%; padding: 30px 20px; }
+@media (max-width: 760px) {
+  .practitioner-layout { grid-template-columns: minmax(0, 1fr); }
+  .table-scroll-hint { display: block; }
+  .patient-banner { min-width: 0; }
+  .pb-identity, .pb-facts, .pb-alerts { min-width: 0; max-width: 100%; }
+}
+/* Keep off-screen table labels inside the table scrollport and wrap narrow headers. */
+.mini-table th, .mini-table td { position: relative; }
+@media (max-width: 760px) {
+  .panel-head { flex-wrap: wrap; }
+  .panel-head > * { min-width: 0; max-width: 100%; }
+}

@@ -12,7 +12,7 @@ const PATIENT_DATA_PREFIXES = [
   '/api/patients', '/api/hms/encounters', '/api/hms/prescriptions', '/api/hms/investigation-orders',
   '/api/hms/vitals', '/api/hms/rest-forms', '/api/hms/appointments', '/api/reports', '/api/pdf', '/api/ipd',
   '/api/lab', '/api/billing', '/api/doctor', '/api/receptionist', '/api/pharmacy/dispense',
-  '/api/pharmacy/prescriptions', '/api/fhir',
+  '/api/pharmacy/prescriptions', '/api/fhir', '/api/finance', '/api/triage', '/api/abdm',
 ];
 
 // A route that resolves the patient itself (FHIR) names it in res.locals.

@@ -77,7 +77,7 @@ async function pickPatient(page, query, name) {
       await page.getByRole('button', { name: 'Begin general registration' }).click();
       await page.getByLabel('First name').fill(GENERAL_FIRST);
       await page.getByLabel('Last name').fill(S);
-      await page.getByLabel('Age').fill('34');
+      await page.getByLabel('Age *', { exact: true }).fill('34');
       await page.getByLabel('Gender').selectOption('Female');
       await page.getByLabel('Primary mobile').fill(PHONE);
       await page.getByRole('button', { name: 'Complete registration' }).click();

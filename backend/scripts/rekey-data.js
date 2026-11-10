@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Re-encrypts stored personal data with the active data key (completion A4).
 //
-//   node scripts/rekey-data.js            # re-encrypt
-//   node scripts/rekey-data.js --dry-run  # only count what would change
+//   HMS_ALLOW_LEGACY_CBC=true node scripts/rekey-data.js            # re-encrypt
+//   HMS_ALLOW_LEGACY_CBC=true node scripts/rekey-data.js --dry-run  # only count what would change
 //
 // Converts values written by the earlier AES-CBC code and values under any
 // key other than the active one in HMS_DATA_KEYS. It is safe to stop and run

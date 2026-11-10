@@ -1,3 +1,4 @@
+import TableScroll from '../../components/ui/TableScroll';
 import {useEffect,useState} from 'react';
 import api from '../../api/axios';
 import {useAuth} from '../../context/AuthContext';
@@ -43,7 +44,7 @@ export default function FacilityPage(){
      <label>Valid until (UTC, optional)<input className="form-input" type="datetime-local" value={grant.valid_until} onChange={e=>setGrant({...grant,valid_until:e.target.value})}/></label>
      <label>Membership reason<textarea className="form-input" required minLength={10} value={grant.reason} onChange={e=>setGrant({...grant,reason:e.target.value})}/></label><button className="btn btn-primary">Grant membership</button>
     </fieldset></form>
-    <table className="mini-table"><thead><tr><th>Staff</th><th>Validity</th><th>State</th><th>Action</th></tr></thead><tbody>{members.map(m=><tr key={m.id}><td>{m.name}<br/>{m.username} · {m.role}</td><td>{m.valid_from} – {m.valid_until||'No expiry'}</td><td>{m.revoked_at?'Revoked':'Recorded'}</td><td>{!m.revoked_at&&<button disabled={disabled} onClick={()=>{setRevoke(m);setReason('');}}>Review revocation</button>}</td></tr>)}</tbody></table>
+    <TableScroll label="Facility memberships"><table className="mini-table"><thead><tr><th>Staff</th><th>Validity</th><th>State</th><th>Action</th></tr></thead><tbody>{members.map(m=><tr key={m.id}><td>{m.name}<br/>{m.username} · {m.role}</td><td>{m.valid_from} – {m.valid_until||'No expiry'}</td><td>{m.revoked_at?'Revoked':'Recorded'}</td><td>{!m.revoked_at&&<button disabled={disabled} onClick={()=>{setRevoke(m);setReason('');}}>Review revocation</button>}</td></tr>)}</tbody></table></TableScroll>
     {revoke&&<form className="stack" onSubmit={async e=>{e.preventDefault();if(await command.send(`/facilities/memberships/${revoke.id}/revoke`,{reason},revoke.revision))setRevoke(null);}}><label>Revocation reason<textarea className="form-input" required minLength={10} value={reason} onChange={e=>setReason(e.target.value)}/></label><button disabled={disabled}>Confirm membership revocation</button></form>}
    </section>
   </>}

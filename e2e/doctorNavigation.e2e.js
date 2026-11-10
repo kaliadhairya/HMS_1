@@ -29,6 +29,25 @@ const tag = crypto.randomUUID().slice(0, 6);
       assert(!errors.length, errors.join(' | '));
       await ctx.close();
     });
+    await step('Escape closes the referral dialog and the doctor sidebar remains navigable', async () => {
+      const { page, ctx } = await browserAs(browser, 'doctor');
+      try {
+        await page.goto(`${BASE}/doctor/dashboard`, { waitUntil: 'networkidle' });
+        await page.locator('.sidebar-nav a[href="/doctor/referrals"]').click();
+        const dialog = page.getByRole('dialog', { name: 'Select Referral Type' });
+        await dialog.waitFor();
+        await page.keyboard.press('Escape');
+        await dialog.waitFor({ state: 'hidden' });
+        const targets = ['/doctor/rest-forms', '/doctor/dashboard', '/hms/referrals', '/hms/triage',
+          '/hms/appointments', '/hms/patients/search', '/hms/patients/new', '/abdm/outside-records',
+          '/hms/adt', '/ipd/patients', '/ipd/requests', '/worklist', '/downtime'];
+        for (const target of targets) {
+          await page.goto(`${BASE}/doctor/dashboard`, { waitUntil: 'networkidle' });
+          await page.locator(`.sidebar-nav a[href="${target}"]`).first().click();
+          await page.waitForURL((url) => url.pathname === target, { timeout: 10000 });
+        }
+      } finally { await ctx.close(); }
+    });
   } finally {
     await browser.close();
   }

@@ -33,10 +33,10 @@ async function inCare(req) {
 router.use(protect);
 
 // M1
-router.get('/patients/:id/abha', restrictTo(...DESK, 'doctor'), handle('Could not load ABHA status', tx(async (req, t) => ({
+router.get('/patients/:id/abha', restrictTo(...DESK, 'doctor'), handle('Could not load ABHA status', tx(async (req, t) => { await inCare(req); return ({
   verified: await A.verifiedAbha(Number(req.params.id), t),
   verifications: await A.rows('SELECT id, purpose, method, login_hint, status, abha_number, abha_address, differences, requested_at, completed_at FROM hms_abha_verifications WHERE patient_id = :p ORDER BY requested_at DESC LIMIT 20', { p: Number(req.params.id) }, t),
-}))));
+}); })));
 router.post('/patients/:id/abha/otp', restrictTo(...DESK), handle('Could not start ABHA verification', (req) => A.startVerification({ ...req.body, patientId: Number(req.params.id) }, req.user), 201));
 router.post('/abha/verifications/:vid/verify', restrictTo(...DESK), handle('Could not verify the OTP', (req) => A.completeVerification(req.params.vid, req.body || {}, req.user)));
 router.get('/shares', restrictTo(...DESK), handle('Could not load shared profiles', tx((req, t) => A.rows(`SELECT * FROM hms_abdm_profile_shares WHERE (:s::text IS NULL OR status = :s) ORDER BY received_at DESC LIMIT 200`, { s: req.query.status === 'all' ? null : (req.query.status || 'Waiting') }, t))));

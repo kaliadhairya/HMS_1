@@ -52,15 +52,19 @@ const randomAbha = () => Array.from({ length: 14 }, (_, i) => (i === 0 ? 9 : Mat
   });
 
   await step('A newborn aged 0 is registered and linked to the mother as guardian', async () => {
-    const [mother] = await sql("SELECT id, name FROM hms_patients WHERE gender = 'Female' ORDER BY id LIMIT 1");
+    const createdMother = await call('POST', '/patients/hms', desk, {
+      patientType: 'other', name: `Synthetic Mother ${stamp()}`, age: 30, gender: 'Female', opdIndoor: 'OPD',
+      testDate: new Date().toISOString().slice(0, 10), phoneNumber: `7${String(Date.now()).slice(-9)}`,
+    });
+    assert(createdMother.status === 201, `mother registration ${createdMother.status} ${JSON.stringify(createdMother.data)}`);
+    const mother = createdMother.data.data;
     const r = await call('POST', '/patients/hms/newborn', nurse, { motherPatientId: mother.id, gender: 'Female' });
     assert(r.status === 201, `${r.status} ${JSON.stringify(r.data)}`);
     const [baby] = await sql('SELECT age, name, dob FROM hms_patients WHERE id = $1', [r.data.data.id]);
     assert(baby.age === 0 && baby.name === `Baby of ${mother.name}` && baby.dob, JSON.stringify(baby));
     const [link] = await sql('SELECT related_patient_id, relationship, is_guardian FROM hms_related_persons WHERE patient_id = $1', [r.data.data.id]);
     assert(link.related_patient_id === mother.id && link.relationship === 'Mother' && link.is_guardian, JSON.stringify(link));
-    const [male] = await sql("SELECT id FROM hms_patients WHERE gender = 'Male' ORDER BY id LIMIT 1");
-    assert((await call('POST', '/patients/hms/newborn', nurse, { motherPatientId: male.id })).status === 400, 'a male patient accepted as mother');
+    assert((await call('POST', '/patients/hms/newborn', nurse, { motherPatientId: ctx.temp.id })).status === 400, 'a male patient accepted as mother');
   });
 
   await step('Ordinary registration now accepts age 0', async () => {

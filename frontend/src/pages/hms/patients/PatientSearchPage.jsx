@@ -35,6 +35,7 @@ export default function PatientSearchPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchError, setSearchError] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [activeFilterCount, setActiveFilterCount] = useState(0);
@@ -48,9 +49,10 @@ export default function PatientSearchPage() {
       Object.entries(f).forEach(([k, v]) => { if (v) params.set(k, v); });
       const res = await api.get(`/patients/hms/search?${params.toString()}`);
       setResults(res.data.data || []);
+      setSearchError(false);
       setActiveFilterCount(Object.values(f).filter((v) => v && String(v).trim() !== '').length);
     } catch {
-      toast.error('Patient search failed.');
+      setSearchError(true);
     } finally {
       setLoading(false);
     }
@@ -299,6 +301,7 @@ export default function PatientSearchPage() {
             </div>
           )}
 
+          {searchError && <p role="alert" className="panel-pad">Patient search is unavailable. Previously loaded results may be out of date. <button type="button" className="btn btn-secondary btn-sm" onClick={() => searchPatients(query, filters)}>Retry</button></p>}
           <DataTable
             columns={columns}
             data={results}
@@ -307,7 +310,7 @@ export default function PatientSearchPage() {
             onRowClick={openProfile}
             rowLabel={(p) => `Open ${p.patient_name}, ${p.uhid}`}
             initialSorting={[{ id: 'registered', desc: true }]}
-            empty={hasCriteria ? (
+            empty={searchError ? <EmptyState icon={Search} title="Patient search unavailable" description="Retry when the service is available." /> : hasCriteria ? (
               <EmptyState
                 icon={Search}
                 title="No patients match"

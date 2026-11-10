@@ -599,6 +599,7 @@ export type Discharge = {
   "diet_lifestyle"?: string;
   "warning_signs"?: string;
   "follow_up_appointments"?: string;
+  "clinical_override_reason"?: string;
 };
 
 export type Admission = {

@@ -39,12 +39,31 @@ test('rotation: the new key writes, the old key still reads until removed', () =
   });
 });
 
-test('values written by the earlier AES-CBC code still open, from either earlier key', () => withEnv({ HMS_DATA_KEYS: `k1:${K1}`, ENCRYPTION_KEY: 'a-general-key-of-32-characters!!', AADHAAR_ENCRYPTION_KEY: K2 }, () => {
+test('values written by the earlier AES-CBC code open only when migration is explicitly enabled', () => withEnv({ HMS_DATA_KEYS: `k1:${K1}`, HMS_ALLOW_LEGACY_CBC: 'true', ENCRYPTION_KEY: 'a-general-key-of-32-characters!!', AADHAAR_ENCRYPTION_KEY: K2 }, () => {
   const general = legacyCbc('otp text', Buffer.from('a-general-key-of-32-characters!!', 'utf8'));
   const aadhaar = legacyCbc('987698769876', Buffer.from(K2, 'hex'));
   assert.equal(keys.decryptText(general, 'abdm.sms-text'), 'otp text');
   assert.equal(keys.decryptText(aadhaar, 'patient.aadhaar'), '987698769876');
   assert.equal(keys.needsRekey(aadhaar), true);
+}));
+
+test('legacy fallback rejects a wrong key with valid padding and refuses malformed plaintext', () => {
+  const correct = crypto.createHash('sha256').update('SYNTHETIC legacy key, no patient data').digest();
+  const iv = crypto.createHash('sha256').update('synthetic-iv-524').digest().subarray(0, 16);
+  const c = crypto.createCipheriv('aes-256-cbc', correct, iv);
+  const encoded = `${iv.toString('hex')}:${Buffer.concat([c.update('987698769876'), c.final()]).toString('hex')}`;
+  withEnv({ HMS_ALLOW_LEGACY_CBC: 'true', ENCRYPTION_KEY: 'a-general-key-of-32-characters!!', AADHAAR_ENCRYPTION_KEY: correct.toString('hex') }, () => {
+    assert.equal(keys.decryptText(encoded, 'patient.aadhaar'), '987698769876');
+    assert.throws(() => keys.decryptText(legacyCbc('bad aadhaar', correct), 'patient.aadhaar'), { code: 'DATA_INTEGRITY' });
+    assert.throws(() => keys.decryptText(encoded, 'unknown-purpose'), { code: 'DATA_INTEGRITY' });
+  });
+});
+
+test('legacy CBC is disabled by default and GCM remains readable', () => withEnv({ HMS_DATA_KEYS: `k1:${K1}`, HMS_ALLOW_LEGACY_CBC: undefined, AADHAAR_ENCRYPTION_KEY: K2 }, () => {
+  const legacy = legacyCbc('987698769876', Buffer.from(K2, 'hex'));
+  assert.throws(() => keys.decryptText(legacy, 'patient.aadhaar'), { code: 'LEGACY_CBC_DISABLED' });
+  const authenticated = keys.encryptText('987698769876', 'patient.aadhaar');
+  assert.equal(keys.decryptText(authenticated, 'patient.aadhaar'), '987698769876');
 }));
 
 test('documents: encrypted, bound to their record, and checked when opened', () => withEnv({ HMS_DATA_KEYS: `k1:${K1}` }, () => {

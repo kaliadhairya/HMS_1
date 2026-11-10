@@ -217,7 +217,7 @@ async function active(o, v, tx) {
   );
   if (o.admission_id) {
     const a = await one(
-      "SELECT status,patient_id FROM hms_admissions WHERE id=:id",
+      "SELECT status,patient_id FROM hms_admissions WHERE id=:id FOR KEY SHARE",
       { id: o.admission_id },
       tx,
     );

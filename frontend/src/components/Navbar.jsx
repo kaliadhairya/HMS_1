@@ -75,6 +75,15 @@ export default function Navbar() {
 
   useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
+  useEffect(() => {
+    if (!mobileOpen) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') { setMobileOpen(false); document.querySelector('.topbar-menu')?.focus(); }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [mobileOpen]);
+
   // Give the page's main region a stable target for the skip link. Runs after every render because
   // pages swap their <main> (loading -> loaded) without a route change.
   useEffect(() => {
@@ -138,7 +147,7 @@ export default function Navbar() {
   return (
     <Tooltip.Provider>
       <a href="#main" className="skip-link" onClick={skipToMain}>Skip to main content</a>
-      <aside className={`app-sidebar${mobileOpen ? ' is-open' : ''}`} aria-label="Main navigation">
+      <aside id="main-navigation" className={`app-sidebar${mobileOpen ? ' is-open' : ''}`} aria-label="Main navigation">
         <Link to={links[0]?.to || '/dashboard'} className="sidebar-brand">
           <img src="/logo.png?v=3" alt="" className="sidebar-logo" />
           <span className="sidebar-brand-text">
@@ -169,7 +178,7 @@ export default function Navbar() {
       {mobileOpen && <div className="app-scrim" onClick={() => setMobileOpen(false)} aria-hidden="true" />}
 
       <header className="app-topbar">
-        <button type="button" className="icon-btn topbar-menu" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
+        <button type="button" className="icon-btn topbar-menu" onClick={() => setMobileOpen(true)} aria-label="Open navigation" aria-expanded={mobileOpen} aria-controls="main-navigation">
           <Menu size={20} />
         </button>
 
@@ -185,7 +194,7 @@ export default function Navbar() {
           )}
         </div>
 
-        <button type="button" className="topbar-search" onClick={() => setPaletteOpen(true)}>
+        <button type="button" className="topbar-search" aria-label="Search patients and pages" onClick={() => setPaletteOpen(true)}>
           <Search size={16} aria-hidden="true" />
           <span>Search patients, pages…</span>
           <kbd className="kbd"><CommandIcon size={11} aria-hidden="true" />K</kbd>

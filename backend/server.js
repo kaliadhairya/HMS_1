@@ -380,7 +380,7 @@ async function start() {
   // Sockets live in this process, so their delivery and session checks run here.
   startOutboxDispatcher(io);
   startSocketSessionGuard(io);
-  if (role === 'all') startBackgroundWorkers(sequelize);
+  if (role === 'all') await startBackgroundWorkers(sequelize);
   else console.log('⚙️  Background workers run in a separate "node worker.js" process (HMS_PROCESS_ROLE=api)');
 }
 

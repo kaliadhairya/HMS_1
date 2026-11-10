@@ -41,7 +41,7 @@ export default function DowntimePage() {
 
         <section className="panel panel-pad stack-sm" aria-label="Downtime kit">
           <h2 className="panel-title"><FileClock size={16} aria-hidden="true" /> Emergency summary kit</h2>
-          {!status ? null : !status.configured ? <p className="status status-warning">Not set up: DOWNTIME_KIT_DIR and DOWNTIME_KIT_KEY are not configured on the server.</p> : (
+          {!status ? null : !status.configured ? <p className="status status-warning downtime-warning">Not set up: DOWNTIME_KIT_DIR and DOWNTIME_KIT_KEY are not configured on the server.</p> : (
             <p>
               {status.last ? <>Last made <strong>{when(status.last.generated_at)}</strong> for {status.last.patient_count} admitted patient(s). </> : 'No kit made yet. '}
               {status.stale ? <span className="status status-danger">Out of date</span> : <span className="status status-success">Current</span>}

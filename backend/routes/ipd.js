@@ -491,7 +491,7 @@ router.patch('/admissions/:id/discharge', protect, checkPermission('ipd', 'write
   } catch (err) {
     await t.rollback().catch(() => {});
     console.error(err);
-    if (err.status) return fail(res, err.status, err.message, err.code);
+    if (err.status) return res.status(err.status).json({ success: false, message: err.message, ...(err.code ? { code: err.code } : {}) });
     return fail(res, 500, 'Failed to discharge patient');
   }
 });

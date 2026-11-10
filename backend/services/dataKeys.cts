@@ -10,8 +10,8 @@
 //
 // Values written before this are AES-CBC without a key ID: ENCRYPTION_KEY
 // (utils/encryption.js) and AADHAAR_ENCRYPTION_KEY (models/Patient.js).
-// They still decrypt, are reported as legacy, and scripts/rekey-data.js
-// re-encrypts them. In production HMS refuses to start without HMS_DATA_KEYS.
+// Reading them requires HMS_ALLOW_LEGACY_CBC=true for a controlled migration;
+// scripts/rekey-data.js re-encrypts them. Normal runtime rejects them.
 const crypto = require('node:crypto');
 
 type Key = { id: string; key: Buffer };
@@ -93,15 +93,35 @@ function legacyKeys(): Buffer[] {
   if (/^[0-9a-fA-F]{64}$/.test(aadhaar)) out.push(Buffer.from(aadhaar, 'hex'));
   return out;
 }
-function openLegacy(value: string): Buffer {
+function validLegacyPlaintext(plain: Buffer, purpose: string): boolean {
+  let text: string;
+  try { text = new TextDecoder('utf-8', { fatal: true }).decode(plain); } catch { return false; }
+  // PEM is the only supported legacy payload that can contain line breaks.
+  const controls = purpose === 'abdm.hiu-private-key' ? /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\ufffd]/u : /[\u0000-\u001f\u007f-\u009f\ufffd]/u;
+  if (!text || controls.test(text)) return false;
+  if (purpose === 'patient.aadhaar') return /^\d{12}$/.test(text);
+  if (purpose === 'abdm.sms-text') return /\botp\b/i.test(text);
+  if (purpose === 'abdm.hiu-private-key') {
+    if (!/^-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----[\s\S]+-----END (?:[A-Z ]+ )?PRIVATE KEY-----\s*$/.test(text)) return false;
+    try { crypto.createPrivateKey(text); return true; } catch { return false; }
+  }
+  return false;
+}
+function openLegacy(value: string, purpose: string): Buffer {
+  if (process.env.HMS_ALLOW_LEGACY_CBC !== 'true') {
+    throw Object.assign(new Error('Legacy CBC decryption is disabled; migrate the value using an explicitly authorized rekey process'), { code: 'LEGACY_CBC_DISABLED' });
+  }
   const [ivHex, ctHex] = value.split(':');
+  const candidates: Buffer[] = [];
   for (const key of legacyKeys()) {
     try {
       const d = crypto.createDecipheriv('aes-256-cbc', key, Buffer.from(ivHex, 'hex'));
-      return Buffer.concat([d.update(Buffer.from(ctHex, 'hex')), d.final()]);
+      const plain = Buffer.concat([d.update(Buffer.from(ctHex, 'hex')), d.final()]);
+      if (validLegacyPlaintext(plain, purpose) && !candidates.some((candidate) => candidate.equals(plain))) candidates.push(plain);
     } catch { /* try the next legacy key */ }
   }
-  throw Object.assign(new Error('A legacy encrypted value could not be decrypted with ENCRYPTION_KEY or AADHAAR_ENCRYPTION_KEY'), { code: 'DATA_KEY_MISSING' });
+  if (candidates.length === 1) return candidates[0];
+  throw Object.assign(new Error('Legacy encrypted value failed validation or has ambiguous plaintext; manual reconciliation is required'), { code: 'DATA_INTEGRITY' });
 }
 
 function openText(value: string | null | undefined, purpose: string): Opened | null {
@@ -111,7 +131,7 @@ function openText(value: string | null | undefined, purpose: string): Opened | n
     const [, keyId, iv, tag, ct] = v.split(':');
     return { plain: unseal(keyId, unb64(iv), unb64(tag), unb64(ct), purpose), keyId, legacy: false };
   }
-  if (/^[0-9a-f]{32}:[0-9a-f]+$/i.test(v)) return { plain: openLegacy(v), keyId: 'legacy-cbc', legacy: true };
+  if (/^[0-9a-f]{32}:[0-9a-f]+$/i.test(v)) return { plain: openLegacy(v, purpose), keyId: 'legacy-cbc', legacy: true };
   throw Object.assign(new Error('Not an encrypted value'), { code: 'DATA_FORMAT' });
 }
 function decryptText(value: string | null | undefined, purpose: string): string | null {

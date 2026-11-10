@@ -111,6 +111,14 @@ services:
       HMS_DOCUMENT_DIR: /app/private-documents
       # Documents are not available without a virus scanner (A4): set CLAMAV_HOST to the scanner.
       HMS_REQUIRE_SCANNER: "true"
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      HMS_WORKER_USER_ID: ${HMS_WORKER_USER_ID:-}
+      AUDIT_WORM_BUCKET: ${AUDIT_WORM_BUCKET:-}
+      AUDIT_WORM_ENDPOINT: ${AUDIT_WORM_ENDPOINT:-}
+      AUDIT_WORM_REGION: ${AUDIT_WORM_REGION:-ap-south-1}
+      AUDIT_WORM_ACCESS_KEY: ${AUDIT_WORM_ACCESS_KEY:-}
+      AUDIT_WORM_SECRET_KEY: ${AUDIT_WORM_SECRET_KEY:-}
       UPLOAD_DIR: ./uploads
       MAX_FILE_SIZE_MB: 5
       RATE_LIMIT_WINDOW_MS: 900000

@@ -92,7 +92,7 @@ router.post('/', protect, restrictTo('super_admin', 'doctor', 'nurse'), requireC
 // The normalized observation tables are canonical. This legacy endpoint keeps
 // the established response shape while projecting the shared chart.
 // GET /api/hms/vitals/latest/:patient_id
-router.get('/latest/:patient_id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse'), async (req, res) => {
+router.get('/latest/:patient_id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse'), (req, res, next) => ['doctor', 'nurse'].includes(req.user.role) ? requireClinicalPrivilege('CHART_READ', { patientIdFrom: r => r.params.patient_id })(req, res, next) : next(), async (req, res) => {
   try {
     const [rows] = await sequelize.query(`
       SELECT v.id,v.patient_id,v.encounter_id AS reference_id,'OPD'::text AS encounter_type,
@@ -116,7 +116,7 @@ router.get('/latest/:patient_id', protect, restrictTo('super_admin', 'admin', 'd
 });
 
 // GET /api/hms/vitals/history/:patient_id
-router.get('/history/:patient_id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
+router.get('/history/:patient_id', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), (req, res, next) => ['doctor', 'nurse'].includes(req.user.role) ? requireClinicalPrivilege('CHART_READ', { patientIdFrom: r => r.params.patient_id })(req, res, next) : next(), async (req, res) => {
   try {
     const [rows] = await sequelize.query(`
       SELECT v.id,v.patient_id,v.encounter_id AS reference_id,'OPD'::text AS encounter_type,

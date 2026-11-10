@@ -29,11 +29,15 @@ async function facilities(): Promise<Array<{ id: string; timezone: string }>> {
 
 // Runs fn(facilityId) once per active facility, each in that facility's context.
 async function forEachFacility(label: string, fn: (facilityId: string) => Promise<unknown>): Promise<void> {
-  const user = workerUser();
-  for (const f of await facilities()) {
-    const context = { requestId: `worker-${label}-${Date.now()}`, userId: user, sessionId: null, facilityId: f.id, facilityTimezone: f.timezone };
-    await storage.run(context, () => fn(f.id));
-  }
+  const health = require('../utils/workerHealthState');
+  try {
+    const user = workerUser();
+    for (const f of await facilities()) {
+      const context = { requestId: `worker-${label}-${Date.now()}`, userId: user, sessionId: null, facilityId: f.id, facilityTimezone: f.timezone };
+      await storage.run(context, () => fn(f.id));
+    }
+    health.success(label);
+  } catch (error) { health.failure(label, error); throw error; }
 }
 
 module.exports = { forEachFacility, workerUser, facilities };

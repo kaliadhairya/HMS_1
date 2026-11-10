@@ -1,3 +1,4 @@
+import TableScroll from '../../../components/ui/TableScroll';
 import { useEffect, useState } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import api from "../../../api/axios";
@@ -270,7 +271,7 @@ export default function MedicationNursingPage() {
             Generate authorized occurrences
           </button>
         </form>
-        <table className="mini-table">
+        <TableScroll label="Medication administration"><table className="mini-table">
           <thead>
             <tr>
               <th>Patient</th>
@@ -321,7 +322,7 @@ export default function MedicationNursingPage() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></TableScroll>
         {selected && form && (
           <section className="panel" style={{ padding: 16 }}>
             <h2>

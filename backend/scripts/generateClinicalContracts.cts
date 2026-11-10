@@ -61,7 +61,7 @@ const schemas:Record<string,Schema>={
  Appointment:object({id:uuid,version:integer,patient_id:uuid,doctor_id:uuid,department_id:nullable(uuid),appointment_date:{type:'string',format:'date'},slot_start:nullable(text),slot_end:nullable(text),appt_type:nullable(text),status:text}),
  AdmissionCreate:object({patient_id:uuid,bed_id:uuid,admitting_doctor_id:uuid,department:text,admission_type:text,expected_discharge_date:text},['patient_id','bed_id']),
  AdmissionTransfer:object({to_bed_id:uuid,reason:text}),
- Discharge:object({final_diagnosis:text,course_in_hospital:text,condition_at_discharge:text,advice_on_discharge:text,chief_complaint:text,comorbidities:text,allergies:text,history_of_illness:text,investigations:text,discharge_medications:text,diet_lifestyle:text,warning_signs:text,follow_up_appointments:text},[]),
+ Discharge:object({final_diagnosis:text,course_in_hospital:text,condition_at_discharge:text,advice_on_discharge:text,chief_complaint:text,comorbidities:text,allergies:text,history_of_illness:text,investigations:text,discharge_medications:text,diet_lifestyle:text,warning_signs:text,follow_up_appointments:text,clinical_override_reason:text},[]),
  Admission:object({id:uuid,version:integer,patient_id:uuid,bed_id:nullable(uuid),status:text,admission_date:instant}),
  DischargedAdmission:object({id:uuid,version:integer,patient_id:uuid,bed_id:nullable(uuid),status:text,admission_date:instant,summary_id:{type:['integer','string']},clinical_document_id:uuid,signature_digest:text,discharge_date:instant}),
  LabOrderCreate:object({patient_id:uuid,encounter_id:uuid,test_version_ids:{type:'array',items:uuid},priority:text,urgency:text,clinical_notes:text},['patient_id','encounter_id','test_version_ids']),

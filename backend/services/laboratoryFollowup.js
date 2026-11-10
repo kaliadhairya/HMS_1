@@ -135,6 +135,14 @@ async function verified(result, item, order, user, tx) {
     tx,
   );
   if (!match.critical) return null;
+  // Discharge locks its admission FOR UPDATE before checking all of this
+  // patient's critical tasks. Hold a conflicting lock until this task commits,
+  // including when the laboratory order originated outside the admission.
+  await C.q(
+    "SELECT id FROM hms_admissions WHERE patient_id=:patient AND facility_id=:facility AND status='Active' ORDER BY id FOR KEY SHARE",
+    { patient: order.patient_id, facility: order.facility_id },
+    tx,
+  );
   let steps = [];
   if (p.escalation_policy_id) {
     const ep = await C.one(

@@ -1,3 +1,4 @@
+import TableScroll from '../../../components/ui/TableScroll';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { BadgeCheck, CircleSlash, ShieldAlert, Stethoscope } from 'lucide-react';
@@ -69,14 +70,14 @@ export default function PractitionersPage() {
         <PageHeader title="Practitioners" description="Record professional qualifications, verify them independently, then approve separate facility-specific clinical privileges." />
         {command.message && <p role="status">{command.message}</p>}
         {command.uncertain && <button className="btn btn-secondary" disabled={command.busy} onClick={() => command.reconcile().then(confirmed)}>Reconcile original request</button>}
-        <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'minmax(260px, 1fr) minmax(0, 2fr)', alignItems: 'start' }}>
+        <div className="practitioner-layout">
           <section className="panel">
             {list === null && <p className="muted panel-pad">Loading…</p>}
             {list && list.length === 0 && <EmptyState icon={Stethoscope} title="No practitioners" description="Doctor accounts appear here." />}
             {list && list.map((p) => (
               <button key={p.id} type="button" className={`btn btn-ghost btn-md${selected === p.user_id ? ' is-active' : ''}`}
-                style={{ width: '100%', justifyContent: 'space-between', borderRadius: 0 }} disabled={busy} onClick={() => { setSelected(p.user_id); setVerification(null); }}>
-                <span>{p.display_name}</span>
+                style={{ width: '100%', minHeight: 40, height: 'auto', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, borderRadius: 0, textAlign: 'left', whiteSpace: 'normal' }} disabled={busy} onClick={() => { setSelected(p.user_id); setVerification(null); }}>
+                <span style={{ minWidth: 0, overflowWrap: 'anywhere', flex: '1 1 10rem' }}>{p.display_name}</span>
                 {p.registration_expired
                   ? <span className="status status-danger">Review required</span>
                   : Number(p.credential_count) === 0
@@ -97,7 +98,7 @@ export default function PractitionersPage() {
                 )}
                 {detail.credentials.length === 0 && <p className="muted">No professional qualification is recorded. New clinical work remains blocked until credentials and privileges are approved.</p>}
                 {detail.credentials.length > 0 && (
-                  <table className="mini-table">
+                  <TableScroll label="Practitioner credentials"><table className="mini-table">
                     <thead><tr><th>Number</th><th>Issued by</th><th>Valid</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
                     <tbody>
                       {detail.credentials.map((c) => (
@@ -116,7 +117,7 @@ export default function PractitionersPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></TableScroll>
                 )}
                 {verification && <form className="stack" onSubmit={e => {e.preventDefault(); command.send(`/practitioners/${selected}/credentials/${verification.id}/verify`, {reference:verification.reference,reason:verification.reason}).then(confirmed);}}>
                   <p>The verifier must differ from the practitioner and the person who recorded the qualification.</p>

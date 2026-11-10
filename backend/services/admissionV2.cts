@@ -66,7 +66,7 @@ async function read(id:string,actor:Actor,t:any){
 // names. An unknown field is refused rather than silently dropped.
 const DISCHARGE_FIELDS:Record<string,string>={final_diagnosis:'finalDiagnosis',course_in_hospital:'courseInHospital',condition_at_discharge:'conditionAtDischarge',
  advice_on_discharge:'adviceOnDischarge',chief_complaint:'chiefComplaint',comorbidities:'comorbidities',allergies:'allergies',history_of_illness:'historyOfIllness',
- investigations:'investigations',discharge_medications:'dischargeMedications',diet_lifestyle:'dietLifestyle',warning_signs:'warningSigns',follow_up_appointments:'followUpAppointments'};
+ investigations:'investigations',discharge_medications:'dischargeMedications',diet_lifestyle:'dietLifestyle',warning_signs:'warningSigns',follow_up_appointments:'followUpAppointments',clinical_override_reason:'clinicalOverrideReason'};
 function dischargeFields(body:any){
  const out:Record<string,unknown>={};
  for(const [k,v] of Object.entries(body||{})){

@@ -140,7 +140,8 @@ function startDowntimeKit() {
   // Each facility's kit is made in that facility's context (services/workerContext.cts).
   const tick = () => require('./workerContext.cts').forEachFacility('downtime-kit', (facilityId) => snapshot(null, facilityId))
     .then(() => require('./downtimeStations.cts').checkBehind()
-    .catch((err) => console.error('Ward machine check failed:', err.message)), async (err) => {
+    .then(() => require('../utils/workerHealthState').success('downtime-stations'))
+    .catch((err) => { require('../utils/workerHealthState').failure('downtime-stations', err); console.error('Ward machine check failed:', err.message); }), async (err) => {
     console.error('Downtime kit failed:', err.message);
     await W.report({ kind: 'downtime.kit_failed', key: new Date().toISOString().slice(0, 13), title: `The downtime kit could not be refreshed: ${err.message}`, ownerRole: 'super_admin' }).catch(() => {});
   });

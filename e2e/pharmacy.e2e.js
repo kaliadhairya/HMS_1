@@ -502,6 +502,35 @@ async function until(fn, message, timeout = 10000) {
       () =>
         ui(async (page) => {
           const doc = await apiLogin("doctor");
+          // The historical encounter above is finalized. Prescribing must use
+          // a separate, active encounter for this patient's current visit.
+          const activeEncounter = await api("POST", "/hms/encounters", {
+            token: doc,
+            body: {
+              patient_id: ctx.patientId,
+              chief_complaint: "Synthetic active pharmacy visit",
+            },
+          });
+          assert(activeEncounter.status === 201, `active encounter ${activeEncounter.status}`);
+          const finalizedEncounterId = ctx.encounterId;
+          ctx.encounterId = activeEncounter.data.id;
+          const rejected = await api("POST", "/medication/orders", {
+            token: doc,
+            body: {
+              patient_id: ctx.patientId,
+              encounter_id: finalizedEncounterId,
+              product_id: ctx.product.id,
+              dose: "1",
+              dose_unit: "Tablet",
+              route: "TEST-ROUTE",
+              frequency: { type: "INTERVAL", interval_minutes: 60 },
+              starts_at: new Date(Date.now() - 60000).toISOString(),
+              ends_at: new Date(Date.now() + 86400000).toISOString(),
+              supply_quantity: "6",
+              supply_unit: "Tablet",
+            },
+          });
+          assert(rejected.status === 409 && rejected.data?.code === "ENCOUNTER_NOT_ACTIVE", `finalized encounter order ${rejected.status} ${JSON.stringify(rejected.data)}`);
           const r = await api("POST", "/medication/orders", {
             token: doc,
             body: {

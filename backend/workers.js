@@ -19,17 +19,17 @@ const WORKERS = {
   audit_shipper: (sequelize) => startAuditShipper(sequelize),
   interfaces: () => require('./services/interfaces').startInterfaceWorker(),
   abdm: () => require('./services/abdm').startAbdmWorker(),
-  device_listeners: () => { require('./services/devices').startMllp().catch((err) => console.error('Device listeners failed:', err.message)); },
+  device_listeners: () => require('./services/devices').startMllp(),
   downtime_kit: () => require('./services/downtime').startDowntimeKit(),
   finance: () => startFinanceWorker(),
 };
 
 // Starts every worker; returns the names that started and those that failed.
-function startBackgroundWorkers(sequelize) {
+async function startBackgroundWorkers(sequelize) {
   const started = [];
   const failed = [];
   for (const [name, start] of Object.entries(WORKERS)) {
-    try { start(sequelize); started.push(name); }
+    try { await start(sequelize); started.push(name); }
     catch (err) { failed.push(name); console.error(`Worker ${name} failed to start: ${err.message}`); }
   }
   console.log(`⚙️  Background workers started: ${started.join(', ') || 'none'}${failed.length ? `; failed: ${failed.join(', ')}` : ''}`);

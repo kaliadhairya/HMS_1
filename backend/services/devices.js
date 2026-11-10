@@ -186,7 +186,7 @@ async function reconcileMllp() {
       server.once('error', failed);
       server.listen(port, process.env.DEVICE_MLLP_HOST || '127.0.0.1', () => { server.removeListener('error', failed); resolve(); });
     });
-    server.on('error', (err) => console.error('Device listener failed:', err.code || err.name));
+    server.on('error', (err) => { require('../utils/workerHealthState').failure('device_listeners', err); console.error('Device listener failed:', err.code || err.name); });
     listeners.set(port, { contractId: contract.id, server, sockets });
   }
 }

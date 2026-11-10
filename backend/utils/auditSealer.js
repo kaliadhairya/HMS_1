@@ -70,7 +70,7 @@ function startAuditSealer(sequelize) {
   const key = loadKeyMaterial();
   if (dir && !key) console.warn('⚠️ AUDIT_CHECKPOINT_DIR is set without AUDIT_CHECKPOINT_KEY; checkpoints are disabled.');
   const sealTimer = setInterval(() => {
-    sealOnce(sequelize).catch((err) => console.error('Audit sealing failed:', err.original?.message || err.message, err.original?.where || ''));
+    sealOnce(sequelize).then(() => require('./workerHealthState').success('audit_sealer')).catch((err) => { require('./workerHealthState').failure('audit_sealer', err); console.error('Audit sealing failed:', err.original?.message || err.message, err.original?.where || ''); });
   }, SEAL_EVERY_MS);
   const checkpointTimer = dir && key ? setInterval(async () => {
     try {
@@ -78,7 +78,9 @@ function startAuditSealer(sequelize) {
       const file = await writeCheckpoint(sequelize, dir, loadKeyMaterial());
       // Queued for write-once storage (utils/auditShipper.js, Phase 6H).
       await require('./auditShipper').queue(sequelize, file);
+      require('./workerHealthState').success('audit_checkpoint');
     } catch (err) {
+      require('./workerHealthState').failure('audit_checkpoint', err);
       console.error('Audit checkpoint failed:', err.message);
     }
   }, CHECKPOINT_EVERY_MS) : null;

@@ -623,15 +623,17 @@ async function createOrder(b, u, tx) {
   await require('./medicationAccess.cts').authorize(u,'PRESCRIBE',tx,pid);
   const patient=await one('SELECT id,is_active,identity_status FROM hms_patients WHERE id=:pid FOR SHARE',{pid},tx);
   check(patient&&patient.is_active===1&&patient.identity_status!=='merged','PATIENT_IDENTITY_REVIEW_REQUIRED','New prescribing requires the current active patient identity.',409);
-  check(
-    await one(
-      "SELECT id FROM hms_encounters WHERE id=:eid AND patient_id=:pid AND facility_id=:facility",
+  const encounter = await one(
+      "SELECT id,status FROM hms_encounters WHERE id=:eid AND patient_id=:pid AND facility_id=:facility FOR UPDATE",
       { eid, pid,facility:u.facilityId },
       tx,
-    ),
+    );
+  check(
+    encounter,
     "PATIENT_ENCOUNTER_MISMATCH",
     "Encounter must belong to this patient.",
   );
+  check(encounter.status === 'Draft', 'ENCOUNTER_NOT_ACTIVE', 'Medication orders require an active encounter.', 409);
   if (b.admission_id)
     check(
       await one(

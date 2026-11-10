@@ -8,6 +8,7 @@ const Patient = require('../models/Patient');
 const TestReport = require('../models/TestReport');
 const User = require('../models/User');
 const { protect, restrictTo } = require('../middleware/auth');
+const { requireClinicalPrivilege } = require('../middleware/clinicalPrivilege');
 const { logAction } = require('../utils/auditLogger');
 const { encrypt, decrypt, maskAadhaar } = require('../utils/encryption');
 const { Allergy, ChronicCondition } = require('../models');
@@ -814,7 +815,7 @@ router.post('/hms/:id/allergies', protect, restrictTo('super_admin', 'admin', 'd
 });
 
 // POST /api/patients/hms/:id/chronic-conditions
-router.post('/hms/:id/chronic-conditions', protect, restrictTo('super_admin', 'admin', 'doctor', 'nurse', 'receptionist'), async (req, res) => {
+router.post('/hms/:id/chronic-conditions', protect, restrictTo('doctor', 'nurse'), requireClinicalPrivilege('CHART_READ', { patientIdFrom: r => r.params.id }), (req, res, next) => requireClinicalPrivilege(req.user.role === 'nurse' ? 'NURSING_DOCUMENT' : 'CLINICAL_SIGN', { patientIdFrom: r => r.params.id })(req, res, next), async (req, res) => {
   try {
     const { condition_name, since_when, notes } = req.body;
     if (!condition_name) return res.status(400).json({ success: false, message: 'Condition name required.' });

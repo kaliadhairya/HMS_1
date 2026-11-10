@@ -9,17 +9,27 @@ require('./utils/auditContext').bindAuditActor(sequelize);
 const { schemaProblems } = require('./migrate');
 const settings = require('./utils/settings');
 const { startBackgroundWorkers } = require('./workers');
+const heartbeatFile = process.env.HMS_WORKER_HEARTBEAT_FILE || '/tmp/hms-worker-heartbeat';
+const health = require('./utils/workerHealthState');
+function writeHeartbeat() {
+  const fs = require('fs');
+  const temporary = `${heartbeatFile}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify({ at: new Date().toISOString(), jobs: health.jobs }), { mode: 0o600 });
+  fs.renameSync(temporary, heartbeatFile);
+}
 
 async function main() {
+  try { require('fs').unlinkSync(heartbeatFile); } catch (err) { if (err.code !== 'ENOENT') throw err; }
   assertSecurityConfig();
   require('./services/dataKeys.cts').assertDataKeys();
   await sequelize.authenticate();
   const problems = await schemaProblems();
   if (problems.length) throw new Error(`the database schema is not current. Run "node migrate.js up".\n  ${problems.join('\n  ')}`);
   await require('./services/writerFence.cts').assertPrimary();
+  if (process.env.NODE_ENV === 'production') await require('./services/workerContext.cts').facilities();
   await settings.loadSettings();
   settings.startSettingsRefresh();
-  const { failed } = startBackgroundWorkers(sequelize);
+  const { failed } = await startBackgroundWorkers(sequelize);
   // Supervised (B8): a worker that did not start is not left half-running; the process exits and
   // its supervisor (Docker restart policy) starts it again, so the failure is visible.
   if (failed.length) throw new Error(`workers failed to start: ${failed.join(', ')}`);
@@ -27,13 +37,12 @@ async function main() {
   // health check (scripts/worker-health.cjs) reads its age. After three failed checks in a row
   // the process exits so the supervisor restarts it with fresh connections.
   const every = Math.max(200, Number(process.env.HMS_WORKER_HEARTBEAT_MS) || 15000);
-  const file = process.env.HMS_WORKER_HEARTBEAT_FILE || '/tmp/hms-worker-heartbeat';
   let misses = 0;
   const beat = async () => {
     try {
       await sequelize.query('SELECT 1', { retry: { max: 0 } });
       misses = 0;
-      require('fs').writeFileSync(file, new Date().toISOString());
+      writeHeartbeat();
     } catch (err) {
       misses += 1;
       console.error(`Worker heartbeat failed (${misses}/3): ${err.message}`);
@@ -48,6 +57,8 @@ async function main() {
 }
 
 main().catch((err) => {
+  health.failure('startup', err);
+  try { writeHeartbeat(); } catch (writeError) { console.error('Worker failure heartbeat could not be written:', writeError.code || writeError.name); }
   console.error(`❌ Worker refusing to start: ${err.message}`);
   process.exit(1);
 });

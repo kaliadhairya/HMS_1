@@ -97,6 +97,8 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
   const [loading, setLoading] = useState(false);
   const [isPreview, setIsPreview] = useState(viewOnly);
   const [confirming, setConfirming] = useState(false);
+  const [overrideRequired, setOverrideRequired] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
 
   // --- Form state ---
   const [form, setForm] = useState({
@@ -156,12 +158,14 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
         dischargeMedications: JSON.stringify(medications.filter(m => m.drug)),
         investigations: JSON.stringify(investigations.filter(i => i.test)),
         followUpAppointments: JSON.stringify(followUps.filter(f => f.department || f.date)),
+        ...(overrideReason.trim() ? { clinicalOverrideReason: overrideReason.trim() } : {}),
       };
       await api.patch(`/ipd/admissions/${admission.ID}/discharge`, payload);
       toast.success('Signed discharge summary saved and patient discharged');
       setConfirming(false);
       if (onDischargeComplete) onDischargeComplete();
     } catch (err) {
+      if (err.response?.data?.code === 'DISCHARGE_UNRESOLVED_WORK') setOverrideRequired(true);
       toast.error(err.response?.data?.message || 'Could not discharge the patient');
     } finally {
       setLoading(false);
@@ -620,7 +624,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
       footer={(
         <>
           <button type="button" className="btn btn-ghost btn-md" onClick={() => setConfirming(false)} disabled={loading}>Cancel</button>
-          <button type="button" className="btn btn-primary btn-md" onClick={confirmDischarge} disabled={loading||user?.role!=='doctor'}>
+          <button type="button" className="btn btn-primary btn-md" onClick={confirmDischarge} disabled={loading||user?.role!=='doctor'||(overrideRequired && overrideReason.trim().length < 10)}>
             <LogOut size={16} aria-hidden="true" /> {loading ? 'Signing and discharging…' : 'Sign summary and discharge'}
           </button>
         </>
@@ -631,6 +635,7 @@ export default function DischargeSummaryModal({ admission, onClose, onDischargeC
         <div><div className="fact-label">Final diagnosis</div><div className="fact-value">{form.finalDiagnosis || '—'}</div></div>
         <div><div className="fact-label">Condition</div><div className="fact-value">{form.conditionAtDischarge}</div></div>
       </div>
+      {overrideRequired && <div className="form-group"><label htmlFor="discharge-override" className="form-label">Reason for discharging with unresolved clinical work</label><textarea id="discharge-override" className="form-input" minLength={10} maxLength={1000} value={overrideReason} onChange={e => setOverrideReason(e.target.value)} /><p className="muted">Review the outstanding work first. Your reason and the outstanding items will be recorded.</p></div>}
     </Modal>
     </>
   );

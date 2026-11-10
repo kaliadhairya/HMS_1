@@ -6,6 +6,8 @@ const { logAction } = require('../utils/auditLogger');
 const { canMoveBed, openOccupancy, closeOccupancy } = require('../utils/adt');
 const { patientInCare, NOT_IN_CARE } = require('../utils/careTeam');
 const { conflictResponse } = require('../utils/dbErrors');
+const { requireClinicalPrivilege, patientOfAdmission } = require('../middleware/clinicalPrivilege');
+const doctorPrivilege = action => (req, res, next) => req.user.role === 'doctor' ? requireClinicalPrivilege(action, { patientIdFrom: patientOfAdmission })(req, res, next) : next();
 
 // Admission, transfer and discharge (migration 0017). Mounted at /api/adt.
 const router = express.Router();
@@ -99,7 +101,7 @@ router.get('/admissions/:id/occupancies', protect, restrictTo(...WARD_STAFF, 're
 });
 
 // GET /api/adt/admissions/:id/discharge-plan
-router.get('/admissions/:id/discharge-plan', protect, restrictTo(...WARD_STAFF, 'receptionist'), async (req, res) => {
+router.get('/admissions/:id/discharge-plan', protect, restrictTo(...WARD_STAFF, 'receptionist'), doctorPrivilege('CHART_READ'), async (req, res) => {
   try {
     const [plan] = await select(
       `SELECT p.*, ru.name AS results_owner_name, fu.name AS follow_up_owner_name, cu.name AS clinical_ready_by_name, lu.name AS cleared_by_name
@@ -119,7 +121,7 @@ router.get('/admissions/:id/discharge-plan', protect, restrictTo(...WARD_STAFF, 
 });
 
 // PUT /api/adt/admissions/:id/discharge-plan — doctors (in care) record the plan.
-router.put('/admissions/:id/discharge-plan', protect, restrictTo('doctor', 'super_admin', 'admin'), async (req, res) => {
+router.put('/admissions/:id/discharge-plan', protect, restrictTo('doctor', 'super_admin', 'admin'), doctorPrivilege('CHART_READ'), doctorPrivilege('CLINICAL_SIGN'), async (req, res) => {
   try {
     const admissionId = posInt(req.params.id);
     if (!admissionId) return fail(res, 404, 'Admission not found.');
@@ -154,7 +156,7 @@ router.put('/admissions/:id/discharge-plan', protect, restrictTo('doctor', 'supe
 });
 
 // POST /api/adt/admissions/:id/discharge-plan/clinically-ready — the doctor's readiness is separate from billing.
-router.post('/admissions/:id/discharge-plan/clinically-ready', protect, restrictTo('doctor', 'super_admin', 'admin'), async (req, res) => {
+router.post('/admissions/:id/discharge-plan/clinically-ready', protect, restrictTo('doctor', 'super_admin', 'admin'), doctorPrivilege('CHART_READ'), doctorPrivilege('CLINICAL_SIGN'), async (req, res) => {
   try {
     const admissionId = posInt(req.params.id);
     const [row] = await select(

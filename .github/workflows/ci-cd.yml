@@ -214,6 +214,7 @@ jobs:
           JWT_SECRET: ci-placeholder
           AADHAAR_ENCRYPTION_KEY: ci-placeholder
           AUDIT_CHECKPOINT_KEY: ci-placeholder
+          GRAFANA_PASSWORD: ci-placeholder
           RUNTIME_DB_PASSWORD: ci-placeholder-runtime
           HMS_DATA_KEYS: ci:0000000000000000000000000000000000000000000000000000000000000000
         run: |

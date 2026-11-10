@@ -24,6 +24,24 @@ async function discharge({ admissionId, body, user, transaction: t }) {
   if (!plan || !plan.clinical_ready_at) throw refusal(409, 'A clinically ready discharge plan is required.');
   if (plan.pending_results && !plan.results_owner_user_id) throw refusal(409, 'Pending results need a named owner before discharge.');
 
+  // Dispensations have no pending status. A pending bedside documentation intent,
+  // or an admission-linked dispense line without its charge, is unresolved evidence.
+  const replacements = { patient: admission.PATIENT_ID, admission: admission.ID, facility: user.facilityId };
+  const critical = await sequelize.query("SELECT id FROM hms_lab_critical_tasks WHERE patient_id=:patient AND facility_id=:facility AND state<>'CLOSED' FOR UPDATE", { replacements, type: QueryTypes.SELECT, transaction: t });
+  const pending = await sequelize.query(`SELECT i.id FROM hms_med_documentation_intents i JOIN hms_med_schedules s ON s.id=i.schedule_id
+    JOIN hms_med_order_versions v ON v.id=s.version_id JOIN hms_med_orders o ON o.id=v.order_id
+    WHERE o.admission_id=:admission AND o.facility_id=:facility AND i.state='PENDING_DOCUMENTATION' FOR UPDATE OF i`, { replacements, type: QueryTypes.SELECT, transaction: t });
+  const uncharged = await sequelize.query(`SELECT l.id FROM hms_med_dispense_lines l JOIN hms_med_order_versions v ON v.id=l.version_id
+    JOIN hms_med_orders o ON o.id=v.order_id LEFT JOIN hms_med_charges c ON c.dispense_line_id=l.id
+    WHERE o.admission_id=:admission AND o.facility_id=:facility AND c.id IS NULL FOR UPDATE OF l`, { replacements, type: QueryTypes.SELECT, transaction: t });
+  const blockers = { critical_results: critical.map(r => r.id), pending_documentation: pending.map(r => r.id), uncharged_dispenses: uncharged.map(r => r.id) };
+  if (critical.length || pending.length || uncharged.length) {
+    const reason = typeof body.clinicalOverrideReason === 'string' ? body.clinicalOverrideReason.trim() : '';
+    if (user.role !== 'doctor' || reason.length < 10 || reason.length > 1000) throw refusal(409, 'Unresolved critical results or medication work require a doctor’s documented override reason.', 'DISCHARGE_UNRESOLVED_WORK');
+    await sequelize.query(`INSERT INTO hms_discharge_overrides(facility_id,admission_id,patient_id,doctor_user_id,reason,blockers)
+      VALUES(:facility,:admission,:patient,:doctor,:reason,CAST(:blockers AS jsonb))`, { replacements: { ...replacements, doctor: user.id, reason, blockers: JSON.stringify(blockers) }, transaction: t });
+  }
+
   // The doctor confirms and signs the exact structured document in the same
   // transaction that closes the admission and occupancy. No unsigned legacy
   // summary can authorize a discharge.
